@@ -6,6 +6,7 @@ import { generateSpeech } from '../services/gemini';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
+import 'svg2pdf.js';
 import { toPng } from 'html-to-image';
 import { Loader } from './ui/Loader';
 
@@ -604,138 +605,68 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   };
 
   const exportToPdf = async () => {
-    if (!layoutMap.nodes.length) return;
-    
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-    
-    // Attempt to load CJK Font (Noto Sans SC)
+    if (!mapContainerRef.current || !layoutMap.nodes.length) return;
+
+    const svgEl = mapContainerRef.current.querySelector('svg');
+    if (!svgEl) return;
+
     try {
-        const fontUrl = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC-Regular.ttf';
-        const response = await fetch(fontUrl);
-        if (response.ok) {
-            const blob = await response.blob();
-            const reader = new FileReader();
-            await new Promise((resolve) => {
-                reader.onloadend = () => {
-                    const result = reader.result as string;
-                    const base64 = result.split(',')[1];
-                    doc.addFileToVFS('NotoSansSC-Regular.ttf', base64);
-                    doc.addFont('NotoSansSC-Regular.ttf', 'NotoSansSC', 'normal');
-                    doc.setFont('NotoSansSC');
-                    resolve(true);
-                };
-                reader.readAsDataURL(blob);
-            });
+        // Get bounding box of all content
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        layoutMap.nodes.forEach(node => {
+            minX = Math.min(minX, node.x);
+            maxX = Math.max(maxX, node.x + node.width);
+            minY = Math.min(minY, node.y - node.height / 2);
+            maxY = Math.max(maxY, node.y + node.height / 2);
+        });
+        minX -= 50; maxX += 50; minY -= 50; maxY += 50;
+
+        const svgWidth = maxX - minX;
+        const svgHeight = maxY - minY;
+        const isLandscape = svgWidth >= svgHeight;
+
+        // Create a clean clone of the SVG for export with proper viewBox
+        const clonedSvg = svgEl.cloneNode(true) as SVGSVGElement;
+        clonedSvg.setAttribute('viewBox', `${minX} ${minY} ${svgWidth} ${svgHeight}`);
+        clonedSvg.setAttribute('width', String(svgWidth));
+        clonedSvg.setAttribute('height', String(svgHeight));
+
+        // Remove CSS transforms from the inner <g> so viewBox controls framing
+        const innerG = clonedSvg.querySelector('g');
+        if (innerG) {
+            innerG.removeAttribute('style');
+            innerG.removeAttribute('class');
         }
+
+        // Remove filter elements that may cause issues in PDF
+        clonedSvg.querySelectorAll('filter').forEach(f => f.remove());
+        clonedSvg.querySelectorAll('[filter]').forEach(el => el.removeAttribute('filter'));
+
+        const doc = new jsPDF({
+            orientation: isLandscape ? 'landscape' : 'portrait',
+            unit: 'pt',
+            format: 'a4',
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 30;
+
+        const availW = pageWidth - margin * 2;
+        const availH = pageHeight - margin * 2;
+        const scale = Math.min(availW / svgWidth, availH / svgHeight);
+        const pdfW = svgWidth * scale;
+        const pdfH = svgHeight * scale;
+        const x = (pageWidth - pdfW) / 2;
+        const y = (pageHeight - pdfH) / 2;
+
+        // svg2pdf.js converts SVG to native vector PDF primitives
+        await (doc as any).svg(clonedSvg, { x, y, width: pdfW, height: pdfH });
+
+        doc.save(`mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`);
     } catch (e) {
-        console.warn("Could not load CJK font. Text may appear garbled.", e);
+        console.error("PDF export failed:", e);
     }
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 40;
-
-    // Calculate Bounding Box of the layout
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    layoutMap.nodes.forEach(node => {
-        minX = Math.min(minX, node.x);
-        maxX = Math.max(maxX, node.x + node.width);
-        minY = Math.min(minY, node.y - node.height / 2);
-        maxY = Math.max(maxY, node.y + node.height / 2);
-    });
-
-    // Add padding to bounds
-    minX -= 50; maxX += 50; minY -= 50; maxY += 50;
-
-    const mapWidth = maxX - minX;
-    const mapHeight = maxY - minY;
-
-    // Calculate Scale to fit page
-    const scaleX = (pageWidth - margin * 2) / mapWidth;
-    const scaleY = (pageHeight - margin * 2) / mapHeight;
-    const scale = Math.min(scaleX, scaleY); 
-
-    // Center on page
-    const offsetX = (pageWidth - mapWidth * scale) / 2;
-    const offsetY = (pageHeight - mapHeight * scale) / 2;
-
-    const transformX = (x: number) => (x - minX) * scale + offsetX;
-    const transformY = (y: number) => (y - minY) * scale + offsetY;
-
-    // Draw Links
-    doc.setDrawColor(0, 243, 255); // Neon Blue
-    doc.setLineWidth(1);
-    
-    layoutMap.links.forEach(link => {
-        const x1 = transformX(link.source.x);
-        const y1 = transformY(link.source.y);
-        const x2 = transformX(link.target.x);
-        const y2 = transformY(link.target.y);
-        
-        // Bezier CP calculation
-        const cp1x = transformX(link.source.x + 80);
-        const cp1y = transformY(link.source.y);
-        const cp2x = transformX(link.target.x - 80);
-        const cp2y = transformY(link.target.y);
-        
-        // Draw Bezier using jsPDF API
-        doc.moveTo(x1, y1);
-        doc.curveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
-        doc.stroke();
-    });
-
-    // Draw Nodes
-    layoutMap.nodes.forEach(node => {
-        const x = transformX(node.x);
-        const y = transformY(node.y);
-        const w = node.width * scale;
-        const h = node.height * scale;
-        
-        const fontSize = Math.max(8, (16 - node.depth * 1.5) * scale);
-        
-        if (node.depth >= 2) {
-             // Container Box
-             doc.setFillColor(250, 250, 250);
-             doc.setDrawColor(200, 200, 200);
-             doc.roundedRect(x, y - h/2, w, h, 3, 3, 'FD');
-             
-             // Badge
-             doc.setFontSize(Math.max(6, 8 * scale));
-             doc.setTextColor(100, 100, 100);
-             let badge = "";
-             if (node.depth === 2) badge = "ENTRY";
-             if (node.depth === 3) badge = "DEFINITION";
-             if (node.depth === 4) badge = "NOTE";
-             if (badge) doc.text(badge, x + 5 * scale, y - h/2 + 15 * scale); // Adjusted Y for badge
-             
-             // Label / Content
-             doc.setFontSize(fontSize);
-             doc.setTextColor(0, 0, 0);
-             
-             // Wrap text using jsPDF split logic which knows about the font metrics
-             const maxTextWidth = w - (20 * scale);
-             const lines = doc.splitTextToSize(node.label, maxTextWidth);
-             
-             // Calculate start Y for content with increased spacing
-             const contentStartY = y - h/2 + (35 * scale); // Increased space between title and content
-
-             doc.text(lines, x + 10 * scale, contentStartY);
-        } else {
-             // Root/Category Text
-             doc.setFontSize(fontSize + 4);
-             doc.setTextColor(0, 0, 0);
-             doc.text(node.label, x + w/2, y, { align: "center", baseline: "middle" });
-             
-             // Underline
-             if (node.depth > 0) {
-                 doc.setDrawColor(0, 243, 255);
-                 doc.setLineWidth(0.5);
-                 doc.line(x, y + h/2, x + w, y + h/2);
-             }
-        }
-    });
-
-    doc.save(`mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`);
   };
 
   return (
@@ -894,36 +825,40 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                         onClick={(e) => node.hasChildren ? toggleNodeCollapse(node.id, e) : null}
                                     >
                                         {isContainer ? (
-                                            <foreignObject x={0} y={0} width={node.width} height={node.height}>
-                                                <div 
-                                                    className="w-full h-full bg-[#0a0a0c] border rounded-lg overflow-hidden flex flex-col shadow-lg hover:shadow-[#00f3ff]/20 hover:border-[#00f3ff]/50 transition-all duration-300 relative group/card"
-                                                    style={{ borderColor: `${NEON_BLUE}50` }}
+                                            <>
+                                                {/* Card background */}
+                                                <rect
+                                                    x={0} y={0}
+                                                    width={node.width} height={node.height}
+                                                    rx={8} ry={8}
+                                                    fill="#0a0a0c"
+                                                    stroke={`${NEON_BLUE}50`}
+                                                    strokeWidth={1}
+                                                />
+                                                {/* Left accent bar */}
+                                                <rect x={0} y={0} width={4} height={node.height} rx={2} fill={NEON_BLUE} />
+                                                {/* Badge */}
+                                                <text
+                                                    x={16} y={20}
+                                                    fontSize={10}
+                                                    fontFamily="Share Tech Mono, monospace"
+                                                    fill={badgeColor}
+                                                    letterSpacing="0.1em"
                                                 >
-                                                    <div className="absolute top-0 left-0 w-1 h-full opacity-100" style={{ backgroundColor: NEON_BLUE }}></div>
-                                                    
-                                                    <div className="p-4 flex flex-col h-full overflow-hidden">
-                                                        {/* Metadata Row */}
-                                                        <div className="mb-3 shrink-0">
-                                                            <div 
-                                                                className="inline-flex items-center px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono uppercase tracking-widest opacity-100"
-                                                                style={{ color: badgeColor }}
-                                                            >
-                                                                {badgeText}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Body Content */}
-                                                        <div className="flex-1 overflow-y-auto hide-scrollbar relative">
-                                                             <div className="text-zinc-300 text-sm leading-7 font-sans tracking-normal whitespace-pre-wrap">
-                                                                {node.data.label}
-                                                             </div>
-                                                        </div>
-                                                        
-                                                        {/* Bottom Mask for overflow indication */}
-                                                        <div className="absolute bottom-0 left-0 w-full h-6 bg-gradient-to-t from-[#0a0a0c] to-transparent pointer-events-none"></div>
-                                                    </div>
-                                                </div>
-                                            </foreignObject>
+                                                    {badgeText}
+                                                </text>
+                                                {/* Body text */}
+                                                <text
+                                                    x={16} y={40}
+                                                    fontSize={13}
+                                                    fontFamily="sans-serif"
+                                                    fill="#d4d4d8"
+                                                >
+                                                    {node.lines.map((line, i) => (
+                                                        <tspan x={16} dy={i === 0 ? 0 : '1.6em'} key={i}>{line}</tspan>
+                                                    ))}
+                                                </text>
+                                            </>
                                         ) : (
                                             <>
                                                 {/* Invisible Hit Area */}

@@ -9,14 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "lucide-react": "^0.555.0",
     "@google/genai": "^1.30.0",
-    "react-dom": "^19.2.0",
-    "jszip": "3.10.1",
     "docx": "8.5.0",
+    "html-to-image": "^1.11.13",
     "jspdf": "2.5.1",
-    "html-to-image": "^1.11.13"
+    "jszip": "3.10.1",
+    "lucide-react": "^0.555.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "svg2pdf.js": "^2.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
