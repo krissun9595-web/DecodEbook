@@ -5,12 +5,14 @@ import { Chapter, FileContext, AppSettings, ThemeColor } from '../types';
 import { extractChapterText, generateSpeech, translateSentences, cleanGenAiText } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
+import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
   fileContext: FileContext;
   settings: AppSettings;
   onSettingsUpdate: (settings: AppSettings) => void;
+  bookId: string;
 }
 
 interface QuantumParticle {
@@ -171,7 +173,7 @@ const processQueue = async <T, R>(
   return results;
 };
 
-export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onSettingsUpdate }) => {
+export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onSettingsUpdate, bookId }) => {
   const [pages, setPages] = useState<string[]>([]);
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
@@ -278,6 +280,24 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
      abortGenerationRef.current = true;
      setIsTranslating(false); 
   }, [currentPage, pages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCached = async () => {
+      const key = buildCacheKey(bookId, chapter.id, 'audio', `page${currentPage}`, selectedVoice, audioLanguage);
+      try {
+        const cached = await getFile(key);
+        if (cached && !cancelled) {
+          const url = URL.createObjectURL(cached.blob);
+          setAudioSrc(url);
+          setHasInitiated(true);
+          setTimings([]);
+        }
+      } catch (e) { /* cache miss is fine */ }
+    };
+    if (!isGenerating && !audioSrc) loadCached();
+    return () => { cancelled = true; };
+  }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id]);
 
   useEffect(() => {
     let ignore = false;
@@ -564,8 +584,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
       
       const blob = pcmToWav(mergedBuffer.buffer, 24000);
       const url = URL.createObjectURL(blob);
-      setTimings(newTimings); 
-      setAudioSrc(url); 
+      setTimings(newTimings);
+      setAudioSrc(url);
+      const cacheKey = buildCacheKey(bookId, chapter.id, 'audio', `page${currentPage}`, selectedVoice, audioLanguage);
+      saveFile(cacheKey, blob, {
+        filename: `voice-synth-pg${currentPage + 1}.wav`,
+        mimeType: 'audio/wav',
+        timestamp: Date.now(),
+        bookId,
+        chapterId: chapter.id,
+        componentSource: 'audiobook',
+        fileType: 'audio',
+      }).catch(e => console.warn('Cache save failed:', e));
     } catch(e) {
       console.error(e);
       setGenerationProgress("ERR_LINK_FAILED");

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
 import { analyzeBookStructure, getQuickDefinition } from './services/gemini';
@@ -15,6 +15,7 @@ const Visualizer = React.lazy(() => import('./components/Visualizer').then(modul
 const VideoSummary = React.lazy(() => import('./components/VideoSummary').then(module => ({ default: module.VideoSummary })));
 const AudioBook = React.lazy(() => import('./components/AudioBook').then(module => ({ default: module.AudioBook })));
 const Notebook = React.lazy(() => import('./components/Notebook').then(module => ({ default: module.Notebook })));
+const GeneratedFilesPanel = React.lazy(() => import('./components/GeneratedFilesPanel').then(module => ({ default: module.GeneratedFilesPanel })));
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.UPLOAD);
@@ -38,6 +39,7 @@ const App: React.FC = () => {
   const [showLibraryList, setShowLibraryList] = useState(false);
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showGeneratedFiles, setShowGeneratedFiles] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     targetLanguage: 'Spanish',
     highlightColor: 'indigo',
@@ -306,6 +308,18 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (showGeneratedFiles) {
+      return (
+        <div className="h-full animate-fade-in">
+          <ErrorBoundary>
+            <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
+              <GeneratedFilesPanel library={library} />
+            </Suspense>
+          </ErrorBoundary>
+        </div>
+      );
+    }
+
     if (activeTab === Tab.NOTEBOOK) {
         return (
             <Notebook 
@@ -326,16 +340,16 @@ const App: React.FC = () => {
     let content;
     switch (activeTab) {
       case Tab.AUDIOBOOK:
-        content = <AudioBook chapter={activeChapter} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} />;
+        content = <AudioBook chapter={activeChapter} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} />;
         break;
       case Tab.PODCAST:
-        content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} />;
+        content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} />;
         break;
       case Tab.CONCEPTS:
-        content = <Visualizer chapter={activeChapter} fileContext={activeFileContext} />;
+        content = <Visualizer chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} />;
         break;
       case Tab.ANIMATION:
-        content = <VideoSummary chapter={activeChapter} fileContext={activeFileContext} />;
+        content = <VideoSummary chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} />;
         break;
       default:
         content = null;
@@ -532,7 +546,19 @@ const App: React.FC = () => {
              </div>
              <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>●</span>
           </button>
-          <button 
+          <button
+            onClick={() => setShowGeneratedFiles(!showGeneratedFiles)}
+            className={`w-full flex items-center justify-between p-4 transition-all text-[10px] font-bold font-tech uppercase tracking-widest border-b border-zinc-900/30 ${
+              showGeneratedFiles ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:bg-zinc-900 hover:text-[#00f3ff]'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <HardDrive size={14} />
+              <span>GEN_FILES</span>
+            </div>
+            <span className={`text-[8px] animate-pulse ${showGeneratedFiles ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>●</span>
+          </button>
+          <button
             onClick={() => setIsSettingsOpen(true)}
             className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-[#00f3ff] transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
           >
@@ -574,7 +600,7 @@ const App: React.FC = () => {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as Tab)}
+                onClick={() => { setActiveTab(tab.id as Tab); setShowGeneratedFiles(false); }}
                 className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
                   activeTab === tab.id 
                     ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'

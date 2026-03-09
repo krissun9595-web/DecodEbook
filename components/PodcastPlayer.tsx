@@ -4,11 +4,13 @@ import { Play, Pause, RotateCcw, RotateCw, Mic2, Download, FileDown, Settings2, 
 import { generatePodcastAudio } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
+import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
   fileContext: FileContext;
   settings: AppSettings;
+  bookId: string;
 }
 
 interface ScriptSegment {
@@ -56,7 +58,7 @@ const HOST_CONFIG: Record<string, { host1: string, voice1: string, host2: string
   'Netrunner': { host1: 'Zero', voice1: 'Puck', host2: 'One', voice2: 'Kore' },
 };
 
-export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings }) => {
+export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings, bookId }) => {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [episodeTitle, setEpisodeTitle] = useState<string>('');
   const [script, setScript] = useState<string | null>(null);
@@ -114,7 +116,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings 
     setSegments(parsed);
   }, [script]);
 
-  const pcmToWavBlobUrl = (base64: string) => {
+  const pcmToWavBlob = (base64: string): Blob => {
     const binaryString = window.atob(base64);
     const len = binaryString.length;
     const buffer = new ArrayBuffer(44 + len);
@@ -135,8 +137,26 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings 
     view.setUint32(40, len, true);
     const bytes = new Uint8Array(buffer, 44);
     for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+    return new Blob([buffer], { type: 'audio/wav' });
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCached = async () => {
+      const audioKey = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
+      const scriptKey = buildCacheKey(bookId, chapter.id, 'podcast-script', selectedTone, selectedLanguage);
+      try {
+        const [cachedAudio, cachedScript] = await Promise.all([getFile(audioKey), getFile(scriptKey)]);
+        if (cachedAudio && cachedScript && !cancelled) {
+          setAudioSrc(URL.createObjectURL(cachedAudio.blob));
+          setScript(await cachedScript.blob.text());
+          setHasInitiated(true);
+        }
+      } catch (e) { /* cache miss */ }
+    };
+    if (!isLoading && !audioSrc) loadCached();
+    return () => { cancelled = true; };
+  }, [bookId, chapter.id, selectedTone, selectedLanguage]);
 
   const handleToggleGeneration = async () => {
     if (isLoading) {
@@ -153,10 +173,32 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings 
       const targetLang = selectedLanguage === 'Original' ? 'the source language of the document' : selectedLanguage;
       const result = await generatePodcastAudio(fileContext, chapter, selectedTone, hosts, targetLang);
       if (abortRef.current) return;
-      setAudioSrc(pcmToWavBlobUrl(result.audio));
+      const audioBlob = pcmToWavBlob(result.audio);
+      setAudioSrc(URL.createObjectURL(audioBlob));
       setScript(result.script);
       setEpisodeTitle(result.episodeTitle || chapter.title);
       setActiveIndex(-1);
+      const audioCacheKey = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
+      saveFile(audioCacheKey, audioBlob, {
+        filename: `podcast-${chapter.id}.wav`,
+        mimeType: 'audio/wav',
+        timestamp: Date.now(),
+        bookId,
+        chapterId: chapter.id,
+        componentSource: 'podcast',
+        fileType: 'podcast-audio',
+      }).catch(e => console.warn('Cache save failed:', e));
+      const scriptBlob = new Blob([result.script], { type: 'text/plain' });
+      const scriptCacheKey = buildCacheKey(bookId, chapter.id, 'podcast-script', selectedTone, selectedLanguage);
+      saveFile(scriptCacheKey, scriptBlob, {
+        filename: `podcast-script-${chapter.id}.txt`,
+        mimeType: 'text/plain',
+        timestamp: Date.now(),
+        bookId,
+        chapterId: chapter.id,
+        componentSource: 'podcast',
+        fileType: 'podcast-script',
+      }).catch(e => console.warn('Cache save failed:', e));
     } catch (e: any) {
       if (!abortRef.current) {
         setError(e.message || "Failed to generate podcast.");

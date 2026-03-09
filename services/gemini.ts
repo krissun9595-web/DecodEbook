@@ -487,12 +487,12 @@ export const generateSummaryVideo = async (
   style: string = 'Cinematic',
   language: string = 'English',
   resolution: '720p' | '1080p' = '720p'
-): Promise<string> => {
+): Promise<Blob> => {
   return withRetry(async () => {
     const ai = getAi();
     onStatus("Crafting visual narrative...");
     const promptResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", 
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           getFilePart(file),
@@ -504,7 +504,7 @@ export const generateSummaryVideo = async (
       }
     });
     const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
-    
+
     onStatus("Transmitting to Veo Core...");
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
@@ -527,8 +527,7 @@ export const generateSummaryVideo = async (
     const response = await fetch(downloadLink, {
       headers: { 'x-goog-api-key': process.env.API_KEY || '' }
     });
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
+    return await response.blob();
   });
 };
 

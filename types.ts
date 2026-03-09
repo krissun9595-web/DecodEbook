@@ -107,3 +107,22 @@ export interface LibraryItem {
   fileContext: FileContext;
   uploadDate: number;
 }
+
+export type CachedFileType = 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image';
+
+export interface CachedFileMetadata {
+  key: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  timestamp: number;
+  bookId: string;
+  chapterId: number;
+  componentSource: string;
+  fileType: CachedFileType;
+}
+
+export interface CachedFile {
+  metadata: CachedFileMetadata;
+  blob: Blob;
+}

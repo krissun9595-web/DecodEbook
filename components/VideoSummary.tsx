@@ -5,10 +5,12 @@ import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, Refre
 import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, hasValidKeyForVeo, requestVeoKey } from '../services/gemini';
 import { Loader } from './ui/Loader';
+import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
   fileContext: FileContext;
+  bookId: string;
 }
 
 const STYLES = [
@@ -19,7 +21,7 @@ const STYLES = [
 const RESOLUTIONS: ('720p' | '1080p')[] = ['720p', '1080p'];
 const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-export const VideoSummary: React.FC<Props> = ({ chapter, fileContext }) => {
+export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -48,6 +50,22 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext }) => {
     };
   }, [videoUrl]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadCached = async () => {
+      const key = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
+      try {
+        const cached = await getFile(key);
+        if (cached && !cancelled) {
+          const url = URL.createObjectURL(cached.blob);
+          setVideoUrl(url);
+        }
+      } catch (e) { /* cache miss */ }
+    };
+    if (!isGenerating && !videoUrl) loadCached();
+    return () => { cancelled = true; };
+  }, [bookId, chapter.id, selectedStyle, selectedResolution]);
+
   const handleToggleGeneration = async () => {
     if (isGenerating) {
         abortRef.current = true;
@@ -68,19 +86,30 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext }) => {
       if (abortRef.current) return;
       
       const targetLang = selectedLanguage === 'Original' ? 'the source language of the document' : selectedLanguage;
-      const url = await generateSummaryVideo(
-        fileContext, 
-        chapter, 
-        setStatus, 
-        selectedStyle, 
+      const videoBlob = await generateSummaryVideo(
+        fileContext,
+        chapter,
+        setStatus,
+        selectedStyle,
         targetLang,
         selectedResolution as any
       );
-      
+
       if (!abortRef.current) {
         if (videoUrl) URL.revokeObjectURL(videoUrl);
+        const url = URL.createObjectURL(videoBlob);
         setVideoUrl(url);
         setIsPlaying(false);
+        const cacheKey = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
+        saveFile(cacheKey, videoBlob, {
+          filename: `cine-render-${chapter.id}.mp4`,
+          mimeType: 'video/mp4',
+          timestamp: Date.now(),
+          bookId,
+          chapterId: chapter.id,
+          componentSource: 'video',
+          fileType: 'video',
+        }).catch(e => console.warn('Cache save failed:', e));
       }
     } catch (e: any) {
       if (!abortRef.current) {

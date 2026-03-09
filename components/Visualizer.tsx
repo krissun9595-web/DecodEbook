@@ -5,10 +5,12 @@ import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import JSZip from 'jszip';
+import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
   fileContext: FileContext;
+  bookId: string;
 }
 
 const STYLES = [
@@ -18,7 +20,7 @@ const STYLES = [
 ];
 const RATIOS = ['1:1', '16:9', '4:3', '3:2', '9:16', '3:4', '2:3'];
 
-export const Visualizer: React.FC<Props> = ({ chapter, fileContext }) => {
+export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) => {
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [images, setImages] = useState<Record<string, string>>({});
   const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
@@ -52,12 +54,49 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext }) => {
     return () => { mounted = false; };
   }, [chapter, fileContext]);
 
+  useEffect(() => {
+    if (concepts.length === 0) return;
+    let cancelled = false;
+    const loadCachedImages = async () => {
+      const cached: Record<string, string> = {};
+      for (const concept of concepts) {
+        const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
+        try {
+          const file = await getFile(key);
+          if (file && !cancelled) {
+            cached[concept.term] = URL.createObjectURL(file.blob);
+          }
+        } catch (e) { /* skip */ }
+      }
+      if (!cancelled && Object.keys(cached).length > 0) {
+        setImages(prev => ({ ...cached, ...prev }));
+        setHasInitiated(true);
+      }
+    };
+    loadCachedImages();
+    return () => { cancelled = true; };
+  }, [concepts, bookId, chapter.id, selectedStyle, selectedRatio]);
+
   const handleGenerateImage = async (concept: Concept, forceRegenerate = false) => {
     if (loadingImages[concept.term] && !forceRegenerate) return;
     setLoadingImages(prev => ({ ...prev, [concept.term]: true }));
     try {
       const imgUrl = await generateConceptImage(concept.visualPrompt, selectedStyle, selectedRatio);
       setImages(prev => ({ ...prev, [concept.term]: imgUrl }));
+      try {
+        const imgResp = await fetch(imgUrl);
+        const imgBlob = await imgResp.blob();
+        const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
+        saveFile(key, imgBlob, {
+          filename: `concept-${slugify(concept.term)}.png`,
+          mimeType: 'image/png',
+          timestamp: Date.now(),
+          bookId,
+          chapterId: chapter.id,
+          componentSource: 'visualizer',
+          fileType: 'concept-image',
+        }).catch(e => console.warn('Cache save failed:', e));
+      } catch (e) { /* caching is best-effort */ }
     } catch (e) {
       console.error("Image gen failed", e);
     } finally {
