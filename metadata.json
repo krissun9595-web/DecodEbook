@@ -1,0 +1,7 @@
+{
+  "name": "DecodEbook",
+  "description": "Advanced neural interface for decoding static text into multi-modal data streams.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
