@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
 
@@ -8,7 +8,7 @@ interface Props {
   library: LibraryItem[];
 }
 
-type FilterType = 'all' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image';
+type FilterType = 'all' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'notebook';
 
 const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   'audio': { icon: <Headphones size={14} />, label: 'VOICE_SYNTH', color: 'text-cyan-400' },
@@ -16,6 +16,10 @@ const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; c
   'podcast-script': { icon: <FileText size={14} />, label: 'NET_SCRIPT', color: 'text-purple-300' },
   'video': { icon: <Film size={14} />, label: 'CINE_RENDER', color: 'text-rose-400' },
   'concept-image': { icon: <ImageIcon size={14} />, label: 'VISUAL_CORE', color: 'text-amber-400' },
+  'sticky-note': { icon: <StickyNote size={14} />, label: 'MEM_LOG', color: 'text-green-400' },
+  'mind-map-pdf': { icon: <Map size={14} />, label: 'MAP_PDF', color: 'text-sky-400' },
+  'mind-map-docx': { icon: <FileDown size={14} />, label: 'MAP_DOCX', color: 'text-blue-400' },
+  'mind-map-xmind': { icon: <Map size={14} />, label: 'MAP_XMIND', color: 'text-teal-400' },
 };
 
 const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
@@ -24,6 +28,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'podcast-audio', label: 'PODCAST' },
   { value: 'video', label: 'VIDEO' },
   { value: 'concept-image', label: 'IMAGES' },
+  { value: 'notebook', label: 'NOTEBOOK' },
 ];
 
 function formatFileSize(bytes: number): string {
@@ -63,9 +68,12 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
 
+  const NOTEBOOK_TYPES = ['sticky-note', 'mind-map-pdf', 'mind-map-docx', 'mind-map-xmind'];
   const filteredFiles = filterType === 'all'
     ? files
-    : files.filter(f => f.fileType === filterType || (filterType === 'podcast-audio' && f.fileType === 'podcast-script'));
+    : filterType === 'notebook'
+      ? files.filter(f => NOTEBOOK_TYPES.includes(f.fileType))
+      : files.filter(f => f.fileType === filterType || (filterType === 'podcast-audio' && f.fileType === 'podcast-script'));
 
   const handleDownload = async (file: CachedFileMetadata) => {
     try {

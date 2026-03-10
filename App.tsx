@@ -322,15 +322,16 @@ const App: React.FC = () => {
 
     if (activeTab === Tab.NOTEBOOK) {
         return (
-            <Notebook 
-                items={notebook} 
-                onDelete={handleDeleteNotebookItem} 
-                onBulkDelete={handleBulkDeleteNotebookItems} 
-                onUpdateComment={handleUpdateNotebookComment} 
+            <Notebook
+                items={notebook}
+                onDelete={handleDeleteNotebookItem}
+                onBulkDelete={handleBulkDeleteNotebookItems}
+                onUpdateComment={handleUpdateNotebookComment}
                 onBatchUpdateDefinitions={handleBatchUpdateDefinitions}
-                settings={settings} 
+                settings={settings}
                 activeChapter={activeChapter}
                 bookTitle={activeBook?.title}
+                bookId={activeBookId || undefined}
             />
         );
     }

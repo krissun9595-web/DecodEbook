@@ -6,9 +6,9 @@ import { generateSpeech } from '../services/gemini';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
-import 'svg2pdf.js';
 import { toPng } from 'html-to-image';
 import { Loader } from './ui/Loader';
+import { saveFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
   items: NotebookItem[];
@@ -19,6 +19,7 @@ interface Props {
   settings: AppSettings;
   activeChapter?: Chapter | null;
   bookTitle?: string;
+  bookId?: string;
 }
 
 type FilterType = 'all' | 'word' | 'phrase' | 'sentence';
@@ -47,7 +48,7 @@ interface LayoutLink {
     depth: number;
 }
 
-export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle }) => {
+export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle, bookId }) => {
   const fontStyle = { fontFamily: settings.font ? `"${settings.font}", sans-serif` : 'inherit' };
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
@@ -239,10 +240,27 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       }
       ctx.fillStyle = '#1f2937'; ctx.font = '10px "Courier New", monospace'; ctx.textAlign = 'center';
       ctx.fillText("FLASH_NOTES // NEURAL INTERFACE CONTENT", canvas.width / 2, canvas.height - 20);
+      const filename = `flash-note-${item.id}.png`;
       const link = document.createElement('a');
-      link.download = `flash-note-${item.id}.png`;
+      link.download = filename;
       link.href = canvas.toDataURL();
       link.click();
+      if (bookId) {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const key = buildCacheKey(bookId, activeChapter?.id || 0, 'sticky-note', item.id);
+            saveFile(key, blob, {
+              filename,
+              mimeType: 'image/png',
+              timestamp: Date.now(),
+              bookId,
+              chapterId: activeChapter?.id || 0,
+              componentSource: 'notebook',
+              fileType: 'sticky-note',
+            }).catch(e => console.warn('Cache save failed:', e));
+          }
+        }, 'image/png');
+      }
   };
 
   const handleInitiateMindMap = async () => {
@@ -554,12 +572,25 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     });
 
     const blob = await Packer.toBlob(doc);
+    const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mind-map-${activeChapter?.title || bookTitle || 'export'}.docx`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    if (bookId) {
+      const key = buildCacheKey(bookId, activeChapter?.id || 0, 'mind-map-docx', String(Date.now()));
+      saveFile(key, blob, {
+        filename,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        timestamp: Date.now(),
+        bookId,
+        chapterId: activeChapter?.id || 0,
+        componentSource: 'notebook',
+        fileType: 'mind-map-docx',
+      }).catch(e => console.warn('Cache save failed:', e));
+    }
   };
 
   const exportToXmind = async () => {
@@ -596,51 +627,51 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     zip.file("metadata.json", "{}");
 
     const blob = await zip.generateAsync({ type: "blob" });
+    const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.xmind`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mind-map-${activeChapter?.title || bookTitle || 'export'}.xmind`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    if (bookId) {
+      const key = buildCacheKey(bookId, activeChapter?.id || 0, 'mind-map-xmind', String(Date.now()));
+      saveFile(key, blob, {
+        filename,
+        mimeType: 'application/x-xmind',
+        timestamp: Date.now(),
+        bookId,
+        chapterId: activeChapter?.id || 0,
+        componentSource: 'notebook',
+        fileType: 'mind-map-xmind',
+      }).catch(e => console.warn('Cache save failed:', e));
+    }
   };
 
   const exportToPdf = async () => {
     if (!mapContainerRef.current || !layoutMap.nodes.length) return;
 
-    const svgEl = mapContainerRef.current.querySelector('svg');
-    if (!svgEl) return;
-
     try {
-        // Get bounding box of all content
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        layoutMap.nodes.forEach(node => {
-            minX = Math.min(minX, node.x);
-            maxX = Math.max(maxX, node.x + node.width);
-            minY = Math.min(minY, node.y - node.height / 2);
-            maxY = Math.max(maxY, node.y + node.height / 2);
+        const dataUrl = await toPng(mapContainerRef.current, {
+            backgroundColor: '#050505',
+            pixelRatio: 3,
+            filter: (node: HTMLElement) => {
+                // Skip floating control buttons from the export
+                if (node.classList?.contains('absolute') && node.classList?.contains('z-50')) return false;
+                return true;
+            },
         });
-        minX -= 50; maxX += 50; minY -= 50; maxY += 50;
 
-        const svgWidth = maxX - minX;
-        const svgHeight = maxY - minY;
-        const isLandscape = svgWidth >= svgHeight;
+        const img = new Image();
+        img.src = dataUrl;
+        await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = reject;
+        });
 
-        // Create a clean clone of the SVG for export with proper viewBox
-        const clonedSvg = svgEl.cloneNode(true) as SVGSVGElement;
-        clonedSvg.setAttribute('viewBox', `${minX} ${minY} ${svgWidth} ${svgHeight}`);
-        clonedSvg.setAttribute('width', String(svgWidth));
-        clonedSvg.setAttribute('height', String(svgHeight));
-
-        // Remove CSS transforms from the inner <g> so viewBox controls framing
-        const innerG = clonedSvg.querySelector('g');
-        if (innerG) {
-            innerG.removeAttribute('style');
-            innerG.removeAttribute('class');
-        }
-
-        // Remove filter elements that may cause issues in PDF
-        clonedSvg.querySelectorAll('filter').forEach(f => f.remove());
-        clonedSvg.querySelectorAll('[filter]').forEach(el => el.removeAttribute('filter'));
+        const imgWidth = img.naturalWidth;
+        const imgHeight = img.naturalHeight;
+        const isLandscape = imgWidth >= imgHeight;
 
         const doc = new jsPDF({
             orientation: isLandscape ? 'landscape' : 'portrait',
@@ -651,19 +682,31 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 30;
-
         const availW = pageWidth - margin * 2;
         const availH = pageHeight - margin * 2;
-        const scale = Math.min(availW / svgWidth, availH / svgHeight);
-        const pdfW = svgWidth * scale;
-        const pdfH = svgHeight * scale;
+        const scale = Math.min(availW / imgWidth, availH / imgHeight);
+        const pdfW = imgWidth * scale;
+        const pdfH = imgHeight * scale;
         const x = (pageWidth - pdfW) / 2;
         const y = (pageHeight - pdfH) / 2;
 
-        // svg2pdf.js converts SVG to native vector PDF primitives
-        await (doc as any).svg(clonedSvg, { x, y, width: pdfW, height: pdfH });
+        doc.addImage(dataUrl, 'PNG', x, y, pdfW, pdfH);
+        const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`;
+        doc.save(filename);
 
-        doc.save(`mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`);
+        if (bookId) {
+            const pdfBlob = doc.output('blob');
+            const key = buildCacheKey(bookId, activeChapter?.id || 0, 'mind-map-pdf', String(Date.now()));
+            saveFile(key, pdfBlob, {
+                filename,
+                mimeType: 'application/pdf',
+                timestamp: Date.now(),
+                bookId,
+                chapterId: activeChapter?.id || 0,
+                componentSource: 'notebook',
+                fileType: 'mind-map-pdf',
+            }).catch(e => console.warn('Cache save failed:', e));
+        }
     } catch (e) {
         console.error("PDF export failed:", e);
     }
