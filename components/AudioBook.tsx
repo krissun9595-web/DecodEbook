@@ -44,7 +44,7 @@ const LANGUAGES = [
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const PAGE_TARGET_SIZE = 1600; 
-const CONCURRENCY_LIMIT = 1; 
+const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4; 
 
 interface ChunkTiming {
@@ -245,8 +245,29 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
     setCurrentPage(0);
     resetAudioState();
     try {
-      const rawText = await extractChapterText(fileContext, chapter);
-      const cleanText = rearrangeAndCleanText(rawText);
+      const textCacheKey = buildCacheKey(bookId, chapter.id, 'chapter-text');
+      let cleanText = '';
+
+      // Try loading cached chapter text first
+      const cached = await getFile(textCacheKey).catch(() => null);
+      if (cached) {
+        cleanText = await cached.blob.text();
+      } else {
+        const rawText = await extractChapterText(fileContext, chapter);
+        cleanText = rearrangeAndCleanText(rawText);
+        // Cache the extracted text for future visits
+        const textBlob = new Blob([cleanText], { type: 'text/plain' });
+        saveFile(textCacheKey, textBlob, {
+          filename: `chapter-${chapter.id}-text.txt`,
+          mimeType: 'text/plain',
+          timestamp: Date.now(),
+          bookId,
+          chapterId: chapter.id,
+          componentSource: 'audiobook',
+          fileType: 'chapter-text',
+        }).catch(e => console.warn('Text cache save failed:', e));
+      }
+
       setPages(paginateText(cleanText, PAGE_TARGET_SIZE));
     } catch (err: any) {
       console.error(err);
@@ -312,9 +333,30 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
 
       setIsTranslating(true);
       try {
-        const translations = await translateSentences(allSentences, settings.targetLanguage);
+        const transCacheKey = buildCacheKey(bookId, chapter.id, 'translation', `page${currentPage}`, settings.targetLanguage);
+        let translations: string[];
+
+        // Try loading cached translations first
+        const cached = await getFile(transCacheKey).catch(() => null);
+        if (cached) {
+          translations = JSON.parse(await cached.blob.text());
+        } else {
+          translations = await translateSentences(allSentences, settings.targetLanguage);
+          // Cache translations for future visits
+          const transBlob = new Blob([JSON.stringify(translations)], { type: 'application/json' });
+          saveFile(transCacheKey, transBlob, {
+            filename: `translation-pg${currentPage}-${settings.targetLanguage}.json`,
+            mimeType: 'application/json',
+            timestamp: Date.now(),
+            bookId,
+            chapterId: chapter.id,
+            componentSource: 'audiobook',
+            fileType: 'translation',
+          }).catch(e => console.warn('Translation cache save failed:', e));
+        }
+
         if (ignore) return;
-        
+
         setParagraphData(prev => {
             if (prev.length === 0) return prev;
             let transPointer = 0;
@@ -326,10 +368,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
                 return { ...p, translated: pTrans };
             });
         });
-      } catch(e) { 
-        console.error("Translation error", e); 
-      } finally { 
-        if (!ignore) setIsTranslating(false); 
+      } catch(e) {
+        console.error("Translation error", e);
+      } finally {
+        if (!ignore) setIsTranslating(false);
       }
     };
 
@@ -528,63 +570,86 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
           batchedSentences.push(sentencesToSpeak.slice(i, i + TTS_BATCH_SIZE).join(' '));
       }
 
-      const audioResults = await processQueue<string, string | null>(
-        batchedSentences, 
-        CONCURRENCY_LIMIT, 
-        async (batchText, idx) => {
-           if (abortGenerationRef.current) return null;
-           setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
-           return await generateSpeech(batchText, selectedVoice);
-        },
-        () => abortGenerationRef.current
-      );
+      // Stream audio: play first available batch immediately, rebuild full audio when done
+      const BYTES_PER_SEC = 48000;
+      const audioResults: (string | null)[] = new Array(batchedSentences.length).fill(null);
+      let firstBatchPlayed = false;
 
-      if (abortGenerationRef.current) return;
-      
-      const audioBuffers: Uint8Array[] = [];
-      const newTimings: ChunkTiming[] = [];
-      let currentByteOffset = 0;
-      const BYTES_PER_SEC = 48000; 
+      const buildAudioFromResults = (results: (string | null)[], sentences: string[]) => {
+        const audioBuffers: Uint8Array[] = [];
+        const newTimings: ChunkTiming[] = [];
+        let currentByteOffset = 0;
 
-      for (let i = 0; i < audioResults.length; i++) {
-        const b64 = audioResults[i];
-        const startIndex = i * TTS_BATCH_SIZE;
-        const endIndex = Math.min(startIndex + TTS_BATCH_SIZE, sentencesToSpeak.length);
-        const batchSentencesSubset = sentencesToSpeak.slice(startIndex, endIndex);
-        const sentenceCount = batchSentencesSubset.length;
+        for (let i = 0; i < results.length; i++) {
+          const b64 = results[i];
+          const startIndex = i * TTS_BATCH_SIZE;
+          const endIndex = Math.min(startIndex + TTS_BATCH_SIZE, sentences.length);
+          const batchSentencesSubset = sentences.slice(startIndex, endIndex);
+          const sentenceCount = batchSentencesSubset.length;
 
-        if (!b64) {
-          for(let k = 0; k < sentenceCount; k++) {
-              newTimings.push({ text: sentencesToSpeak[startIndex + k], start: currentByteOffset / BYTES_PER_SEC, end: currentByteOffset / BYTES_PER_SEC, isWhitespace: true });
+          if (!b64) {
+            for (let k = 0; k < sentenceCount; k++) {
+              newTimings.push({ text: sentences[startIndex + k], start: currentByteOffset / BYTES_PER_SEC, end: currentByteOffset / BYTES_PER_SEC, isWhitespace: true });
+            }
+            continue;
           }
-          continue;
-        }
 
-        const binaryString = atob(b64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let k = 0; k < binaryString.length; k++) bytes[k] = binaryString.charCodeAt(k);
-        audioBuffers.push(bytes);
-        
-        const durationSec = bytes.length / BYTES_PER_SEC;
-        const totalCharsInBatch = batchSentencesSubset.reduce((acc, s) => acc + s.length, 0);
-        let batchOffset = 0;
-        for (let k = 0; k < sentenceCount; k++) {
+          const binaryString = atob(b64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let k = 0; k < binaryString.length; k++) bytes[k] = binaryString.charCodeAt(k);
+          audioBuffers.push(bytes);
+
+          const durationSec = bytes.length / BYTES_PER_SEC;
+          const totalCharsInBatch = batchSentencesSubset.reduce((acc, s) => acc + s.length, 0);
+          let batchOffset = 0;
+          for (let k = 0; k < sentenceCount; k++) {
             const sText = batchSentencesSubset[k];
             const sDuration = (sText.length / (totalCharsInBatch || 1)) * durationSec;
             const startSec = (currentByteOffset / BYTES_PER_SEC) + batchOffset;
             newTimings.push({ text: sText, start: startSec, end: startSec + sDuration, isWhitespace: false });
             batchOffset += sDuration;
+          }
+          currentByteOffset += bytes.length;
         }
-        currentByteOffset += bytes.length;
-      }
-      
-      const mergedBuffer = new Uint8Array(currentByteOffset);
-      let offset = 0;
-      for (const buf of audioBuffers) { mergedBuffer.set(buf, offset); offset += buf.length; }
-      
-      const blob = pcmToWav(mergedBuffer.buffer, 24000);
+
+        const mergedBuffer = new Uint8Array(currentByteOffset);
+        let offset = 0;
+        for (const buf of audioBuffers) { mergedBuffer.set(buf, offset); offset += buf.length; }
+        return { mergedBuffer, newTimings, totalBytes: currentByteOffset };
+      };
+
+      await processQueue<string, string | null>(
+        batchedSentences,
+        CONCURRENCY_LIMIT,
+        async (batchText, idx) => {
+          if (abortGenerationRef.current) return null;
+          setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
+          const result = await generateSpeech(batchText, selectedVoice);
+          audioResults[idx] = result;
+
+          // Play the first completed batch immediately for near-instant playback
+          if (!firstBatchPlayed && result) {
+            firstBatchPlayed = true;
+            const partial = buildAudioFromResults(audioResults, sentencesToSpeak);
+            if (partial.totalBytes > 0) {
+              const blob = pcmToWav(partial.mergedBuffer.buffer, 24000);
+              const url = URL.createObjectURL(blob);
+              setTimings(partial.newTimings);
+              setAudioSrc(url);
+            }
+          }
+          return result;
+        },
+        () => abortGenerationRef.current
+      );
+
+      if (abortGenerationRef.current) return;
+
+      // Rebuild final complete audio with all batches
+      const final = buildAudioFromResults(audioResults, sentencesToSpeak);
+      const blob = pcmToWav(final.mergedBuffer.buffer, 24000);
       const url = URL.createObjectURL(blob);
-      setTimings(newTimings);
+      setTimings(final.newTimings);
       setAudioSrc(url);
       const cacheKey = buildCacheKey(bookId, chapter.id, 'audio', `page${currentPage}`, selectedVoice, audioLanguage);
       saveFile(cacheKey, blob, {

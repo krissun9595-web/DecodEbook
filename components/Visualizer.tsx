@@ -115,11 +115,17 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
     abortRef.current = false;
     const pendingConcepts = concepts.filter(c => !images[c.term]);
     const targets = pendingConcepts.length > 0 ? pendingConcepts : concepts;
-    for (let i = 0; i < targets.length; i++) {
+    const forceRegen = pendingConcepts.length === 0;
+
+    // Generate images in parallel batches of 3
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
         if (abortRef.current) break;
-        const concept = targets[i];
-        await handleGenerateImage(concept, pendingConcepts.length === 0);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        const batch = targets.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(concept => {
+            if (abortRef.current) return Promise.resolve();
+            return handleGenerateImage(concept, forceRegen);
+        }));
     }
     setIsGeneratingAll(false);
   };

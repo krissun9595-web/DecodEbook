@@ -108,7 +108,7 @@ export interface LibraryItem {
   uploadDate: number;
 }
 
-export type CachedFileType = 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind';
+export type CachedFileType = 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation';
 
 export interface CachedFileMetadata {
   key: string;
