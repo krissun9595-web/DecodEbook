@@ -51,6 +51,10 @@ interface InFlightPodcast {
 }
 const inflightPodcastMap = new Map<string, InFlightPodcast>();
 
+// Persist user selections across unmount/remount
+let lastPodcastTone: string | null = null;
+let lastPodcastLanguage: string | null = null;
+
 const HOST_CONFIG: Record<string, { host1: string, voice1: string, host2: string, voice2: string }> = {
   'Engaging': { host1: 'Alex', voice1: 'Puck', host2: 'Jordan', voice2: 'Kore' },
   'Aggressive': { host1: 'Titan', voice1: 'Fenrir', host2: 'Viper', voice2: 'Charon' },
@@ -76,8 +80,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
   const [hasInitiated, setHasInitiated] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTone, setSelectedTone] = useState('Engaging');
-  const [selectedLanguage, setSelectedLanguage] = useState(settings.targetLanguage);
+  const [selectedTone, setSelectedTone] = useState(lastPodcastTone || 'Engaging');
+  const [selectedLanguage, setSelectedLanguage] = useState(lastPodcastLanguage || settings.targetLanguage);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isPlayerMinimized, setIsPlayerMinimized] = useState(false);
   
@@ -521,10 +525,10 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
           <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
-                 <select value={selectedTone} onChange={(e) => setSelectedTone(e.target.value)} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="p-1.5 text-zinc-500"><Globe size={16} /></div>
-                 <select value={selectedLanguage} onChange={(e) => setSelectedLanguage(e.target.value)} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
+                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
               </div>
               <button 
                 onClick={handleToggleGeneration} 

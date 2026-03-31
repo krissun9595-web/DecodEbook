@@ -55,6 +55,10 @@ interface InFlightAudio {
 }
 const inflightAudioMap = new Map<string, InFlightAudio>();
 
+// Persist user selections across unmount/remount
+let lastAudioVoice: string | null = null;
+let lastAudioLanguage: string | null = null;
+
 interface ChunkTiming {
   text: string;
   start: number;
@@ -199,8 +203,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [selectedVoice, setSelectedVoice] = useState('Puck');
-  const [audioLanguage, setAudioLanguage] = useState(settings.targetLanguage);
+  const [selectedVoice, setSelectedVoice] = useState(lastAudioVoice || 'Puck');
+  const [audioLanguage, setAudioLanguage] = useState(lastAudioLanguage || settings.targetLanguage);
   const [autoScroll, setAutoScroll] = useState(true);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number>(-1);
   const [isModuleMinimized, setIsModuleMinimized] = useState(false);
@@ -793,12 +797,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
           <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
-                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">
+                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">
                     {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="p-1.5 text-zinc-500"><Globe size={16} /></div>
-                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none font-mono uppercase w-[120px] bg-[#050505] cursor-pointer">
+                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none font-mono uppercase w-[120px] bg-[#050505] cursor-pointer">
                     {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                  </select>
               </div>
