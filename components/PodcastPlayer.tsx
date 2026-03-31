@@ -43,6 +43,14 @@ const LANGUAGES = [
 
 const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
+// Module-level store for in-flight podcast generation.
+// Survives component unmount/remount so generation isn't lost on tab switch.
+interface InFlightPodcast {
+  promise: Promise<{ audioBlob: Blob; script: string; episodeTitle: string } | null>;
+  abort: () => void;
+}
+const inflightPodcastMap = new Map<string, InFlightPodcast>();
+
 const HOST_CONFIG: Record<string, { host1: string, voice1: string, host2: string, voice2: string }> = {
   'Engaging': { host1: 'Alex', voice1: 'Puck', host2: 'Jordan', voice2: 'Kore' },
   'Aggressive': { host1: 'Titan', voice1: 'Fenrir', host2: 'Viper', voice2: 'Charon' },
@@ -90,6 +98,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
   const particlesRef = useRef<QuantumParticle[]>([]);
 
   const hosts = HOST_CONFIG[selectedTone] || HOST_CONFIG['Engaging'];
+  const podcastGenKeyRef = useRef('');
 
   useEffect(() => {
     if (!script) {
@@ -140,10 +149,15 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
+  // On mount: check cache, then check for in-flight generation
   useEffect(() => {
     let cancelled = false;
-    const loadCached = async () => {
-      const audioKey = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
+    const key = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
+    podcastGenKeyRef.current = key;
+
+    const load = async () => {
+      // 1. Try loading from cache
+      const audioKey = key;
       const scriptKey = buildCacheKey(bookId, chapter.id, 'podcast-script', selectedTone, selectedLanguage);
       try {
         const [cachedAudio, cachedScript] = await Promise.all([getFile(audioKey), getFile(scriptKey)]);
@@ -151,60 +165,122 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
           setAudioSrc(URL.createObjectURL(cachedAudio.blob));
           setScript(await cachedScript.blob.text());
           setHasInitiated(true);
+          return;
         }
       } catch (e) { /* cache miss */ }
+
+      // 2. Re-attach to in-flight generation if one exists
+      const inflight = inflightPodcastMap.get(key);
+      if (inflight && !cancelled) {
+        setIsLoading(true);
+        setHasInitiated(true);
+        try {
+          const result = await inflight.promise;
+          if (cancelled || podcastGenKeyRef.current !== key) return;
+          if (result) {
+            setAudioSrc(URL.createObjectURL(result.audioBlob));
+            setScript(result.script);
+            setEpisodeTitle(result.episodeTitle);
+            setActiveIndex(-1);
+          }
+        } catch (e: any) {
+          if (!cancelled) setError(e.message || "Failed to generate podcast.");
+        } finally {
+          if (!cancelled) setIsLoading(false);
+        }
+      }
     };
-    if (!isLoading && !audioSrc) loadCached();
+
+    if (!isLoading && !audioSrc) load();
     return () => { cancelled = true; };
   }, [bookId, chapter.id, selectedTone, selectedLanguage]);
 
   const handleToggleGeneration = async () => {
     if (isLoading) {
       abortRef.current = true;
+      const key = podcastGenKeyRef.current;
+      const inflight = inflightPodcastMap.get(key);
+      if (inflight) inflight.abort();
+      inflightPodcastMap.delete(key);
       setIsLoading(false);
-      setHasInitiated(true); 
+      setHasInitiated(true);
       return;
     }
+
+    const genKey = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
+    podcastGenKeyRef.current = genKey;
+
+    // If already in-flight, don't start another
+    if (inflightPodcastMap.has(genKey)) return;
+
     setIsLoading(true);
     setHasInitiated(true);
     setError(null);
     abortRef.current = false;
+
+    // Capture values for the closure (survives unmount)
+    const capturedFileContext = fileContext;
+    const capturedChapter = chapter;
+    const capturedTone = selectedTone;
+    const capturedHosts = hosts;
+    const capturedLanguage = selectedLanguage;
+    const capturedBookId = bookId;
+
+    const genPromise = (async (): Promise<{ audioBlob: Blob; script: string; episodeTitle: string } | null> => {
+      try {
+        const targetLang = capturedLanguage === 'Original' ? 'the source language of the document' : capturedLanguage;
+        const result = await generatePodcastAudio(capturedFileContext, capturedChapter, capturedTone, capturedHosts, targetLang);
+        if (abortRef.current) return null;
+        const audioBlob = pcmToWavBlob(result.audio);
+
+        // Cache results (runs even if component is unmounted)
+        const audioCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-audio', capturedTone, capturedLanguage);
+        saveFile(audioCacheKey, audioBlob, {
+          filename: `podcast-${capturedChapter.id}.wav`,
+          mimeType: 'audio/wav',
+          timestamp: Date.now(),
+          bookId: capturedBookId,
+          chapterId: capturedChapter.id,
+          componentSource: 'podcast',
+          fileType: 'podcast-audio',
+        }).catch(e => console.warn('Cache save failed:', e));
+        const scriptBlob = new Blob([result.script], { type: 'text/plain' });
+        const scriptCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-script', capturedTone, capturedLanguage);
+        saveFile(scriptCacheKey, scriptBlob, {
+          filename: `podcast-script-${capturedChapter.id}.txt`,
+          mimeType: 'text/plain',
+          timestamp: Date.now(),
+          bookId: capturedBookId,
+          chapterId: capturedChapter.id,
+          componentSource: 'podcast',
+          fileType: 'podcast-script',
+        }).catch(e => console.warn('Cache save failed:', e));
+
+        return { audioBlob, script: result.script, episodeTitle: result.episodeTitle || capturedChapter.title };
+      } catch (e) {
+        console.error(e);
+        throw e;
+      } finally {
+        inflightPodcastMap.delete(genKey);
+      }
+    })();
+
+    inflightPodcastMap.set(genKey, { promise: genPromise, abort: () => { abortRef.current = true; } });
+
     try {
-      const targetLang = selectedLanguage === 'Original' ? 'the source language of the document' : selectedLanguage;
-      const result = await generatePodcastAudio(fileContext, chapter, selectedTone, hosts, targetLang);
-      if (abortRef.current) return;
-      const audioBlob = pcmToWavBlob(result.audio);
-      setAudioSrc(URL.createObjectURL(audioBlob));
-      setScript(result.script);
-      setEpisodeTitle(result.episodeTitle || chapter.title);
-      setActiveIndex(-1);
-      const audioCacheKey = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
-      saveFile(audioCacheKey, audioBlob, {
-        filename: `podcast-${chapter.id}.wav`,
-        mimeType: 'audio/wav',
-        timestamp: Date.now(),
-        bookId,
-        chapterId: chapter.id,
-        componentSource: 'podcast',
-        fileType: 'podcast-audio',
-      }).catch(e => console.warn('Cache save failed:', e));
-      const scriptBlob = new Blob([result.script], { type: 'text/plain' });
-      const scriptCacheKey = buildCacheKey(bookId, chapter.id, 'podcast-script', selectedTone, selectedLanguage);
-      saveFile(scriptCacheKey, scriptBlob, {
-        filename: `podcast-script-${chapter.id}.txt`,
-        mimeType: 'text/plain',
-        timestamp: Date.now(),
-        bookId,
-        chapterId: chapter.id,
-        componentSource: 'podcast',
-        fileType: 'podcast-script',
-      }).catch(e => console.warn('Cache save failed:', e));
+      const result = await genPromise;
+      if (podcastGenKeyRef.current === genKey && result) {
+        setAudioSrc(URL.createObjectURL(result.audioBlob));
+        setScript(result.script);
+        setEpisodeTitle(result.episodeTitle);
+        setActiveIndex(-1);
+      }
     } catch (e: any) {
       if (!abortRef.current) {
         setError(e.message || "Failed to generate podcast.");
       }
     } finally {
-      if (!abortRef.current) {
+      if (!abortRef.current && podcastGenKeyRef.current === genKey) {
         setIsLoading(false);
       }
     }
