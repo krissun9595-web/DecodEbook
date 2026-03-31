@@ -6,7 +6,7 @@ import { generateSpeech } from '../services/gemini';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
-import { toPng } from 'html-to-image';
+
 import { Loader } from './ui/Loader';
 import { saveFile, buildCacheKey } from '../services/fileCache';
 
@@ -649,48 +649,125 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   };
 
   const exportToPdf = async () => {
-    if (!mapContainerRef.current || !layoutMap.nodes.length) return;
+    if (!layoutMap.nodes.length) return;
 
     try {
-        const dataUrl = await toPng(mapContainerRef.current, {
-            backgroundColor: '#050505',
-            pixelRatio: 3,
-            filter: (node: HTMLElement) => {
-                // Skip floating control buttons from the export
-                if (node.classList?.contains('absolute') && node.classList?.contains('z-50')) return false;
-                return true;
-            },
-        });
+        // Calculate the full bounding box of the entire mind map from layout data
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const node of layoutMap.nodes) {
+            minX = Math.min(minX, node.x - 20);
+            minY = Math.min(minY, node.y - node.height / 2 - 20);
+            maxX = Math.max(maxX, node.x + node.width + 30);
+            maxY = Math.max(maxY, node.y + node.height / 2 + 20);
+        }
+        // Also account for collapse indicators extending past nodes
+        for (const node of layoutMap.nodes) {
+            if (node.hasChildren) {
+                maxX = Math.max(maxX, node.x + node.width + 20);
+            }
+        }
 
+        const NEON_BLUE_VAL = '#00f3ff';
+        const NEON_GREEN_VAL = '#39ff14';
+        const NEON_YELLOW_VAL = '#facc15';
+        const NEON_RED_VAL = '#ff003c';
+
+        const padding = 40;
+        const fullW = maxX - minX + padding * 2;
+        const fullH = maxY - minY + padding * 2;
+
+        // Build a standalone SVG string containing the full mind map
+        let svgParts: string[] = [];
+        svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${fullW}" height="${fullH}" viewBox="${minX - padding} ${minY - padding} ${fullW} ${fullH}">`);
+        svgParts.push(`<rect x="${minX - padding}" y="${minY - padding}" width="${fullW}" height="${fullH}" fill="#050505"/>`);
+        svgParts.push(`<defs><filter id="neon-glow-pdf" x="-10000" y="-10000" width="20000" height="20000" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`);
+
+        // Render links
+        for (const link of layoutMap.links) {
+            const pathD = `M ${link.source.x} ${link.source.y} C ${link.source.x + 80} ${link.source.y}, ${link.target.x - 80} ${link.target.y}, ${link.target.x} ${link.target.y}`;
+            svgParts.push(`<path d="${pathD}" fill="none" stroke="${NEON_BLUE_VAL}" stroke-width="2" stroke-opacity="0.8" stroke-linecap="round" filter="url(#neon-glow-pdf)"/>`);
+        }
+
+        // Render nodes
+        for (const node of layoutMap.nodes) {
+            const isRoot = node.depth === 0;
+            const fontSize = Math.max(12, 18 - node.depth * 2);
+            const isContainer = node.depth >= 2;
+            const ty = node.y - node.height / 2;
+
+            let badgeColor = NEON_BLUE_VAL;
+            let badgeText = "";
+            if (node.depth === 2) { badgeText = "// ENTRY"; badgeColor = NEON_GREEN_VAL; }
+            else if (node.depth === 3) { badgeText = "// DEFINITION"; badgeColor = NEON_YELLOW_VAL; }
+            else if (node.depth === 4) { badgeText = "// USER_NOTE"; badgeColor = NEON_RED_VAL; }
+
+            if (isContainer) {
+                svgParts.push(`<rect x="${node.x}" y="${ty}" width="${node.width}" height="${node.height}" rx="8" ry="8" fill="#0a0a0c" stroke="${NEON_BLUE_VAL}50" stroke-width="1"/>`);
+                svgParts.push(`<rect x="${node.x}" y="${ty}" width="4" height="${node.height}" rx="2" fill="${NEON_BLUE_VAL}"/>`);
+                if (badgeText) {
+                    svgParts.push(`<text x="${node.x + 16}" y="${ty + 20}" font-size="10" font-family="monospace" fill="${badgeColor}" letter-spacing="0.1em">${badgeText}</text>`);
+                }
+                const escapedLines = node.lines.map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+                svgParts.push(`<text x="${node.x + 16}" y="${ty + 40}" font-size="13" font-family="sans-serif" fill="#d4d4d8">`);
+                escapedLines.forEach((line, i) => {
+                    svgParts.push(`<tspan x="${node.x + 16}" dy="${i === 0 ? 0 : '1.6em'}">${line}</tspan>`);
+                });
+                svgParts.push(`</text>`);
+            } else {
+                const escapedLines = node.lines.map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+                svgParts.push(`<text x="${node.x + node.width / 2}" y="${ty + node.height / 2 + fontSize / 3}" text-anchor="middle" fill="${NEON_BLUE_VAL}" font-size="${fontSize}" font-family="monospace" font-weight="${isRoot ? '900' : 'bold'}">`);
+                escapedLines.forEach((line, i) => {
+                    svgParts.push(`<tspan x="${node.x + node.width / 2}" dy="${i === 0 ? 0 : '1.2em'}">${line}</tspan>`);
+                });
+                svgParts.push(`</text>`);
+                if (!isRoot) {
+                    svgParts.push(`<line x1="${node.x}" y1="${ty + node.height}" x2="${node.x + node.width}" y2="${ty + node.height}" stroke="${NEON_BLUE_VAL}" stroke-width="1" stroke-opacity="0.5"/>`);
+                }
+                if (node.hasChildren) {
+                    const cx = node.x + node.width + 12;
+                    const cy = node.y;
+                    svgParts.push(`<circle cx="${cx}" cy="${cy}" r="4" fill="#050505" stroke="${NEON_BLUE_VAL}" stroke-width="1.5"/>`);
+                    if (node.isCollapsed) {
+                        svgParts.push(`<path d="M ${cx - 2} ${cy} L ${cx + 2} ${cy} M ${cx} ${cy - 2} L ${cx} ${cy + 2}" stroke="${NEON_BLUE_VAL}" stroke-width="1.5" stroke-linecap="round"/>`);
+                    } else {
+                        svgParts.push(`<path d="M ${cx - 2} ${cy} L ${cx + 2} ${cy}" stroke="${NEON_BLUE_VAL}" stroke-width="1.5" stroke-linecap="round"/>`);
+                    }
+                }
+            }
+        }
+
+        svgParts.push(`</svg>`);
+        const svgString = svgParts.join('');
+
+        // Render SVG to high-resolution canvas
+        const scaleFactor = 3;
+        const canvas = document.createElement('canvas');
+        canvas.width = fullW * scaleFactor;
+        canvas.height = fullH * scaleFactor;
+        const ctx = canvas.getContext('2d')!;
+
+        const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const svgUrl = URL.createObjectURL(svgBlob);
         const img = new Image();
-        img.src = dataUrl;
+        img.src = svgUrl;
         await new Promise<void>((resolve, reject) => {
             img.onload = () => resolve();
             img.onerror = reject;
         });
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(svgUrl);
 
-        const imgWidth = img.naturalWidth;
-        const imgHeight = img.naturalHeight;
-        const isLandscape = imgWidth >= imgHeight;
+        const dataUrl = canvas.toDataURL('image/png');
 
+        // Create PDF with pages sized to fit the full content
+        const isLandscape = fullW >= fullH;
         const doc = new jsPDF({
             orientation: isLandscape ? 'landscape' : 'portrait',
             unit: 'pt',
-            format: 'a4',
+            format: [fullW, fullH],
         });
 
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 30;
-        const availW = pageWidth - margin * 2;
-        const availH = pageHeight - margin * 2;
-        const scale = Math.min(availW / imgWidth, availH / imgHeight);
-        const pdfW = imgWidth * scale;
-        const pdfH = imgHeight * scale;
-        const x = (pageWidth - pdfW) / 2;
-        const y = (pageHeight - pdfH) / 2;
-
-        doc.addImage(dataUrl, 'PNG', x, y, pdfW, pdfH);
+        doc.addImage(dataUrl, 'PNG', 0, 0, fullW, fullH);
         const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`;
         doc.save(filename);
 
