@@ -59,6 +59,9 @@ const inflightAudioMap = new Map<string, InFlightAudio>();
 let lastAudioVoice: string | null = null;
 let lastAudioLanguage: string | null = null;
 
+// Module-level cache for timings (keyed same as audio cache)
+const timingsCache = new Map<string, ChunkTiming[]>();
+
 interface ChunkTiming {
   text: string;
   start: number;
@@ -324,7 +327,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
           const url = URL.createObjectURL(cached.blob);
           setAudioSrc(url);
           setHasInitiated(true);
-          setTimings([]);
+          // Restore timings from module-level cache if available
+          const cachedTimings = timingsCache.get(key);
+          setTimings(cachedTimings || []);
         }
       } catch (e) { /* cache miss is fine */ }
     };
@@ -721,6 +726,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
           fileType: 'audio',
         }).catch(e => console.warn('Cache save failed:', e));
 
+        // Persist timings at module level so they survive remount
+        timingsCache.set(genKey, final.newTimings);
+
         return { blob, timings: final.newTimings };
       } catch (e) {
         console.error(e);
@@ -900,7 +908,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
                                 const globalIdx = mapping?.globalIndex ?? -1;
                                 const isActive = autoScroll && globalIdx === activeSentenceIndex;
                                 return (
-                                    <span key={sIdx} id={`original-sent-${globalIdx}`} data-source="Original_Layer" className={`transition-all duration-300 px-[2px] ${isActive ? HIGHLIGHT_STYLES[settings.highlightColor] : 'hover:text-zinc-200 cursor-pointer'}`} onClick={() => { if(audioRef.current && timings[globalIdx]) { audioRef.current.currentTime = timings[globalIdx].start; togglePlay(); } }}>
+                                    <span key={sIdx} id={`original-sent-${globalIdx}`} data-source="Original_Layer" className={`transition-all duration-300 px-[2px] ${isActive ? HIGHLIGHT_STYLES[settings.highlightColor] : 'hover:text-zinc-200 cursor-pointer'}`} onClick={async () => { if(audioRef.current && timings[globalIdx]) { audioRef.current.currentTime = timings[globalIdx].start; if (!isPlaying) { if (!audioContextRef.current) initAudioVisualizer(); if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume(); try { await audioRef.current.play(); setIsPlaying(true); } catch (e) { /* ignore */ } } } }}>
                                         {sentence}{' '}
                                     </span>
                                 );
