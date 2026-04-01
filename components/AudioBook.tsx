@@ -168,11 +168,13 @@ const processQueue = async <T, R>(
 ): Promise<(R | null)[]> => {
   const results: (R | null)[] = new Array(items.length).fill(null);
   const queue = items.map((item, index) => ({ item, index }));
-  const worker = async () => {
+  const worker = async (workerIdx: number) => {
+    // Stagger worker start to avoid simultaneous API bursts
+    if (workerIdx > 0) await new Promise(resolve => setTimeout(resolve, workerIdx * 300));
     while (queue.length > 0) {
       if (checkAbort && checkAbort()) break;
       const task = queue.shift();
-      if (!task) break; 
+      if (!task) break;
       const { item, index } = task;
       try {
         const result = await fn(item, index);
@@ -180,10 +182,9 @@ const processQueue = async <T, R>(
       } catch (e: any) {
         results[index] = null;
       }
-      await new Promise(resolve => setTimeout(resolve, 2000));
     }
   };
-  const workers = Array.from({ length: concurrency }).map(() => worker());
+  const workers = Array.from({ length: concurrency }).map((_, i) => worker(i));
   await Promise.all(workers);
   return results;
 };
