@@ -91,7 +91,7 @@ export enum Tab {
   NOTEBOOK = 'NOTEBOOK'
 }
 
-export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'cyan';
+export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'violet';
 
 export interface AppSettings {
   targetLanguage: string;

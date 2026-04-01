@@ -15,19 +15,33 @@ const COLORS: { id: ThemeColor; label: string; class: string }[] = [
   { id: 'emerald', label: 'Matrix Green', class: 'bg-emerald-500' },
   { id: 'rose', label: 'Laser Red', class: 'bg-[#ff003c]' },
   { id: 'amber', label: 'Amber', class: 'bg-amber-500' },
-  { id: 'cyan', label: 'Cyan', class: 'bg-cyan-400' },
+  { id: 'violet', label: 'Violet', class: 'bg-violet-400' },
 ];
 
 const FONTS = [
-    'Inter', 
-    'Merriweather', 
-    'Playfair Display', 
-    'Roboto Mono', 
+    'Inter',
+    'Merriweather',
+    'Playfair Display',
+    'Roboto Mono',
     'Open Sans',
     'Orbitron',
     'Cinzel',
     'Source Code Pro',
-    'Crimson Text'
+    'Crimson Text',
+    'Lora',
+    'Libre Baskerville',
+    'EB Garamond',
+    'Literata',
+    'Spectral',
+    'Noto Sans',
+    'Noto Serif',
+    'Noto Sans SC',
+    'Noto Serif SC',
+    'LXGW WenKai',
+    'Ma Shan Zheng',
+    'Zhi Mang Xing',
+    'Noto Sans TC',
+    'Noto Serif TC',
 ];
 
 // Alphabetical order with Chinese (Traditional) added, and Original at the top

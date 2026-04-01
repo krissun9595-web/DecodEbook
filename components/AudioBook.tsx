@@ -86,7 +86,7 @@ const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
   emerald: 'text-emerald-400 drop-shadow-[0_0_2px_rgba(52,211,153,0.8)] decoration-emerald-500/30 underline decoration-2 underline-offset-4',
   rose: 'text-[#ff003c] drop-shadow-[0_0_2px_rgba(255,0,60,0.8)] decoration-[#ff003c]/30 underline decoration-2 underline-offset-4',
   amber: 'text-amber-400 drop-shadow-[0_0_2px_rgba(251,191,36,0.8)] decoration-amber-500/30 underline decoration-2 underline-offset-4',
-  cyan: 'text-cyan-300 drop-shadow-[0_0_2px_rgba(34,211,238,0.8)] decoration-cyan-500/30 underline decoration-2 underline-offset-4',
+  violet: 'text-violet-400 drop-shadow-[0_0_2px_rgba(167,139,250,0.8)] decoration-violet-500/30 underline decoration-2 underline-offset-4',
 };
 
 const TEXT_SIZES: Record<string, string> = {
@@ -334,9 +334,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
         }
       } catch (e) { /* cache miss is fine */ }
     };
-    if (!isGenerating && !audioSrc) loadCached();
+    // Wait for pages to be loaded before attempting cache load,
+    // otherwise resetAudioState() in the pages effect will clear audioSrc
+    if (!isGenerating && !audioSrc && pages.length > 0) loadCached();
     return () => { cancelled = true; };
-  }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id]);
+  }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id, pages]);
 
   useEffect(() => {
     let ignore = false;

@@ -54,6 +54,7 @@ const inflightPodcastMap = new Map<string, InFlightPodcast>();
 // Persist user selections across unmount/remount
 let lastPodcastTone: string | null = null;
 let lastPodcastLanguage: string | null = null;
+let lastEpisodeTitle: string | null = null;
 
 const HOST_CONFIG: Record<string, { host1: string, voice1: string, host2: string, voice2: string }> = {
   'Engaging': { host1: 'Alex', voice1: 'Puck', host2: 'Jordan', voice2: 'Kore' },
@@ -72,7 +73,7 @@ const HOST_CONFIG: Record<string, { host1: string, voice1: string, host2: string
 
 export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings, bookId }) => {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
-  const [episodeTitle, setEpisodeTitle] = useState<string>('');
+  const [episodeTitle, setEpisodeTitle] = useState<string>(lastEpisodeTitle || '');
   const [script, setScript] = useState<string | null>(null);
   const [segments, setSegments] = useState<ScriptSegment[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
@@ -184,7 +185,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
           if (result) {
             setAudioSrc(URL.createObjectURL(result.audioBlob));
             setScript(result.script);
-            setEpisodeTitle(result.episodeTitle);
+            setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle;
             setActiveIndex(-1);
           }
         } catch (e: any) {
@@ -276,7 +277,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
       if (podcastGenKeyRef.current === genKey && result) {
         setAudioSrc(URL.createObjectURL(result.audioBlob));
         setScript(result.script);
-        setEpisodeTitle(result.episodeTitle);
+        setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle;
         setActiveIndex(-1);
       }
     } catch (e: any) {
