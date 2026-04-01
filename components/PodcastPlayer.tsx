@@ -549,8 +549,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                       
                       {audioSrc && !isLoading && episodeTitle && (
                         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none animate-fade-in">
-                            <div className="relative max-w-[85%] px-8 py-4">
-                               <span className="text-sm md:text-base font-black text-[#ff003c] font-tech uppercase tracking-[0.4em] drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight">
+                            <div className="relative max-w-[90%] px-8 py-4 overflow-hidden">
+                               <span className="content-font font-black text-[#ff003c] uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
                                   <div className="w-3 h-3 rounded-full bg-[#ff003c] shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
                                   {episodeTitle.toUpperCase()}
                                </span>
@@ -619,7 +619,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
            />
            {segments.length > 0 ? (
                <div className="flex-1 min-h-0 bg-black/40 border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-inner">
-                  <div ref={scriptContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth custom-scrollbar font-mono text-sm">
+                  <div ref={scriptContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth custom-scrollbar content-font text-sm">
                     {segments.map((seg, idx) => {
                       const isActive = idx === activeIndex;
                       const h1 = hosts.host1.toUpperCase();

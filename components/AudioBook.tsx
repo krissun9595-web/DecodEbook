@@ -787,7 +787,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 animate-fade-in relative font-sans text-zinc-100 text-left" style={{ fontFamily: settings.font ? `"${settings.font}", sans-serif` : 'inherit' }}>
+    <div className="h-full flex flex-col gap-4 animate-fade-in relative font-sans text-zinc-100 text-left">
       <audio 
         ref={audioRef} 
         src={audioSrc || undefined} 
@@ -837,10 +837,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
                  ) : audioSrc ? (
                     <>
                         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none animate-fade-in">
-                            <div className="relative max-w-[85%] px-8 py-4">
-                                <span className="text-sm md:text-base font-black text-[#ff003c] font-tech uppercase tracking-[0.4em] drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight">
+                            <div className="relative max-w-[90%] px-8 py-4 overflow-hidden">
+                                <span className="content-font font-black text-[#ff003c] uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
                                     <div className="w-3 h-3 rounded-full bg-[#ff003c] shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
-                                    AUDIO_SYNTH: PG.{String(currentPage + 1).padStart(2,'0')}
+                                    {chapter.title} — PG.{String(currentPage + 1).padStart(2,'0')}
                                 </span>
                             </div>
                         </div>
@@ -902,7 +902,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
           </div>
 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-[#050505] relative flex flex-col hud-border text-left">
-             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8 pb-32">
+             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8 pb-32 content-font">
                 {paragraphData.map((para, pIdx) => (
                     <div key={pIdx} className={`w-full flex ${viewMode === 'split' ? '' : 'justify-center'}`}>
                         <div className={`${viewMode === 'split' ? 'w-1/2 pr-6 border-r border-zinc-800/20' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-400 font-medium`}>

@@ -335,9 +335,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     {messages.map((msg, idx) => (
                         <div key={idx} className={`flex relative z-10 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={`
-                                max-w-[85%] p-3 text-[11px] leading-relaxed font-mono tracking-wide shadow-lg
-                                ${msg.role === 'user' 
-                                    ? 'bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/40 rounded-t-lg rounded-bl-lg' 
+                                max-w-[85%] p-3 text-[11px] leading-relaxed content-font tracking-wide shadow-lg
+                                ${msg.role === 'user'
+                                    ? 'bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/40 rounded-t-lg rounded-bl-lg'
                                     : 'bg-[#1a1a1c] text-zinc-300 border border-zinc-700 rounded-t-lg rounded-br-lg'
                                 }
                             `}>

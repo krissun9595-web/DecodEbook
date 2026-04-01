@@ -314,7 +314,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                              Decrypting Neural Data...
                          </div>
                      ) : (
-                         <div className="leading-relaxed font-serif border-l-2 border-zinc-800 pl-3 animate-fade-in">
+                         <div className="leading-relaxed content-font border-l-2 border-zinc-800 pl-3 animate-fade-in">
                              {formatDefinition(definition.text || "")}
                          </div>
                      )}

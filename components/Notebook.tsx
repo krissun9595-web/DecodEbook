@@ -49,7 +49,7 @@ interface LayoutLink {
 }
 
 export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle, bookId }) => {
-  const fontStyle = { fontFamily: settings.font ? `"${settings.font}", sans-serif` : 'inherit' };
+  const fontStyle = {}; // Font now applied globally via CSS --content-font variable
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
@@ -1049,7 +1049,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                ) : filteredItems.length === 0 ? (
                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-700 font-mono gap-2 animate-fade-in"><p className="text-xs uppercase tracking-widest opacity-50">BUFFER_EMPTY_FOR_{activeFilter === 'all' ? 'ALL_ITEMS' : activeFilter.toUpperCase() + 'S'}</p></div>
                ) : (
-                   <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4">
+                   <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
                        {filteredItems.map((item, idx) => {
                            const typeColor = item.type === 'phrase' ? 'text-[#ff003c]' : item.type === 'word' ? 'text-cyan-400' : 'text-[#00f3ff]';
                            return (

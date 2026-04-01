@@ -192,7 +192,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                         <div className="absolute top-6 left-0 w-full flex flex-col items-center gap-2 z-30 pointer-events-none px-4">
                             {/* Title */}
                             <div className="bg-black/60 backdrop-blur-md border border-white/10 px-6 py-2 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-                                <h3 className="text-xs font-bold text-[#ff003c] font-mono uppercase tracking-widest flex items-center gap-3 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                                <h3 className="text-xs font-bold text-[#ff003c] content-font uppercase tracking-widest flex items-center gap-3 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                                     <span className="w-1.5 h-1.5 bg-[#ff003c] rounded-full shadow-[0_0_8px_#ff003c]"></span>
                                     {currentConcept.term}
                                     <span className="w-1.5 h-1.5 bg-[#ff003c] rounded-full shadow-[0_0_8px_#ff003c]"></span>
@@ -200,7 +200,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                             </div>
                             {/* Definition */}
                             <div className="max-w-[90%] text-center p-2">
-                                <p className="text-xs text-zinc-100 leading-relaxed font-mono drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] font-medium">
+                                <p className="text-xs text-zinc-100 leading-relaxed content-font drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] font-medium">
                                     {currentConcept.definition}
                                 </p>
                             </div>
