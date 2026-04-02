@@ -5,12 +5,12 @@ import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
 import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
-import { AuthModal } from './components/AuthModal';
+import { AuthModal, AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { getSession, loadUserSettings, saveUserSettings } from './services/supabase';
+import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured } from './services/supabase';
 import type { User } from '@supabase/supabase-js';
 
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer').then(module => ({ default: module.PodcastPlayer })));
@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authGatePassed, setAuthGatePassed] = useState(false);
   const [showGeneratedFiles, setShowGeneratedFiles] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     targetLanguage: 'Spanish',
@@ -71,9 +72,12 @@ const App: React.FC = () => {
       }
 
       // Check for existing Supabase session
+      // Also pass auth gate if user previously skipped
+      if (localStorage.getItem('auth_gate_skipped')) setAuthGatePassed(true);
       getSession().then(session => {
         if (session?.user) {
           setCurrentUser(session.user);
+          setAuthGatePassed(true);
           loadUserSettings(session.user.id).then(remote => {
             if (remote) {
               setSettings(prev => ({
@@ -420,6 +424,16 @@ const App: React.FC = () => {
       </div>
     );
   };
+
+  // Show auth gate before the app if Supabase is configured and user hasn't passed it
+  if (isSupabaseConfigured() && !authGatePassed) {
+    return (
+      <AuthGate
+        onAuthChange={(user) => { setCurrentUser(user); setAuthGatePassed(true); }}
+        onSkip={() => { setAuthGatePassed(true); localStorage.setItem('auth_gate_skipped', '1'); }}
+      />
+    );
+  }
 
   if (view === AppView.UPLOAD) {
     return (
