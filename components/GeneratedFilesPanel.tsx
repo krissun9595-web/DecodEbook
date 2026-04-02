@@ -185,37 +185,28 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             </select>
           </div>
           <button
-            onClick={() => { setActionMode(actionMode === 'save' ? 'clear' : 'save'); setConfirmClear(false); }}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center border ${
+            onClick={() => {
+              if (actionMode === 'clear') {
+                if (confirmClear) { handleClearAll(); }
+                else { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 3000); }
+              } else {
+                handleSaveAll();
+              }
+            }}
+            onContextMenu={(e) => { e.preventDefault(); setActionMode(actionMode === 'save' ? 'clear' : 'save'); setConfirmClear(false); }}
+            disabled={actionMode === 'save' && filteredFiles.length === 0}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center border disabled:opacity-50 ${
               actionMode === 'clear'
-                ? 'text-[#ff003c] border-[#ff003c]/30 hover:bg-[#ff003c]/10'
+                ? confirmClear
+                  ? 'bg-[#ff003c] text-white border-[#ff003c] animate-pulse hover:bg-rose-600'
+                  : 'text-[#ff003c] border-[#ff003c]/30 hover:bg-[#ff003c]/10'
                 : 'text-[#00f3ff] border-[#00f3ff]/30 hover:bg-[#00f3ff]/10'
             }`}
+            title="Right-click to switch between Save and Clear mode"
           >
             {actionMode === 'clear' ? <Trash2 size={14} /> : <Save size={14} />}
-            {actionMode === 'clear' ? 'CLEAR_ALL' : 'SAVE_ALL'}
+            {actionMode === 'clear' ? (confirmClear ? 'CONFIRM?' : 'CLEAR_ALL') : 'SAVE_ALL'}
           </button>
-          {actionMode === 'clear' ? (
-            <button
-              onClick={handleClearAll}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[80px] justify-center ${
-                confirmClear
-                  ? 'bg-[#ff003c] text-white hover:bg-rose-600 animate-pulse'
-                  : 'bg-[#ff003c]/10 text-[#ff003c] hover:bg-[#ff003c]/20 border border-[#ff003c]/30'
-              }`}
-            >
-              {confirmClear ? 'CONFIRM' : 'PURGE'}
-            </button>
-          ) : (
-            <button
-              onClick={handleSaveAll}
-              disabled={filteredFiles.length === 0}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[80px] justify-center bg-[#00f3ff] text-black hover:bg-[#00c2cc] disabled:opacity-50"
-            >
-              <Download size={14} />
-              ZIP
-            </button>
-          )}
         </div>
       </div>
 
