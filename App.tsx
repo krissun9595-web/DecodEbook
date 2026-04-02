@@ -92,9 +92,9 @@ const App: React.FC = () => {
                 openrouterKey: remote.openrouter_key || prev.openrouterKey,
               }));
             }
-          });
+          }).catch(e => console.warn('[Supabase] Failed to load settings:', e));
         }
-      });
+      }).catch(e => console.warn('[Supabase] Failed to get session:', e));
   }, []);
 
   useEffect(() => {
@@ -428,10 +428,12 @@ const App: React.FC = () => {
   // Show auth gate before the app if Supabase is configured and user hasn't passed it
   if (isSupabaseConfigured() && !authGatePassed) {
     return (
-      <AuthGate
-        onAuthChange={(user) => { setCurrentUser(user); setAuthGatePassed(true); }}
-        onSkip={() => { setAuthGatePassed(true); localStorage.setItem('auth_gate_skipped', '1'); }}
-      />
+      <ErrorBoundary>
+        <AuthGate
+          onAuthChange={(user) => { if (user) { setCurrentUser(user); setAuthGatePassed(true); } }}
+          onSkip={() => { setAuthGatePassed(true); localStorage.setItem('auth_gate_skipped', '1'); }}
+        />
+      </ErrorBoundary>
     );
   }
 

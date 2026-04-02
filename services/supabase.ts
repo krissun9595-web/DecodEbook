@@ -135,9 +135,10 @@ export async function loadUserSettings(userId: string): Promise<UserSettings | n
 export async function saveUserSettings(userId: string, settings: UserSettings) {
   const client = getSupabase();
   if (!client) return;
-  await client
+  const { error } = await client
     .from('user_settings')
     .upsert({ user_id: userId, ...settings, updated_at: new Date().toISOString() });
+  if (error) console.warn('[Supabase] Failed to save settings:', error.message);
 }
 
 // ---- Usage logging ----
