@@ -98,11 +98,26 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-      localStorage.setItem('notebook', JSON.stringify(notebook));
+      try {
+        localStorage.setItem('notebook', JSON.stringify(notebook));
+      } catch (e) {
+        console.warn('Failed to save notebook to localStorage:', e);
+      }
   }, [notebook]);
 
   useEffect(() => {
-      localStorage.setItem('library', JSON.stringify(library));
+      try {
+        // Save library metadata only — fileContext contains large base64 data
+        // that can exceed localStorage's ~5MB limit with multiple books
+        const libraryMeta = library.map(item => ({
+          book: item.book,
+          fileContext: { content: '', mimeType: item.fileContext.mimeType, isText: item.fileContext.isText },
+          uploadDate: item.uploadDate
+        }));
+        localStorage.setItem('library', JSON.stringify(libraryMeta));
+      } catch (e) {
+        console.warn('Failed to save library to localStorage (likely quota exceeded):', e);
+      }
   }, [library]);
 
   // Persist settings to localStorage + Supabase, and sync API key
