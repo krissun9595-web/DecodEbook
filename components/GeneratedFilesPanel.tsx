@@ -125,56 +125,53 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
   return (
     <div className="h-full flex flex-col animate-fade-in font-sans text-left">
-      {/* Header */}
-      <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)]">
-        <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
-          <HardDrive size={18} className="text-[#00f3ff]" />
-          <span>Generated_Files</span>
+      {/* Controller */}
+      <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
+            <HardDrive size={18} className="text-[#00f3ff]" />
+            <span>Generated_Files</span>
+          </div>
+          <span className="text-[10px] font-mono text-zinc-600 uppercase">{formatFileSize(totalSize)} // {files.length} files</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-[10px] font-mono text-zinc-500 uppercase">
-            Cache: {formatFileSize(totalSize)} // {files.length} files
-          </span>
+          <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+            <div className="p-1.5 text-zinc-500"><HardDrive size={16} /></div>
+            <select
+              value={filterBook}
+              onChange={(e) => setFilterBook(e.target.value)}
+              className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+            >
+              <option value="all">ALL BOOKS</option>
+              {library.map(item => (
+                <option key={item.book.id} value={item.book.id}>
+                  {item.book.title.substring(0, 15)}
+                </option>
+              ))}
+            </select>
+            <div className="w-[1px] h-4 bg-zinc-700"></div>
+            <div className="p-1.5 text-zinc-500"><FileText size={16} /></div>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value as FilterType)}
+              className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+            >
+              {FILTER_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={handleClearAll}
-            className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1 rounded-sm border transition-all ${
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${
               confirmClear
-                ? 'text-white bg-[#ff003c] border-[#ff003c] animate-pulse'
-                : 'text-[#ff003c] border-[#ff003c]/30 hover:bg-[#ff003c]/10'
+                ? 'bg-[#ff003c] text-white hover:bg-rose-600 animate-pulse'
+                : 'text-[#ff003c] border border-[#ff003c]/30 hover:bg-[#ff003c]/10'
             }`}
           >
-            {confirmClear ? 'CONFIRM_PURGE' : filterBook !== 'all' ? 'CLEAR_BOOK' : 'CLEAR_ALL'}
+            <Trash2 size={14} />
+            {confirmClear ? 'CONFIRM' : filterBook !== 'all' ? 'CLEAR_BOOK' : 'CLEAR_ALL'}
           </button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-2 mb-4 shrink-0">
-        <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-          <div className="p-1.5 text-zinc-500"><HardDrive size={16} /></div>
-          <select
-            value={filterBook}
-            onChange={(e) => setFilterBook(e.target.value)}
-            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
-          >
-            <option value="all">ALL BOOKS</option>
-            {library.map(item => (
-              <option key={item.book.id} value={item.book.id}>
-                {item.book.title.substring(0, 15)}
-              </option>
-            ))}
-          </select>
-          <div className="w-[1px] h-4 bg-zinc-700"></div>
-          <div className="p-1.5 text-zinc-500"><FileText size={16} /></div>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as FilterType)}
-            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
-          >
-            {FILTER_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
         </div>
       </div>
 
