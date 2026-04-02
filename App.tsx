@@ -45,7 +45,6 @@ const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
-  const [showGeneratedFiles, setShowGeneratedFiles] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     targetLanguage: 'Spanish',
     highlightColor: 'indigo',
@@ -381,7 +380,7 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (showGeneratedFiles) {
+    if (activeTab === Tab.GEN_FILES) {
       return (
         <div className="h-full animate-fade-in">
           <ErrorBoundary>
@@ -639,18 +638,6 @@ const App: React.FC = () => {
              <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>●</span>
           </button>
           <button
-            onClick={() => setShowGeneratedFiles(!showGeneratedFiles)}
-            className={`w-full flex items-center justify-between p-4 transition-all text-[10px] font-bold font-tech uppercase tracking-widest border-b border-zinc-900/30 ${
-              showGeneratedFiles ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:bg-zinc-900 hover:text-[#00f3ff]'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <HardDrive size={14} />
-              <span>GEN_FILES</span>
-            </div>
-            <span className={`text-[8px] animate-pulse ${showGeneratedFiles ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>●</span>
-          </button>
-          <button
             onClick={() => setIsSettingsOpen(true)}
             className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-[#00f3ff] transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
           >
@@ -696,10 +683,11 @@ const App: React.FC = () => {
               { id: Tab.CONCEPTS, icon: ImageIcon, label: "VISUAL_CORE" },
               { id: Tab.ANIMATION, icon: Film, label: "CINE_RENDER" },
               { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "MEM_LOG" },
+              { id: Tab.GEN_FILES, icon: HardDrive, label: "GEN_FILES" },
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id as Tab); setShowGeneratedFiles(false); }}
+                onClick={() => { setActiveTab(tab.id as Tab); }}
                 className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
                   activeTab === tab.id 
                     ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'

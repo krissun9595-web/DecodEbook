@@ -88,7 +88,8 @@ export enum Tab {
   CONCEPTS = 'CONCEPTS',
   PODCAST = 'PODCAST',
   ANIMATION = 'ANIMATION',
-  NOTEBOOK = 'NOTEBOOK'
+  NOTEBOOK = 'NOTEBOOK',
+  GEN_FILES = 'GEN_FILES'
 }
 
 export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'violet';

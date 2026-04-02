@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
+import JSZip from 'jszip';
 
 interface Props {
   library: LibraryItem[];
 }
 
-type FilterType = 'all' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'notebook';
+type FilterType = 'all' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'notebook' | 'chapter-text' | 'translation';
 
 const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   'audio': { icon: <Headphones size={14} />, label: 'VOICE_SYNTH', color: 'text-cyan-400' },
@@ -26,6 +27,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'ALL' },
   { value: 'audio', label: 'AUDIO' },
   { value: 'podcast-audio', label: 'PODCAST' },
+  { value: 'podcast-script', label: 'SCRIPTS' },
   { value: 'video', label: 'VIDEO' },
   { value: 'concept-image', label: 'IMAGES' },
   { value: 'notebook', label: 'NOTEBOOK' },
@@ -54,6 +56,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   const [filterBook, setFilterBook] = useState<string>('all');
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [actionMode, setActionMode] = useState<'clear' | 'save'>('save');
 
   const loadFiles = useCallback(async () => {
     try {
@@ -73,7 +76,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
     ? files
     : filterType === 'notebook'
       ? files.filter(f => NOTEBOOK_TYPES.includes(f.fileType))
-      : files.filter(f => f.fileType === filterType || (filterType === 'podcast-audio' && f.fileType === 'podcast-script'));
+      : files.filter(f => f.fileType === filterType);
 
   const handleDownload = async (file: CachedFileMetadata) => {
     try {
@@ -115,6 +118,26 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       await loadFiles();
     } catch (e) {
       console.error('Clear failed:', e);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    if (filteredFiles.length === 0) return;
+    try {
+      const zip = new JSZip();
+      for (const file of filteredFiles) {
+        const cached = await getFile(file.key);
+        if (cached) zip.file(file.filename, cached.blob);
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `decodebook-files-${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Save all failed:', e);
     }
   };
 
@@ -162,16 +185,37 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             </select>
           </div>
           <button
-            onClick={handleClearAll}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${
-              confirmClear
-                ? 'bg-[#ff003c] text-white hover:bg-rose-600 animate-pulse'
-                : 'text-[#ff003c] border border-[#ff003c]/30 hover:bg-[#ff003c]/10'
+            onClick={() => { setActionMode(actionMode === 'save' ? 'clear' : 'save'); setConfirmClear(false); }}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center border ${
+              actionMode === 'clear'
+                ? 'text-[#ff003c] border-[#ff003c]/30 hover:bg-[#ff003c]/10'
+                : 'text-[#00f3ff] border-[#00f3ff]/30 hover:bg-[#00f3ff]/10'
             }`}
           >
-            <Trash2 size={14} />
-            {confirmClear ? 'CONFIRM' : filterBook !== 'all' ? 'CLEAR_BOOK' : 'CLEAR_ALL'}
+            {actionMode === 'clear' ? <Trash2 size={14} /> : <Save size={14} />}
+            {actionMode === 'clear' ? 'CLEAR_ALL' : 'SAVE_ALL'}
           </button>
+          {actionMode === 'clear' ? (
+            <button
+              onClick={handleClearAll}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[80px] justify-center ${
+                confirmClear
+                  ? 'bg-[#ff003c] text-white hover:bg-rose-600 animate-pulse'
+                  : 'bg-[#ff003c]/10 text-[#ff003c] hover:bg-[#ff003c]/20 border border-[#ff003c]/30'
+              }`}
+            >
+              {confirmClear ? 'CONFIRM' : 'PURGE'}
+            </button>
+          ) : (
+            <button
+              onClick={handleSaveAll}
+              disabled={filteredFiles.length === 0}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[80px] justify-center bg-[#00f3ff] text-black hover:bg-[#00c2cc] disabled:opacity-50"
+            >
+              <Download size={14} />
+              ZIP
+            </button>
+          )}
         </div>
       </div>
 
