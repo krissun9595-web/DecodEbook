@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
-import { analyzeBookStructure, getQuickDefinition } from './services/gemini';
+import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
@@ -63,7 +63,11 @@ const App: React.FC = () => {
 
       const savedSettings = localStorage.getItem('app_settings');
       if (savedSettings) {
-        try { setSettings(prev => ({ ...prev, ...JSON.parse(savedSettings) })); } catch (e) {}
+        try {
+          const parsed = JSON.parse(savedSettings);
+          setSettings(prev => ({ ...prev, ...parsed }));
+          if (parsed.geminiKey) setGeminiApiKey(parsed.geminiKey);
+        } catch (e) {}
       }
 
       // Check for existing Supabase session
@@ -97,9 +101,10 @@ const App: React.FC = () => {
       localStorage.setItem('library', JSON.stringify(library));
   }, [library]);
 
-  // Persist settings to localStorage + Supabase
+  // Persist settings to localStorage + Supabase, and sync API key
   useEffect(() => {
       localStorage.setItem('app_settings', JSON.stringify(settings));
+      if (settings.geminiKey) setGeminiApiKey(settings.geminiKey);
       if (currentUser) {
         saveUserSettings(currentUser.id, {
           target_language: settings.targetLanguage,

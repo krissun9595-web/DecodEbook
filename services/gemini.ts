@@ -2,7 +2,11 @@
 import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 
-const getAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Use user-provided API key from settings, fall back to env var (AI Studio)
+let _userApiKey: string | null = null;
+export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
+const getApiKey = () => _userApiKey || process.env.API_KEY || '';
+const getAi = () => new GoogleGenAI({ apiKey: getApiKey() });
 
 const safeJsonParse = <T>(text: string): T => {
   if (!text) throw new Error("Empty text provided to parser");
