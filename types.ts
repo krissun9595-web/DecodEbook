@@ -99,7 +99,9 @@ export interface AppSettings {
   textSize: 'sm' | 'base' | 'lg' | 'xl';
   lineHeight: 'tight' | 'normal' | 'relaxed' | 'loose';
   letterSpacing: 'tighter' | 'normal' | 'wide' | 'wider';
-  font: 'Inter' | 'Merriweather' | 'Playfair Display' | 'Roboto Mono' | 'Open Sans' | 'Orbitron' | 'Cinzel' | 'Source Code Pro' | 'Crimson Text';
+  font: string;
+  geminiKey?: string;
+  openrouterKey?: string;
 }
 
 export interface LibraryItem {

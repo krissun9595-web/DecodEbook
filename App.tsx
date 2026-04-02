@@ -1,14 +1,17 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
 import { analyzeBookStructure, getQuickDefinition } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
+import { AuthModal } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { getSession, loadUserSettings, saveUserSettings } from './services/supabase';
+import type { User } from '@supabase/supabase-js';
 
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer').then(module => ({ default: module.PodcastPlayer })));
 const Visualizer = React.lazy(() => import('./components/Visualizer').then(module => ({ default: module.Visualizer })));
@@ -39,6 +42,8 @@ const App: React.FC = () => {
   const [showLibraryList, setShowLibraryList] = useState(false);
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showGeneratedFiles, setShowGeneratedFiles] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     targetLanguage: 'Spanish',
@@ -52,9 +57,36 @@ const App: React.FC = () => {
   useEffect(() => {
       const savedNotebook = localStorage.getItem('notebook');
       if (savedNotebook) setNotebook(JSON.parse(savedNotebook));
-      
+
       const savedLibrary = localStorage.getItem('library');
       if (savedLibrary) setLibrary(JSON.parse(savedLibrary));
+
+      const savedSettings = localStorage.getItem('app_settings');
+      if (savedSettings) {
+        try { setSettings(prev => ({ ...prev, ...JSON.parse(savedSettings) })); } catch (e) {}
+      }
+
+      // Check for existing Supabase session
+      getSession().then(session => {
+        if (session?.user) {
+          setCurrentUser(session.user);
+          loadUserSettings(session.user.id).then(remote => {
+            if (remote) {
+              setSettings(prev => ({
+                ...prev,
+                targetLanguage: remote.target_language || prev.targetLanguage,
+                highlightColor: (remote.highlight_color as any) || prev.highlightColor,
+                textSize: (remote.text_size as any) || prev.textSize,
+                lineHeight: (remote.line_height as any) || prev.lineHeight,
+                letterSpacing: (remote.letter_spacing as any) || prev.letterSpacing,
+                font: remote.font || prev.font,
+                geminiKey: remote.gemini_key || prev.geminiKey,
+                openrouterKey: remote.openrouter_key || prev.openrouterKey,
+              }));
+            }
+          });
+        }
+      });
   }, []);
 
   useEffect(() => {
@@ -64,6 +96,23 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('library', JSON.stringify(library));
   }, [library]);
+
+  // Persist settings to localStorage + Supabase
+  useEffect(() => {
+      localStorage.setItem('app_settings', JSON.stringify(settings));
+      if (currentUser) {
+        saveUserSettings(currentUser.id, {
+          target_language: settings.targetLanguage,
+          highlight_color: settings.highlightColor,
+          text_size: settings.textSize,
+          line_height: settings.lineHeight,
+          letter_spacing: settings.letterSpacing,
+          font: settings.font,
+          gemini_key: settings.geminiKey,
+          openrouter_key: settings.openrouterKey,
+        }).catch(() => {});
+      }
+  }, [settings, currentUser]);
 
   const handleAddToNotebook = (item: Omit<NotebookItem, 'id' | 'timestamp'>) => {
       // Clean text: remove ** characters and trim whitespace
@@ -434,11 +483,17 @@ const App: React.FC = () => {
         bookTitle={activeBook?.title} 
         bookId={activeBook?.id} 
       />
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
+      <SettingsModal
+        isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onUpdate={setSettings}
+      />
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        user={currentUser}
+        onAuthChange={setCurrentUser}
       />
 
       <aside 
@@ -565,6 +620,13 @@ const App: React.FC = () => {
           >
             <SettingsIcon size={14} />
             <span>SYS_CONFIG</span>
+          </button>
+          <button
+            onClick={() => setIsAuthOpen(true)}
+            className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-emerald-500 hover:text-emerald-400' : 'text-zinc-500 hover:text-[#00f3ff]'}`}
+          >
+            <UserIcon size={14} />
+            <span>{currentUser ? 'LINKED' : 'ACCOUNT'}</span>
           </button>
         </div>
       </aside>
