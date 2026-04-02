@@ -76,6 +76,13 @@ export async function signOut() {
   await client.auth.signOut();
 }
 
+export async function resetPassword(email: string) {
+  const client = getSupabase();
+  if (!client) throw new Error('Supabase not configured');
+  const { error } = await client.auth.resetPasswordForEmail(email);
+  if (error) throw error;
+}
+
 export async function getSession(): Promise<Session | null> {
   const client = getSupabase();
   if (!client) return null;

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Globe, Highlighter, Type, AlignJustify, MoveHorizontal, Key } from 'lucide-react';
+import { X, Globe, Highlighter, Type, AlignJustify, MoveHorizontal } from 'lucide-react';
 import { AppSettings, ThemeColor } from '../types';
 
 interface Props {
@@ -203,39 +203,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     </button>
                 ))}
                 </div>
-            </div>
-          </div>
-        </div>
-
-        {/* API Keys Section */}
-        <div className="p-6 border-t border-zinc-800 space-y-4">
-          <div className="flex items-center gap-2 text-[#ff003c] mb-2">
-            <Key size={18} />
-            <label className="text-xs font-bold uppercase tracking-widest font-mono">API_Keys</label>
-          </div>
-          <p className="text-[10px] text-zinc-600 font-mono leading-relaxed">
-            Provide your own API keys. Keys are stored locally and optionally synced to your account.
-          </p>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <span className="text-[10px] text-zinc-500 uppercase font-mono">Gemini API Key</span>
-              <input
-                type="password"
-                value={settings.geminiKey || ''}
-                onChange={(e) => onUpdate({ ...settings, geminiKey: e.target.value })}
-                placeholder="AIza..."
-                className="w-full bg-[#050505] border border-zinc-800 text-zinc-300 font-mono text-xs focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all"
-              />
-            </div>
-            <div className="space-y-1">
-              <span className="text-[10px] text-zinc-500 uppercase font-mono">OpenRouter API Key</span>
-              <input
-                type="password"
-                value={settings.openrouterKey || ''}
-                onChange={(e) => onUpdate({ ...settings, openrouterKey: e.target.value })}
-                placeholder="sk-or-..."
-                className="w-full bg-[#050505] border border-zinc-800 text-zinc-300 font-mono text-xs focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all"
-              />
             </div>
           </div>
         </div>
