@@ -48,17 +48,27 @@ export async function testConnection(): Promise<boolean> {
 
 export async function signUp(email: string, password: string) {
   const client = getSupabase();
-  if (!client) throw new Error('Supabase not configured');
+  if (!client) throw new Error('Supabase not configured. Check supabase_url and supabase_anon_key in localStorage.');
+  console.log('[Supabase] signUp attempt:', email);
   const { data, error } = await client.auth.signUp({ email, password });
-  if (error) throw error;
+  if (error) {
+    console.error('[Supabase] signUp error:', error.message, error.status, error);
+    throw error;
+  }
+  console.log('[Supabase] signUp success:', data.user?.id, 'confirmed:', data.user?.confirmed_at ? 'yes' : 'no (email confirmation required)');
   return data;
 }
 
 export async function signIn(email: string, password: string) {
   const client = getSupabase();
-  if (!client) throw new Error('Supabase not configured');
+  if (!client) throw new Error('Supabase not configured. Check supabase_url and supabase_anon_key in localStorage.');
+  console.log('[Supabase] signIn attempt:', email);
   const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error) throw error;
+  if (error) {
+    console.error('[Supabase] signIn error:', error.message, error.status, error);
+    throw error;
+  }
+  console.log('[Supabase] signIn success:', data.user?.id);
   return data;
 }
 
