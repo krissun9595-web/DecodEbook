@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NotebookItem, AppSettings, Chapter, MindMapNode } from '../types';
-import { Trash2, Quote, Book, Clock, ImageDown, Volume2, Settings2, Type, Loader2, ArrowUpDown, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Zap, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
+import { Trash2, Quote, Book, BookOpen, Clock, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Zap, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
 import { generateSpeech } from '../services/gemini';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
@@ -23,7 +23,6 @@ interface Props {
 }
 
 type FilterType = 'all' | 'word' | 'phrase' | 'sentence';
-type SortOrder = 'newest' | 'oldest' | 'az' | 'za';
 
 interface LayoutNode {
     id: string;
@@ -52,7 +51,8 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   const fontStyle = {}; // Font now applied globally via CSS --content-font variable
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [activeBookFilter, setActiveBookFilter] = useState<string>('all');
+  const bookTitles = useMemo(() => [...new Set(items.map(i => i.bookTitle).filter(Boolean) as string[])], [items]);
   
   // Mind Map State
   const [isMindMapMode, setIsMindMapMode] = useState(false);
@@ -73,26 +73,16 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   const NEON_GREEN = '#39ff14';
 
   const filteredItems = useMemo(() => {
-      let result = activeFilter === 'all' 
-        ? [...items] 
-        : items.filter(item => item.type === activeFilter);
-      
-      switch (sortOrder) {
-          case 'newest':
-              result.sort((a, b) => b.timestamp - a.timestamp);
-              break;
-          case 'oldest':
-              result.sort((a, b) => a.timestamp - b.timestamp);
-              break;
-          case 'az':
-              result.sort((a, b) => a.text.localeCompare(b.text));
-              break;
-          case 'za':
-              result.sort((a, b) => b.text.localeCompare(a.text));
-              break;
+      let result = [...items];
+      if (activeBookFilter !== 'all') {
+          result = result.filter(item => item.bookTitle === activeBookFilter);
       }
+      if (activeFilter !== 'all') {
+          result = result.filter(item => item.type === activeFilter);
+      }
+      result.sort((a, b) => b.timestamp - a.timestamp);
       return result;
-  }, [items, activeFilter, sortOrder]);
+  }, [items, activeFilter, activeBookFilter]);
 
   const pcmToWav = (base64Pcm: string) => {
     const binaryString = atob(base64Pcm);
@@ -809,9 +799,21 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
            <div className="flex items-center gap-4">
                <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
                     <div className="flex items-center gap-2">
+                        <div className="p-1.5 text-zinc-500"><BookOpen size={16} /></div>
+                        <select
+                            value={activeBookFilter}
+                            onChange={(e) => setActiveBookFilter(e.target.value)}
+                            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+                        >
+                            <option value="all">ALL BOOKS</option>
+                            {bookTitles.map(t => <option key={t} value={t}>{t.length > 15 ? t.substring(0, 15) + '...' : t}</option>)}
+                        </select>
+                    </div>
+                    <div className="w-[1px] h-4 bg-zinc-700"></div>
+                    <div className="flex items-center gap-2">
                         <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
-                        <select 
-                            value={activeFilter} 
+                        <select
+                            value={activeFilter}
                             onChange={(e) => setActiveFilter(e.target.value as FilterType)}
                             className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
                         >
@@ -819,20 +821,6 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                             <option value="word">WORDS</option>
                             <option value="phrase">PHRASES</option>
                             <option value="sentence">SENTENCES</option>
-                        </select>
-                    </div>
-                    <div className="w-[1px] h-4 bg-zinc-700"></div>
-                    <div className="flex items-center gap-2">
-                        <div className="p-1.5 text-zinc-500"><ArrowUpDown size={16} /></div>
-                        <select 
-                            value={sortOrder} 
-                            onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
-                        >
-                            <option value="newest">NEWEST</option>
-                            <option value="oldest">OLDEST</option>
-                            <option value="az">A-Z</option>
-                            <option value="za">Z-A</option>
                         </select>
                     </div>
                </div>

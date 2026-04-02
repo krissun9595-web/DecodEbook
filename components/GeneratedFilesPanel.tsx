@@ -149,33 +149,32 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap shrink-0">
-        <select
-          value={filterBook}
-          onChange={(e) => setFilterBook(e.target.value)}
-          className="bg-[#0a0a0c] border border-zinc-800 rounded-sm text-xs text-[#00f3ff] font-mono uppercase px-3 py-2 outline-none cursor-pointer max-w-[200px]"
-        >
-          <option value="all">ALL_BOOKS</option>
-          {library.map(item => (
-            <option key={item.book.id} value={item.book.id}>
-              {item.book.title.substring(0, 25)}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center gap-1">
-          {FILTER_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setFilterType(opt.value)}
-              className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-sm border transition-all ${
-                filterType === opt.value
-                  ? 'text-[#00f3ff] border-[#00f3ff]/50 bg-[#00f3ff]/5'
-                  : 'text-zinc-600 border-zinc-800 hover:text-zinc-400 hover:border-zinc-700'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+      <div className="flex items-center gap-2 mb-4 shrink-0">
+        <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+          <div className="p-1.5 text-zinc-500"><HardDrive size={16} /></div>
+          <select
+            value={filterBook}
+            onChange={(e) => setFilterBook(e.target.value)}
+            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+          >
+            <option value="all">ALL BOOKS</option>
+            {library.map(item => (
+              <option key={item.book.id} value={item.book.id}>
+                {item.book.title.substring(0, 15)}
+              </option>
+            ))}
+          </select>
+          <div className="w-[1px] h-4 bg-zinc-700"></div>
+          <div className="p-1.5 text-zinc-500"><FileText size={16} /></div>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as FilterType)}
+            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+          >
+            {FILTER_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
