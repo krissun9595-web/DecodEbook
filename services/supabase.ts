@@ -32,6 +32,18 @@ export function isSupabaseConfigured(): boolean {
   return getSupabase() !== null;
 }
 
+export async function testConnection(): Promise<boolean> {
+  const client = getSupabase();
+  if (!client) return false;
+  try {
+    // A lightweight call that verifies the URL and key are valid
+    const { error } = await client.auth.getSession();
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 // ---- Auth helpers ----
 
 export async function signUp(email: string, password: string) {

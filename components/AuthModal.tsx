@@ -4,7 +4,7 @@ import { X, LogIn, UserPlus, Github, Mail, Key, Server, Loader2 } from 'lucide-r
 import {
   signIn, signUp, signInWithOAuth, signOut,
   configureSupabase, isSupabaseConfigured,
-  getUser
+  testConnection, getUser
 } from '../services/supabase';
 import type { User } from '@supabase/supabase-js';
 
@@ -27,18 +27,26 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
 
   if (!isOpen) return null;
 
-  const handleSetup = () => {
+  const handleSetup = async () => {
     if (!supabaseUrl || !supabaseKey) {
       setError('Both URL and Anon Key are required');
       return;
     }
+    setLoading(true);
+    setError('');
     try {
       configureSupabase(supabaseUrl, supabaseKey);
-      setError('');
-      setSuccess('Connected to Supabase');
-      setMode('login');
+      const ok = await testConnection();
+      if (ok) {
+        setSuccess('Connected to Supabase');
+        setMode('login');
+      } else {
+        setError('Connection failed — check your URL and anon key');
+      }
     } catch (e: any) {
       setError(e.message || 'Connection failed');
+    } finally {
+      setLoading(false);
     }
   };
 
