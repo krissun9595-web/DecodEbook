@@ -1,5 +1,7 @@
 interface Env {
   GEMINI_API_KEY: string;
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
   ASSETS: Fetcher;
 }
 
@@ -14,23 +16,48 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, x-goog-api-key',
+          'Access-Control-Allow-Headers': 'Content-Type, x-goog-api-key, Authorization',
           'Access-Control-Max-Age': '86400',
         },
       });
     }
 
-    if (url.pathname.startsWith('/api/gemini/video-download')) {
-      return handleVideoDownload(request, env);
-    }
-
     if (url.pathname.startsWith('/api/gemini/')) {
+      const authError = await verifyAuth(request, env);
+      if (authError) return authError;
+
+      if (url.pathname.startsWith('/api/gemini/video-download')) {
+        return handleVideoDownload(request, env);
+      }
       return handleGeminiProxy(request, url, env);
     }
 
     return env.ASSETS.fetch(request);
   },
 };
+
+async function verifyAuth(request: Request, env: Env): Promise<Response | null> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null;
+
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return jsonError('Authentication required', 401);
+  }
+
+  const token = authHeader.slice(7);
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': env.SUPABASE_ANON_KEY,
+      },
+    });
+    if (!res.ok) return jsonError('Invalid or expired session', 401);
+    return null;
+  } catch {
+    return jsonError('Auth verification failed', 500);
+  }
+}
 
 async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<Response> {
   if (!env.GEMINI_API_KEY) {
@@ -47,7 +74,7 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<
 
   const headers = new Headers();
   for (const [k, v] of request.headers.entries()) {
-    if (['host', 'x-goog-api-key', 'cf-connecting-ip', 'cf-ray'].includes(k.toLowerCase())) continue;
+    if (['host', 'x-goog-api-key', 'cf-connecting-ip', 'cf-ray', 'authorization'].includes(k.toLowerCase())) continue;
     headers.set(k, v);
   }
 

@@ -1,16 +1,25 @@
 
 import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
+import { getSession } from "./supabase";
 
 let _userApiKey: string | null = null;
 export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
-const getAi = () => {
+
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  if (!useProxy()) return {};
+  const session = await getSession();
+  return session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+};
+
+const getAi = async () => {
   if (useProxy()) {
+    const headers = await getAuthHeaders();
     return new GoogleGenAI({
       apiKey: 'proxy',
-      httpOptions: { baseUrl: `${window.location.origin}/api/gemini` },
+      httpOptions: { baseUrl: `${window.location.origin}/api/gemini`, headers },
     });
   }
   return new GoogleGenAI({ apiKey: getDirectKey() });
@@ -107,7 +116,7 @@ const getFilePart = (file: FileContext): Part => {
 
 export const analyzeBookStructure = async (file: FileContext): Promise<BookStructure> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     
     // Switched to gemini-3-flash-preview to prevent 429 Resource Exhausted errors on Pro quota
     const response = await ai.models.generateContent({
@@ -174,7 +183,7 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
   for (let i = 0; i < sentences.length; i += batchSize) {
     const batch = sentences.slice(i, i + batchSize);
     const batchResult = await withRetry(async () => {
-      const ai = getAi();
+      const ai = await getAi();
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: {
@@ -201,7 +210,7 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
 
 export const extractChapterText = async (file: FileContext, chapter: Chapter): Promise<string> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -226,7 +235,7 @@ export const generatePodcastAudio = async (
   language: string = 'English'
 ): Promise<{ audio: string; script: string; episodeTitle: string }> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const scriptResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview", 
       contents: {
@@ -276,7 +285,7 @@ export const generatePodcastAudio = async (
 
 export const extractConcepts = async (file: FileContext, chapter: Chapter): Promise<Concept[]> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -313,7 +322,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
   }
 
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
       contents: { parts: [{ text: `${style} style: ${visualPrompt}` }] },
@@ -333,7 +342,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
 
 export const extractDictionary = async (file: FileContext, chapter: Chapter): Promise<DictionaryEntry[]> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -366,7 +375,7 @@ export const extractDictionary = async (file: FileContext, chapter: Chapter): Pr
 export const translateDictionary = async (entries: DictionaryEntry[], targetLanguage: string): Promise<DictionaryEntry[]> => {
   if (entries.length === 0) return [];
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -395,7 +404,7 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
 
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
@@ -416,7 +425,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
 
 export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -432,7 +441,7 @@ export const translateText = async (text: string, targetLanguage: string): Promi
 
 export const getQuickDefinition = async (text: string, language: string): Promise<string> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -451,7 +460,7 @@ export const getQuickDefinition = async (text: string, language: string): Promis
 export const batchGetDefinitions = async (items: { id: string, text: string }[], language: string): Promise<Record<string, string>> => {
   if (items.length === 0) return {};
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -506,7 +515,7 @@ export const generateSummaryVideo = async (
   resolution: '720p' | '1080p' = '720p'
 ): Promise<Blob> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     onStatus("Crafting visual narrative...");
     const promptResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -541,10 +550,11 @@ export const generateSummaryVideo = async (
 
     onStatus("Finalizing transmission...");
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    const authHeaders = await getAuthHeaders();
     const response = useProxy()
       ? await fetch('/api/gemini/video-download', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({ uri: downloadLink }),
         })
       : await fetch(downloadLink, {
@@ -554,8 +564,8 @@ export const generateSummaryVideo = async (
   });
 };
 
-export const createChatSession = (file: FileContext, history: Content[] = []): Chat => {
-  const ai = getAi();
+export const createChatSession = async (file: FileContext, history: Content[] = []): Promise<Chat> => {
+  const ai = await getAi();
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: {
@@ -593,7 +603,7 @@ export const sendMessageToChat = async (chat: Chat, message: string | Part[], si
 
 export const generateMindMapStructure = async (items: NotebookItem[], bookTitle: string, context?: string): Promise<MindMapNode> => {
   return withRetry(async () => {
-    const ai = getAi();
+    const ai = await getAi();
     const contextStr = context ? `\nContext: ${context}` : '';
     const itemsStr = JSON.stringify(items.map(i => ({ text: i.text, type: i.type, definition: i.definition })));
 

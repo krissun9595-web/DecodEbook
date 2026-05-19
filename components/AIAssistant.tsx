@@ -57,16 +57,18 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     }
 
     const cachedMessages = historyCache.current[bookId];
-    
-    const apiHistory: Content[] = cachedMessages 
+
+    const apiHistory: Content[] = cachedMessages
         ? cachedMessages.map(m => ({
             role: m.role,
             parts: [{ text: m.text }]
         }))
         : [];
 
-    const session = createChatSession(fileContext, apiHistory);
-    setChatSession(session);
+    (async () => {
+      const session = await createChatSession(fileContext, apiHistory);
+      setChatSession(session);
+    })();
 
     if (cachedMessages && cachedMessages.length > 0) {
         setMessages(cachedMessages);
