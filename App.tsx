@@ -10,7 +10,7 @@ import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured } from './services/supabase';
+import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase } from './services/supabase';
 import type { User } from '@supabase/supabase-js';
 
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer').then(module => ({ default: module.PodcastPlayer })));
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
+  const [configReady, setConfigReady] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     targetLanguage: 'Spanish',
     highlightColor: 'indigo',
@@ -70,10 +71,11 @@ const App: React.FC = () => {
         } catch (e) {}
       }
 
-      // Check for existing Supabase session
-      // Also pass auth gate if user previously skipped
-      if (localStorage.getItem('auth_gate_skipped')) setAuthGatePassed(true);
-      getSession().then(session => {
+      // Bootstrap Supabase from Worker config if not already configured
+      bootstrapSupabase().then(() => {
+        if (localStorage.getItem('auth_gate_skipped')) setAuthGatePassed(true);
+        return getSession();
+      }).then(session => {
         if (session?.user) {
           setCurrentUser(session.user);
           setAuthGatePassed(true);
@@ -93,7 +95,8 @@ const App: React.FC = () => {
             }
           }).catch(e => console.warn('[Supabase] Failed to load settings:', e));
         }
-      }).catch(e => console.warn('[Supabase] Failed to get session:', e));
+      }).catch(e => console.warn('[Supabase] Failed to get session:', e))
+        .finally(() => setConfigReady(true));
   }, []);
 
   useEffect(() => {
@@ -439,7 +442,14 @@ const App: React.FC = () => {
     );
   };
 
-  // Show auth gate before the app if Supabase is configured and user hasn't passed it
+  if (!configReady) {
+    return (
+      <div className="min-h-screen bg-[#020202] flex items-center justify-center">
+        <div className="text-[#00f3ff] font-tech text-xs tracking-[0.3em] animate-pulse uppercase">Initializing_System...</div>
+      </div>
+    );
+  }
+
   if (isSupabaseConfigured() && !authGatePassed) {
     return (
       <ErrorBoundary>

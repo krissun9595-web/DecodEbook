@@ -22,6 +22,13 @@ export default {
       });
     }
 
+    if (url.pathname === '/api/config') {
+      return new Response(JSON.stringify({
+        supabaseUrl: env.SUPABASE_URL || '',
+        supabaseAnonKey: env.SUPABASE_ANON_KEY || '',
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (url.pathname.startsWith('/api/gemini/')) {
       const authError = await verifyAuth(request, env);
       if (authError) return authError;

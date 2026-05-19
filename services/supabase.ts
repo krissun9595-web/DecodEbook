@@ -32,6 +32,20 @@ export function isSupabaseConfigured(): boolean {
   return getSupabase() !== null;
 }
 
+export async function bootstrapSupabase(): Promise<boolean> {
+  if (isSupabaseConfigured()) return true;
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) return false;
+    const { supabaseUrl, supabaseAnonKey } = await res.json();
+    if (supabaseUrl && supabaseAnonKey) {
+      configureSupabase(supabaseUrl, supabaseAnonKey);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
 export async function testConnection(): Promise<boolean> {
   const client = getSupabase();
   if (!client) return false;
