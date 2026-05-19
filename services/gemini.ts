@@ -2,11 +2,19 @@
 import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 
-// Use user-provided API key from settings, fall back to env var (AI Studio)
 let _userApiKey: string | null = null;
 export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
-const getApiKey = () => _userApiKey || process.env.API_KEY || '';
-const getAi = () => new GoogleGenAI({ apiKey: getApiKey() });
+const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
+const useProxy = () => !getDirectKey();
+const getAi = () => {
+  if (useProxy()) {
+    return new GoogleGenAI({
+      apiKey: 'proxy',
+      httpOptions: { baseUrl: `${window.location.origin}/api/gemini` },
+    });
+  }
+  return new GoogleGenAI({ apiKey: getDirectKey() });
+};
 
 const safeJsonParse = <T>(text: string): T => {
   if (!text) throw new Error("Empty text provided to parser");
@@ -299,10 +307,9 @@ export const extractConcepts = async (file: FileContext, chapter: Chapter): Prom
 };
 
 export const generateConceptImage = async (visualPrompt: string, style: string = 'Digital Art', aspectRatio: string = '1:1'): Promise<string> => {
-  // Mandatory check for API key when using gemini-3-pro-image-preview
-  const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-  if (!hasKey) {
-      await (window as any).aistudio.openSelectKey();
+  if (typeof (window as any).aistudio !== 'undefined') {
+    const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+    if (!hasKey) await (window as any).aistudio.openSelectKey();
   }
 
   return withRetry(async () => {
@@ -477,11 +484,17 @@ export const batchGetDefinitions = async (items: { id: string, text: string }[],
 };
 
 export const hasValidKeyForVeo = async (): Promise<boolean> => {
-  return await (window as any).aistudio.hasSelectedApiKey();
+  if (useProxy()) return true;
+  if (typeof (window as any).aistudio !== 'undefined') {
+    return await (window as any).aistudio.hasSelectedApiKey();
+  }
+  return !!getDirectKey();
 };
 
 export const requestVeoKey = async (): Promise<void> => {
-  await (window as any).aistudio.openSelectKey();
+  if (typeof (window as any).aistudio !== 'undefined') {
+    await (window as any).aistudio.openSelectKey();
+  }
 };
 
 export const generateSummaryVideo = async (
@@ -528,9 +541,15 @@ export const generateSummaryVideo = async (
 
     onStatus("Finalizing transmission...");
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    const response = await fetch(downloadLink, {
-      headers: { 'x-goog-api-key': process.env.API_KEY || '' }
-    });
+    const response = useProxy()
+      ? await fetch('/api/gemini/video-download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uri: downloadLink }),
+        })
+      : await fetch(downloadLink, {
+          headers: { 'x-goog-api-key': getDirectKey() },
+        });
     return await response.blob();
   });
 };
