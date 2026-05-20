@@ -9,6 +9,7 @@ import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
+  allChapters: Chapter[];
   fileContext: FileContext;
   settings: AppSettings;
   onSettingsUpdate: (settings: AppSettings) => void;
@@ -189,7 +190,7 @@ const processQueue = async <T, R>(
   return results;
 };
 
-export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onSettingsUpdate, bookId }) => {
+export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId }) => {
   const [pages, setPages] = useState<string[]>([]);
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
@@ -269,7 +270,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, fileContext, settings, onS
       if (cached) {
         cleanText = await cached.blob.text();
       } else {
-        const rawText = await extractChapterText(fileContext, chapter);
+        const rawText = await extractChapterText(fileContext, chapter, allChapters);
         cleanText = rearrangeAndCleanText(rawText);
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });

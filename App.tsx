@@ -416,7 +416,7 @@ const App: React.FC = () => {
     let content;
     switch (activeTab) {
       case Tab.AUDIOBOOK:
-        content = <AudioBook chapter={activeChapter} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} />;
+        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} />;
         break;
       case Tab.PODCAST:
         content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} />;

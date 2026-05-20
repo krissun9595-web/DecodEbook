@@ -208,7 +208,12 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
   return results;
 };
 
-export const extractChapterText = async (file: FileContext, chapter: Chapter): Promise<string> => {
+export const extractChapterText = async (file: FileContext, chapter: Chapter, allChapters?: Chapter[]): Promise<string> => {
+  if (file.isText) {
+    const local = extractChapterLocal(file.content, chapter, allChapters);
+    if (local && local.length > 200) return local;
+  }
+
   return withRetry(async () => {
     const ai = await getAi();
     const response = await ai.models.generateContent({
@@ -216,16 +221,45 @@ export const extractChapterText = async (file: FileContext, chapter: Chapter): P
       contents: {
         parts: [
           getFilePart(file),
-          { text: `Extract the full text for the chapter titled: "${chapter.title}". Use double newlines for paragraph breaks.` }
+          { text: `Reproduce the COMPLETE ORIGINAL text of the chapter titled "${chapter.title}" from the document above. Output EVERY paragraph, sentence, and word EXACTLY as written — do NOT summarize, paraphrase, shorten, or skip any content. Preserve the original wording. Use double newlines between paragraphs.` }
         ]
       },
       config: {
+        systemInstruction: "You are a text extraction tool. Your ONLY job is to copy text verbatim from the source document. Never summarize, never paraphrase, never add commentary. If the chapter is long, output ALL of it.",
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
     return response.text || "";
   });
 };
+
+function extractChapterLocal(content: string, chapter: Chapter, allChapters?: Chapter[]): string | null {
+  if (!allChapters || allChapters.length === 0) return null;
+
+  const sorted = [...allChapters].sort((a, b) => a.id - b.id);
+  const idx = sorted.findIndex(c => c.id === chapter.id);
+  if (idx === -1) return null;
+
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const title = chapter.title;
+  const startPattern = new RegExp(`(?:^|\\n)(?:#{1,4}\\s*)?${escapeRegex(title)}\\s*\\n`, 'im');
+  const startMatch = content.match(startPattern);
+  if (!startMatch || startMatch.index === undefined) return null;
+
+  const startPos = startMatch.index + startMatch[0].length;
+
+  let endPos = content.length;
+  if (idx + 1 < sorted.length) {
+    const nextTitle = sorted[idx + 1].title;
+    const endPattern = new RegExp(`(?:^|\\n)(?:#{1,4}\\s*)?${escapeRegex(nextTitle)}\\s*\\n`, 'im');
+    const endMatch = content.substring(startPos).match(endPattern);
+    if (endMatch && endMatch.index !== undefined) {
+      endPos = startPos + endMatch.index;
+    }
+  }
+
+  return content.substring(startPos, endPos).trim();
+}
 
 export const generatePodcastAudio = async (
   file: FileContext,
