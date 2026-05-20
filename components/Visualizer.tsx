@@ -195,11 +195,13 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                     <Loader text="Extracting neural concepts..." />
                 </div>
             ) : concepts.length === 0 ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono">
-                    <ImageIcon size={48} className="opacity-20" />
-                    <div className="text-center space-y-1">
-                        <p className="text-xs uppercase tracking-[0.3em]">Visual_Core_Idle</p>
-                        <p className="text-[10px] opacity-50">Click INITIATE to extract and visualize concepts</p>
+                <div className="flex-1 h-full w-full relative bg-[#0a0a0c] border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg">
+                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono bg-black">
+                        <ImageIcon size={48} className="opacity-20" />
+                        <div className="text-center space-y-1">
+                            <p className="text-xs uppercase tracking-[0.3em]">Visual_Core_Idle</p>
+                            <p className="text-[10px] opacity-50">Click INITIATE to extract and visualize concepts</p>
+                        </div>
                     </div>
                 </div>
             ) : currentConcept ? (
