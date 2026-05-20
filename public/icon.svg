@@ -1,9 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" rx="80" fill="#020202"/>
-  <!-- Terminal icon centered -->
-  <g transform="translate(106, 106) scale(12)">
+  <!-- Terminal icon -->
+  <g transform="translate(131, 80) scale(10)">
     <rect x="0" y="0" width="25" height="25" rx="2" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="4,9 9,14 4,19" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <line x1="12" y1="19" x2="21" y2="19" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
+  <!-- DecodEbook text -->
+  <text x="256" y="420" text-anchor="middle" font-family="'Courier New', monospace" font-weight="bold" font-size="56" letter-spacing="2">
+    <tspan fill="#ffffff">Decod</tspan><tspan fill="#00f3ff">Ebook</tspan>
+  </text>
 </svg>
