@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
 import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey } from './services/gemini';
@@ -184,6 +184,20 @@ const App: React.FC = () => {
                   console.error("Auto-definition fetch failed during add:", err);
               });
       }
+  };
+
+  const handleDeleteBook = (bookId: string) => {
+    setLibrary(prev => prev.filter(item => item.book.id !== bookId));
+    if (activeBookId === bookId) {
+      const remaining = library.filter(item => item.book.id !== bookId);
+      if (remaining.length > 0) {
+        setActiveBookId(remaining[0].book.id);
+        if (remaining[0].book.chapters.length > 0) setActiveChapterId(remaining[0].book.chapters[0].id);
+      } else {
+        setActiveBookId(null);
+        setView(AppView.UPLOAD);
+      }
+    }
   };
 
   const handleDeleteNotebookItem = (id: string) => {
@@ -575,27 +589,38 @@ const App: React.FC = () => {
           {showLibraryList ? (
              <div className="flex flex-col animate-fade-in">
                 {library.map(item => (
-                    <button
+                    <div
                         key={item.book.id}
-                        onClick={() => {
-                            setActiveBookId(item.book.id);
-                            if(item.book.chapters.length > 0) setActiveChapterId(item.book.chapters[0].id);
-                            setShowLibraryList(false);
-                        }}
                         className={`w-full flex items-center gap-3 p-4 border-b border-zinc-900 transition-all group ${
-                            activeBookId === item.book.id 
-                            ? 'bg-[#00f3ff]/5' 
+                            activeBookId === item.book.id
+                            ? 'bg-[#00f3ff]/5'
                             : 'hover:bg-zinc-900'
                         }`}
                     >
-                        <div className={`w-1 h-8 ${activeBookId === item.book.id ? 'bg-[#00f3ff]' : 'bg-zinc-800'}`}></div>
-                        <div className="text-left min-w-0">
-                            <h4 className={`text-[10px] font-bold truncate font-tech uppercase tracking-wide ${activeBookId === item.book.id ? 'text-[#00f3ff]' : 'text-zinc-400'}`}>
-                                {item.book.title}
-                            </h4>
-                            <p className="text-[9px] text-zinc-600 truncate font-mono">{item.book.chapters.length} DATA_BLOCKS</p>
-                        </div>
-                    </button>
+                        <button
+                            onClick={() => {
+                                setActiveBookId(item.book.id);
+                                if(item.book.chapters.length > 0) setActiveChapterId(item.book.chapters[0].id);
+                                setShowLibraryList(false);
+                            }}
+                            className="flex items-center gap-3 flex-1 min-w-0"
+                        >
+                            <div className={`w-1 h-8 shrink-0 ${activeBookId === item.book.id ? 'bg-[#00f3ff]' : 'bg-zinc-800'}`}></div>
+                            <div className="text-left min-w-0">
+                                <h4 className={`text-[10px] font-bold truncate font-tech uppercase tracking-wide ${activeBookId === item.book.id ? 'text-[#00f3ff]' : 'text-zinc-400'}`}>
+                                    {item.book.title}
+                                </h4>
+                                <p className="text-[9px] text-zinc-600 truncate font-mono">{item.book.chapters.length} DATA_BLOCKS</p>
+                            </div>
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteBook(item.book.id); }}
+                            className="p-1.5 text-zinc-700 hover:text-[#ff003c] opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            title="Delete"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
                 ))}
              </div>
           ) : (

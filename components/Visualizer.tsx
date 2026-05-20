@@ -34,24 +34,14 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
 
   const abortRef = useRef<boolean>(false);
 
+  const mountedRef = useRef(true);
   useEffect(() => {
-    let mounted = true;
-    const loadConcepts = async () => {
-      setIsInitializing(true);
-      try {
-        const extracted = await extractConcepts(fileContext, chapter);
-        if (mounted) {
-            setConcepts(extracted);
-            setCurrentIndex(0);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (mounted) setIsInitializing(false);
-      }
-    };
-    loadConcepts();
-    return () => { mounted = false; };
+    mountedRef.current = true;
+    setConcepts([]);
+    setImages({});
+    setHasInitiated(false);
+    setCurrentIndex(0);
+    return () => { mountedRef.current = false; };
   }, [chapter, fileContext]);
 
   useEffect(() => {
@@ -110,14 +100,35 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
       setIsGeneratingAll(false);
       return;
     }
+
+    abortRef.current = false;
+    let activeConcepts = concepts;
+
+    if (activeConcepts.length === 0) {
+      setIsInitializing(true);
+      try {
+        const extracted = await extractConcepts(fileContext, chapter);
+        if (!mountedRef.current) return;
+        setConcepts(extracted);
+        setCurrentIndex(0);
+        activeConcepts = extracted;
+      } catch (err) {
+        console.error(err);
+        setIsInitializing(false);
+        return;
+      } finally {
+        if (mountedRef.current) setIsInitializing(false);
+      }
+    }
+
+    if (activeConcepts.length === 0) return;
+
     setIsGeneratingAll(true);
     setHasInitiated(true);
-    abortRef.current = false;
-    const pendingConcepts = concepts.filter(c => !images[c.term]);
-    const targets = pendingConcepts.length > 0 ? pendingConcepts : concepts;
+    const pendingConcepts = activeConcepts.filter(c => !images[c.term]);
+    const targets = pendingConcepts.length > 0 ? pendingConcepts : activeConcepts;
     const forceRegen = pendingConcepts.length === 0;
 
-    // Generate images in parallel batches of 3
     const BATCH_SIZE = 3;
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
         if (abortRef.current) break;
@@ -162,7 +173,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 text-left overflow-hidden">
-       <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 animate-fade-in shadow-[0_0_15px_rgba(0,243,255,0.05)] flex-nowrap gap-2 z-10">
+       <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 animate-fade-in shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
           <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
              <ImageIcon size={18} className="text-[#00f3ff]" />
              <span>Visual_Matrix</span>
@@ -183,7 +194,15 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Loader text="Extracting neural concepts..." />
                 </div>
-            ) : concepts.length > 0 && currentConcept ? (
+            ) : concepts.length === 0 ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono">
+                    <ImageIcon size={48} className="opacity-20" />
+                    <div className="text-center space-y-1">
+                        <p className="text-xs uppercase tracking-[0.3em]">Visual_Core_Idle</p>
+                        <p className="text-[10px] opacity-50">Click INITIATE to extract and visualize concepts</p>
+                    </div>
+                </div>
+            ) : currentConcept ? (
                 <div className="flex-1 h-full w-full relative group/container bg-[#0a0a0c] border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
                     
                     <div className="relative bg-black group/image flex-1 min-h-0 flex items-center justify-center w-full overflow-hidden">

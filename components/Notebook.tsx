@@ -828,7 +828,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                <button 
                   onClick={handleInitiateMindMap} 
                   disabled={filteredItems.length === 0} 
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-black font-mono uppercase transition-all shadow-lg transform active:scale-95 min-w-[120px] justify-center ${isGeneratingMap ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc] shadow-[0_0_15px_rgba(0,243,255,0.4)]'}`}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${isGeneratingMap ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc] shadow-[0_0_10px_rgba(0,243,255,0.3)]'}`}
                >
                    {isGeneratingMap ? <Square size={14} fill="currentColor" /> : hasInitiatedMap ? <RefreshCw size={14} /> : <Play size={14} fill="currentColor" />}
                    {isGeneratingMap ? "STOP" : hasInitiatedMap ? "REGENERATE" : "INITIATE"}
