@@ -71,7 +71,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
     }
   };
 
-  const handleOAuth = async (provider: 'google' | 'github' | 'twitter' | 'facebook') => {
+  const handleOAuth = async (provider: 'google' | 'github' | 'x' | 'facebook') => {
     setLoading(true);
     setError('');
     try {
@@ -204,7 +204,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
                   <button onClick={() => handleOAuth('github')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                     <Github size={14} /> GitHub
                   </button>
-                  <button onClick={() => handleOAuth('twitter')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                  <button onClick={() => handleOAuth('x')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> X
                   </button>
                   <button onClick={() => handleOAuth('facebook')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
@@ -275,7 +275,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
     finally { setLoading(false); }
   };
 
-  const handleOAuth = async (provider: 'google' | 'github' | 'twitter' | 'facebook') => {
+  const handleOAuth = async (provider: 'google' | 'github' | 'x' | 'facebook') => {
     setLoading(true); setError('');
     try { await signInWithOAuth(provider); }
     catch (e: any) { setError(e.message || 'OAuth failed'); setLoading(false); }
@@ -373,7 +373,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
                   <button onClick={() => handleOAuth('github')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                     <Github size={14} /> GitHub
                   </button>
-                  <button onClick={() => handleOAuth('twitter')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                  <button onClick={() => handleOAuth('x')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> X
                   </button>
                   <button onClick={() => handleOAuth('facebook')} disabled={loading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">

@@ -86,7 +86,7 @@ export async function signIn(email: string, password: string) {
   return data;
 }
 
-export async function signInWithOAuth(provider: 'google' | 'github' | 'twitter' | 'facebook') {
+export async function signInWithOAuth(provider: 'google' | 'github' | 'x' | 'facebook') {
   const client = getSupabase();
   if (!client) throw new Error('Supabase not configured');
   const { data, error } = await client.auth.signInWithOAuth({ provider });
