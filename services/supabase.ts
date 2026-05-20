@@ -50,6 +50,28 @@ export async function bootstrapSupabase(): Promise<boolean> {
   return false;
 }
 
+export async function handleOAuthCallback(): Promise<Session | null> {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (!code) return null;
+
+  const client = getSupabase();
+  if (!client) return null;
+
+  try {
+    const { data, error } = await client.auth.exchangeCodeForSession(code);
+    window.history.replaceState({}, '', window.location.pathname);
+    if (error) {
+      console.error('[Supabase] OAuth code exchange failed:', error.message);
+      return null;
+    }
+    return data.session;
+  } catch (e) {
+    console.error('[Supabase] OAuth code exchange error:', e);
+    return null;
+  }
+}
+
 export async function testConnection(): Promise<boolean> {
   const client = getSupabase();
   if (!client) return false;
