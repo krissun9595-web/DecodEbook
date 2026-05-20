@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
-import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey, setLLMModel } from './services/gemini';
+import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal, AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
@@ -53,7 +53,10 @@ const App: React.FC = () => {
     lineHeight: 'normal',
     letterSpacing: 'normal',
     font: 'Inter',
-    llmModel: 'gemini-3-flash-preview'
+    llmModel: 'gemini-3-flash-preview',
+    ttsModel: 'gemini-2.5-flash-preview-tts',
+    imageModel: 'gemini-3-pro-image-preview',
+    videoModel: 'veo-3.1-fast-generate-preview'
   });
 
   useEffect(() => {
@@ -70,6 +73,9 @@ const App: React.FC = () => {
           setSettings(prev => ({ ...prev, ...parsed }));
           if (parsed.geminiKey) setGeminiApiKey(parsed.geminiKey);
           if (parsed.llmModel) setLLMModel(parsed.llmModel);
+          if (parsed.ttsModel) setTTSModel(parsed.ttsModel);
+          if (parsed.imageModel) setImageModel(parsed.imageModel);
+          if (parsed.videoModel) setVideoModel(parsed.videoModel);
         } catch (e) {}
       }
 
@@ -92,6 +98,9 @@ const App: React.FC = () => {
                 letterSpacing: (remote.letter_spacing as any) || prev.letterSpacing,
                 font: remote.font || prev.font,
                 llmModel: remote.llm_model || prev.llmModel,
+                ttsModel: remote.tts_model || prev.ttsModel,
+                imageModel: remote.image_model || prev.imageModel,
+                videoModel: remote.video_model || prev.videoModel,
                 geminiKey: remote.gemini_key || prev.geminiKey,
                 openrouterKey: remote.openrouter_key || prev.openrouterKey,
               }));
@@ -130,6 +139,9 @@ const App: React.FC = () => {
       localStorage.setItem('app_settings', JSON.stringify(settings));
       if (settings.geminiKey) setGeminiApiKey(settings.geminiKey);
       if (settings.llmModel) setLLMModel(settings.llmModel);
+      if (settings.ttsModel) setTTSModel(settings.ttsModel);
+      if (settings.imageModel) setImageModel(settings.imageModel);
+      if (settings.videoModel) setVideoModel(settings.videoModel);
       if (currentUser) {
         saveUserSettings(currentUser.id, {
           target_language: settings.targetLanguage,
@@ -141,6 +153,9 @@ const App: React.FC = () => {
           gemini_key: settings.geminiKey,
           openrouter_key: settings.openrouterKey,
           llm_model: settings.llmModel,
+          tts_model: settings.ttsModel,
+          image_model: settings.imageModel,
+          video_model: settings.videoModel,
         }).catch(() => {});
       }
   }, [settings, currentUser]);

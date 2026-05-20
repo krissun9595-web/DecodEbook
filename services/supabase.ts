@@ -133,6 +133,9 @@ export interface UserSettings {
   letter_spacing?: string;
   font?: string;
   llm_model?: string;
+  tts_model?: string;
+  image_model?: string;
+  video_model?: string;
 }
 
 export async function loadUserSettings(userId: string): Promise<UserSettings | null> {

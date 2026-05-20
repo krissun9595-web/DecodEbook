@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Globe, Highlighter, Type, AlignJustify, MoveHorizontal, Cpu } from 'lucide-react';
+import { X, Globe, Highlighter, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
 import { AppSettings, ThemeColor } from '../types';
 
 interface Props {
@@ -44,13 +44,25 @@ const FONTS = [
     'Noto Serif TC',
 ];
 
-const LLM_MODELS = [
+const TEXT_MODELS = [
   { value: 'gemini-3-flash-preview', label: 'Gemini Flash', provider: 'Google' },
   { value: 'gemini-3-pro-preview', label: 'Gemini Pro', provider: 'Google' },
   { value: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI' },
   { value: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI' },
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet', provider: 'Anthropic' },
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', provider: 'Anthropic' },
+];
+
+const TTS_MODELS = [
+  { value: 'gemini-2.5-flash-preview-tts', label: 'Gemini TTS', provider: 'Google' },
+];
+
+const IMAGE_MODELS = [
+  { value: 'gemini-3-pro-image-preview', label: 'Gemini Image', provider: 'Google' },
+];
+
+const VIDEO_MODELS = [
+  { value: 'veo-3.1-fast-generate-preview', label: 'Veo 3.1 Fast', provider: 'Google' },
 ];
 
 const LANGUAGES = [
@@ -93,22 +105,79 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
         </div>
 
         <div className="p-6 space-y-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
-          {/* LLM Model */}
+          {/* LLM Engines */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-[#00f3ff] mb-2">
               <Cpu size={18} />
-              <label className="text-xs font-bold uppercase tracking-widest font-mono">LLM_Engine</label>
+              <label className="text-xs font-bold uppercase tracking-widest font-mono">LLM_Engines</label>
             </div>
-            <select
-              value={settings.llmModel || 'gemini-3-flash-preview'}
-              onChange={(e) => onUpdate({ ...settings, llmModel: e.target.value })}
-              className="w-full bg-[#050505] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-4 py-3 transition-all cursor-pointer"
-            >
-              {LLM_MODELS.map((m) => (
-                <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
-              ))}
-            </select>
-            <p className="text-[9px] text-zinc-600 font-mono">Translation, definitions, mind maps. File analysis, TTS, images, and video always use Gemini.</p>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-zinc-500">
+                  <MessageSquare size={12} />
+                  <span className="text-[9px] font-mono uppercase">Text_Generation</span>
+                </div>
+                <select
+                  value={settings.llmModel || 'gemini-3-flash-preview'}
+                  onChange={(e) => onUpdate({ ...settings, llmModel: e.target.value })}
+                  className="w-full bg-[#050505] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+                >
+                  {TEXT_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-zinc-500">
+                  <AudioLines size={12} />
+                  <span className="text-[9px] font-mono uppercase">Voice_Synth (TTS)</span>
+                </div>
+                <select
+                  value={settings.ttsModel || 'gemini-2.5-flash-preview-tts'}
+                  onChange={(e) => onUpdate({ ...settings, ttsModel: e.target.value })}
+                  className="w-full bg-[#050505] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+                >
+                  {TTS_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-zinc-500">
+                  <ImageIcon size={12} />
+                  <span className="text-[9px] font-mono uppercase">Image_Gen</span>
+                </div>
+                <select
+                  value={settings.imageModel || 'gemini-3-pro-image-preview'}
+                  onChange={(e) => onUpdate({ ...settings, imageModel: e.target.value })}
+                  className="w-full bg-[#050505] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+                >
+                  {IMAGE_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-zinc-500">
+                  <Film size={12} />
+                  <span className="text-[9px] font-mono uppercase">Video_Gen</span>
+                </div>
+                <select
+                  value={settings.videoModel || 'veo-3.1-fast-generate-preview'}
+                  onChange={(e) => onUpdate({ ...settings, videoModel: e.target.value })}
+                  className="w-full bg-[#050505] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+                >
+                  {VIDEO_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-[9px] text-zinc-600 font-mono">More providers for TTS, image, and video coming soon.</p>
           </div>
 
           {/* Language */}

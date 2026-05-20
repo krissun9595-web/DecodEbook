@@ -5,8 +5,14 @@ import { getSession } from "./supabase";
 
 let _userApiKey: string | null = null;
 let _selectedModel: string = 'gemini-3-flash-preview';
+let _ttsModel: string = 'gemini-2.5-flash-preview-tts';
+let _imageModel: string = 'gemini-3-pro-image-preview';
+let _videoModel: string = 'veo-3.1-fast-generate-preview';
 export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
 export const setLLMModel = (model: string) => { _selectedModel = model; };
+export const setTTSModel = (model: string) => { _ttsModel = model; };
+export const setImageModel = (model: string) => { _imageModel = model; };
+export const setVideoModel = (model: string) => { _videoModel = model; };
 export const getLLMModel = () => _selectedModel;
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
@@ -344,7 +350,7 @@ export const generatePodcastAudio = async (
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
     const audioResponse = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: _ttsModel,
       contents: [{ parts: [{ text: parsedResponse.script }] }],
       config: {
         responseModalities: [Modality.AUDIO],
@@ -406,7 +412,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
   return withRetry(async () => {
     const ai = await getAi();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: _imageModel,
       contents: { parts: [{ text: `${style} style: ${visualPrompt}` }] },
       config: { 
           imageConfig: { 
@@ -485,7 +491,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
   return withRetry(async () => {
     const ai = await getAi();
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: _ttsModel,
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
@@ -595,7 +601,7 @@ export const generateSummaryVideo = async (
 
     onStatus("Transmitting to Veo Core...");
     let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
+      model: _videoModel,
       prompt: videoPrompt,
       config: {
         numberOfVideos: 1,

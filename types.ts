@@ -102,6 +102,9 @@ export interface AppSettings {
   letterSpacing: 'tighter' | 'normal' | 'wide' | 'wider';
   font: string;
   llmModel: string;
+  ttsModel: string;
+  imageModel: string;
+  videoModel: string;
   geminiKey?: string;
   openrouterKey?: string;
 }
