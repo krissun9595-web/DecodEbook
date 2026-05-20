@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
@@ -22,7 +22,8 @@ const GeneratedFilesPanel = React.lazy(() => import('./components/GeneratedFiles
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.UPLOAD);
-  
+  const unsubRef = useRef<(() => void) | null>(null);
+
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
   
@@ -108,16 +109,19 @@ const App: React.FC = () => {
           }).catch(e => console.warn('[Supabase] Failed to load settings:', e));
         }
       }).catch(e => console.warn('[Supabase] Failed to get session:', e))
-        .finally(() => setConfigReady(true));
+        .finally(() => {
+          setConfigReady(true);
+          // Listen for OAuth callback redirects after client is ready
+          const cleanup = onAuthStateChange((user) => {
+            if (user) {
+              setCurrentUser(user);
+              setAuthGatePassed(true);
+            }
+          });
+          if (cleanup) unsubRef.current = cleanup;
+        });
 
-      // Listen for OAuth callback redirects (e.g. after X/Google login)
-      const unsub = onAuthStateChange((user) => {
-        if (user) {
-          setCurrentUser(user);
-          setAuthGatePassed(true);
-        }
-      });
-      return () => { if (unsub) unsub(); };
+      return () => { if (unsubRef.current) unsubRef.current(); };
   }, []);
 
   useEffect(() => {

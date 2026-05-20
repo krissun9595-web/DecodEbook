@@ -17,14 +17,18 @@ export function getSupabase(): SupabaseClient | null {
 
   if (!url || !key) return null;
 
-  supabase = createClient(url, key);
+  supabase = createClient(url, key, {
+    auth: { detectSessionInUrl: true, flowType: 'pkce' },
+  });
   return supabase;
 }
 
 export function configureSupabase(url: string, anonKey: string) {
   localStorage.setItem('supabase_url', url);
   localStorage.setItem('supabase_anon_key', anonKey);
-  supabase = createClient(url, anonKey);
+  supabase = createClient(url, anonKey, {
+    auth: { detectSessionInUrl: true, flowType: 'pkce' },
+  });
   return supabase;
 }
 
@@ -89,7 +93,10 @@ export async function signIn(email: string, password: string) {
 export async function signInWithOAuth(provider: 'google' | 'github' | 'x' | 'facebook') {
   const client = getSupabase();
   if (!client) throw new Error('Supabase not configured');
-  const { data, error } = await client.auth.signInWithOAuth({ provider });
+  const { data, error } = await client.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: window.location.origin },
+  });
   if (error) throw error;
   return data;
 }
