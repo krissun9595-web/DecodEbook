@@ -121,6 +121,15 @@ export async function getUser(): Promise<User | null> {
   return data.user;
 }
 
+export function onAuthStateChange(callback: (user: User | null) => void): (() => void) | null {
+  const client = getSupabase();
+  if (!client) return null;
+  const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+    callback(session?.user ?? null);
+  });
+  return () => subscription.unsubscribe();
+}
+
 // ---- Settings sync ----
 
 export interface UserSettings {

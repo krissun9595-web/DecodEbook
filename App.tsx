@@ -10,7 +10,7 @@ import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase } from './services/supabase';
+import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange } from './services/supabase';
 import type { User } from '@supabase/supabase-js';
 
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer').then(module => ({ default: module.PodcastPlayer })));
@@ -109,6 +109,15 @@ const App: React.FC = () => {
         }
       }).catch(e => console.warn('[Supabase] Failed to get session:', e))
         .finally(() => setConfigReady(true));
+
+      // Listen for OAuth callback redirects (e.g. after X/Google login)
+      const unsub = onAuthStateChange((user) => {
+        if (user) {
+          setCurrentUser(user);
+          setAuthGatePassed(true);
+        }
+      });
+      return () => { if (unsub) unsub(); };
   }, []);
 
   useEffect(() => {
