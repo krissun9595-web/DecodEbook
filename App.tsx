@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
-import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey } from './services/gemini';
+import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey, setLLMModel } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal, AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
@@ -52,7 +52,8 @@ const App: React.FC = () => {
     textSize: 'base',
     lineHeight: 'normal',
     letterSpacing: 'normal',
-    font: 'Inter'
+    font: 'Inter',
+    llmModel: 'gemini-3-flash-preview'
   });
 
   useEffect(() => {
@@ -68,6 +69,7 @@ const App: React.FC = () => {
           const parsed = JSON.parse(savedSettings);
           setSettings(prev => ({ ...prev, ...parsed }));
           if (parsed.geminiKey) setGeminiApiKey(parsed.geminiKey);
+          if (parsed.llmModel) setLLMModel(parsed.llmModel);
         } catch (e) {}
       }
 
@@ -89,6 +91,7 @@ const App: React.FC = () => {
                 lineHeight: (remote.line_height as any) || prev.lineHeight,
                 letterSpacing: (remote.letter_spacing as any) || prev.letterSpacing,
                 font: remote.font || prev.font,
+                llmModel: remote.llm_model || prev.llmModel,
                 geminiKey: remote.gemini_key || prev.geminiKey,
                 openrouterKey: remote.openrouter_key || prev.openrouterKey,
               }));
@@ -126,6 +129,7 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('app_settings', JSON.stringify(settings));
       if (settings.geminiKey) setGeminiApiKey(settings.geminiKey);
+      if (settings.llmModel) setLLMModel(settings.llmModel);
       if (currentUser) {
         saveUserSettings(currentUser.id, {
           target_language: settings.targetLanguage,
@@ -136,6 +140,7 @@ const App: React.FC = () => {
           font: settings.font,
           gemini_key: settings.geminiKey,
           openrouter_key: settings.openrouterKey,
+          llm_model: settings.llmModel,
         }).catch(() => {});
       }
   }, [settings, currentUser]);
@@ -684,7 +689,7 @@ const App: React.FC = () => {
             className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-emerald-500 hover:text-emerald-400' : 'text-zinc-500 hover:text-[#00f3ff]'}`}
           >
             <UserIcon size={14} />
-            <span>{currentUser ? 'LINKED' : 'ACCOUNT'}</span>
+            <span>MY_ACCOUNT</span>
           </button>
         </div>
       </aside>

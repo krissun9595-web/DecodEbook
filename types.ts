@@ -101,6 +101,7 @@ export interface AppSettings {
   lineHeight: 'tight' | 'normal' | 'relaxed' | 'loose';
   letterSpacing: 'tighter' | 'normal' | 'wide' | 'wider';
   font: string;
+  llmModel: string;
   geminiKey?: string;
   openrouterKey?: string;
 }

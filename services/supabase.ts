@@ -86,7 +86,7 @@ export async function signIn(email: string, password: string) {
   return data;
 }
 
-export async function signInWithOAuth(provider: 'google' | 'github') {
+export async function signInWithOAuth(provider: 'google' | 'github' | 'twitter' | 'facebook') {
   const client = getSupabase();
   if (!client) throw new Error('Supabase not configured');
   const { data, error } = await client.auth.signInWithOAuth({ provider });
@@ -132,6 +132,7 @@ export interface UserSettings {
   line_height?: string;
   letter_spacing?: string;
   font?: string;
+  llm_model?: string;
 }
 
 export async function loadUserSettings(userId: string): Promise<UserSettings | null> {

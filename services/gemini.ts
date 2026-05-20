@@ -4,9 +4,13 @@ import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapN
 import { getSession } from "./supabase";
 
 let _userApiKey: string | null = null;
+let _selectedModel: string = 'gemini-3-flash-preview';
 export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
+export const setLLMModel = (model: string) => { _selectedModel = model; };
+export const getLLMModel = () => _selectedModel;
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
+const isGeminiModel = (model?: string) => !(model || _selectedModel).startsWith('gpt-') && !(model || _selectedModel).startsWith('claude-');
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
   if (!useProxy()) return {};
@@ -23,6 +27,53 @@ const getAi = async () => {
     });
   }
   return new GoogleGenAI({ apiKey: getDirectKey() });
+};
+
+const callUnifiedLLM = async (params: {
+  model?: string;
+  contents: any;
+  systemInstruction?: string;
+  generationConfig?: any;
+}): Promise<string> => {
+  const model = params.model || _selectedModel;
+
+  if (isGeminiModel(model) && !useProxy()) {
+    const ai = await getAi();
+    const config: any = {};
+    if (params.systemInstruction) config.systemInstruction = params.systemInstruction;
+    if (params.generationConfig) Object.assign(config, params.generationConfig);
+    config.thinkingConfig = { thinkingBudget: 0 };
+    const response = await ai.models.generateContent({ model, contents: params.contents, config });
+    return response.text || '';
+  }
+
+  if (isGeminiModel(model) && useProxy()) {
+    const ai = await getAi();
+    const config: any = {};
+    if (params.systemInstruction) config.systemInstruction = params.systemInstruction;
+    if (params.generationConfig) Object.assign(config, params.generationConfig);
+    config.thinkingConfig = { thinkingBudget: 0 };
+    const response = await ai.models.generateContent({ model, contents: params.contents, config });
+    return response.text || '';
+  }
+
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/llm/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({
+      model,
+      contents: Array.isArray(params.contents) ? params.contents : [params.contents],
+      systemInstruction: params.systemInstruction,
+      generationConfig: params.generationConfig,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error((err as any).error || 'LLM request failed');
+  }
+  const data = await res.json() as any;
+  return data.text || '';
 };
 
 const safeJsonParse = <T>(text: string): T => {
@@ -183,22 +234,19 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
   for (let i = 0; i < sentences.length; i += batchSize) {
     const batch = sentences.slice(i, i + batchSize);
     const batchResult = await withRetry(async () => {
-      const ai = await getAi();
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+      const text = await callUnifiedLLM({
         contents: {
           parts: [{ text: `Translate the following sentences to ${targetLanguage}. Return a JSON array of strings. Maintain 1:1 mapping.\n\nSentences: ${JSON.stringify(batch)}` }]
         },
-        config: {
+        generationConfig: {
           responseMimeType: "application/json",
-          thinkingConfig: { thinkingBudget: 0 },
           responseSchema: {
             type: Type.ARRAY,
             items: { type: Type.STRING }
           }
         }
       });
-      return safeJsonParse<string[]>(response.text || "[]");
+      return safeJsonParse<string[]>(text || "[]");
     });
     results.push(...batchResult);
     if (i + batchSize < sentences.length) {
@@ -409,15 +457,12 @@ export const extractDictionary = async (file: FileContext, chapter: Chapter): Pr
 export const translateDictionary = async (entries: DictionaryEntry[], targetLanguage: string): Promise<DictionaryEntry[]> => {
   if (entries.length === 0) return [];
   return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const text = await callUnifiedLLM({
       contents: {
         parts: [{ text: `Translate the following dictionary entries to ${targetLanguage}. Return JSON array.\n\nEntries: ${JSON.stringify(entries)}` }]
       },
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
         responseSchema: {
           type: Type.ARRAY,
           items: {
@@ -432,7 +477,7 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
         }
       }
     });
-    return safeJsonParse<DictionaryEntry[]>(response.text || "[]");
+    return safeJsonParse<DictionaryEntry[]>(text || "[]");
   });
 };
 
@@ -459,50 +504,35 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
 
 export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
   return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    return callUnifiedLLM({
       contents: {
         parts: [{ text: `Translate the following to ${targetLanguage}. Return ONLY translation.\n\n${text}` }]
-      },
-      config: {
-        thinkingConfig: { thinkingBudget: 0 }
       }
     });
-    return response.text || "";
   });
 };
 
 export const getQuickDefinition = async (text: string, language: string): Promise<string> => {
   return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const result = await callUnifiedLLM({
       contents: {
         parts: [{ text: `Act as a reading assistant. Analyze and define this text in ${language}: "${text}". Output strictly a concise, insightful definition or explanation. No introductory phrases.` }]
-      },
-      config: {
-        thinkingConfig: { thinkingBudget: 0 }
       }
     });
-    const result = response.text?.trim();
-    if (!result) throw new Error("Empty definition generated");
-    return result;
+    if (!result?.trim()) throw new Error("Empty definition generated");
+    return result.trim();
   });
 };
 
 export const batchGetDefinitions = async (items: { id: string, text: string }[], language: string): Promise<Record<string, string>> => {
   if (items.length === 0) return {};
   return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const text = await callUnifiedLLM({
       contents: {
-          parts: [{ text: `Provide concise one-sentence definitions in ${language} for the following items. Return a JSON array of objects, each containing an "id" field (matching the input) and a "definition" field. \n\nItems: ${JSON.stringify(items)}` }] 
+        parts: [{ text: `Provide concise one-sentence definitions in ${language} for the following items. Return a JSON array of objects, each containing an "id" field (matching the input) and a "definition" field. \n\nItems: ${JSON.stringify(items)}` }]
       },
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
         responseSchema: {
           type: Type.ARRAY,
           items: {
@@ -516,8 +546,6 @@ export const batchGetDefinitions = async (items: { id: string, text: string }[],
         }
       }
     });
-    
-    const text = response.text;
     if (!text) return {};
     const rawResults = safeJsonParse<{ id: string, definition: string }[]>(text);
     const mapping: Record<string, string> = {};
@@ -637,21 +665,17 @@ export const sendMessageToChat = async (chat: Chat, message: string | Part[], si
 
 export const generateMindMapStructure = async (items: NotebookItem[], bookTitle: string, context?: string): Promise<MindMapNode> => {
   return withRetry(async () => {
-    const ai = await getAi();
     const contextStr = context ? `\nContext: ${context}` : '';
     const itemsStr = JSON.stringify(items.map(i => ({ text: i.text, type: i.type, definition: i.definition })));
 
-    // Switched to gemini-3-flash-preview to avoid quota exhaustion on pro models
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const text = await callUnifiedLLM({
       contents: {
         parts: [
           { text: `Organize the following study notes from the book "${bookTitle}" into a structured mind map hierarchy. \n${contextStr}\n\nNotes:\n${itemsStr}\n\nOutput a strictly valid JSON object where the root node is the main topic (e.g. Chapter Title), and children are categories or themes. \n\nRULES:\n1. For vocabulary/words: The word itself is a node. Its definition must be a CHILD node of that word.\n2. For themes/sentences: The sentence text is a node. Its interpretation/definition must be a CHILD node of that sentence.\n\nStructure: { id, label, type: 'root'|'category'|'item', children: [...] }. Ensure 'id' is unique for every node.` }
         ]
       },
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -674,9 +698,9 @@ export const generateMindMapStructure = async (items: NotebookItem[], bookTitle:
                          id: { type: Type.STRING },
                          label: { type: Type.STRING },
                          type: { type: Type.STRING },
-                         children: { 
-                             type: Type.ARRAY, 
-                             items: { 
+                         children: {
+                             type: Type.ARRAY,
+                             items: {
                                 type: Type.OBJECT,
                                 properties: {
                                     id: { type: Type.STRING },
@@ -684,7 +708,7 @@ export const generateMindMapStructure = async (items: NotebookItem[], bookTitle:
                                     type: { type: Type.STRING }
                                 },
                                 required: ["id", "label", "type"]
-                             } 
+                             }
                          }
                       },
                       required: ["id", "label", "type"]
@@ -700,6 +724,6 @@ export const generateMindMapStructure = async (items: NotebookItem[], bookTitle:
       }
     });
 
-    return safeJsonParse<MindMapNode>(response.text || "{}");
+    return safeJsonParse<MindMapNode>(text || "{}");
   });
 };
