@@ -2,12 +2,14 @@ interface Env {
   GEMINI_API_KEY: string;
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
+  BYTEPLUS_API_KEY: string;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   ASSETS: Fetcher;
 }
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
+const BYTEPLUS_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -35,6 +37,24 @@ export default {
       const authError = await verifyAuth(request, env);
       if (authError) return authError;
       return handleUnifiedLLM(request, env);
+    }
+
+    if (url.pathname === '/api/seedance/generate') {
+      const authError = await verifyAuth(request, env);
+      if (authError) return authError;
+      return handleSeedanceGenerate(request, env);
+    }
+
+    if (url.pathname === '/api/seedance/poll') {
+      const authError = await verifyAuth(request, env);
+      if (authError) return authError;
+      return handleSeedancePoll(request, env);
+    }
+
+    if (url.pathname === '/api/seedance/download') {
+      const authError = await verifyAuth(request, env);
+      if (authError) return authError;
+      return handleSeedanceDownload(request);
     }
 
     if (url.pathname.startsWith('/api/gemini/')) {
@@ -248,6 +268,60 @@ async function handleVideoDownload(request: Request, env: Env): Promise<Response
   } catch {
     return jsonError('Invalid request', 400);
   }
+}
+
+async function handleSeedanceGenerate(request: Request, env: Env): Promise<Response> {
+  if (!env.BYTEPLUS_API_KEY) return jsonError('BytePlus API key not configured', 500);
+
+  const body = await request.json() as any;
+  const res = await fetch(`${BYTEPLUS_BASE}/contents/generations/tasks`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${env.BYTEPLUS_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: body.model || 'dreamina-seedance-2-0-260128',
+      content: [{ type: 'text', text: body.prompt }],
+      resolution: body.resolution || '1080p',
+      ratio: body.ratio || '16:9',
+      duration: body.duration || 5,
+      generate_audio: body.generate_audio || false,
+      watermark: false,
+    }),
+  });
+
+  const data = await res.json() as any;
+  if (!res.ok) return jsonError(data.error?.message || 'Seedance task creation failed', res.status);
+  return jsonResponse({ taskId: data.id });
+}
+
+async function handleSeedancePoll(request: Request, env: Env): Promise<Response> {
+  if (!env.BYTEPLUS_API_KEY) return jsonError('BytePlus API key not configured', 500);
+
+  const { taskId } = await request.json() as { taskId: string };
+  const res = await fetch(`${BYTEPLUS_BASE}/contents/generations/tasks/${taskId}`, {
+    headers: { 'Authorization': `Bearer ${env.BYTEPLUS_API_KEY}` },
+  });
+
+  const data = await res.json() as any;
+  if (!res.ok) return jsonError(data.error?.message || 'Seedance poll failed', res.status);
+  return jsonResponse({
+    status: data.status,
+    videoUrl: data.content?.video_url || null,
+  });
+}
+
+async function handleSeedanceDownload(request: Request): Promise<Response> {
+  const { url } = await request.json() as { url: string };
+  const response = await fetch(url);
+  return new Response(response.body, {
+    status: response.status,
+    headers: {
+      'Content-Type': response.headers.get('Content-Type') || 'video/mp4',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
 }
 
 function jsonError(message: string, status: number): Response {

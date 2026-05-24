@@ -14,6 +14,7 @@ export const setTTSModel = (model: string) => { _ttsModel = model; };
 export const setImageModel = (model: string) => { _imageModel = model; };
 export const setVideoModel = (model: string) => { _videoModel = model; };
 export const getLLMModel = () => _selectedModel;
+export const getVideoModel = () => _videoModel;
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
 const isGeminiModel = (model?: string) => !(model || _selectedModel).startsWith('gpt-') && !(model || _selectedModel).startsWith('claude-');
@@ -630,6 +631,70 @@ export const generateSummaryVideo = async (
         });
     return await response.blob();
   });
+};
+
+export const generateSeedanceVideo = async (
+  file: FileContext,
+  chapter: Chapter,
+  onStatus: (status: string) => void,
+  style: string = 'Cinematic',
+  language: string = 'English',
+  resolution: '720p' | '1080p' = '720p'
+): Promise<Blob> => {
+  const ai = await getAi();
+  onStatus("Crafting visual narrative...");
+  const promptResponse = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: {
+      parts: [
+        getFilePart(file),
+        { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
+      ]
+    },
+    config: { thinkingConfig: { thinkingBudget: 0 } }
+  });
+  const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
+
+  onStatus("Transmitting to Seedance Core...");
+  const authHeaders = await getAuthHeaders();
+  const createRes = await fetch('/api/seedance/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({
+      model: _videoModel,
+      prompt: videoPrompt,
+      resolution,
+      ratio: '16:9',
+      duration: 5,
+    }),
+  });
+  const { taskId, error } = await createRes.json() as any;
+  if (!createRes.ok || !taskId) throw new Error(error || 'Failed to create Seedance task');
+
+  let status = 'queued';
+  let videoUrl: string | null = null;
+  while (status !== 'succeeded' && status !== 'failed') {
+    onStatus("Synthesizing temporal data...");
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    const pollRes = await fetch('/api/seedance/poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ taskId }),
+    });
+    const pollData = await pollRes.json() as any;
+    status = pollData.status;
+    videoUrl = pollData.videoUrl;
+  }
+
+  if (status === 'failed' || !videoUrl) throw new Error('Seedance video generation failed');
+
+  onStatus("Finalizing transmission...");
+  const dlRes = await fetch('/api/seedance/download', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ url: videoUrl }),
+  });
+  return await dlRes.blob();
 };
 
 export const createChatSession = async (file: FileContext, history: Content[] = []): Promise<Chat> => {

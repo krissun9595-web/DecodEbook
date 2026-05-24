@@ -63,6 +63,8 @@ const IMAGE_MODELS = [
 
 const VIDEO_MODELS = [
   { value: 'veo-3.1-fast-generate-preview', label: 'Veo 3.1 Fast', provider: 'Google' },
+  { value: 'dreamina-seedance-2-0-260128', label: 'Seedance 2.0', provider: 'ByteDance' },
+  { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast', provider: 'ByteDance' },
 ];
 
 const LANGUAGES = [

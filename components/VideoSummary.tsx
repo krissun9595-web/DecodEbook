@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, RefreshCw, Play, Pause, RotateCw, Volume2, VolumeX, Maximize2, Minimize2, Gauge } from 'lucide-react';
 import { Chapter, FileContext } from '../types';
-import { generateSummaryVideo, hasValidKeyForVeo, requestVeoKey } from '../services/gemini';
+import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
@@ -78,22 +78,22 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
     abortRef.current = false;
     setStatus("Authenticating & Generating...");
     try {
-      const hasKey = await hasValidKeyForVeo();
-      if (!hasKey) {
-        setStatus("Waiting for Access Key...");
-        await requestVeoKey();
+      const videoModel = getVideoModel();
+      const useSeedance = videoModel.startsWith('dreamina-') || videoModel.startsWith('doubao-seedance');
+
+      if (!useSeedance) {
+        const hasKey = await hasValidKeyForVeo();
+        if (!hasKey) {
+          setStatus("Waiting for Access Key...");
+          await requestVeoKey();
+        }
       }
       if (abortRef.current) return;
-      
+
       const targetLang = selectedLanguage === 'Original' ? 'the source language of the document' : selectedLanguage;
-      const videoBlob = await generateSummaryVideo(
-        fileContext,
-        chapter,
-        setStatus,
-        selectedStyle,
-        targetLang,
-        selectedResolution as any
-      );
+      const videoBlob = useSeedance
+        ? await generateSeedanceVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any)
+        : await generateSummaryVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any);
 
       if (!abortRef.current) {
         if (videoUrl) URL.revokeObjectURL(videoUrl);
