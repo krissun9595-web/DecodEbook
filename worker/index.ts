@@ -3,13 +3,24 @@ interface Env {
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   BYTEPLUS_API_KEY: string;
+  STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
+  STRIPE_PRO_PRICE_ID: string;
+  STRIPE_UNLIMITED_PRICE_ID: string;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
   ASSETS: Fetcher;
 }
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
 const BYTEPLUS_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';
+
+const TIER_LIMITS: Record<string, { text: number; tts: number; image: number; video: number }> = {
+  free:      { text: 50,  tts: 10,  image: 3,   video: 0 },
+  pro:       { text: 500, tts: 100, image: 30,  video: 5 },
+  unlimited: { text: Infinity, tts: Infinity, image: Infinity, video: Infinity },
+};
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -30,18 +41,41 @@ export default {
       return new Response(JSON.stringify({
         supabaseUrl: env.SUPABASE_URL || '',
         supabaseAnonKey: env.SUPABASE_ANON_KEY || '',
+        stripeProPriceId: env.STRIPE_PRO_PRICE_ID || '',
+        stripeUnlimitedPriceId: env.STRIPE_UNLIMITED_PRICE_ID || '',
       }), { headers: { 'Content-Type': 'application/json' } });
     }
 
+    // --- Stripe routes (webhook has no auth) ---
+    if (url.pathname === '/api/stripe/webhook' && request.method === 'POST') {
+      return handleStripeWebhook(request, env);
+    }
+    if (url.pathname === '/api/stripe/checkout' && request.method === 'POST') {
+      return handleStripeCheckout(request, env);
+    }
+    if (url.pathname === '/api/stripe/portal' && request.method === 'POST') {
+      return handleStripePortal(request, env);
+    }
+    if (url.pathname === '/api/user/tier') {
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      return handleGetTier(auth.userId, env);
+    }
+
+    // --- AI routes (auth + quota) ---
     if (url.pathname === '/api/llm/generate') {
-      const authError = await verifyAuth(request, env);
-      if (authError) return authError;
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      const quota = await checkUsageQuota(auth.userId, 'text', env);
+      if (quota) return quota;
       return handleUnifiedLLM(request, env);
     }
 
     if (url.pathname === '/api/seedance/generate') {
-      const authError = await verifyAuth(request, env);
-      if (authError) return authError;
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      const quota = await checkUsageQuota(auth.userId, 'video', env);
+      if (quota) return quota;
       return handleSeedanceGenerate(request, env);
     }
 
@@ -278,6 +312,290 @@ async function handleVideoDownload(request: Request, env: Env): Promise<Response
     return jsonError('Invalid request', 400);
   }
 }
+
+// --- Auth helper that extracts user ID ---
+
+async function getUserIdFromAuth(request: Request, env: Env): Promise<{ userId: string } | Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return { userId: '' };
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return jsonError('Authentication required', 401);
+  const token = authHeader.slice(7);
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'apikey': env.SUPABASE_ANON_KEY },
+    });
+    if (!res.ok) return jsonError('Invalid or expired session', 401);
+    const user = await res.json() as any;
+    return { userId: user.id };
+  } catch {
+    return jsonError('Auth verification failed', 500);
+  }
+}
+
+// --- Supabase admin fetch (service role, bypasses RLS) ---
+
+function supabaseAdmin(env: Env, path: string, options: RequestInit = {}) {
+  return fetch(`${env.SUPABASE_URL}/rest/v1${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Prefer': 'return=minimal',
+      ...(options.headers || {}),
+    },
+  });
+}
+
+// --- Tier & quota ---
+
+async function handleGetTier(userId: string, env: Env): Promise<Response> {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return jsonResponse({ tier: 'free', text_used: 0, tts_used: 0, image_used: 0, video_used: 0 });
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_tier_and_usage`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ p_user_id: userId }),
+  });
+  if (!res.ok) return jsonResponse({ tier: 'free', text_used: 0, tts_used: 0, image_used: 0, video_used: 0 });
+  const data = await res.json();
+  return jsonResponse(data);
+}
+
+async function checkUsageQuota(userId: string, category: 'text' | 'tts' | 'image' | 'video', env: Env): Promise<Response | null> {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_tier_and_usage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ p_user_id: userId }),
+    });
+    if (!res.ok) return null;
+    const usage = await res.json() as any;
+    const tier = usage.tier || 'free';
+    const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
+    const used = usage[`${category}_used`] || 0;
+    if (used >= limits[category]) {
+      return new Response(JSON.stringify({
+        error: 'Usage limit reached',
+        tier, category, used, limit: limits[category],
+      }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// --- Stripe handlers ---
+
+async function handleStripeCheckout(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return jsonError('Stripe not configured', 500);
+  const auth = await getUserIdFromAuth(request, env);
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
+  const { priceId } = await request.json() as { priceId: string };
+
+  let stripeCustomerId: string | null = null;
+  if (env.SUPABASE_SERVICE_ROLE_KEY) {
+    const subRes = await supabaseAdmin(env, `/subscriptions?user_id=eq.${userId}&select=stripe_customer_id&limit=1`, {
+      method: 'GET', headers: { 'Prefer': '' },
+    });
+    const subs = await subRes.json() as any[];
+    if (subs?.length > 0) stripeCustomerId = subs[0].stripe_customer_id;
+  }
+
+  const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { 'Authorization': request.headers.get('Authorization')!, 'apikey': env.SUPABASE_ANON_KEY },
+  });
+  const userData = await userRes.json() as any;
+
+  const params: Record<string, string> = {
+    'mode': 'subscription',
+    'success_url': `${new URL(request.url).origin}?checkout=success`,
+    'cancel_url': new URL(request.url).origin,
+    'line_items[0][price]': priceId,
+    'line_items[0][quantity]': '1',
+    'metadata[user_id]': userId,
+    'subscription_data[metadata][user_id]': userId,
+  };
+  if (stripeCustomerId) {
+    params['customer'] = stripeCustomerId;
+  } else {
+    params['customer_email'] = userData.email;
+  }
+
+  const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+  const session = await stripeRes.json() as any;
+  if (session.error) return jsonError(session.error.message, 400);
+  return jsonResponse({ url: session.url });
+}
+
+async function handleStripePortal(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return jsonError('Stripe not configured', 500);
+  const auth = await getUserIdFromAuth(request, env);
+  if (auth instanceof Response) return auth;
+
+  const subRes = await supabaseAdmin(env, `/subscriptions?user_id=eq.${auth.userId}&select=stripe_customer_id&limit=1`, {
+    method: 'GET', headers: { 'Prefer': '' },
+  });
+  const subs = await subRes.json() as any[];
+  if (!subs?.length || !subs[0].stripe_customer_id) return jsonError('No subscription found', 404);
+
+  const portalRes = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      'customer': subs[0].stripe_customer_id,
+      'return_url': new URL(request.url).origin,
+    }).toString(),
+  });
+  const portal = await portalRes.json() as any;
+  if (portal.error) return jsonError(portal.error.message, 400);
+  return jsonResponse({ url: portal.url });
+}
+
+async function handleStripeWebhook(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) return jsonError('Stripe not configured', 500);
+  const signature = request.headers.get('stripe-signature');
+  if (!signature) return jsonError('Missing signature', 400);
+
+  const body = await request.text();
+  const valid = await verifyStripeSignature(body, signature, env.STRIPE_WEBHOOK_SECRET);
+  if (!valid) return jsonError('Invalid signature', 400);
+
+  const event = JSON.parse(body);
+
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object;
+      const userId = session.metadata?.user_id;
+      const customerId = session.customer;
+      const subscriptionId = session.subscription;
+      if (!userId || !subscriptionId) break;
+
+      const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+        headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}` },
+      });
+      const sub = await subRes.json() as any;
+      const priceId = sub.items?.data?.[0]?.price?.id;
+      const tier = mapPriceToTier(priceId, env);
+
+      await supabaseAdmin(env, '/subscriptions', {
+        method: 'POST',
+        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({
+          user_id: userId,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          stripe_price_id: priceId,
+          tier,
+          status: sub.status,
+          current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+          cancel_at_period_end: sub.cancel_at_period_end || false,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      break;
+    }
+
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted': {
+      const sub = event.data.object;
+      const priceId = sub.items?.data?.[0]?.price?.id;
+      const tier = event.type === 'customer.subscription.deleted' ? 'free' : mapPriceToTier(priceId, env);
+      const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
+
+      await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${sub.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          tier, status, stripe_price_id: priceId,
+          current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+          cancel_at_period_end: sub.cancel_at_period_end || false,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      break;
+    }
+
+    case 'invoice.payment_failed': {
+      const subscriptionId = event.data.object.subscription;
+      if (subscriptionId) {
+        await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${subscriptionId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'past_due', updated_at: new Date().toISOString() }),
+        });
+      }
+      break;
+    }
+
+    case 'invoice.payment_succeeded': {
+      const subscriptionId = event.data.object.subscription;
+      if (subscriptionId) {
+        const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+          headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}` },
+        });
+        const sub = await subRes.json() as any;
+        await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${subscriptionId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status: 'active',
+            current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        });
+      }
+      break;
+    }
+  }
+
+  return jsonResponse({ received: true });
+}
+
+function mapPriceToTier(priceId: string, env: Env): string {
+  if (env.STRIPE_PRO_PRICE_ID && priceId === env.STRIPE_PRO_PRICE_ID) return 'pro';
+  if (env.STRIPE_UNLIMITED_PRICE_ID && priceId === env.STRIPE_UNLIMITED_PRICE_ID) return 'unlimited';
+  return 'pro';
+}
+
+async function verifyStripeSignature(payload: string, header: string, secret: string): Promise<boolean> {
+  const parts = header.split(',');
+  const tPart = parts.find(p => p.startsWith('t='));
+  const vPart = parts.find(p => p.startsWith('v1='));
+  if (!tPart || !vPart) return false;
+
+  const timestamp = tPart.split('=')[1];
+  const sig = vPart.split('=')[1];
+  if (Math.abs(Math.floor(Date.now() / 1000) - parseInt(timestamp)) > 300) return false;
+
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${timestamp}.${payload}`));
+  const expected = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return expected === sig;
+}
+
+// --- Seedance handlers ---
 
 async function handleSeedanceGenerate(request: Request, env: Env): Promise<Response> {
   if (!env.BYTEPLUS_API_KEY) return jsonError('BytePlus API key not configured', 500);

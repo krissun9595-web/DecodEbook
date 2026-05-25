@@ -41,9 +41,11 @@ export async function bootstrapSupabase(): Promise<boolean> {
   try {
     const res = await fetch('/api/config');
     if (!res.ok) return false;
-    const { supabaseUrl, supabaseAnonKey } = await res.json();
-    if (supabaseUrl && supabaseAnonKey) {
-      configureSupabase(supabaseUrl, supabaseAnonKey);
+    const data = await res.json();
+    if (data.supabaseUrl && data.supabaseAnonKey) {
+      configureSupabase(data.supabaseUrl, data.supabaseAnonKey);
+      if (data.stripeProPriceId) localStorage.setItem('stripe_pro_price_id', data.stripeProPriceId);
+      if (data.stripeUnlimitedPriceId) localStorage.setItem('stripe_unlimited_price_id', data.stripeUnlimitedPriceId);
       return true;
     }
   } catch {}

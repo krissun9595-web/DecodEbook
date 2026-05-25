@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, CreditCard } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
 import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
@@ -10,6 +10,8 @@ import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { PricingModal } from './components/PricingModal';
+import { fetchUserTier, UserTier } from './services/stripe';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import type { User } from '@supabase/supabase-js';
 
@@ -44,6 +46,8 @@ const App: React.FC = () => {
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
   const [configReady, setConfigReady] = useState(false);
@@ -80,7 +84,13 @@ const App: React.FC = () => {
         } catch (e) {}
       }
 
-      // Bootstrap Supabase from Worker config if not already configured
+      // Handle Stripe checkout return
+      const checkoutParam = new URLSearchParams(window.location.search).get('checkout');
+      if (checkoutParam === 'success') {
+        window.history.replaceState({}, '', window.location.pathname);
+        setTimeout(() => { fetchUserTier().then(setUserTier).catch(() => {}); }, 2000);
+      }
+
       bootstrapSupabase().then(async () => {
         if (localStorage.getItem('auth_gate_skipped')) setAuthGatePassed(true);
         // Explicitly exchange OAuth code if present in URL (PKCE flow)
@@ -110,6 +120,7 @@ const App: React.FC = () => {
               }));
             }
           }).catch(e => console.warn('[Supabase] Failed to load settings:', e));
+          fetchUserTier().then(setUserTier).catch(() => {});
         }
       }).catch(e => console.warn('[Supabase] Failed to get session:', e))
         .finally(() => {
@@ -590,6 +601,12 @@ const App: React.FC = () => {
         user={currentUser}
         onAuthChange={setCurrentUser}
       />
+      <PricingModal
+        isOpen={isPricingOpen}
+        onClose={() => setIsPricingOpen(false)}
+        proPriceId={localStorage.getItem('stripe_pro_price_id') || ''}
+        unlimitedPriceId={localStorage.getItem('stripe_unlimited_price_id') || ''}
+      />
 
       <aside 
         className={`${isSidebarOpen ? 'w-80' : 'w-0'} bg-[#050505] flex flex-col overflow-hidden relative z-20 transition-all duration-300 border-r border-zinc-900`}
@@ -714,6 +731,18 @@ const App: React.FC = () => {
           >
             <SettingsIcon size={14} />
             <span>SYS_CONFIG</span>
+          </button>
+          <button
+            onClick={() => setIsPricingOpen(true)}
+            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-[#00f3ff] transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+          >
+            <CreditCard size={14} />
+            <span>SUBSCRIPTION</span>
+            {userTier && userTier.tier !== 'free' && (
+              <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded ${userTier.tier === 'pro' ? 'bg-[#00f3ff]/10 text-[#00f3ff]' : 'bg-amber-500/10 text-amber-400'}`}>
+                {userTier.tier.toUpperCase()}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setIsAuthOpen(true)}
