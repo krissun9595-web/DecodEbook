@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
-import { getSession } from "./supabase";
+import { getSession, getUser, logUsage } from "./supabase";
 
 let _userApiKey: string | null = null;
 let _selectedModel: string = 'gemini-3-flash-preview';
@@ -18,6 +18,18 @@ export const getVideoModel = () => _videoModel;
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
 const isGeminiModel = (model?: string) => !(model || _selectedModel).startsWith('gpt-') && !(model || _selectedModel).startsWith('claude-');
+
+const trackUsage = (action: string, tokensUsed: number = 0) => {
+  getUser().then(user => {
+    if (user) logUsage(user.id, action, tokensUsed);
+  }).catch(() => {});
+};
+
+const extractTokens = (response: any): number => {
+  const meta = response?.usageMetadata;
+  if (!meta) return 0;
+  return (meta.promptTokenCount || 0) + (meta.candidatesTokenCount || 0);
+};
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
   if (!useProxy()) return {};
@@ -44,23 +56,14 @@ const callUnifiedLLM = async (params: {
 }): Promise<string> => {
   const model = params.model || _selectedModel;
 
-  if (isGeminiModel(model) && !useProxy()) {
+  if (isGeminiModel(model)) {
     const ai = await getAi();
     const config: any = {};
     if (params.systemInstruction) config.systemInstruction = params.systemInstruction;
     if (params.generationConfig) Object.assign(config, params.generationConfig);
     config.thinkingConfig = { thinkingBudget: 0 };
     const response = await ai.models.generateContent({ model, contents: params.contents, config });
-    return response.text || '';
-  }
-
-  if (isGeminiModel(model) && useProxy()) {
-    const ai = await getAi();
-    const config: any = {};
-    if (params.systemInstruction) config.systemInstruction = params.systemInstruction;
-    if (params.generationConfig) Object.assign(config, params.generationConfig);
-    config.thinkingConfig = { thinkingBudget: 0 };
-    const response = await ai.models.generateContent({ model, contents: params.contents, config });
+    trackUsage(`text:${model}`, extractTokens(response));
     return response.text || '';
   }
 
@@ -80,6 +83,7 @@ const callUnifiedLLM = async (params: {
     throw new Error((err as any).error || 'LLM request failed');
   }
   const data = await res.json() as any;
+  trackUsage(`text:${model}`, data.usage?.total_tokens || 0);
   return data.text || '';
 };
 
@@ -212,11 +216,11 @@ export const analyzeBookStructure = async (file: FileContext): Promise<BookStruc
       }
     });
     
+    trackUsage('analyzeBookStructure', extractTokens(response));
     if (!response.text) throw new Error("Empty response from model");
-    
+
     const data = safeJsonParse<any>(response.text);
-    
-    // Ensure data integrity
+
     const chapters = Array.isArray(data.chapters) ? data.chapters.map((c: any, i: number) => ({
         id: c.id || i + 1,
         title: c.title || `Chapter ${i + 1}`,
@@ -284,6 +288,7 @@ export const extractChapterText = async (file: FileContext, chapter: Chapter, al
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
+    trackUsage('extractChapterText', extractTokens(response));
     return response.text || "";
   });
 };
@@ -347,6 +352,7 @@ export const generatePodcastAudio = async (
       }
     });
 
+    trackUsage('podcastScript', extractTokens(scriptResponse));
     const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
@@ -366,6 +372,7 @@ export const generatePodcastAudio = async (
       }
     });
     
+    trackUsage('podcastAudio', extractTokens(audioResponse));
     const base64Audio = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Audio generation failed");
     return { audio: base64Audio, script: parsedResponse.script, episodeTitle: parsedResponse.episodeTitle };
@@ -400,6 +407,7 @@ export const extractConcepts = async (file: FileContext, chapter: Chapter): Prom
         }
       }
     });
+    trackUsage('extractConcepts', extractTokens(response));
     return safeJsonParse<Concept[]>(response.text || "[]");
   });
 };
@@ -422,6 +430,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
           } 
       }
     });
+    trackUsage('generateImage', extractTokens(response));
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
@@ -457,6 +466,7 @@ export const extractDictionary = async (file: FileContext, chapter: Chapter): Pr
         }
       }
     });
+    trackUsage('extractDictionary', extractTokens(response));
     return safeJsonParse<DictionaryEntry[]>(response.text || "[]");
   });
 };
@@ -503,6 +513,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
         },
       },
     });
+    trackUsage('tts', extractTokens(response));
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Failed to generate audio");
     return base64Audio;
@@ -598,6 +609,7 @@ export const generateSummaryVideo = async (
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
+    trackUsage('videoPrompt', extractTokens(promptResponse));
     const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
 
     onStatus("Transmitting to Veo Core...");
@@ -617,6 +629,7 @@ export const generateSummaryVideo = async (
       operation = await ai.operations.getVideosOperation({operation: operation});
     }
 
+    trackUsage('videoVeo');
     onStatus("Finalizing transmission...");
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     const authHeaders = await getAuthHeaders();
@@ -653,6 +666,7 @@ export const generateSeedanceVideo = async (
     },
     config: { thinkingConfig: { thinkingBudget: 0 } }
   });
+  trackUsage('videoPrompt', extractTokens(promptResponse));
   const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
 
   onStatus("Transmitting to Seedance Core...");
@@ -687,6 +701,7 @@ export const generateSeedanceVideo = async (
   }
 
   if (status === 'failed' || !videoUrl) throw new Error('Seedance video generation failed');
+  trackUsage('videoSeedance');
 
   onStatus("Finalizing transmission...");
   const dlRes = await fetch('/api/seedance/download', {
@@ -730,6 +745,7 @@ export const sendMessageToChat = async (chat: Chat, message: string | Part[], si
         response = await chat.sendMessage(messageContent as any);
     }
     
+    trackUsage('chat', extractTokens(response));
     return response.text || "";
   }, 3, 2000, signal);
 };

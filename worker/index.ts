@@ -128,7 +128,10 @@ async function callGemini(body: any, env: Env): Promise<Response> {
 
   const data = await res.json() as any;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  return jsonResponse({ text, raw: data });
+  const usage = data.usageMetadata ? {
+    total_tokens: (data.usageMetadata.promptTokenCount || 0) + (data.usageMetadata.candidatesTokenCount || 0),
+  } : undefined;
+  return jsonResponse({ text, usage, raw: data });
 }
 
 async function callOpenAI(body: any, env: Env): Promise<Response> {
@@ -170,7 +173,10 @@ async function callOpenAI(body: any, env: Env): Promise<Response> {
   const data = await res.json() as any;
   if (data.error) return jsonError(data.error.message || 'OpenAI error', res.status);
   const text = data.choices?.[0]?.message?.content || '';
-  return jsonResponse({ text, raw: data });
+  const usage = data.usage ? {
+    total_tokens: data.usage.total_tokens || (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0),
+  } : undefined;
+  return jsonResponse({ text, usage, raw: data });
 }
 
 async function callAnthropic(body: any, env: Env): Promise<Response> {
@@ -212,7 +218,10 @@ async function callAnthropic(body: any, env: Env): Promise<Response> {
   const data = await res.json() as any;
   if (data.error) return jsonError(data.error.message || 'Anthropic error', res.status);
   const text = data.content?.[0]?.text || '';
-  return jsonResponse({ text, raw: data });
+  const usage = data.usage ? {
+    total_tokens: (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0),
+  } : undefined;
+  return jsonResponse({ text, usage, raw: data });
 }
 
 async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<Response> {
