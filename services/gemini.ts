@@ -5,7 +5,7 @@ import { getSession, getUser, logUsage } from "./supabase";
 
 let _userApiKey: string | null = null;
 let _selectedModel: string = 'gemini-3-flash-preview';
-let _ttsModel: string = 'gemini-2.5-flash-preview-tts';
+let _ttsModel: string = 'gemini-3.1-flash-tts-preview';
 let _imageModel: string = 'gemini-3-pro-image-preview';
 let _videoModel: string = 'veo-3.1-fast-generate-preview';
 export const setGeminiApiKey = (key: string) => { _userApiKey = key; };

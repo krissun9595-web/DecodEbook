@@ -54,7 +54,7 @@ const TEXT_MODELS = [
 ];
 
 const TTS_MODELS = [
-  { value: 'gemini-2.5-flash-preview-tts', label: 'Gemini TTS', provider: 'Google' },
+  { value: 'gemini-3.1-flash-tts-preview', label: 'Gemini TTS', provider: 'Google' },
   { value: 'tts-1-hd', label: 'TTS-1 HD', provider: 'OpenAI' },
   { value: 'tts-1', label: 'TTS-1', provider: 'OpenAI' },
 ];
@@ -139,7 +139,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                   <span className="text-[9px] font-mono uppercase">Voice_Synth (TTS)</span>
                 </div>
                 <select
-                  value={settings.ttsModel || 'gemini-2.5-flash-preview-tts'}
+                  value={settings.ttsModel || 'gemini-3.1-flash-tts-preview'}
                   onChange={(e) => onUpdate({ ...settings, ttsModel: e.target.value })}
                   className="w-full bg-[#050505] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
                 >

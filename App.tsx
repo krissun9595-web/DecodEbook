@@ -59,7 +59,7 @@ const App: React.FC = () => {
     letterSpacing: 'normal',
     font: 'Inter',
     llmModel: 'gemini-3-flash-preview',
-    ttsModel: 'gemini-2.5-flash-preview-tts',
+    ttsModel: 'gemini-3.1-flash-tts-preview',
     imageModel: 'gemini-3-pro-image-preview',
     videoModel: 'veo-3.1-fast-generate-preview'
   });
@@ -75,6 +75,7 @@ const App: React.FC = () => {
       if (savedSettings) {
         try {
           const parsed = JSON.parse(savedSettings);
+          if (parsed.ttsModel === 'gemini-2.5-flash-preview-tts') parsed.ttsModel = 'gemini-3.1-flash-tts-preview';
           setSettings(prev => ({ ...prev, ...parsed }));
           if (parsed.geminiKey) setGeminiApiKey(parsed.geminiKey);
           if (parsed.llmModel) setLLMModel(parsed.llmModel);
