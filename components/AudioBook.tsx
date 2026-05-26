@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2 } from 'lucide-react';
 import { Chapter, FileContext, AppSettings, ThemeColor } from '../types';
-import { extractChapterText, generateSpeech, translateSentences, cleanGenAiText } from '../services/gemini';
+import { extractChapterText, generateSpeech, generateSpeechRaw, isOpenAITTS, translateSentences, cleanGenAiText } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
@@ -31,12 +31,21 @@ interface QuantumParticle {
   life: number;
 }
 
-const VOICES = [
+const GEMINI_VOICES = [
   { name: 'Puck', label: 'Puck (Male)', tone: 'NARRATIVE' },
   { name: 'Charon', label: 'Charon (Male)', tone: 'RESONANT' },
   { name: 'Kore', label: 'Kore (Female)', tone: 'MELODIC' },
   { name: 'Fenrir', label: 'Fenrir (Male)', tone: 'RUGGED' },
-  { name: 'Zephyr', label: 'Zephyr (Female)', tone: 'SERENE' }
+  { name: 'Zephyr', label: 'Zephyr (Female)', tone: 'SERENE' },
+];
+
+const OPENAI_VOICES = [
+  { name: 'alloy', label: 'Alloy (Neutral)', tone: 'BALANCED' },
+  { name: 'echo', label: 'Echo (Male)', tone: 'WARM' },
+  { name: 'fable', label: 'Fable (Male)', tone: 'NARRATIVE' },
+  { name: 'onyx', label: 'Onyx (Male)', tone: 'DEEP' },
+  { name: 'nova', label: 'Nova (Female)', tone: 'BRIGHT' },
+  { name: 'shimmer', label: 'Shimmer (Female)', tone: 'SOFT' },
 ];
 
 const LANGUAGES = [
@@ -685,39 +694,73 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           batchedSentences.push(sentencesToSpeak.slice(i, i + TTS_BATCH_SIZE).join(' '));
         }
 
-        const audioResults: (string | null)[] = new Array(batchedSentences.length).fill(null);
-        let firstBatchPlayed = false;
+        let blob: Blob;
+        let finalTimings: ChunkTiming[];
 
-        await processQueue<string, string | null>(
-          batchedSentences,
-          CONCURRENCY_LIMIT,
-          async (batchText, idx) => {
-            if (abortGenerationRef.current) return null;
-            setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
-            const result = await generateSpeech(batchText, capturedVoice);
-            audioResults[idx] = result;
+        if (isOpenAITTS()) {
+          const blobResults: (Blob | null)[] = new Array(batchedSentences.length).fill(null);
+          let firstBatchPlayed = false;
 
-            // Stream: play first completed batch immediately
-            if (!firstBatchPlayed && result) {
-              firstBatchPlayed = true;
-              const partial = buildAudioFromResults(audioResults, sentencesToSpeak);
-              if (partial.totalBytes > 0) {
-                const blob = pcmToWav(partial.mergedBuffer.buffer, 24000);
-                const url = URL.createObjectURL(blob);
-                setTimings(partial.newTimings);
+          await processQueue<string, Blob | null>(
+            batchedSentences,
+            CONCURRENCY_LIMIT,
+            async (batchText, idx) => {
+              if (abortGenerationRef.current) return null;
+              setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
+              const result = await generateSpeech(batchText, capturedVoice);
+              blobResults[idx] = result;
+
+              if (!firstBatchPlayed && result) {
+                firstBatchPlayed = true;
+                const url = URL.createObjectURL(result);
                 setAudioSrc(url);
               }
-            }
-            return result;
-          },
-          () => abortGenerationRef.current
-        );
+              return result;
+            },
+            () => abortGenerationRef.current
+          );
 
-        if (abortGenerationRef.current) return null;
+          if (abortGenerationRef.current) return null;
 
-        // Build final complete audio
-        const final = buildAudioFromResults(audioResults, sentencesToSpeak);
-        const blob = pcmToWav(final.mergedBuffer.buffer, 24000);
+          const validBlobs = blobResults.filter((b): b is Blob => b !== null);
+          blob = new Blob(validBlobs, { type: 'audio/mpeg' });
+          finalTimings = sentencesToSpeak.map((text, i) => ({
+            text, start: 0, end: 0, isWhitespace: false,
+          }));
+        } else {
+          const audioResults: (string | null)[] = new Array(batchedSentences.length).fill(null);
+          let firstBatchPlayed = false;
+
+          await processQueue<string, string | null>(
+            batchedSentences,
+            CONCURRENCY_LIMIT,
+            async (batchText, idx) => {
+              if (abortGenerationRef.current) return null;
+              setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
+              const result = await generateSpeechRaw(batchText, capturedVoice);
+              audioResults[idx] = result;
+
+              if (!firstBatchPlayed && result) {
+                firstBatchPlayed = true;
+                const partial = buildAudioFromResults(audioResults, sentencesToSpeak);
+                if (partial.totalBytes > 0) {
+                  const wavBlob = pcmToWav(partial.mergedBuffer.buffer, 24000);
+                  const url = URL.createObjectURL(wavBlob);
+                  setTimings(partial.newTimings);
+                  setAudioSrc(url);
+                }
+              }
+              return result;
+            },
+            () => abortGenerationRef.current
+          );
+
+          if (abortGenerationRef.current) return null;
+
+          const final = buildAudioFromResults(audioResults, sentencesToSpeak);
+          blob = pcmToWav(final.mergedBuffer.buffer, 24000);
+          finalTimings = final.newTimings;
+        }
 
         // Cache the complete result (runs even if component is unmounted)
         saveFile(genKey, blob, {
@@ -730,10 +773,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           fileType: 'audio',
         }).catch(e => console.warn('Cache save failed:', e));
 
-        // Persist timings at module level so they survive remount
-        timingsCache.set(genKey, final.newTimings);
+        timingsCache.set(genKey, finalTimings);
 
-        return { blob, timings: final.newTimings };
+        return { blob, timings: finalTimings };
       } catch (e) {
         console.error(e);
         return null;
@@ -810,7 +852,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
                  <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">
-                    {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                    {(isOpenAITTS() ? OPENAI_VOICES : GEMINI_VOICES).map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="p-1.5 text-zinc-500"><Globe size={16} /></div>

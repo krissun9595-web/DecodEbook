@@ -72,6 +72,14 @@ export default {
       return handleUnifiedLLM(request, env);
     }
 
+    if (url.pathname === '/api/openai/tts') {
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      const quota = await checkUsageQuota(auth.userId, 'tts', env);
+      if (quota) return quota;
+      return handleOpenAITTS(request, env);
+    }
+
     if (url.pathname === '/api/fal/image') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
@@ -605,6 +613,38 @@ async function verifyStripeSignature(payload: string, header: string, secret: st
 }
 
 // --- Seedance handlers ---
+
+async function handleOpenAITTS(request: Request, env: Env): Promise<Response> {
+  if (!env.OPENAI_API_KEY) return jsonError('OpenAI API key not configured', 500);
+
+  const body = await request.json() as any;
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: body.model || 'tts-1-hd',
+      input: body.input,
+      voice: body.voice || 'alloy',
+      response_format: 'mp3',
+      speed: body.speed || 1.0,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: { message: 'TTS failed' } })) as any;
+    return jsonError(err.error?.message || 'OpenAI TTS failed', res.status);
+  }
+
+  return new Response(res.body, {
+    headers: {
+      'Content-Type': 'audio/mpeg',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
 
 async function handleFalImage(request: Request, env: Env): Promise<Response> {
   if (!env.FAL_API_KEY) return jsonError('fal.ai API key not configured', 500);
