@@ -412,7 +412,32 @@ export const extractConcepts = async (file: FileContext, chapter: Chapter): Prom
   });
 };
 
+const isFalImageModel = (model: string) => model.startsWith('fal-ai/');
+
 export const generateConceptImage = async (visualPrompt: string, style: string = 'Digital Art', aspectRatio: string = '1:1'): Promise<string> => {
+  if (isFalImageModel(_imageModel)) {
+    return withRetry(async () => {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/fal/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          model: _imageModel,
+          prompt: `${style} style: ${visualPrompt}`,
+          aspect_ratio: aspectRatio,
+          resolution: '2K',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Image generation failed' }));
+        throw new Error((err as any).error || 'fal.ai image generation failed');
+      }
+      const data = await res.json() as any;
+      trackUsage('generateImage');
+      return data.imageUrl;
+    });
+  }
+
   if (typeof (window as any).aistudio !== 'undefined') {
     const hasKey = await (window as any).aistudio.hasSelectedApiKey();
     if (!hasKey) await (window as any).aistudio.openSelectKey();
@@ -423,11 +448,11 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
     const response = await ai.models.generateContent({
       model: _imageModel,
       contents: { parts: [{ text: `${style} style: ${visualPrompt}` }] },
-      config: { 
-          imageConfig: { 
+      config: {
+          imageConfig: {
               aspectRatio: aspectRatio as any,
               imageSize: '4K'
-          } 
+          }
       }
     });
     trackUsage('generateImage', extractTokens(response));

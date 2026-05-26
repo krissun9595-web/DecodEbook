@@ -59,6 +59,9 @@ const TTS_MODELS = [
 
 const IMAGE_MODELS = [
   { value: 'gemini-3-pro-image-preview', label: 'Gemini Image', provider: 'Google' },
+  { value: 'fal-ai/nano-banana', label: 'Nano Banana', provider: 'fal.ai' },
+  { value: 'fal-ai/nano-banana-2', label: 'Nano Banana 2', provider: 'fal.ai' },
+  { value: 'fal-ai/nano-banana-pro', label: 'Nano Banana Pro', provider: 'fal.ai' },
 ];
 
 const VIDEO_MODELS = [

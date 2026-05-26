@@ -3,6 +3,7 @@ interface Env {
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   BYTEPLUS_API_KEY: string;
+  FAL_API_KEY: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PRO_PRICE_ID: string;
@@ -69,6 +70,14 @@ export default {
       const quota = await checkUsageQuota(auth.userId, 'text', env);
       if (quota) return quota;
       return handleUnifiedLLM(request, env);
+    }
+
+    if (url.pathname === '/api/fal/image') {
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      const quota = await checkUsageQuota(auth.userId, 'image', env);
+      if (quota) return quota;
+      return handleFalImage(request, env);
     }
 
     if (url.pathname === '/api/seedance/generate') {
@@ -596,6 +605,37 @@ async function verifyStripeSignature(payload: string, header: string, secret: st
 }
 
 // --- Seedance handlers ---
+
+async function handleFalImage(request: Request, env: Env): Promise<Response> {
+  if (!env.FAL_API_KEY) return jsonError('fal.ai API key not configured', 500);
+
+  const body = await request.json() as any;
+  const endpoint = body.model || 'fal-ai/nano-banana-2';
+
+  const res = await fetch(`https://fal.run/${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Key ${env.FAL_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt: body.prompt,
+      num_images: 1,
+      aspect_ratio: body.aspect_ratio || '1:1',
+      output_format: 'png',
+      resolution: body.resolution || '2K',
+      safety_tolerance: '4',
+    }),
+  });
+
+  const data = await res.json() as any;
+  if (!res.ok) return jsonError(data.detail || 'fal.ai image generation failed', res.status);
+
+  const imageUrl = data.images?.[0]?.url;
+  if (!imageUrl) return jsonError('No image generated', 500);
+
+  return jsonResponse({ imageUrl });
+}
 
 async function handleSeedanceGenerate(request: Request, env: Env): Promise<Response> {
   if (!env.BYTEPLUS_API_KEY) return jsonError('BytePlus API key not configured', 500);
