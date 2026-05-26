@@ -734,8 +734,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         timingsCache.set(genKey, final.newTimings);
 
         return { blob, timings: final.newTimings };
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        console.error('TTS generation failed:', e);
+        setGenerationProgress(`ERR: ${e.message || 'Unknown error'}`);
+        await new Promise(r => setTimeout(r, 4000));
         return null;
       } finally {
         inflightAudioMap.delete(genKey);
@@ -746,14 +748,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     try {
       const result = await genPromise;
-      // Only update UI if this component instance is still relevant
       if (audioGenKeyRef.current === genKey && result) {
         const url = URL.createObjectURL(result.blob);
         setTimings(result.timings);
         setAudioSrc(url);
       }
-    } catch (e) {
-      setGenerationProgress("ERR_LINK_FAILED");
+    } catch (e: any) {
+      setGenerationProgress(`ERR: ${e.message || 'Unknown error'}`);
     } finally {
       if (audioGenKeyRef.current === genKey) setIsGenerating(false);
     }
