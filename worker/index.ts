@@ -638,9 +638,10 @@ async function handleOpenAITTS(request: Request, env: Env): Promise<Response> {
     return jsonError(err.error?.message || 'OpenAI TTS failed', res.status);
   }
 
+  const contentType = (body.response_format === 'pcm') ? 'application/octet-stream' : 'audio/mpeg';
   return new Response(res.body, {
     headers: {
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': contentType,
       'Access-Control-Allow-Origin': '*',
     },
   });

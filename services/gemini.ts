@@ -525,6 +525,17 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
 
 export const isOpenAITTS = () => _ttsModel.startsWith('tts-');
 
+const OPENAI_VALID_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+const GEMINI_VALID_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
+
+const resolveVoice = (voiceName: string): string => {
+  if (isOpenAITTS()) {
+    return OPENAI_VALID_VOICES.includes(voiceName.toLowerCase()) ? voiceName.toLowerCase() : 'alloy';
+  }
+  const match = GEMINI_VALID_VOICES.find(v => v.toLowerCase() === voiceName.toLowerCase());
+  return match || 'Kore';
+};
+
 const pcmToWavBlob = (bytes: Uint8Array, sampleRate: number = 24000): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
@@ -553,7 +564,7 @@ const fetchOpenAIPCM = async (text: string, voiceName: string): Promise<Uint8Arr
     body: JSON.stringify({
       model: _ttsModel,
       input: text,
-      voice: voiceName.toLowerCase(),
+      voice: resolveVoice(voiceName),
       response_format: 'pcm',
     }),
   });
@@ -567,9 +578,10 @@ const fetchOpenAIPCM = async (text: string, voiceName: string): Promise<Uint8Arr
 };
 
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<Blob> => {
+  const voice = resolveVoice(voiceName);
   if (isOpenAITTS()) {
     return withRetry(async () => {
-      const pcm = await fetchOpenAIPCM(text, voiceName);
+      const pcm = await fetchOpenAIPCM(text, voice);
       return pcmToWavBlob(pcm, 24000);
     });
   }
@@ -581,7 +593,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
       },
     });
     trackUsage('tts', extractTokens(response));
@@ -595,9 +607,10 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
 };
 
 export const generateSpeechRaw = async (text: string, voiceName: string = 'Kore'): Promise<string | null> => {
+  const voice = resolveVoice(voiceName);
   if (isOpenAITTS()) {
     return withRetry(async () => {
-      const pcm = await fetchOpenAIPCM(text, voiceName);
+      const pcm = await fetchOpenAIPCM(text, voice);
       let binary = '';
       for (let i = 0; i < pcm.length; i++) binary += String.fromCharCode(pcm[i]);
       return btoa(binary);
@@ -611,7 +624,7 @@ export const generateSpeechRaw = async (text: string, voiceName: string = 'Kore'
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
       },
     });
     trackUsage('tts', extractTokens(response));
