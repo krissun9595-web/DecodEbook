@@ -55,8 +55,6 @@ const TEXT_MODELS = [
 
 const TTS_MODELS = [
   { value: 'gemini-3.1-flash-tts-preview', label: 'Gemini TTS', provider: 'Google' },
-  { value: 'tts-1-hd', label: 'TTS-1 HD', provider: 'OpenAI' },
-  { value: 'tts-1', label: 'TTS-1', provider: 'OpenAI' },
 ];
 
 const IMAGE_MODELS = [

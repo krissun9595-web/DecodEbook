@@ -523,69 +523,7 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
   });
 };
 
-export const isOpenAITTS = () => _ttsModel.startsWith('tts-');
-
-const OPENAI_VALID_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
-const GEMINI_VALID_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
-
-const resolveVoice = (voiceName: string): string => {
-  if (isOpenAITTS()) {
-    return OPENAI_VALID_VOICES.includes(voiceName.toLowerCase()) ? voiceName.toLowerCase() : 'alloy';
-  }
-  const match = GEMINI_VALID_VOICES.find(v => v.toLowerCase() === voiceName.toLowerCase());
-  return match || 'Kore';
-};
-
-const pcmToWavBlob = (bytes: Uint8Array, sampleRate: number = 24000): Blob => {
-  const header = new ArrayBuffer(44);
-  const view = new DataView(header);
-  const pcmLen = bytes.length;
-  view.setUint32(0, 0x52494646, false);
-  view.setUint32(4, 36 + pcmLen, true);
-  view.setUint32(8, 0x57415645, false);
-  view.setUint32(12, 0x666d7420, false);
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  view.setUint32(36, 0x64617461, false);
-  view.setUint32(40, pcmLen, true);
-  return new Blob([header, bytes], { type: 'audio/wav' });
-};
-
-const fetchOpenAIPCM = async (text: string, voiceName: string): Promise<Uint8Array> => {
-  const authHeaders = await getAuthHeaders();
-  const res = await fetch('/api/openai/tts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
-    body: JSON.stringify({
-      model: _ttsModel,
-      input: text,
-      voice: resolveVoice(voiceName),
-      response_format: 'pcm',
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'TTS failed' }));
-    throw new Error((err as any).error || 'OpenAI TTS failed');
-  }
-  trackUsage('tts');
-  const buf = await res.arrayBuffer();
-  return new Uint8Array(buf);
-};
-
-export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<Blob> => {
-  const voice = resolveVoice(voiceName);
-  if (isOpenAITTS()) {
-    return withRetry(async () => {
-      const pcm = await fetchOpenAIPCM(text, voice);
-      return pcmToWavBlob(pcm, 24000);
-    });
-  }
-
+export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
   return withRetry(async () => {
     const ai = await getAi();
     const response = await ai.models.generateContent({
@@ -593,42 +531,17 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName },
+          },
+        },
       },
     });
     trackUsage('tts', extractTokens(response));
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Failed to generate audio");
-    const binary = atob(base64Audio);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return pcmToWavBlob(bytes, 24000);
-  });
-};
-
-export const generateSpeechRaw = async (text: string, voiceName: string = 'Kore'): Promise<string | null> => {
-  const voice = resolveVoice(voiceName);
-  if (isOpenAITTS()) {
-    return withRetry(async () => {
-      const pcm = await fetchOpenAIPCM(text, voice);
-      let binary = '';
-      for (let i = 0; i < pcm.length; i++) binary += String.fromCharCode(pcm[i]);
-      return btoa(binary);
-    });
-  }
-
-  return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: _ttsModel,
-      contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-      },
-    });
-    trackUsage('tts', extractTokens(response));
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+    return base64Audio;
   });
 };
 

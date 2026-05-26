@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Book, Copy, Search, Loader2, BookOpen, FilePlus, Volume2, Languages } from 'lucide-react';
 import { getQuickDefinition, generateSpeech, translateText } from '../services/gemini';
 import { NotebookItem } from '../types';
+import { pcmToWav } from '../utils/audio';
 
 interface Props {
   onAddToNotebook: (item: Omit<NotebookItem, 'id' | 'timestamp'>) => void;
@@ -193,8 +194,13 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
       setIsPlaying(true);
       let audioUrl: string | null = null;
       try {
-          const blob = await generateSpeech(menu.text, "Puck");
-          if(blob) {
+          const b64 = await generateSpeech(menu.text, "Puck");
+          if(b64) {
+             const binaryString = atob(b64);
+             const len = binaryString.length;
+             const buffer = new Uint8Array(len);
+             for (let i = 0; i < len; i++) buffer[i] = binaryString.charCodeAt(i);
+             const blob = pcmToWav(buffer.buffer, 24000);
              audioUrl = URL.createObjectURL(blob);
              const audio = new Audio(audioUrl);
              audio.onended = () => {

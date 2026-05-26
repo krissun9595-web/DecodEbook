@@ -84,13 +84,40 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       return result;
   }, [items, activeFilter, activeBookFilter]);
 
+  const pcmToWav = (base64Pcm: string) => {
+    const binaryString = atob(base64Pcm);
+    const len = binaryString.length;
+    const buffer = new ArrayBuffer(44 + len);
+    const view = new DataView(buffer);
+    const writeString = (v: DataView, offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) v.setUint8(offset + i, str.charCodeAt(i));
+    };
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + len, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, 24000, true);
+    view.setUint32(28, 48000, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, len, true);
+    const bytes = new Uint8Array(buffer, 44);
+    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+
   const playPronunciation = async (id: string, text: string) => {
      if (playingId) return;
      setPlayingId(id);
      let audioUrl: string | null = null;
      try {
-          const blob = await generateSpeech(text, "Puck");
-          if(blob) {
+          const b64 = await generateSpeech(text, "Puck");
+          if(b64) {
+             const blob = pcmToWav(b64);
              audioUrl = URL.createObjectURL(blob);
              const audio = new Audio(audioUrl);
              audio.onended = () => {
