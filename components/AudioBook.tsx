@@ -697,37 +697,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         let blob: Blob;
         let finalTimings: ChunkTiming[];
 
-        if (isOpenAITTS()) {
-          const blobResults: (Blob | null)[] = new Array(batchedSentences.length).fill(null);
-          let firstBatchPlayed = false;
-
-          await processQueue<string, Blob | null>(
-            batchedSentences,
-            CONCURRENCY_LIMIT,
-            async (batchText, idx) => {
-              if (abortGenerationRef.current) return null;
-              setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
-              const result = await generateSpeech(batchText, capturedVoice);
-              blobResults[idx] = result;
-
-              if (!firstBatchPlayed && result) {
-                firstBatchPlayed = true;
-                const url = URL.createObjectURL(result);
-                setAudioSrc(url);
-              }
-              return result;
-            },
-            () => abortGenerationRef.current
-          );
-
-          if (abortGenerationRef.current) return null;
-
-          const validBlobs = blobResults.filter((b): b is Blob => b !== null);
-          blob = new Blob(validBlobs, { type: 'audio/mpeg' });
-          finalTimings = sentencesToSpeak.map((text, i) => ({
-            text, start: 0, end: 0, isWhitespace: false,
-          }));
-        } else {
+        {
           const audioResults: (string | null)[] = new Array(batchedSentences.length).fill(null);
           let firstBatchPlayed = false;
 

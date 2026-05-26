@@ -525,25 +525,52 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
 
 export const isOpenAITTS = () => _ttsModel.startsWith('tts-');
 
+const pcmToWavBlob = (bytes: Uint8Array, sampleRate: number = 24000): Blob => {
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const pcmLen = bytes.length;
+  view.setUint32(0, 0x52494646, false);
+  view.setUint32(4, 36 + pcmLen, true);
+  view.setUint32(8, 0x57415645, false);
+  view.setUint32(12, 0x666d7420, false);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  view.setUint32(36, 0x64617461, false);
+  view.setUint32(40, pcmLen, true);
+  return new Blob([header, bytes], { type: 'audio/wav' });
+};
+
+const fetchOpenAIPCM = async (text: string, voiceName: string): Promise<Uint8Array> => {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch('/api/openai/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({
+      model: _ttsModel,
+      input: text,
+      voice: voiceName.toLowerCase(),
+      response_format: 'pcm',
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'TTS failed' }));
+    throw new Error((err as any).error || 'OpenAI TTS failed');
+  }
+  trackUsage('tts');
+  const buf = await res.arrayBuffer();
+  return new Uint8Array(buf);
+};
+
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<Blob> => {
   if (isOpenAITTS()) {
     return withRetry(async () => {
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch('/api/openai/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({
-          model: _ttsModel,
-          input: text,
-          voice: voiceName.toLowerCase(),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'TTS failed' }));
-        throw new Error((err as any).error || 'OpenAI TTS failed');
-      }
-      trackUsage('tts');
-      return await res.blob();
+      const pcm = await fetchOpenAIPCM(text, voiceName);
+      return pcmToWavBlob(pcm, 24000);
     });
   }
 
@@ -554,11 +581,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName },
-          },
-        },
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
       },
     });
     trackUsage('tts', extractTokens(response));
@@ -567,29 +590,20 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
     const binary = atob(base64Audio);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const header = new ArrayBuffer(44);
-    const view = new DataView(header);
-    const pcmLen = bytes.length;
-    const sampleRate = 24000;
-    view.setUint32(0, 0x52494646, false);
-    view.setUint32(4, 36 + pcmLen, true);
-    view.setUint32(8, 0x57415645, false);
-    view.setUint32(12, 0x666d7420, false);
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    view.setUint32(36, 0x64617461, false);
-    view.setUint32(40, pcmLen, true);
-    return new Blob([header, bytes], { type: 'audio/wav' });
+    return pcmToWavBlob(bytes, 24000);
   });
 };
 
 export const generateSpeechRaw = async (text: string, voiceName: string = 'Kore'): Promise<string | null> => {
-  if (isOpenAITTS()) return null;
+  if (isOpenAITTS()) {
+    return withRetry(async () => {
+      const pcm = await fetchOpenAIPCM(text, voiceName);
+      let binary = '';
+      for (let i = 0; i < pcm.length; i++) binary += String.fromCharCode(pcm[i]);
+      return btoa(binary);
+    });
+  }
+
   return withRetry(async () => {
     const ai = await getAi();
     const response = await ai.models.generateContent({

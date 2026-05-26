@@ -628,7 +628,7 @@ async function handleOpenAITTS(request: Request, env: Env): Promise<Response> {
       model: body.model || 'tts-1-hd',
       input: body.input,
       voice: body.voice || 'alloy',
-      response_format: 'mp3',
+      response_format: body.response_format || 'mp3',
       speed: body.speed || 1.0,
     }),
   });
