@@ -1,10 +1,11 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, RefreshCw, Play, Pause, RotateCw, Volume2, VolumeX, Maximize2, Minimize2, Gauge } from 'lucide-react';
+import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, RefreshCw, Play, Pause, RotateCw, Volume2, VolumeX, Maximize2, Minimize2, Gauge, Share2 } from 'lucide-react';
 import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
 import { Loader } from './ui/Loader';
+import { shareFile } from '../utils/share';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
@@ -343,6 +344,9 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                         <a href={videoUrl || '#'} download={`cine-render-${chapter.id}.mp4`} onClick={(e) => e.stopPropagation()} className="text-zinc-600 hover:text-cyan-400 transition-colors">
                             <Download size={18} />
                         </a>
+                        <button onClick={async (e) => { e.stopPropagation(); if (videoUrl) { const r = await fetch(videoUrl); const b = await r.blob(); shareFile(b, `decodebook-video-${chapter.id}.mp4`, chapter.title); }}} className="text-zinc-600 hover:text-cyan-400 transition-colors">
+                            <Share2 size={18} />
+                        </button>
                         <button onClick={toggleFullScreen} className="text-zinc-600 hover:text-cyan-400 transition-colors">
                             {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                         </button>

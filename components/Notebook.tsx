@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 
 import { Loader } from './ui/Loader';
 import { saveFile, buildCacheKey } from '../services/fileCache';
+import { shareFile } from '../utils/share';
 
 interface Props {
   items: NotebookItem[];
@@ -638,11 +639,10 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     }
   };
 
-  const exportToPdf = async () => {
-    if (!layoutMap.nodes.length) return;
+  const buildMindMapPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
+    if (!layoutMap.nodes.length) return null;
 
     try {
-        // Calculate the full bounding box of the entire mind map from layout data
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const node of layoutMap.nodes) {
             minX = Math.min(minX, node.x - 20);
@@ -650,7 +650,6 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
             maxX = Math.max(maxX, node.x + node.width + 30);
             maxY = Math.max(maxY, node.y + node.height / 2 + 20);
         }
-        // Also account for collapse indicators extending past nodes
         for (const node of layoutMap.nodes) {
             if (node.hasChildren) {
                 maxX = Math.max(maxX, node.x + node.width + 20);
@@ -666,19 +665,16 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         const fullW = maxX - minX + padding * 2;
         const fullH = maxY - minY + padding * 2;
 
-        // Build a standalone SVG string containing the full mind map
         let svgParts: string[] = [];
         svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${fullW}" height="${fullH}" viewBox="${minX - padding} ${minY - padding} ${fullW} ${fullH}">`);
         svgParts.push(`<rect x="${minX - padding}" y="${minY - padding}" width="${fullW}" height="${fullH}" fill="#050505"/>`);
         svgParts.push(`<defs><filter id="neon-glow-pdf" x="-10000" y="-10000" width="20000" height="20000" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`);
 
-        // Render links
         for (const link of layoutMap.links) {
             const pathD = `M ${link.source.x} ${link.source.y} C ${link.source.x + 80} ${link.source.y}, ${link.target.x - 80} ${link.target.y}, ${link.target.x} ${link.target.y}`;
             svgParts.push(`<path d="${pathD}" fill="none" stroke="${NEON_BLUE_VAL}" stroke-width="2" stroke-opacity="0.8" stroke-linecap="round" filter="url(#neon-glow-pdf)"/>`);
         }
 
-        // Render nodes
         for (const node of layoutMap.nodes) {
             const isRoot = node.depth === 0;
             const fontSize = Math.max(12, 18 - node.depth * 2);
@@ -729,7 +725,6 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         svgParts.push(`</svg>`);
         const svgString = svgParts.join('');
 
-        // Render SVG to high-resolution canvas
         const scaleFactor = 3;
         const canvas = document.createElement('canvas');
         canvas.width = fullW * scaleFactor;
@@ -749,7 +744,6 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
 
         const dataUrl = canvas.toDataURL('image/png');
 
-        // Create PDF with pages sized to fit the full content
         const isLandscape = fullW >= fullH;
         const doc = new jsPDF({
             orientation: isLandscape ? 'landscape' : 'portrait',
@@ -759,24 +753,42 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
 
         doc.addImage(dataUrl, 'PNG', 0, 0, fullW, fullH);
         const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`;
-        doc.save(filename);
-
-        if (bookId) {
-            const pdfBlob = doc.output('blob');
-            const key = buildCacheKey(bookId, activeChapter?.id || 0, 'mind-map-pdf', String(Date.now()));
-            saveFile(key, pdfBlob, {
-                filename,
-                mimeType: 'application/pdf',
-                timestamp: Date.now(),
-                bookId,
-                chapterId: activeChapter?.id || 0,
-                componentSource: 'notebook',
-                fileType: 'mind-map-pdf',
-            }).catch(e => console.warn('Cache save failed:', e));
-        }
+        const pdfBlob = doc.output('blob');
+        return { blob: pdfBlob, filename };
     } catch (e) {
-        console.error("PDF export failed:", e);
+        console.error("PDF generation failed:", e);
+        return null;
     }
+  };
+
+  const exportToPdf = async () => {
+    const result = await buildMindMapPdfBlob();
+    if (!result) return;
+    const { blob, filename } = result;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    if (bookId) {
+        const key = buildCacheKey(bookId, activeChapter?.id || 0, 'mind-map-pdf', String(Date.now()));
+        saveFile(key, blob, {
+            filename,
+            mimeType: 'application/pdf',
+            timestamp: Date.now(),
+            bookId,
+            chapterId: activeChapter?.id || 0,
+            componentSource: 'notebook',
+            fileType: 'mind-map-pdf',
+        }).catch(e => console.warn('Cache save failed:', e));
+    }
+  };
+
+  const shareMindMap = async () => {
+    const result = await buildMindMapPdfBlob();
+    if (!result) return;
+    shareFile(result.blob, result.filename, `Mind Map - ${activeChapter?.title || bookTitle || 'DecodEbook'}`);
   };
 
   return (
@@ -860,6 +872,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                     <button onClick={exportToXmind} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={16}/></button>
                     <button onClick={exportToDocx} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={16}/></button>
                     <button onClick={exportToPdf} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={16}/></button>
+                    <button onClick={shareMindMap} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={16}/></button>
 
                     <div className="w-[1px] h-10 bg-zinc-800 mx-1"></div>
                     <button onClick={() => setIsMindMapMode(false)} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#ff003c] text-[#ff003c] rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={16}/></button>

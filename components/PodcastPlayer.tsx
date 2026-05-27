@@ -5,6 +5,7 @@ import { generatePodcastAudio } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
+import { shareFile } from '../utils/share';
 
 interface Props {
   chapter: Chapter;
@@ -604,6 +605,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                        <span className="text-[10px] font-mono text-zinc-600 mr-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
                        <button onClick={downloadScript} disabled={!script} className={`p-2 text-zinc-600 transition-colors rounded-full ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={20} /></button>
                        <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={20} /></a>
+                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={20} /></button>
                        <button onClick={() => setIsPlayerMinimized(!isPlayerMinimized)} className="p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={20} /> : <Minimize2 size={20} />}</button>
                    </div>
                </div>

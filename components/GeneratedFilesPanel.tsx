@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save, Share2 } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
+import { shareFile } from '../utils/share';
 import JSZip from 'jszip';
 
 interface Props {
@@ -90,6 +91,16 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('Download failed:', e);
+    }
+  };
+
+  const handleShare = async (file: CachedFileMetadata) => {
+    try {
+      const cached = await getFile(file.key);
+      if (!cached) return;
+      shareFile(cached.blob, file.filename, file.filename);
+    } catch (e) {
+      console.error('Share failed:', e);
     }
   };
 
@@ -260,6 +271,13 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     title="Download"
                   >
                     <Download size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleShare(file)}
+                    className="p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
+                    title="Share"
+                  >
+                    <Share2 size={16} />
                   </button>
                   <button
                     onClick={() => handleDelete(file.key)}

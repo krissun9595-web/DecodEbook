@@ -6,6 +6,7 @@ import { extractChapterText, generateSpeech, translateSentences, cleanGenAiText 
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
+import { shareFile } from '../utils/share';
 
 interface Props {
   chapter: Chapter;
@@ -877,6 +878,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               <div className="flex-1 flex justify-end gap-2 items-center">
                   <span className="text-[10px] font-mono text-zinc-600 mr-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
                   <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={20} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={20} /></button>
                   <button onClick={() => setIsModuleMinimized(!isModuleMinimized)} className="p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50">{isModuleMinimized ? <Maximize2 size={20} /> : <Minimize2 size={20} />}</button>
               </div>
           </div>
