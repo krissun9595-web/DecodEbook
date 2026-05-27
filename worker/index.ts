@@ -676,6 +676,7 @@ async function handleSeedancePoll(request: Request, env: Env): Promise<Response>
   return jsonResponse({
     status: data.status,
     videoUrl: data.content?.video_url || null,
+    tokensUsed: data.usage?.total_tokens || 0,
   });
 }
 

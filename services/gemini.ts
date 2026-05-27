@@ -712,6 +712,7 @@ export const generateSeedanceVideo = async (
 
   let status = 'queued';
   let videoUrl: string | null = null;
+  let tokensUsed = 0;
   while (status !== 'succeeded' && status !== 'failed') {
     onStatus("Synthesizing temporal data...");
     await new Promise(resolve => setTimeout(resolve, 10000));
@@ -723,10 +724,11 @@ export const generateSeedanceVideo = async (
     const pollData = await pollRes.json() as any;
     status = pollData.status;
     videoUrl = pollData.videoUrl;
+    if (pollData.tokensUsed) tokensUsed = pollData.tokensUsed;
   }
 
   if (status === 'failed' || !videoUrl) throw new Error('Seedance video generation failed');
-  trackUsage('videoSeedance');
+  trackUsage('videoSeedance', tokensUsed);
 
   onStatus("Finalizing transmission...");
   const dlRes = await fetch('/api/seedance/download', {
