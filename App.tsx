@@ -15,12 +15,23 @@ import { fetchUserTier, UserTier } from './services/stripe';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import type { User } from '@supabase/supabase-js';
 
-const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer').then(module => ({ default: module.PodcastPlayer })));
-const Visualizer = React.lazy(() => import('./components/Visualizer').then(module => ({ default: module.Visualizer })));
-const VideoSummary = React.lazy(() => import('./components/VideoSummary').then(module => ({ default: module.VideoSummary })));
-const AudioBook = React.lazy(() => import('./components/AudioBook').then(module => ({ default: module.AudioBook })));
-const Notebook = React.lazy(() => import('./components/Notebook').then(module => ({ default: module.Notebook })));
-const GeneratedFilesPanel = React.lazy(() => import('./components/GeneratedFilesPanel').then(module => ({ default: module.GeneratedFilesPanel })));
+const lazyRetry = <T,>(factory: () => Promise<T>): Promise<T> =>
+  factory().catch(() => {
+    const reloaded = sessionStorage.getItem('chunk_reload');
+    if (!reloaded) {
+      sessionStorage.setItem('chunk_reload', '1');
+      window.location.reload();
+    }
+    sessionStorage.removeItem('chunk_reload');
+    return factory();
+  });
+
+const PodcastPlayer = React.lazy(() => lazyRetry(() => import('./components/PodcastPlayer').then(m => ({ default: m.PodcastPlayer }))));
+const Visualizer = React.lazy(() => lazyRetry(() => import('./components/Visualizer').then(m => ({ default: m.Visualizer }))));
+const VideoSummary = React.lazy(() => lazyRetry(() => import('./components/VideoSummary').then(m => ({ default: m.VideoSummary }))));
+const AudioBook = React.lazy(() => lazyRetry(() => import('./components/AudioBook').then(m => ({ default: m.AudioBook }))));
+const Notebook = React.lazy(() => lazyRetry(() => import('./components/Notebook').then(m => ({ default: m.Notebook }))));
+const GeneratedFilesPanel = React.lazy(() => lazyRetry(() => import('./components/GeneratedFilesPanel').then(m => ({ default: m.GeneratedFilesPanel }))));
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.UPLOAD);
