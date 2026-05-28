@@ -801,28 +801,28 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       />
 
       {/* Controller Toolbar */}
-      <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
-          <div className="flex items-center gap-4">
+      <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+          <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
                  <Headphones size={18} className="text-[#00f3ff]" />
                  <span>Voice_Synth</span>
               </div>
           </div>
-          <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-                 <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
-                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">
+          <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
+              <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+                 <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
+                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[70px] md:w-[120px] bg-[#050505]">
                     {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
-                 <div className="p-1.5 text-zinc-500"><Globe size={16} /></div>
-                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; resetAudioState(); }} className="bg-transparent text-xs text-[#00f3ff] outline-none font-mono uppercase w-[120px] bg-[#050505] cursor-pointer">
+                 <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={14} /></div>
+                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none font-mono uppercase w-[70px] md:w-[120px] bg-[#050505] cursor-pointer">
                     {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                  </select>
               </div>
-              <button 
-                onClick={handleInitiateToggle} 
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] min-w-[120px] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
+              <button
+                onClick={handleInitiateToggle}
+                className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
               >
                  {isGenerating ? <Square size={14} fill="currentColor" /> : hasInitiated ? <RefreshCw size={14} /> : <Play size={14} fill="currentColor" />}
                  {isGenerating ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
@@ -862,24 +862,24 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               </div>
           )}
 
-          <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between gap-1">
+          <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between gap-1 overflow-hidden min-w-0">
               <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                    {RATES.map(s => (
                      <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>
                    ))}
               </div>
-              <div className="flex items-center justify-center gap-3 md:gap-6">
-                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={18} /></button>
-                  <button onClick={togglePlay} disabled={!audioSrc} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+              <div className="flex items-center justify-center gap-2 md:gap-6 shrink-0">
+                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={16} /></button>
+                  <button onClick={togglePlay} disabled={!audioSrc} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
                     {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
                   </button>
-                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={18} /></button>
+                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={16} /></button>
               </div>
-              <div className="flex items-center gap-1 md:gap-2 md:flex-1 md:justify-end">
-                  <span className="text-[9px] md:text-[10px] font-mono text-zinc-600">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                  <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={18} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={18} /></button>
-                  <button onClick={() => setIsModuleMinimized(!isModuleMinimized)} className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50">{isModuleMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>
+              <div className="flex items-center gap-0.5 md:gap-2 md:flex-1 md:justify-end min-w-0">
+                  <span className="text-[8px] md:text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                  <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={16} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>
+                  <button onClick={() => setIsModuleMinimized(!isModuleMinimized)} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0">{isModuleMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}</button>
               </div>
           </div>
       </div>
@@ -899,8 +899,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       <button onClick={() => changePage(true)} disabled={currentPage === pages.length - 1} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
                   </div>
                   <div className="flex items-center gap-1 md:gap-2">
-                      <button onClick={() => setViewMode(viewMode === 'split' ? 'single' : 'split')} className={`hidden md:flex items-center gap-2 px-4 py-1.5 rounded-sm text-[10px] font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${viewMode === 'split' ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> SPLIT_VIEW</button>
-                      <button onClick={() => setAutoScroll(!autoScroll)} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC_</span>TRACK</button>
+                      <button onClick={() => setViewMode(viewMode === 'split' ? 'single' : 'split')} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${viewMode === 'split' ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> <span className="hidden sm:inline">SPLIT</span></button>
+                      <button onClick={() => setAutoScroll(!autoScroll)} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC</span></button>
                    </div>
               </div>
           </div>

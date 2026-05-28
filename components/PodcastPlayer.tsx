@@ -517,24 +517,24 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 overflow-hidden text-left">
-       <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2">
-          <div className="flex items-center gap-4">
+       <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2">
+          <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
                  <Mic2 size={18} className="text-[#00f3ff]" />
                  <span>Neural_Podcast</span>
               </div>
           </div>
-          <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-                 <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
-                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+          <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
+              <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+                 <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
+                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[75px] md:w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
-                 <div className="p-1.5 text-zinc-500"><Globe size={16} /></div>
-                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; }} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
+                 <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={14} /></div>
+                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[70px] md:w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
               </div>
-              <button 
-                onClick={handleToggleGeneration} 
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] min-w-[120px] justify-center ${isLoading ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
+              <button
+                onClick={handleToggleGeneration}
+                className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isLoading ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
               >
                  {isLoading ? <Square size={14} fill="currentColor" /> : hasInitiated ? <RefreshCw size={14} /> : <Play size={14} fill="currentColor" />}
                  {isLoading ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
@@ -584,7 +584,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                       </div>
                    </div>
                )}
-               <div className="bg-[#020202] p-3 flex items-center justify-between">
+               <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between overflow-hidden min-w-0 gap-1">
                    <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                         {SPEEDS.map(s => (
                           <button
@@ -596,17 +596,17 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                           </button>
                         ))}
                    </div>
-                   <div className="flex items-center justify-center gap-3 md:gap-6">
-                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={18} /></button>
-                       <button onClick={togglePlay} disabled={!audioSrc} className={`w-9 h-9 md:w-10 md:h-10 rounded-full transition-all flex items-center justify-center border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}</button>
-                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={18} /></button>
+                   <div className="flex items-center justify-center gap-2 md:gap-6 shrink-0">
+                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={16} /></button>
+                       <button onClick={togglePlay} disabled={!audioSrc} className={`w-9 h-9 md:w-10 md:h-10 rounded-full transition-all flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}</button>
+                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={16} /></button>
                    </div>
-                   <div className="flex items-center gap-1 md:gap-2 md:flex-1 md:justify-end">
-                       <span className="text-[9px] md:text-[10px] font-mono text-zinc-600">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                       <button onClick={downloadScript} disabled={!script} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={18} /></button>
-                       <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={18} /></a>
-                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={18} /></button>
-                       <button onClick={() => setIsPlayerMinimized(!isPlayerMinimized)} className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>
+                   <div className="flex items-center gap-0.5 md:gap-2 md:flex-1 md:justify-end min-w-0">
+                       <span className="text-[8px] md:text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                       <button onClick={downloadScript} disabled={!script} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={16} /></button>
+                       <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={16} /></a>
+                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>
+                       <button onClick={() => setIsPlayerMinimized(!isPlayerMinimized)} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}</button>
                    </div>
                </div>
            </div>
