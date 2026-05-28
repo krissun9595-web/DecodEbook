@@ -3,7 +3,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
     <title>DecodEbook // Neural Interface</title>
     <link rel="icon" href="/favicon.ico" sizes="48x48">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -26,6 +26,19 @@
         font-family: 'Inter', sans-serif;
         background-color: var(--bg-dark);
         color: #e4e4e7;
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: transparent;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+
+      /* Prevent iOS bounce scroll on fixed layouts */
+      #root {
+        overflow: hidden;
+        position: fixed;
+        inset: 0;
       }
 
       /* Tech Font Class */

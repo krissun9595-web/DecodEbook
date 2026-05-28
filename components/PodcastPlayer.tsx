@@ -585,28 +585,28 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                    </div>
                )}
                <div className="bg-[#020202] p-3 flex items-center justify-between">
-                   <div className="flex-1 flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
+                   <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                         {SPEEDS.map(s => (
-                          <button 
-                            key={s} 
-                            onClick={() => setPlaybackRate(s)} 
+                          <button
+                            key={s}
+                            onClick={() => setPlaybackRate(s)}
                             className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}
                           >
                             {s.toFixed(2)}x
                           </button>
                         ))}
                    </div>
-                   <div className="flex-2 flex items-center justify-center gap-6">
-                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={20} /></button>
-                       <button onClick={togglePlay} disabled={!audioSrc} className={`w-10 h-10 rounded-full transition-all flex items-center justify-center border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}</button>
-                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={20} /></button>
+                   <div className="flex items-center justify-center gap-3 md:gap-6">
+                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={18} /></button>
+                       <button onClick={togglePlay} disabled={!audioSrc} className={`w-9 h-9 md:w-10 md:h-10 rounded-full transition-all flex items-center justify-center border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}</button>
+                       <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={18} /></button>
                    </div>
-                   <div className="flex-1 flex justify-end gap-2 items-center">
-                       <span className="text-[10px] font-mono text-zinc-600 mr-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
-                       <button onClick={downloadScript} disabled={!script} className={`p-2 text-zinc-600 transition-colors rounded-full ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={20} /></button>
-                       <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={20} /></a>
-                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={20} /></button>
-                       <button onClick={() => setIsPlayerMinimized(!isPlayerMinimized)} className="p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={20} /> : <Minimize2 size={20} />}</button>
+                   <div className="flex items-center gap-1 md:gap-2 md:flex-1 md:justify-end">
+                       <span className="text-[9px] md:text-[10px] font-mono text-zinc-600">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                       <button onClick={downloadScript} disabled={!script} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={18} /></button>
+                       <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={18} /></a>
+                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={18} /></button>
+                       <button onClick={() => setIsPlayerMinimized(!isPlayerMinimized)} className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>
                    </div>
                </div>
            </div>

@@ -862,24 +862,24 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               </div>
           )}
 
-          <div className="bg-[#020202] p-3 flex items-center justify-between">
-              <div className="flex-1 flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
+          <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between gap-1">
+              <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                    {RATES.map(s => (
                      <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>
                    ))}
               </div>
-              <div className="flex-2 flex items-center justify-center gap-6">
-                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={20} /></button>
-                  <button onClick={togglePlay} disabled={!audioSrc} className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
-                    {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}
+              <div className="flex items-center justify-center gap-3 md:gap-6">
+                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={18} /></button>
+                  <button onClick={togglePlay} disabled={!audioSrc} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                    {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
                   </button>
-                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={20} /></button>
+                  <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1.5 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={18} /></button>
               </div>
-              <div className="flex-1 flex justify-end gap-2 items-center">
-                  <span className="text-[10px] font-mono text-zinc-600 mr-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
-                  <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={20} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={20} /></button>
-                  <button onClick={() => setIsModuleMinimized(!isModuleMinimized)} className="p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50">{isModuleMinimized ? <Maximize2 size={20} /> : <Minimize2 size={20} />}</button>
+              <div className="flex items-center gap-1 md:gap-2 md:flex-1 md:justify-end">
+                  <span className="text-[9px] md:text-[10px] font-mono text-zinc-600">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                  <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={18} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1.5 md:p-2 text-zinc-600 transition-colors rounded-full ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={18} /></button>
+                  <button onClick={() => setIsModuleMinimized(!isModuleMinimized)} className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50">{isModuleMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}</button>
               </div>
           </div>
       </div>
@@ -892,15 +892,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         <>
            {/* Reader Mode Controls */}
            <div className="flex shrink-0 border border-zinc-800 bg-[#0a0a0c]/90 backdrop-blur-md rounded-sm z-10 w-full flex-col overflow-hidden">
-              <div className="flex items-center justify-between p-2">
-                   <div className="flex items-center gap-2">
-                      <button onClick={() => changePage(false)} disabled={currentPage === 0} className="flex items-center justify-center w-10 py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
-                      <h3 className="text-[10px] font-bold text-[#00f3ff] font-tech uppercase tracking-widest px-4">PG.{String(currentPage + 1).padStart(2,'0')}</h3>
-                      <button onClick={() => changePage(true)} disabled={currentPage === pages.length - 1} className="flex items-center justify-center w-10 py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
+              <div className="flex items-center justify-between p-1.5 md:p-2 gap-1">
+                   <div className="flex items-center gap-1 md:gap-2">
+                      <button onClick={() => changePage(false)} disabled={currentPage === 0} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
+                      <h3 className="text-[9px] md:text-[10px] font-bold text-[#00f3ff] font-tech uppercase tracking-widest px-2 md:px-4">PG.{String(currentPage + 1).padStart(2,'0')}</h3>
+                      <button onClick={() => changePage(true)} disabled={currentPage === pages.length - 1} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
                   </div>
-                  <div className="flex items-center gap-2">
-                      <button onClick={() => setViewMode(viewMode === 'split' ? 'single' : 'split')} className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-[10px] font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${viewMode === 'split' ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> SPLIT_VIEW</button>
-                      <button onClick={() => setAutoScroll(!autoScroll)} className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-[10px] font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${autoScroll ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> SYNC_TRACK</button>
+                  <div className="flex items-center gap-1 md:gap-2">
+                      <button onClick={() => setViewMode(viewMode === 'split' ? 'single' : 'split')} className={`hidden md:flex items-center gap-2 px-4 py-1.5 rounded-sm text-[10px] font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${viewMode === 'split' ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> SPLIT_VIEW</button>
+                      <button onClick={() => setAutoScroll(!autoScroll)} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC_</span>TRACK</button>
                    </div>
               </div>
           </div>

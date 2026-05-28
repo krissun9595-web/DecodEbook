@@ -280,10 +280,10 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<
   });
   targetUrl.searchParams.set('key', env.GEMINI_API_KEY);
 
+  const ALLOWED_HEADERS = ['content-type', 'accept', 'accept-encoding', 'accept-language', 'user-agent', 'x-goog-api-client'];
   const headers = new Headers();
   for (const [k, v] of request.headers.entries()) {
-    if (['host', 'x-goog-api-key', 'cf-connecting-ip', 'cf-ray', 'authorization'].includes(k.toLowerCase())) continue;
-    headers.set(k, v);
+    if (ALLOWED_HEADERS.includes(k.toLowerCase())) headers.set(k, v);
   }
 
   const init: RequestInit = { method: request.method, headers };

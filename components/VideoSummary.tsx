@@ -226,26 +226,26 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 text-left overflow-hidden">
-      <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
-          <div className="flex items-center gap-4">
+      <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+          <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
                  <Film size={18} className="text-[#00f3ff]" />
                  <span>Cine_Render</span>
               </div>
           </div>
-          <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-                 <div className="flex items-center gap-2">
-                    <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
-                    <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{STYLES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+          <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
+              <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+                 <div className="flex items-center gap-1 md:gap-2">
+                    <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
+                    <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{STYLES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  </div>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
-                 <div className="flex items-center gap-2">
-                    <div className="p-1.5 text-zinc-500"><Maximize2 size={16} /></div>
-                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
+                 <div className="flex items-center gap-1 md:gap-2">
+                    <div className="p-1 md:p-1.5 text-zinc-500"><Maximize2 size={14} /></div>
+                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[60px] md:w-[120px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
                  </div>
               </div>
-              <button onClick={handleToggleGeneration} className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] min-w-[120px] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}>
+              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}>
                 {currentStatusIcon}
                 {currentStatusLabel}
               </button>

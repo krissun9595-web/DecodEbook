@@ -50,7 +50,7 @@ const App: React.FC = () => {
   const activeChapter = activeBook?.chapters.find(c => c.id === activeChapterId) || null;
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.AUDIOBOOK);
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showLibraryList, setShowLibraryList] = useState(false);
@@ -536,24 +536,24 @@ const App: React.FC = () => {
 
   if (view === AppView.UPLOAD) {
     return (
-      <div className="min-h-screen bg-[#020202] bg-grid flex flex-col items-center justify-center p-6 relative overflow-hidden font-tech text-left">
-        <div className="absolute top-8 left-8 w-24 h-24 border-l border-t border-zinc-800 rounded-tl-lg pointer-events-none"></div>
-        <div className="absolute bottom-8 right-8 w-24 h-24 border-r border-b border-zinc-800 rounded-br-lg pointer-events-none"></div>
+      <div className="min-h-screen bg-[#020202] bg-grid flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-tech text-left">
+        <div className="absolute top-8 left-8 w-24 h-24 border-l border-t border-zinc-800 rounded-tl-lg pointer-events-none hidden md:block"></div>
+        <div className="absolute bottom-8 right-8 w-24 h-24 border-r border-b border-zinc-800 rounded-br-lg pointer-events-none hidden md:block"></div>
 
-        <div className="z-10 max-w-lg w-full text-center space-y-12">
+        <div className="z-10 max-w-lg w-full text-center space-y-8 md:space-y-12">
           <div className="space-y-2 animate-fade-in-up text-center">
              <div className="flex items-center justify-center gap-2 mb-4">
-                <Terminal size={32} className="text-[#00f3ff]" />
+                <Terminal size={28} className="text-[#00f3ff] md:w-8 md:h-8" />
              </div>
-            <h1 className="text-7xl font-bold tracking-tighter text-white drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">
+            <h1 className="text-4xl md:text-7xl font-bold tracking-tighter text-white drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">
               Decod<span className="text-[#00f3ff]">Ebook</span>
             </h1>
-            <p className="text-zinc-500 tracking-[0.2em] text-xs uppercase">
+            <p className="text-zinc-500 tracking-[0.2em] text-[10px] md:text-xs uppercase">
               V.4.2 // Neural Text Decoding Interface
             </p>
           </div>
 
-          <div className="relative group animate-fade-in-up hud-border bg-[#050505] p-10 transition-all duration-500 hover:shadow-[0_0_30px_rgba(0,243,255,0.1)]" style={{ animationDelay: '0.1s' }}>
+          <div className="relative group animate-fade-in-up hud-border bg-[#050505] p-6 md:p-10 transition-all duration-500 hover:shadow-[0_0_30px_rgba(0,243,255,0.1)]" style={{ animationDelay: '0.1s' }}>
               {isProcessing ? (
                 <Loader text="DECODING_SOURCE..." />
               ) : (
@@ -593,13 +593,15 @@ const App: React.FC = () => {
     );
   }
 
+  const closeSidebarMobile = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
+
   return (
     <div className="flex h-screen bg-[#020202] bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
       <GlobalContextLayer onAddToNotebook={handleAddToNotebook} activeLanguage={settings.targetLanguage} />
-      <AIAssistant 
-        fileContext={activeFileContext} 
-        bookTitle={activeBook?.title} 
-        bookId={activeBook?.id} 
+      <AIAssistant
+        fileContext={activeFileContext}
+        bookTitle={activeBook?.title}
+        bookId={activeBook?.id}
       />
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -620,8 +622,10 @@ const App: React.FC = () => {
         unlimitedPriceId={localStorage.getItem('stripe_unlimited_price_id') || ''}
       />
 
-      <aside 
-        className={`${isSidebarOpen ? 'w-80' : 'w-0'} bg-[#050505] flex flex-col overflow-hidden relative z-20 transition-all duration-300 border-r border-zinc-900`}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-72 md:w-80 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
       >
         <div className="p-4 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-[#00f3ff] opacity-20"></div>
@@ -667,6 +671,7 @@ const App: React.FC = () => {
                                 setActiveBookId(item.book.id);
                                 if(item.book.chapters.length > 0) setActiveChapterId(item.book.chapters[0].id);
                                 setShowLibraryList(false);
+                                closeSidebarMobile();
                             }}
                             className="flex items-center gap-3 flex-1 min-w-0"
                         >
@@ -695,7 +700,7 @@ const App: React.FC = () => {
                     return (
                         <div key={chapter.id} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
                             <button
-                                onClick={() => setActiveChapterId(chapter.id)}
+                                onClick={() => { setActiveChapterId(chapter.id); closeSidebarMobile(); }}
                                 className={`flex-1 text-left flex items-center gap-3 border-l-2 py-1 transition-all min-w-0 pr-2 ${
                                     activeChapterId === chapter.id 
                                     ? 'border-[#00f3ff]' 
@@ -767,47 +772,73 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
-        <header className="h-14 border-b border-zinc-900 flex items-center justify-between px-4 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors">
-              {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
-            <div className="h-4 w-[1px] bg-zinc-800 mx-1"></div>
-            {activeChapterId ? (
-                <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5">
-                        SEC.{String(activeChapterId || 0).padStart(2, '0')}
-                    </span>
-                    <ChevronRight size={12} className="text-zinc-700" />
-                    <span className="text-xs font-bold text-[#00f3ff] font-tech tracking-wide truncate max-w-[200px]">
-                        {activeChapter?.title.toUpperCase()}
-                    </span>
-                </div>
-            ) : (
-                <span className="text-xs font-tech text-zinc-500 tracking-widest">AWAITING_INPUT</span>
-            )}
+        <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
+          <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
+                {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+              </button>
+              <div className="h-4 w-[1px] bg-zinc-800 shrink-0"></div>
+              {activeChapterId ? (
+                  <div className="flex items-center gap-1.5 md:gap-2 min-w-0">
+                      <span className="text-[8px] md:text-[9px] font-mono text-zinc-600 bg-zinc-900 border border-zinc-800 px-1 md:px-1.5 py-0.5 shrink-0">
+                          SEC.{String(activeChapterId || 0).padStart(2, '0')}
+                      </span>
+                      <ChevronRight size={10} className="text-zinc-700 shrink-0 hidden sm:block" />
+                      <span className="text-[10px] md:text-xs font-bold text-[#00f3ff] font-tech tracking-wide truncate">
+                          {activeChapter?.title.toUpperCase()}
+                      </span>
+                  </div>
+              ) : (
+                  <span className="text-[10px] md:text-xs font-tech text-zinc-500 tracking-widest">AWAITING_INPUT</span>
+              )}
+            </div>
+
+            <div className="hidden md:flex items-center bg-zinc-950 border border-zinc-900 p-0.5 rounded-sm">
+              {[
+                { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE_SYNTH" },
+                { id: Tab.PODCAST, icon: Mic2, label: "NET_CAST" },
+                { id: Tab.CONCEPTS, icon: ImageIcon, label: "VISUAL_CORE" },
+                { id: Tab.ANIMATION, icon: Film, label: "CINE_RENDER" },
+                { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "MEM_LOG" },
+                { id: Tab.GEN_FILES, icon: HardDrive, label: "GEN_FILES" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id as Tab); }}
+                  className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
+                    activeTab === tab.id
+                      ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'
+                      : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <tab.icon size={12} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
+                  <span className="hidden xl:inline">{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex items-center bg-zinc-950 border border-zinc-900 p-0.5 rounded-sm">
+          <div className="flex md:hidden overflow-x-auto border-t border-zinc-900/50 bg-black/80">
             {[
-              { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE_SYNTH" },
-              { id: Tab.PODCAST, icon: Mic2, label: "NET_CAST" },
-              { id: Tab.CONCEPTS, icon: ImageIcon, label: "VISUAL_CORE" },
-              { id: Tab.ANIMATION, icon: Film, label: "CINE_RENDER" },
-              { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "MEM_LOG" },
-              { id: Tab.GEN_FILES, icon: HardDrive, label: "GEN_FILES" },
+              { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE" },
+              { id: Tab.PODCAST, icon: Mic2, label: "CAST" },
+              { id: Tab.CONCEPTS, icon: ImageIcon, label: "IMAGE" },
+              { id: Tab.ANIMATION, icon: Film, label: "VIDEO" },
+              { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "NOTES" },
+              { id: Tab.GEN_FILES, icon: HardDrive, label: "FILES" },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id as Tab); }}
-                className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
-                  activeTab === tab.id 
-                    ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'
-                    : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900'
+                className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all ${
+                  activeTab === tab.id
+                    ? 'text-[#00f3ff] bg-[#00f3ff]/10 border-b-2 border-[#00f3ff]'
+                    : 'text-zinc-600 border-b-2 border-transparent'
                 }`}
               >
-                <tab.icon size={12} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
-                <span className="hidden xl:inline">{tab.label}</span>
+                <tab.icon size={14} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
+                <span className="text-[7px] font-bold font-tech tracking-wide">{tab.label}</span>
               </button>
             ))}
           </div>
