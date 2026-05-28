@@ -862,12 +862,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               </div>
           )}
 
-          <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between gap-1 overflow-hidden min-w-0">
-              <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
-              <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
-                   {RATES.map(s => (
-                     <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>
-                   ))}
+          <div className="bg-[#020202] p-2 md:p-3 flex items-center gap-1 overflow-hidden min-w-0">
+              <div className="flex-1 flex items-center min-w-0">
+                  <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
+                  <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
+                       {RATES.map(s => (
+                         <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>
+                       ))}
+                  </div>
               </div>
               <div className="flex items-center justify-center gap-2 md:gap-6 shrink-0">
                   <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={16} /></button>
@@ -876,7 +878,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   </button>
                   <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={16} /></button>
               </div>
-              <div className="flex items-center gap-0.5 md:gap-2 md:flex-1 md:justify-end min-w-0">
+              <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="text-[8px] md:text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                   <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={16} /></a>
                   <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>

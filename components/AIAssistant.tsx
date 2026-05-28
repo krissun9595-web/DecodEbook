@@ -79,60 +79,71 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     prevBookId.current = bookId;
   }, [bookId, fileContext]);
 
-  // Dragging Logic
+  // Dragging Logic (mouse + touch)
   useEffect(() => {
+    const clampPosition = (clientX: number, clientY: number) => {
+      let newX = clientX - dragOffset.x;
+      let newY = clientY - dragOffset.y;
+      const currentWidth = isOpen ? EXPANDED_WIDTH : SPHERE_SIZE;
+      const currentHeight = isOpen ? EXPANDED_HEIGHT : SPHERE_SIZE;
+      if (newX < 0) newX = 0;
+      if (newY < 0) newY = 0;
+      if (newX + currentWidth > window.innerWidth) newX = window.innerWidth - currentWidth;
+      if (newY + currentHeight > window.innerHeight) newY = window.innerHeight - currentHeight;
+      return { x: newX, y: newY };
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging && !isFullScreen) {
-        let newX = e.clientX - dragOffset.x;
-        let newY = e.clientY - dragOffset.y;
-
-        const currentWidth = isOpen ? EXPANDED_WIDTH : SPHERE_SIZE;
-        const currentHeight = isOpen ? EXPANDED_HEIGHT : SPHERE_SIZE;
-
-        // Strict boundary clamping
-        if (newX < 0) newX = 0;
-        if (newY < 0) newY = 0;
-        if (newX + currentWidth > window.innerWidth) newX = window.innerWidth - currentWidth;
-        if (newY + currentHeight > window.innerHeight) newY = window.innerHeight - currentHeight;
-
-        setPosition({ x: newX, y: newY });
+      if (isDragging && !isFullScreen) setPosition(clampPosition(e.clientX, e.clientY));
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isDragging && !isFullScreen && e.touches.length === 1) {
+        e.preventDefault();
+        setPosition(clampPosition(e.touches[0].clientX, e.touches[0].clientY));
       }
     };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
+    const handleEnd = () => setIsDragging(false);
 
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleEnd);
+      window.addEventListener('touchcancel', handleEnd);
     }
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
     };
   }, [isDragging, dragOffset, isOpen, isFullScreen]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const startDrag = (clientX: number, clientY: number) => {
     if (isFullScreen) return;
-    e.stopPropagation();
     setIsDragging(true);
-    setDragStartPosition({ x: e.clientX, y: e.clientY });
-    setDragOffset({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
-    });
+    setDragStartPosition({ x: clientX, y: clientY });
+    setDragOffset({ x: clientX - position.x, y: clientY - position.y });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    startDrag(e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      startDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
   };
 
   const handleClick = (e: React.MouseEvent) => {
-      // Calculate distance moved
       const dist = Math.sqrt(
-          Math.pow(e.clientX - dragStartPosition.x, 2) + 
+          Math.pow(e.clientX - dragStartPosition.x, 2) +
           Math.pow(e.clientY - dragStartPosition.y, 2)
       );
-      
-      // Only treat as click if moved less than 5 pixels
       if (dist < 5) {
           if (!isOpen) setIsOpen(true);
       }
@@ -272,8 +283,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
             <div 
                 ref={sphereRef}
                 onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
                 onClick={handleClick}
-                className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-sm border-2 border-[#00f3ff] shadow-[0_0_25px_rgba(0,243,255,0.6)] flex items-center justify-center cursor-grab active:cursor-grabbing group relative overflow-visible transition-transform hover:scale-110 animate-float"
+                className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-sm border-2 border-[#00f3ff] shadow-[0_0_25px_rgba(0,243,255,0.6)] flex items-center justify-center cursor-grab active:cursor-grabbing group relative overflow-visible transition-transform hover:scale-110 animate-float touch-none"
             >
                 <div className="absolute inset-0 bg-gradient-to-tr from-[#00f3ff]/40 to-transparent rounded-full animate-pulse-slow"></div>
                 <Cpu className="text-[#00f3ff] relative z-10 w-8 h-8 drop-shadow-[0_0_5px_rgba(0,243,255,1)]" />
@@ -305,7 +317,8 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 {/* Header - Draggable unless full screen */}
                 <div 
                     onMouseDown={handleMouseDown}
-                    className={`p-3 bg-zinc-900/90 border-b border-[#00f3ff]/20 flex items-center justify-between select-none shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
+                    onTouchStart={handleTouchStart}
+                    className={`p-3 bg-zinc-900/90 border-b border-[#00f3ff]/20 flex items-center justify-between select-none shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
                 >
                     <div className="flex items-center gap-2 text-[#00f3ff]">
                         <Zap size={16} className="fill-current" />
@@ -360,8 +373,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
 
                 {/* Input Area */}
                 <div 
-                    className={`p-3 bg-zinc-900/90 border-t border-[#00f3ff]/20 flex gap-2 shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
+                    className={`p-3 bg-zinc-900/90 border-t border-[#00f3ff]/20 flex gap-2 shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
                     onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
                 >
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleStop(); }}
