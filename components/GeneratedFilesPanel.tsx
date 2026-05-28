@@ -237,54 +237,55 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             return (
               <div
                 key={file.key}
-                className="bg-[#0a0a0c] border border-zinc-800 rounded-lg p-4 flex items-center gap-4 hover:border-zinc-700 transition-all group"
+                className="bg-[#0a0a0c] border border-zinc-800 rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 transition-all group"
               >
                 {/* Icon */}
-                <div className={`w-10 h-10 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
+                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
                   {config.icon}
                 </div>
 
                 {/* File Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm text-zinc-200 font-medium truncate">{file.filename}</span>
-                    <span className={`text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full border border-zinc-800 ${config.color}`}>
+                    <span className="text-xs md:text-sm text-zinc-200 font-medium truncate">{file.filename}</span>
+                    <span className={`hidden md:inline text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full border border-zinc-800 shrink-0 ${config.color}`}>
                       {config.label}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 text-[10px] font-mono text-zinc-600">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] md:text-[10px] font-mono text-zinc-600">
+                    <span className={`md:hidden ${config.color}`}>{config.label}</span>
                     <span>{formatFileSize(file.size)}</span>
-                    <span className="text-zinc-800">|</span>
-                    <span className="truncate max-w-[150px]">{getBookTitle(file.bookId)}</span>
-                    <span className="text-zinc-800">|</span>
+                    <span className="hidden md:inline text-zinc-800">|</span>
+                    <span className="truncate max-w-[100px] md:max-w-[150px]">{getBookTitle(file.bookId)}</span>
+                    <span className="hidden md:inline text-zinc-800">|</span>
                     <span>CH.{String(file.chapterId).padStart(2, '0')}</span>
-                    <span className="text-zinc-800">|</span>
+                    <span className="hidden md:inline text-zinc-800">|</span>
                     <span>{formatRelativeTime(file.timestamp)}</span>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Actions — always visible on mobile */}
+                <div className="flex items-center gap-0.5 md:gap-1 shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleDownload(file)}
-                    className="p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
                     title="Download"
                   >
-                    <Download size={16} />
+                    <Download size={14} />
                   </button>
                   <button
                     onClick={() => handleShare(file)}
-                    className="p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
                     title="Share"
                   >
-                    <Share2 size={16} />
+                    <Share2 size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(file.key)}
-                    className="p-2 text-zinc-600 hover:text-[#ff003c] hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 text-zinc-600 hover:text-[#ff003c] hover:bg-zinc-900 rounded-sm transition-all"
                     title="Delete"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>

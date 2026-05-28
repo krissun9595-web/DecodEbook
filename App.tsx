@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, CreditCard } from 'lucide-react';
 import JSZip from 'jszip';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
-import { analyzeBookStructure, getQuickDefinition, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
+import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal, AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
@@ -279,6 +279,20 @@ const App: React.FC = () => {
           return item;
       }));
   };
+
+  const prevLanguageRef = useRef(settings.targetLanguage);
+  useEffect(() => {
+      if (prevLanguageRef.current === settings.targetLanguage) return;
+      prevLanguageRef.current = settings.targetLanguage;
+      const itemsWithDefs = notebook.filter(i => i.definition);
+      if (itemsWithDefs.length === 0) return;
+      const batch = itemsWithDefs.map(i => ({ id: i.id, text: i.text }));
+      batchGetDefinitions(batch, settings.targetLanguage)
+          .then(updates => {
+              if (Object.keys(updates).length > 0) handleBatchUpdateDefinitions(updates);
+          })
+          .catch(err => console.error('Definition re-fetch failed:', err));
+  }, [settings.targetLanguage]);
 
   const processEpub = async (file: File): Promise<string> => {
     try {

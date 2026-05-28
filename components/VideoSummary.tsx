@@ -316,8 +316,9 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                 </div>
 
                 <div className="flex items-center p-2 md:p-3 overflow-hidden min-w-0 gap-1">
-                    <div className="flex-1 flex items-center min-w-0">
+                    <div className="flex-1 flex items-center gap-1 min-w-0">
                         <select value={playbackRate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); if(videoRef.current) videoRef.current.playbackRate = Number(e.target.value); }} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s}x</option>)}</select>
+                        <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                         <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                             {SPEEDS.map(s => (
                                 <button
@@ -340,7 +341,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                     </div>
 
                     <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
-                        <span className="text-[8px] md:text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                        <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                         <button onClick={toggleMute} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
                             {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>

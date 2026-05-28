@@ -136,13 +136,13 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       }
   };
 
-  const generateStickyNote = (item: NotebookItem) => {
+  const buildStickyNoteCanvas = (item: NotebookItem): HTMLCanvasElement | null => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) return null;
       canvas.width = 800;
       canvas.height = 800;
-      ctx.fillStyle = '#050505'; 
+      ctx.fillStyle = '#050505';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = '#1f2937';
       ctx.lineWidth = 1;
@@ -231,6 +231,12 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       }
       ctx.fillStyle = '#1f2937'; ctx.font = '10px "Courier New", monospace'; ctx.textAlign = 'center';
       ctx.fillText("FLASH_NOTES // NEURAL INTERFACE CONTENT", canvas.width / 2, canvas.height - 20);
+      return canvas;
+  };
+
+  const generateStickyNote = (item: NotebookItem) => {
+      const canvas = buildStickyNoteCanvas(item);
+      if (!canvas) return;
       const filename = `flash-note-${item.id}.png`;
       const link = document.createElement('a');
       link.download = filename;
@@ -252,6 +258,14 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
           }
         }, 'image/png');
       }
+  };
+
+  const shareStickyNote = (item: NotebookItem) => {
+      const canvas = buildStickyNoteCanvas(item);
+      if (!canvas) return;
+      canvas.toBlob((blob) => {
+          if (blob) shareFile(blob, `flash-note-${item.id}.png`, item.text.substring(0, 50));
+      }, 'image/png');
   };
 
   const handleInitiateMindMap = async () => {
@@ -1053,7 +1067,8 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                            <div key={item.id} className="bg-[#0a0a0c] border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${idx * 0.05}s` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
                                    <button onClick={() => playPronunciation(item.id, item.text)} disabled={!!playingId} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-[#00f3ff] bg-[#00f3ff]/10 animate-pulse' : 'text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10'}`} title="Pronounce"><Volume2 size={14} /></button>
-                                   <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Generate Visual Log"><ImageDown size={14} /></button>
+                                   <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
+                                   <button onClick={() => shareStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Share"><Share2 size={14} /></button>
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-[#ff003c] bg-zinc-900/50 hover:bg-[#ff003c]/10 rounded border border-transparent hover:border-[#ff003c]/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">

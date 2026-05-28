@@ -85,7 +85,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
   const [selectedTone, setSelectedTone] = useState(lastPodcastTone || 'Engaging');
   const [selectedLanguage, setSelectedLanguage] = useState(lastPodcastLanguage || settings.targetLanguage);
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [isPlayerMinimized, setIsPlayerMinimized] = useState(false);
+  const [isPlayerMinimized, setIsPlayerMinimized] = useState(() => window.innerWidth < 768);
   
   // Progress State
   const [currentTime, setCurrentTime] = useState(0);
@@ -585,8 +585,9 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                    </div>
                )}
                <div className="bg-[#020202] p-2 md:p-3 flex items-center overflow-hidden min-w-0 gap-1">
-                   <div className="flex-1 flex items-center min-w-0">
+                   <div className="flex-1 flex items-center gap-1 min-w-0">
                        <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
+                       <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                        <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                             {SPEEDS.map(s => (
                               <button
@@ -605,7 +606,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                        <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-2 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={16} /></button>
                    </div>
                    <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
-                       <span className="text-[8px] md:text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                       <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                        <button onClick={downloadScript} disabled={!script} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={16} /></button>
                        <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={16} /></a>
                        <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>
