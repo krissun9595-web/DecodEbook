@@ -811,12 +811,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
               <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
-                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[70px] md:w-[120px] bg-[#050505]">
+                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">
                     {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={14} /></div>
-                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none font-mono uppercase w-[70px] md:w-[120px] bg-[#050505] cursor-pointer">
+                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none font-mono uppercase w-[80px] md:w-[120px] bg-[#050505] cursor-pointer">
                     {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                  </select>
               </div>
@@ -863,6 +863,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           )}
 
           <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between gap-1 overflow-hidden min-w-0">
+              <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
               <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                    {RATES.map(s => (
                      <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>

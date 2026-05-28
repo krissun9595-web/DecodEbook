@@ -527,10 +527,10 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
           <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
               <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
-                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[75px] md:w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={14} /></div>
-                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[70px] md:w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
+                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
               </div>
               <button
                 onClick={handleToggleGeneration}
@@ -585,6 +585,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                    </div>
                )}
                <div className="bg-[#020202] p-2 md:p-3 flex items-center justify-between overflow-hidden min-w-0 gap-1">
+                   <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
                    <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                         {SPEEDS.map(s => (
                           <button

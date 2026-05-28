@@ -160,21 +160,21 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   return (
     <div className="h-full flex flex-col animate-fade-in font-sans text-left">
       {/* Controller */}
-      <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
-        <div className="flex items-center gap-4">
+      <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+        <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
             <HardDrive size={18} className="text-[#00f3ff]" />
             <span>Generated_Files</span>
           </div>
           <span className="text-[10px] font-mono text-zinc-600 uppercase">{formatFileSize(totalSize)} // {files.length} files</span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-            <div className="p-1.5 text-zinc-500"><HardDrive size={16} /></div>
+        <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
+          <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+            <div className="p-1 md:p-1.5 text-zinc-500"><HardDrive size={14} /></div>
             <select
               value={filterBook}
               onChange={(e) => setFilterBook(e.target.value)}
-              className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+              className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]"
             >
               <option value="all">ALL BOOKS</option>
               {library.map(item => (
@@ -184,11 +184,11 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
               ))}
             </select>
             <div className="w-[1px] h-4 bg-zinc-700"></div>
-            <div className="p-1.5 text-zinc-500"><FileText size={16} /></div>
+            <div className="p-1 md:p-1.5 text-zinc-500"><FileText size={14} /></div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as FilterType)}
-              className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+              className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]"
             >
               {FILTER_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -206,7 +206,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             }}
             onContextMenu={(e) => { e.preventDefault(); setActionMode(actionMode === 'save' ? 'clear' : 'save'); setConfirmClear(false); }}
             disabled={actionMode === 'save' && filteredFiles.length === 0}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center border disabled:opacity-50 ${
+            className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all justify-center border disabled:opacity-50 ${
               actionMode === 'clear'
                 ? confirmClear
                   ? 'bg-[#ff003c] text-white border-[#ff003c] animate-pulse hover:bg-rose-600'

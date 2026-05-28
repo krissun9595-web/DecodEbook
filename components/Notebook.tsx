@@ -801,33 +801,33 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
           .hide-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(0, 243, 255, 0.3); }
        `}</style>
 
-       <div className="bg-zinc-950/80 p-3 rounded-lg border border-cyan-900/40 mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
-           <div className="flex items-center gap-4">
+       <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+           <div className="hidden md:flex items-center gap-4">
                <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
                    <NotebookIcon size={18} className="text-[#00f3ff]" />
                    <span>Mem_Log</span>
                </div>
            </div>
-           <div className="flex items-center gap-4">
-               <div className="flex items-center gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-                    <div className="flex items-center gap-2">
-                        <div className="p-1.5 text-zinc-500"><BookOpen size={16} /></div>
+           <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
+               <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
+                    <div className="flex items-center gap-1 md:gap-2">
+                        <div className="p-1 md:p-1.5 text-zinc-500"><BookOpen size={14} /></div>
                         <select
                             value={activeBookFilter}
                             onChange={(e) => setActiveBookFilter(e.target.value)}
-                            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+                            className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]"
                         >
                             <option value="all">ALL BOOKS</option>
                             {bookTitles.map(t => <option key={t} value={t}>{t.length > 15 ? t.substring(0, 15) + '...' : t}</option>)}
                         </select>
                     </div>
                     <div className="w-[1px] h-4 bg-zinc-700"></div>
-                    <div className="flex items-center gap-2">
-                        <div className="p-1.5 text-zinc-500"><Settings2 size={16} /></div>
+                    <div className="flex items-center gap-1 md:gap-2">
+                        <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
                         <select
                             value={activeFilter}
                             onChange={(e) => setActiveFilter(e.target.value as FilterType)}
-                            className="bg-transparent text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[120px] bg-[#050505]"
+                            className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]"
                         >
                             <option value="all">ALL ITEMS</option>
                             <option value="word">WORDS</option>
@@ -836,11 +836,11 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                         </select>
                     </div>
                </div>
-               
-               <button 
-                  onClick={handleInitiateMindMap} 
-                  disabled={filteredItems.length === 0} 
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-bold font-mono uppercase transition-all min-w-[120px] justify-center ${isGeneratingMap ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc] shadow-[0_0_10px_rgba(0,243,255,0.3)]'}`}
+
+               <button
+                  onClick={handleInitiateMindMap}
+                  disabled={filteredItems.length === 0}
+                  className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all justify-center ${isGeneratingMap ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc] shadow-[0_0_10px_rgba(0,243,255,0.3)]'}`}
                >
                    {isGeneratingMap ? <Square size={14} fill="currentColor" /> : hasInitiatedMap ? <RefreshCw size={14} /> : <Play size={14} fill="currentColor" />}
                    {isGeneratingMap ? "STOP" : hasInitiatedMap ? "REGENERATE" : "INITIATE"}
@@ -862,20 +862,16 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                <div className="absolute inset-0 bg-[linear-gradient(rgba(0,243,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,243,255,0.05)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
                
                {/* Floating Controls in Top Right */}
-               <div className="absolute top-4 right-4 flex gap-2 z-50">
-                    <button onClick={handleFitView} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Fit View"><Scan size={16}/></button>
-                    <div className="w-[1px] h-10 bg-zinc-800 mx-1"></div>
-                    <button onClick={() => setMapZoom(z => Math.max(0.2, z - 0.1))} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0"><ZoomOut size={16}/></button>
-                    <button onClick={() => setMapZoom(z => Math.min(3, z + 0.1))} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0"><ZoomIn size={16}/></button>
-                    
-                    <div className="w-[1px] h-10 bg-zinc-800 mx-1"></div>
-                    <button onClick={exportToXmind} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={16}/></button>
-                    <button onClick={exportToDocx} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={16}/></button>
-                    <button onClick={exportToPdf} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={16}/></button>
-                    <button onClick={shareMindMap} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={16}/></button>
-
-                    <div className="w-[1px] h-10 bg-zinc-800 mx-1"></div>
-                    <button onClick={() => setIsMindMapMode(false)} className="w-10 h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#ff003c] text-[#ff003c] rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={16}/></button>
+               <div className="absolute top-2 right-2 md:top-4 md:right-4 flex flex-wrap justify-end gap-1.5 md:gap-2 z-50 max-w-[calc(100%-16px)] md:max-w-none">
+                    <button onClick={handleFitView} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Fit View"><Scan size={14}/></button>
+                    <button onClick={() => setMapZoom(z => Math.max(0.2, z - 0.1))} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0"><ZoomOut size={14}/></button>
+                    <button onClick={() => setMapZoom(z => Math.min(3, z + 0.1))} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0"><ZoomIn size={14}/></button>
+                    <div className="hidden md:block w-[1px] h-10 bg-zinc-800 mx-0.5"></div>
+                    <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
+                    <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
+                    <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
+                    <button onClick={shareMindMap} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
+                    <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#ff003c] text-[#ff003c] rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
                </div>
 
                {isGeneratingMap ? (

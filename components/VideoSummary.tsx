@@ -242,7 +242,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="flex items-center gap-1 md:gap-2">
                     <div className="p-1 md:p-1.5 text-zinc-500"><Maximize2 size={14} /></div>
-                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[60px] md:w-[120px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
+                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[60px] md:w-[80px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
                  </div>
               </div>
               <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}>
@@ -315,40 +315,41 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3">
-                    <div className="flex-1 flex items-center gap-2">
+                <div className="flex items-center justify-between p-2 md:p-3 overflow-hidden min-w-0 gap-1">
+                    <select value={playbackRate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); if(videoRef.current) videoRef.current.playbackRate = Number(e.target.value); }} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s}x</option>)}</select>
+                    <div className="hidden md:flex flex-1 items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                         {SPEEDS.map(s => (
-                            <button 
-                                key={s} 
-                                onClick={(e) => { e.stopPropagation(); setPlaybackRate(s); }} 
-                                className={`text-[10px] font-mono font-bold transition-all ${playbackRate === s ? 'text-cyan-400' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            <button
+                                key={s}
+                                onClick={(e) => { e.stopPropagation(); setPlaybackRate(s); }}
+                                className={`transition-colors font-mono font-bold ${playbackRate === s ? 'text-[#00f3ff] underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}
                             >
                                 {s}x
                             </button>
                         ))}
                     </div>
 
-                    <div className="flex-2 flex items-center justify-center gap-6">
-                        <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={20} /></button>
-                        <button onClick={togglePlay} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isPlaying ? 'bg-transparent border-2 border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
-                            {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}
+                    <div className="flex items-center justify-center gap-2 md:gap-6 shrink-0">
+                        <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={16} /></button>
+                        <button onClick={togglePlay} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                            {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={20} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={16} /></button>
                     </div>
 
-                    <div className="flex-1 flex items-center justify-end gap-3">
-                        <span className="text-[10px] font-mono text-zinc-600 min-w-[70px] text-right">{formatTime(currentTime)} / {formatTime(duration)}</span>
-                        <button onClick={toggleMute} className="text-zinc-600 hover:text-cyan-400 transition-colors">
-                            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                    <div className="flex items-center gap-0.5 md:gap-2 md:flex-1 md:justify-end min-w-0">
+                        <span className="text-[8px] md:text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
+                        <button onClick={toggleMute} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>
-                        <a href={videoUrl || '#'} download={`cine-render-${chapter.id}.mp4`} onClick={(e) => e.stopPropagation()} className="text-zinc-600 hover:text-cyan-400 transition-colors">
-                            <Download size={18} />
+                        <a href={videoUrl || '#'} download={`cine-render-${chapter.id}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                            <Download size={16} />
                         </a>
-                        <button onClick={async (e) => { e.stopPropagation(); if (videoUrl) { const r = await fetch(videoUrl); const b = await r.blob(); shareFile(b, `decodebook-video-${chapter.id}.mp4`, chapter.title); }}} className="text-zinc-600 hover:text-cyan-400 transition-colors">
-                            <Share2 size={18} />
+                        <button onClick={async (e) => { e.stopPropagation(); if (videoUrl) { const r = await fetch(videoUrl); const b = await r.blob(); shareFile(b, `decodebook-video-${chapter.id}.mp4`, chapter.title); }}} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                            <Share2 size={16} />
                         </button>
-                        <button onClick={toggleFullScreen} className="text-zinc-600 hover:text-cyan-400 transition-colors">
-                            {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                        <button onClick={toggleFullScreen} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                            {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                         </button>
                     </div>
                 </div>
