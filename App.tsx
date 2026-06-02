@@ -394,9 +394,8 @@ const App: React.FC = () => {
     setIsProcessing(true);
     setError(null);
 
-    const reader = new FileReader();
     const isEpub = file.name.toLowerCase().endsWith('.epub');
-    const isTextBased = file.type.startsWith('text/') || 
+    const isTextBased = file.type.startsWith('text/') ||
                         ['.txt', '.md', '.html', '.xml'].some(ext => file.name.toLowerCase().endsWith(ext));
 
     const finalizeUpload = async (context: FileContext) => {
@@ -435,23 +434,41 @@ const App: React.FC = () => {
        return;
     }
 
-    reader.onload = async (e) => {
-      let context: FileContext;
-      if (isTextBased) {
-          let content = e.target?.result as string;
-          if (content.length > 2000000) content = content.substring(0, 2000000) + "... [Truncated]";
-          context = { content, mimeType: 'text/plain', isText: true };
-      } else {
-          const rawBase64 = (e.target?.result as string).split(',')[1];
-          // Strip newlines and whitespace which are common in base64 output and break API calls
-          const cleanBase64 = rawBase64.replace(/[\r\n\s]+/g, '');
-          context = { content: cleanBase64, mimeType: 'application/pdf', isText: false };
-      }
-      await finalizeUpload(context);
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      console.error("FileReader error:", reader.error);
+      setError("Failed to read file. It may be too large for this device.");
+      setIsProcessing(false);
     };
 
-    if (isTextBased) reader.readAsText(file);
-    else reader.readAsDataURL(file);
+    if (isTextBased) {
+      reader.onload = async (e) => {
+        let content = e.target?.result as string;
+        if (content.length > 2000000) content = content.substring(0, 2000000) + "... [Truncated]";
+        await finalizeUpload({ content, mimeType: 'text/plain', isText: true });
+      };
+      reader.readAsText(file);
+    } else {
+      reader.onload = async (e) => {
+        try {
+          const buffer = e.target?.result as ArrayBuffer;
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          const CHUNK = 8192;
+          for (let i = 0; i < bytes.length; i += CHUNK) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as any);
+          }
+          const base64 = btoa(binary);
+          await finalizeUpload({ content: base64, mimeType: 'application/pdf', isText: false });
+        } catch (err: any) {
+          console.error("PDF encoding error:", err);
+          setError("Failed to encode PDF. Try a smaller file or convert to EPUB/TXT.");
+          setIsProcessing(false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const toggleBookmark = (chapterId: number) => {
