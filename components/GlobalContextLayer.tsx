@@ -28,25 +28,56 @@ interface DefinitionState {
   position: { x: number; y: number };
 }
 
+const isMobile = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+const getSelectionSource = (selection: Selection): string => {
+  let source = "Input_Stream";
+  let node: Node | null = selection.anchorNode;
+  while (node && node !== document.body) {
+    if (node instanceof Element && node.getAttribute('data-source')) {
+      source = node.getAttribute('data-source') || "Input_Stream";
+      break;
+    }
+    node = node.parentElement;
+  }
+  return source;
+};
+
+const getSelectionPosition = (selection: Selection): { x: number; y: number } => {
+  const range = selection.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  const TOOLBAR_WIDTH = 200;
+  let x = rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2;
+  let y = rect.top - 52;
+  if (x < 8) x = 8;
+  if (x + TOOLBAR_WIDTH > window.innerWidth) x = window.innerWidth - TOOLBAR_WIDTH - 8;
+  if (y < 8) y = rect.bottom + 8;
+  return { x, y };
+};
+
 export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLanguage }) => {
   const [menu, setMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, text: '', source: 'Input_Stream' });
-  const [definition, setDefinition] = useState<DefinitionState>({ 
-      visible: false, 
-      loading: false, 
-      text: null, 
+  const [definition, setDefinition] = useState<DefinitionState>({
+      visible: false,
+      loading: false,
+      text: null,
       originalText: null,
       translatedText: null,
       isTranslated: false,
-      position: { x: 0, y: 0 } 
+      position: { x: 0, y: 0 }
   });
   const [isPlaying, setIsPlaying] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
-  
+  const [mobileBar, setMobileBar] = useState<{ visible: boolean; x: number; y: number; text: string; source: string }>({ visible: false, x: 0, y: 0, text: '', source: 'Input_Stream' });
+
   const menuRef = useRef<HTMLDivElement>(null);
   const defRef = useRef<HTMLDivElement>(null);
+  const mobileBarRef = useRef<HTMLDivElement>(null);
 
+  // Desktop: right-click context menu
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
+      if (isMobile()) return;
       const selection = window.getSelection();
       const text = selection?.toString().trim();
 
@@ -57,18 +88,10 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         if (x + 200 > window.innerWidth) x = window.innerWidth - 210;
         if (y + 150 > window.innerHeight) y = window.innerHeight - 160;
 
-        let source = "Input_Stream";
-        let node = selection.anchorNode;
-        while(node && node !== document.body) {
-            if (node instanceof Element && node.getAttribute('data-source')) {
-                source = node.getAttribute('data-source') || "Input_Stream";
-                break;
-            }
-            node = node.parentElement;
-        }
-
+        const source = getSelectionSource(selection);
         setMenu({ visible: true, x, y, text, source });
         setDefinition(prev => ({ ...prev, visible: false }));
+        setMobileBar(prev => ({ ...prev, visible: false }));
       }
     };
 
@@ -89,56 +112,108 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
     };
   }, [menu.visible, definition.visible]);
 
-  const handleDefine = async (e: React.MouseEvent) => {
+  // Mobile: selection change detection
+  useEffect(() => {
+    if (!isMobile()) return;
+
+    let checkTimer: ReturnType<typeof setTimeout>;
+    const handleSelectionChange = () => {
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(() => {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim();
+        if (text && text.length > 0 && selection!.rangeCount > 0) {
+          const source = getSelectionSource(selection!);
+          const pos = getSelectionPosition(selection!);
+          setMobileBar({ visible: true, x: pos.x, y: pos.y, text, source });
+        } else {
+          setMobileBar(prev => ({ ...prev, visible: false }));
+        }
+      }, 300);
+    };
+
+    const handleTouchEnd = () => {
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(() => {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim();
+        if (text && text.length > 0 && selection!.rangeCount > 0) {
+          const source = getSelectionSource(selection!);
+          const pos = getSelectionPosition(selection!);
+          setMobileBar({ visible: true, x: pos.x, y: pos.y, text, source });
+        }
+      }, 200);
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (mobileBarRef.current && !mobileBarRef.current.contains(e.target as Node) &&
+          defRef.current && !defRef.current.contains(e.target as Node)) {
+        setMobileBar(prev => prev.visible ? { ...prev, visible: false } : prev);
+      }
+      if (defRef.current && !defRef.current.contains(e.target as Node)) {
+        setDefinition(prev => prev.visible ? { ...prev, visible: false } : prev);
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('touchstart', handleTouchStart);
+    return () => {
+      clearTimeout(checkTimer);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchstart', handleTouchStart);
+    };
+  }, []);
+
+  const activeText = menu.visible ? menu.text : mobileBar.text;
+  const activeSource = menu.visible ? menu.source : mobileBar.source;
+
+  const handleDefine = async (e: React.MouseEvent, fromMobile = false) => {
     e.stopPropagation();
     e.nativeEvent.stopImmediatePropagation();
 
-    // Dimensions based on max-h-[400px] + shadow/borders
-    const POPUP_WIDTH = 320; 
-    const MAX_HEIGHT = 400; 
+    const srcX = fromMobile ? mobileBar.x : menu.x;
+    const srcY = fromMobile ? mobileBar.y : menu.y;
+    const text = fromMobile ? mobileBar.text : menu.text;
+
+    const POPUP_WIDTH = isMobile() ? Math.min(320, window.innerWidth - 32) : 320;
+    const MAX_HEIGHT = 400;
     const MARGIN = 16;
 
-    let x = menu.x;
-    let y = menu.y;
+    let x = srcX;
+    let y = srcY;
 
-    // Intelligent X positioning
-    // 1. Try placing to the right of cursor (default x)
-    // 2. If overflow, shift left just enough to fit (slide)
     if (x + POPUP_WIDTH + MARGIN > window.innerWidth) {
         x = window.innerWidth - POPUP_WIDTH - MARGIN;
     }
-    // Safety clamp left
     x = Math.max(MARGIN, x);
 
-    // Intelligent Y positioning
-    // 1. Try placing below cursor (default y)
-    // 2. If overflow, shift up just enough to fit (slide) 
-    // This ensures the bottom (Save button) is always visible without jumping too far up
     if (y + MAX_HEIGHT + MARGIN > window.innerHeight) {
         y = window.innerHeight - MAX_HEIGHT - MARGIN;
     }
-    // Safety clamp top
     y = Math.max(MARGIN, y);
 
-    setDefinition({ 
-        visible: true, 
-        loading: true, 
-        text: null, 
+    setDefinition({
+        visible: true,
+        loading: true,
+        text: null,
         originalText: null,
         translatedText: null,
         isTranslated: false,
-        position: { x, y } 
+        position: { x, y }
     });
     setMenu(prev => ({ ...prev, visible: false }));
+    setMobileBar(prev => ({ ...prev, visible: false }));
+    window.getSelection()?.removeAllRanges();
 
     try {
-        // Fetch definition in its source language as per requirements
-        const def = await getQuickDefinition(menu.text, "the same language as the provided text");
-        setDefinition(prev => ({ 
-            ...prev, 
-            loading: false, 
+        const def = await getQuickDefinition(text, "the same language as the provided text");
+        setDefinition(prev => ({
+            ...prev,
+            loading: false,
             text: def,
-            originalText: def 
+            originalText: def
         }));
     } catch (e) {
         setDefinition(prev => ({ ...prev, loading: false, text: "Could not retrieve definition." }));
@@ -167,9 +242,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
               try {
                   let targetLang = activeLanguage === 'Original' ? 'English' : activeLanguage;
                   
-                  // If source is already translated layer, we translate explanation BACK to English/Original
-                  if (menu.source === 'Translated_Layer') {
-                      targetLang = 'English'; 
+                  if (activeSource === 'Translated_Layer') {
+                      targetLang = 'English';
                   }
 
                   const trans = await translateText(definition.originalText, targetLang);
@@ -190,11 +264,11 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
   };
 
   const handlePronounce = async () => {
-      if (isPlaying || !menu.text) return;
+      if (isPlaying || !activeText) return;
       setIsPlaying(true);
       let audioUrl: string | null = null;
       try {
-          const b64 = await generateSpeech(menu.text, "Puck");
+          const b64 = await generateSpeech(activeText, "Puck");
           if(b64) {
              const binaryString = atob(b64);
              const len = binaryString.length;
@@ -218,24 +292,26 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
       }
   };
 
-  const handleAddToNotebook = () => {
-     // Default add: NO definition included
+  const handleAddToNotebook = (fromMobile = false) => {
+     const text = fromMobile ? mobileBar.text : menu.text;
+     const source = fromMobile ? mobileBar.source : menu.source;
      onAddToNotebook({
-         text: menu.text,
-         type: menu.text.includes(' ') && menu.text.length > 30 ? 'sentence' : 'word',
+         text,
+         type: text.includes(' ') && text.length > 30 ? 'sentence' : 'word',
          definition: undefined,
-         contextSource: menu.source
+         contextSource: source
      });
      setMenu(prev => ({ ...prev, visible: false }));
+     setMobileBar(prev => ({ ...prev, visible: false }));
+     window.getSelection()?.removeAllRanges();
   };
-  
+
   const handleSaveWithDefinition = () => {
-      // Save WITH definition: captures the currently visible text (original or translated)
       onAddToNotebook({
-         text: menu.text,
-         type: menu.text.includes(' ') && menu.text.length > 30 ? 'sentence' : 'word',
+         text: activeText,
+         type: activeText.includes(' ') && activeText.length > 30 ? 'sentence' : 'word',
          definition: definition.text || undefined,
-         contextSource: menu.source
+         contextSource: activeSource
       });
       setDefinition(prev => ({ ...prev, visible: false }));
   };
@@ -268,8 +344,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                     {menu.text.length > 20 ? menu.text.substring(0, 20) + '...' : menu.text}
                 </div>
                 <div className="p-1">
-                    <button onClick={handleDefine} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Explain / Define</button>
-                    <button onClick={handleAddToNotebook} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><FilePlus size={14} />Add to Notebook</button>
+                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Explain / Define</button>
+                    <button onClick={() => handleAddToNotebook()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><FilePlus size={14} />Add to Notebook</button>
                     <button onClick={() => { navigator.clipboard.writeText(menu.text); setMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-3 py-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Copy size={14} />Copy Text</button>
                 </div>
             </div>
@@ -278,7 +354,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {definition.visible && (
              <div 
                 ref={defRef}
-                className="absolute bg-[#050505]/95 backdrop-blur-md border border-[#00f3ff]/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-5 w-80 pointer-events-auto animate-fade-in-up origin-top-left z-[102] max-h-[400px] flex flex-col"
+                className="absolute bg-[#050505]/95 backdrop-blur-md border border-[#00f3ff]/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 md:p-5 w-[calc(100vw-32px)] md:w-80 pointer-events-auto animate-fade-in-up origin-top-left z-[102] max-h-[400px] flex flex-col"
                 style={{ top: definition.position.y, left: definition.position.x }}
              >
                  <div className="flex items-start justify-between mb-3 shrink-0">
@@ -328,6 +404,42 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                      Save Analysis to Log
                  </button>
              </div>
+        )}
+
+        {mobileBar.visible && !definition.visible && (
+            <div
+                ref={mobileBarRef}
+                className="absolute pointer-events-auto animate-fade-in z-[101] flex items-center gap-0.5 bg-[#0a0a0c] border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-full px-1 py-1"
+                style={{ top: mobileBar.y, left: mobileBar.x }}
+            >
+                <button
+                    onTouchEnd={(e) => { e.preventDefault(); handleDefine(e as any, true); }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-zinc-300 active:text-[#00f3ff] active:bg-[#00f3ff]/10 text-[11px] font-mono uppercase rounded-full transition-colors"
+                >
+                    <Search size={14} />
+                    Define
+                </button>
+                <div className="w-[1px] h-5 bg-zinc-700" />
+                <button
+                    onTouchEnd={(e) => { e.preventDefault(); handleAddToNotebook(true); }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-zinc-300 active:text-[#00f3ff] active:bg-[#00f3ff]/10 text-[11px] font-mono uppercase rounded-full transition-colors"
+                >
+                    <FilePlus size={14} />
+                    Note
+                </button>
+                <div className="w-[1px] h-5 bg-zinc-700" />
+                <button
+                    onTouchEnd={(e) => {
+                        e.preventDefault();
+                        navigator.clipboard.writeText(mobileBar.text);
+                        setMobileBar(prev => ({ ...prev, visible: false }));
+                        window.getSelection()?.removeAllRanges();
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-zinc-500 active:text-zinc-300 active:bg-zinc-800 text-[11px] font-mono uppercase rounded-full transition-colors"
+                >
+                    <Copy size={14} />
+                </button>
+            </div>
         )}
     </div>
   );
