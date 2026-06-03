@@ -140,46 +140,26 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
-      canvas.width = 800;
-      canvas.height = 800;
-      ctx.fillStyle = '#050505';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#1f2937';
-      ctx.lineWidth = 1;
-      for(let i=0; i < canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke(); }
-      for(let i=0; i < canvas.height; i+=40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke(); }
+      const W = 800;
       const margin = 50;
-      const contentWidth = canvas.width - (margin * 2);
-      ctx.fillStyle = '#00f3ff';
-      const cornerSize = 8;
-      ctx.fillRect(margin, margin, cornerSize, cornerSize);
-      ctx.fillRect(canvas.width - margin - cornerSize, margin, cornerSize, cornerSize);
-      ctx.fillRect(margin, canvas.height - margin - cornerSize, cornerSize, cornerSize);
-      ctx.fillRect(canvas.width - margin - cornerSize, canvas.height - margin - cornerSize, cornerSize, cornerSize);
-      let y = margin + 40;
-      ctx.fillStyle = '#ff003c';
-      ctx.font = 'bold 16px "Courier New", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(`// LOG_DATE: ${new Date(item.timestamp).toISOString().split('T')[0]}`, margin, y);
-      y += 25;
-      if (item.bookTitle) {
-          ctx.fillStyle = '#00f3ff';
-          ctx.font = 'bold 20px "Courier New", monospace';
-          const authorText = item.bookAuthor ? ` | ${item.bookAuthor}` : '';
-          ctx.fillText(`BOOK: ${item.bookTitle.toUpperCase().substring(0, 20)}${authorText.substring(0, 15)}`, margin, y);
-          y += 25;
-      }
-      ctx.strokeStyle = '#334155'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(margin, y); ctx.lineTo(canvas.width - margin, y); ctx.stroke();
-      y += 40;
-      let fontSize = 32;
+      const contentWidth = W - (margin * 2);
       const mainFont = settings.font ? `"${settings.font}", sans-serif` : 'Georgia';
+      const FOOTER_HEIGHT = 60;
+
+      // --- Pass 1: measure total content height ---
+      let y = margin + 40;
+      y += 25;
+      if (item.bookTitle) y += 25;
+      y += 1 + 40; // separator + gap
+
+      let fontSize = 32;
       ctx.font = `${fontSize}px ${mainFont}`;
       const words = item.text.split(' ');
       let lines: string[] = [];
       let line = '';
       const calculateLines = () => {
          lines = []; line = '';
-         for(let n = 0; n < words.length; n++) {
+         for (let n = 0; n < words.length; n++) {
             const testLine = line + words[n] + ' ';
             const metrics = ctx.measureText(testLine);
             if (metrics.width > contentWidth && n > 0) {
@@ -189,48 +169,107 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
          lines.push(line);
       };
       calculateLines();
-      const maxHeight = 350;
-      while (lines.length * (fontSize * 1.5) > maxHeight && fontSize > 14) {
+      const maxMainHeight = 350;
+      while (lines.length * (fontSize * 1.5) > maxMainHeight && fontSize > 14) {
           fontSize -= 2; ctx.font = `${fontSize}px ${mainFont}`; calculateLines();
       }
+      const lineHeight = fontSize * 1.5;
+      y += lines.length * lineHeight + 30;
+
+      const wrapLines = (text: string, font: string, lh: number): string[] => {
+        ctx.font = font;
+        const ws = text.split(' ');
+        const result: string[] = [];
+        let cur = '';
+        for (let n = 0; n < ws.length; n++) {
+          const test = cur + ws[n] + ' ';
+          if (ctx.measureText(test).width > contentWidth && n > 0) {
+            result.push(cur); cur = ws[n] + ' ';
+          } else { cur = test; }
+        }
+        result.push(cur);
+        return result;
+      };
+
+      let defLines: string[] = [];
+      if (item.definition) {
+        y += 20;
+        defLines = wrapLines(item.definition, '14px "Courier New", monospace', 18);
+        y += defLines.length * 18 + 35;
+      }
+      let commentLines: string[] = [];
+      if (item.comment) {
+        y += 20;
+        commentLines = wrapLines(item.comment, 'italic 14px "Courier New", monospace', 18);
+        y += commentLines.length * 18 + 35;
+      }
+
+      const H = Math.max(y + FOOTER_HEIGHT, 400);
+
+      // --- Pass 2: draw ---
+      canvas.width = W;
+      canvas.height = H;
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 1;
+      for (let i = 0; i < W; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+      for (let i = 0; i < H; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+
+      ctx.fillStyle = '#00f3ff';
+      const cs = 8;
+      ctx.fillRect(margin, margin, cs, cs);
+      ctx.fillRect(W - margin - cs, margin, cs, cs);
+      ctx.fillRect(margin, H - margin - cs, cs, cs);
+      ctx.fillRect(W - margin - cs, H - margin - cs, cs, cs);
+
+      y = margin + 40;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ff003c'; ctx.font = 'bold 16px "Courier New", monospace';
+      ctx.fillText(`// LOG_DATE: ${new Date(item.timestamp).toISOString().split('T')[0]}`, margin, y);
+      y += 25;
+      if (item.bookTitle) {
+          ctx.fillStyle = '#00f3ff'; ctx.font = 'bold 20px "Courier New", monospace';
+          const authorText = item.bookAuthor ? ` | ${item.bookAuthor}` : '';
+          ctx.fillText(`BOOK: ${item.bookTitle.toUpperCase().substring(0, 20)}${authorText.substring(0, 15)}`, margin, y);
+          y += 25;
+      }
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(margin, y); ctx.lineTo(W - margin, y); ctx.stroke();
+      y += 40;
+
       ctx.fillStyle = '#334155'; ctx.font = `${fontSize * 3}px ${mainFont}`;
       ctx.fillText('"', margin - 20, y + fontSize);
       ctx.fillStyle = '#e2e8f0'; ctx.font = `${fontSize}px ${mainFont}`;
-      const lineHeight = fontSize * 1.5;
       for (let i = 0; i < lines.length; i++) { ctx.fillText(lines[i], margin, y); y += lineHeight; }
       y += 30;
+
       if (item.definition) {
           ctx.fillStyle = '#22d3ee'; ctx.font = 'bold 14px "Courier New", monospace';
           ctx.fillText(">> ANALYSIS_OUTPUT:", margin, y); y += 20;
           ctx.fillStyle = '#94a3b8'; ctx.font = '14px "Courier New", monospace';
-          const defWords = item.definition.split(' ');
-          let defLine = '';
-          for(let n = 0; n < defWords.length; n++) {
-            const testLine = defLine + defWords[n] + ' ';
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > contentWidth && n > 0) {
-               ctx.fillText(defLine, margin, y); defLine = defWords[n] + ' '; y += 18;
-            } else { defLine = testLine; }
-         }
-         ctx.fillText(defLine, margin, y); y += 35;
+          for (const dl of defLines) { ctx.fillText(dl, margin, y); y += 18; }
+          y += 35;
       }
       if (item.comment) {
           ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 14px "Courier New", monospace';
           ctx.fillText(">> USER_ANNOTATION:", margin, y); y += 20;
           ctx.fillStyle = '#b45309'; ctx.font = 'italic 14px "Courier New", monospace';
-          const commentWords = item.comment.split(' ');
-          let commentLine = '';
-          for(let n = 0; n < commentWords.length; n++) {
-            const testLine = commentLine + commentWords[n] + ' ';
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > contentWidth && n > 0) {
-               ctx.fillText(commentLine, margin, y); commentLine = commentWords[n] + ' '; y += 18;
-            } else { commentLine = testLine; }
-         }
-         ctx.fillText(commentLine, margin, y); y += 35;
+          for (const cl of commentLines) { ctx.fillText(cl, margin, y); y += 18; }
+          y += 35;
       }
-      ctx.fillStyle = '#1f2937'; ctx.font = '10px "Courier New", monospace'; ctx.textAlign = 'center';
-      ctx.fillText("FLASH_NOTES // NEURAL INTERFACE CONTENT", canvas.width / 2, canvas.height - 20);
+
+      // Branding footer
+      ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(margin, H - FOOTER_HEIGHT); ctx.lineTo(W - margin, H - FOOTER_HEIGHT); ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#00f3ff'; ctx.font = 'bold 13px "Courier New", monospace';
+      ctx.fillText('DecodEbook', margin, H - 30);
+      ctx.fillStyle = '#4a4a5a'; ctx.font = '11px "Courier New", monospace';
+      ctx.fillText('decodebook.app', margin, H - 14);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#4a4a5a'; ctx.font = '11px "Courier New", monospace';
+      ctx.fillText('Made with DecodEbook', W - margin, H - 22);
+
       return canvas;
   };
 

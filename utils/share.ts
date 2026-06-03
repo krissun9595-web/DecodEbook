@@ -6,7 +6,6 @@ export async function shareFile(blob: Blob, filename: string, title?: string): P
   try {
     const file = new File([blob], filename, { type: blob.type });
 
-    // Try sharing with file (no url — mixing url+files is unsupported on most browsers)
     const fileData: ShareData = {
       title: title || 'DecodEbook',
       text: `${BRAND_TEXT}\n${BRAND_URL}`,
@@ -18,7 +17,6 @@ export async function shareFile(blob: Blob, filename: string, title?: string): P
       return true;
     }
 
-    // Fallback: share link only
     if (navigator.share) {
       await navigator.share({ title: title || 'DecodEbook', text: BRAND_TEXT, url: BRAND_URL });
       return true;
@@ -27,7 +25,6 @@ export async function shareFile(blob: Blob, filename: string, title?: string): P
     if (e.name === 'AbortError') return false;
   }
 
-  // Final fallback: trigger download
   try {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
