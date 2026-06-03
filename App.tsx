@@ -876,7 +876,7 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-1 p-0 overflow-hidden relative">
-          <div className="h-full w-full p-2 overflow-y-scroll custom-scrollbar">
+          <div className="h-full w-full p-2 overflow-y-scroll overflow-x-hidden custom-scrollbar">
              {renderContent()}
           </div>
         </div>

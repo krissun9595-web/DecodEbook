@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save, Share2 } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
-import { ShareMenu } from './ShareMenu';
+import { shareFile } from '../utils/share';
 import JSZip from 'jszip';
 
 interface Props {
@@ -148,7 +148,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   };
 
   return (
-    <div className="h-full flex flex-col animate-fade-in font-sans text-left">
+    <div className="h-full flex flex-col animate-fade-in font-sans text-left overflow-hidden">
       {/* Controller */}
       <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
         <div className="hidden md:flex items-center gap-4">
@@ -263,13 +263,13 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   >
                     <Download size={14} />
                   </button>
-                  <ShareMenu
-                    getBlob={async () => { const cached = await getFile(file.key); return cached?.blob || null; }}
-                    filename={file.filename}
-                    title={file.filename}
+                  <button
+                    onClick={async () => { const cached = await getFile(file.key); if (cached) shareFile(cached.blob, file.filename, file.filename); }}
                     className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
-                    iconSize={14}
-                  />
+                    title="Share"
+                  >
+                    <Share2 size={14} />
+                  </button>
                   <button
                     onClick={() => handleDelete(file.key)}
                     className="p-1.5 md:p-2 text-zinc-600 hover:text-[#ff003c] hover:bg-zinc-900 rounded-sm transition-all"

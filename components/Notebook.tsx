@@ -831,7 +831,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   };
 
   return (
-    <div className="h-full flex flex-col font-sans text-zinc-100 text-left relative" style={fontStyle}>
+    <div className="h-full flex flex-col font-sans text-zinc-100 text-left relative overflow-hidden" style={fontStyle}>
        {/* Inject scrollbar hide styles for cleaner container look */}
        <style>{`
           .hide-scrollbar::-webkit-scrollbar { width: 4px; background: transparent; }

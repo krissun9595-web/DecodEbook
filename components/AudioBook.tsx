@@ -798,7 +798,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 animate-fade-in relative font-sans text-zinc-100 text-left">
+    <div className="h-full flex flex-col gap-4 animate-fade-in relative font-sans text-zinc-100 text-left overflow-hidden">
       <audio 
         ref={audioRef} 
         src={audioSrc || undefined} 
