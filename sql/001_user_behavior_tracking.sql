@@ -67,12 +67,14 @@ create table public.subscriptions (
   user_id                 uuid not null references public.profiles(id) on delete cascade,
   stripe_customer_id      text,
   stripe_subscription_id  text unique,
-  plan                    text not null default 'free'
-                          check (plan in ('free', 'pro', 'team')),
+  stripe_price_id         text,
+  tier                    text not null default 'free'
+                          check (tier in ('free', 'pro', 'unlimited', 'team')),
   status                  text not null default 'active'
                           check (status in ('active', 'canceled', 'past_due', 'trialing', 'incomplete')),
   current_period_start    timestamptz,
   current_period_end      timestamptz,
+  cancel_at_period_end    boolean not null default false,
   created_at              timestamptz not null default now(),
   updated_at              timestamptz not null default now()
 );
