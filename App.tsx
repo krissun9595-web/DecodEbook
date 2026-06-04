@@ -604,8 +604,10 @@ const App: React.FC = () => {
                     <p className="text-[#00f3ff] font-bold uppercase tracking-widest text-sm animate-pulse">Initialize Upload</p>
                     <p className="text-[10px] text-zinc-600 font-mono">SUPPORTED PROTOCOLS: PDF / EPUB / TXT / MD</p>
                   </div>
-                  <input 
-                    type="file" 
+                  <input
+                    id="book-upload"
+                    name="book-upload"
+                    type="file"
                     accept=".pdf,.txt,.md,.html,.xml,.epub"
                     onChange={handleFileUpload}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"

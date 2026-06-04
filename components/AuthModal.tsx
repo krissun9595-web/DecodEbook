@@ -133,7 +133,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
             </p>
             <div className="flex items-center gap-2 bg-[#050505] border border-zinc-800 rounded px-3 py-2">
               <Mail size={14} className="text-zinc-600 shrink-0" />
-              <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
+              <input id="modal-reset-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
             </div>
             <button onClick={handleForgotPassword} disabled={loading} className="w-full py-2.5 bg-[#00f3ff] text-black font-bold rounded text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
               {loading && <Loader2 size={14} className="animate-spin" />}
@@ -148,11 +148,14 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
             <div className="space-y-3">
               <div className="flex items-center gap-2 bg-[#050505] border border-zinc-800 rounded px-3 py-2">
                 <Mail size={14} className="text-zinc-600 shrink-0" />
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
+                <input id="modal-auth-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
               </div>
               <div className="flex items-center gap-2 bg-[#050505] border border-zinc-800 rounded px-3 py-2">
                 <Key size={14} className="text-zinc-600 shrink-0" />
                 <input
+                  id="modal-auth-password"
+                  name="password"
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   type={showPassword ? 'text' : 'password'}
@@ -182,6 +185,8 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
             {mode === 'signup' && (
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
+                  id="modal-agree-terms"
+                  name="agree-terms"
                   type="checkbox"
                   checked={agreedToTerms}
                   onChange={e => setAgreedToTerms(e.target.checked)}
@@ -338,7 +343,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
             </p>
             <div className="flex items-center gap-2 bg-[#050505] border border-zinc-800 rounded px-3 py-2.5">
               <Mail size={14} className="text-zinc-600 shrink-0" />
-              <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
+              <input id="gate-reset-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
             </div>
             <button onClick={handleForgotPassword} disabled={loading} className="w-full py-2.5 bg-[#00f3ff] text-black font-bold rounded text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
               {loading && <Loader2 size={14} className="animate-spin" />}
@@ -353,11 +358,14 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
             <div className="space-y-3">
               <div className="flex items-center gap-2 bg-[#050505] border border-zinc-800 rounded px-3 py-2.5">
                 <Mail size={14} className="text-zinc-600 shrink-0" />
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
+                <input id="gate-auth-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
               </div>
               <div className="flex items-center gap-2 bg-[#050505] border border-zinc-800 rounded px-3 py-2.5">
                 <Key size={14} className="text-zinc-600 shrink-0" />
                 <input
+                  id="gate-auth-password"
+                  name="password"
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   type={showPassword ? 'text' : 'password'}
@@ -381,7 +389,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
 
             {mode === 'signup' && (
               <label className="flex items-start gap-2 cursor-pointer">
-                <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-[#00f3ff]" />
+                <input id="gate-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-[#00f3ff]" />
                 <span className="text-[10px] text-zinc-500 font-mono leading-relaxed">
                   I agree to the{' '}
                   <a href="/terms" target="_blank" className="text-[#00f3ff] hover:underline">Terms of Service</a>
