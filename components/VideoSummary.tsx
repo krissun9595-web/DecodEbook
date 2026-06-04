@@ -6,6 +6,7 @@ import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { shareFile } from '../utils/share';
+import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
@@ -101,6 +102,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
         const url = URL.createObjectURL(videoBlob);
         setVideoUrl(url);
         setIsPlaying(false);
+        trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', provider: useSeedance ? 'seedance' : 'google', model: videoModel, inputChars: chapter.content?.length || 0 });
         const cacheKey = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
         saveFile(cacheKey, videoBlob, {
           filename: `cine-render-${chapter.id}.mp4`,
@@ -115,6 +117,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
     } catch (e: any) {
       if (!abortRef.current) {
         console.error(e);
+        trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', status: 'failed', errorMessage: e.message });
         let msg = "Generation failed.";
         if (e.message?.includes("Requested entity was not found")) {
             msg = "Key Invalid. Paid project key required.";

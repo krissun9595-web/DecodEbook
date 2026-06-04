@@ -1,4 +1,6 @@
 
+import { trackShare } from './analytics';
+
 const BRAND_TEXT = 'Made with DecodEbook';
 const BRAND_URL = 'https://decodebook.app';
 
@@ -16,11 +18,13 @@ export async function shareFile(blob: Blob, filename: string, title?: string): P
 
     if (navigator.canShare?.(fileData)) {
       await navigator.share(fileData);
+      trackShare('share_file', { file_type: blob.type, method: 'native', filename });
       return true;
     }
 
     if (navigator.share) {
       await navigator.share({ title: title || 'DecodEbook', text: BRAND_TEXT, url: BRAND_URL });
+      trackShare('share_file', { file_type: blob.type, method: 'native_link', filename });
       return true;
     }
   } catch (e: any) {
@@ -34,6 +38,7 @@ export async function shareFile(blob: Blob, filename: string, title?: string): P
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    trackShare('share_file', { file_type: blob.type, method: 'download', filename });
     return true;
   } catch {
     return false;

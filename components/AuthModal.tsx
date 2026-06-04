@@ -6,6 +6,7 @@ import {
   isSupabaseConfigured
 } from '../services/supabase';
 import type { User } from '@supabase/supabase-js';
+import { trackAuth } from '../utils/analytics';
 
 function isInAppBrowser(): boolean {
   const ua = navigator.userAgent || '';
@@ -47,9 +48,11 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
     try {
       if (mode === 'signup') {
         await signUp(email, password);
+        trackAuth('sign_up', { method: 'email' });
         setSuccess('Account created! Check your email to confirm.');
       } else {
         const data = await signIn(email, password);
+        trackAuth('sign_in', { method: 'email' });
         onAuthChange(data.user);
         setSuccess('Logged in');
         setTimeout(onClose, 500);
@@ -90,6 +93,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
   };
 
   const handleSignOut = async () => {
+    trackAuth('sign_out');
     await signOut();
     onAuthChange(null);
     setSuccess('Signed out');
@@ -266,9 +270,11 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
     try {
       if (mode === 'signup') {
         await signUp(email, password);
+        trackAuth('sign_up', { method: 'email' });
         setSuccess('Account created! Check your email to confirm.');
       } else {
         const data = await signIn(email, password);
+        trackAuth('sign_in', { method: 'email' });
         onAuthChange(data.user);
       }
     } catch (e: any) { setError(e.message || 'Authentication failed'); }

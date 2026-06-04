@@ -6,6 +6,7 @@ import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
+import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 
 interface Props {
   chapter: Chapter;
@@ -262,9 +263,11 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
           fileType: 'podcast-script',
         }).catch(e => console.warn('Cache save failed:', e));
 
+        trackGeneration({ bookId: capturedBookId, chapterIndex: capturedChapter.id, module: 'podcast', provider: 'gemini', inputChars: capturedChapter.content?.length || 0 });
         return { audioBlob, script: result.script, episodeTitle: result.episodeTitle || capturedChapter.title };
-      } catch (e) {
+      } catch (e: any) {
         console.error(e);
+        trackGeneration({ bookId: capturedBookId, chapterIndex: capturedChapter.id, module: 'podcast', status: 'failed', errorMessage: e?.message });
         throw e;
       } finally {
         inflightPodcastMap.delete(genKey);

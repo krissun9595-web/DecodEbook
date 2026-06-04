@@ -5,6 +5,7 @@ import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { shareFile } from '../utils/share';
+import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import JSZip from 'jszip';
 import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
 
@@ -74,6 +75,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
     try {
       const imgUrl = await generateConceptImage(concept.visualPrompt, selectedStyle, selectedRatio);
       setImages(prev => ({ ...prev, [concept.term]: imgUrl }));
+      trackGeneration({ bookId, chapterIndex: chapter.id, module: 'visualizer', provider: 'gemini', inputChars: concept.visualPrompt.length });
       try {
         const imgResp = await fetch(imgUrl);
         const imgBlob = await imgResp.blob();
@@ -88,8 +90,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
           fileType: 'concept-image',
         }).catch(e => console.warn('Cache save failed:', e));
       } catch (e) { /* caching is best-effort */ }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Image gen failed", e);
+      trackGeneration({ bookId, chapterIndex: chapter.id, module: 'visualizer', status: 'failed', errorMessage: e?.message });
     } finally {
       setLoadingImages(prev => ({ ...prev, [concept.term]: false }));
     }

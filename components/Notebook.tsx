@@ -10,6 +10,7 @@ import jsPDF from 'jspdf';
 import { Loader } from './ui/Loader';
 import { saveFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
+import { trackNotebook } from '../utils/analytics';
 
 interface Props {
   items: NotebookItem[];

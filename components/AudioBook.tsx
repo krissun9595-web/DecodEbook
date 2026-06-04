@@ -7,6 +7,7 @@ import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
+import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 
 interface Props {
   chapter: Chapter;
@@ -742,9 +743,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // Persist timings at module level so they survive remount
         timingsCache.set(genKey, final.newTimings);
 
+        trackGeneration({ bookId: capturedBookId, chapterIndex: capturedChapterId, module: 'voice', provider: 'gemini', model: 'tts', inputChars: sentencesToSpeak.join('').length, outputDurationMs: Math.round((final.totalBytes / BYTES_PER_SEC) * 1000) });
         return { blob, timings: final.newTimings };
       } catch (e: any) {
         console.error('TTS generation failed:', e);
+        trackGeneration({ bookId: capturedBookId, chapterIndex: capturedChapterId, module: 'voice', status: 'failed', errorMessage: e.message });
         setGenerationProgress(`ERR: ${e.message || 'Unknown error'}`);
         await new Promise(r => setTimeout(r, 4000));
         return null;

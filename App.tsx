@@ -13,6 +13,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { PricingModal } from './components/PricingModal';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
+import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
 import type { User } from '@supabase/supabase-js';
 
 const lazyRetry = <T,>(factory: () => Promise<T>): Promise<T> =>
@@ -113,6 +114,7 @@ const App: React.FC = () => {
         if (session?.user) {
           setCurrentUser(session.user);
           setAuthGatePassed(true);
+          startSession();
           loadUserSettings(session.user.id).then(remote => {
             if (remote) {
               setSettings(prev => ({
@@ -246,6 +248,8 @@ const App: React.FC = () => {
   };
 
   const handleDeleteBook = (bookId: string) => {
+    const book = library.find(item => item.book.id === bookId)?.book;
+    trackBookAction('delete', { title: book?.title }, bookId);
     setLibrary(prev => prev.filter(item => item.book.id !== bookId));
     if (activeBookId === bookId) {
       const remaining = library.filter(item => item.book.id !== bookId);
@@ -411,6 +415,7 @@ const App: React.FC = () => {
             if (structure.chapters.length > 0) setActiveChapterId(structure.chapters[0].id);
             setView(AppView.DASHBOARD);
             setShowLibraryList(false);
+            trackBookAction('upload', { title: structure.title, chapter_count: structure.chapters.length, file_size: file.size, format: file.name.split('.').pop() }, structure.id);
         } catch (err: any) {
             console.error("Analysis Error:", err);
             setError("Decoding failed. " + (err.message || "The file might be too complex or the model is busy."));
@@ -625,6 +630,7 @@ const App: React.FC = () => {
   }
 
   const closeSidebarMobile = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
+  const switchTab = (tab: Tab) => { trackNavigation('module_switch', { from_module: activeTab, to_module: tab }); setActiveTab(tab); };
 
   return (
     <div className="flex h-screen bg-[#020202] bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
@@ -731,7 +737,7 @@ const App: React.FC = () => {
                     return (
                         <div key={chapter.id} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
                             <button
-                                onClick={() => { setActiveChapterId(chapter.id); closeSidebarMobile(); }}
+                                onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterId(chapter.id); closeSidebarMobile(); }}
                                 className={`flex-1 text-left flex items-center gap-3 border-l-2 py-1 transition-all min-w-0 pr-2 ${
                                     activeChapterId === chapter.id 
                                     ? 'border-[#00f3ff]' 
@@ -836,7 +842,7 @@ const App: React.FC = () => {
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => { setActiveTab(tab.id as Tab); }}
+                  onClick={() => { switchTab(tab.id as Tab); }}
                   className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
                     activeTab === tab.id
                       ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'
@@ -861,7 +867,7 @@ const App: React.FC = () => {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id as Tab); }}
+                onClick={() => { switchTab(tab.id as Tab); }}
                 className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all ${
                   activeTab === tab.id
                     ? 'text-[#00f3ff] bg-[#00f3ff]/10 border-b-2 border-[#00f3ff]'

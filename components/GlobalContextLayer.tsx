@@ -4,6 +4,7 @@ import { Book, Copy, Search, Loader2, BookOpen, FilePlus, Volume2, Languages } f
 import { getQuickDefinition, generateSpeech, translateText } from '../services/gemini';
 import { NotebookItem } from '../types';
 import { pcmToWav } from '../utils/audio';
+import { trackEvent, trackNotebook } from '../utils/analytics';
 
 interface Props {
   onAddToNotebook: (item: Omit<NotebookItem, 'id' | 'timestamp'>) => void;
@@ -215,6 +216,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
             text: def,
             originalText: def
         }));
+        trackEvent('ai', 'define_word', { word: text, source: fromMobile ? 'mobile_toolbar' : 'context_menu' });
     } catch (e) {
         setDefinition(prev => ({ ...prev, loading: false, text: "Could not retrieve definition." }));
     }
@@ -301,6 +303,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
          definition: undefined,
          contextSource: source
      });
+     trackNotebook('add_note', { source: fromMobile ? 'mobile_toolbar' : 'context_menu', word_count: text.split(/\s+/).length });
      setMenu(prev => ({ ...prev, visible: false }));
      setMobileBar(prev => ({ ...prev, visible: false }));
      window.getSelection()?.removeAllRanges();
