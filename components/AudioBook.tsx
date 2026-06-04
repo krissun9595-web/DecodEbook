@@ -6,7 +6,7 @@ import { extractChapterText, generateSpeech, translateSentences, cleanGenAiText 
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
-import { ShareMenu } from './ShareMenu';
+import { shareFile } from '../utils/share';
 
 interface Props {
   chapter: Chapter;
@@ -890,7 +890,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                   <a href={audioSrc || '#'} download={`voice-synth-pg${currentPage + 1}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={16} /></a>
-                  <ShareMenu getBlob={async () => { if (!audioSrc) return null; const r = await fetch(audioSrc); return r.blob(); }} filename={`voice-synth-pg${currentPage + 1}.wav`} title={`Voice Synth - Page ${currentPage + 1}`} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} iconSize={16} />
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `voice-synth-pg${currentPage + 1}.wav`, `Voice Synth - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>
                   <button onClick={() => setIsModuleMinimized(!isModuleMinimized)} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0">{isModuleMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}</button>
               </div>
           </div>

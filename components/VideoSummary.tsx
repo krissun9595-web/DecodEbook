@@ -5,7 +5,7 @@ import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, Refre
 import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
 import { Loader } from './ui/Loader';
-import { ShareMenu } from './ShareMenu';
+import { shareFile } from '../utils/share';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
@@ -348,7 +348,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                         <a href={videoUrl || '#'} download={`cine-render-${chapter.id}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
                             <Download size={16} />
                         </a>
-                        <ShareMenu getBlob={async () => { if (!videoUrl) return null; const r = await fetch(videoUrl); return r.blob(); }} filename={`decodebook-video-${chapter.id}.mp4`} title={chapter.title} disabled={!videoUrl} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0" iconSize={16} />
+                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); shareFile(b, `decodebook-video-${chapter.id}.mp4`, chapter.title); }} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0" title="Share"><Share2 size={16} /></button>
                         <button onClick={toggleFullScreen} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
                             {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                         </button>
