@@ -335,7 +335,7 @@ export const generatePodcastAudio = async (
       contents: {
         parts: [
           getFilePart(file),
-          { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use hosts ${hosts.host1} and ${hosts.host2}. Output JSON with 'episodeTitle' and 'script'.` }
+          { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use hosts ${hosts.host1} and ${hosts.host2}. Output JSON with 'episodeTitle' and 'script'. The 'script' MUST be formatted as lines of dialogue, one per line, each starting with the speaker name followed by a colon. Example format:\n${hosts.host1}: Welcome to the show!\n${hosts.host2}: Thanks for having me.\nEvery line must start with either "${hosts.host1}:" or "${hosts.host2}:". Do NOT merge multiple speakers into one line or paragraph.` }
         ]
       },
       config: {

@@ -112,16 +112,35 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
       setSegments([]);
       return;
     }
-    const lines = script.split('\n').map(l => l.replace(/^\*\*|\*\*$/g, '').trim()).filter(line => line.length > 0);
+    const h1 = hosts.host1;
+    const h2 = hosts.host2;
+    const speakerPattern = new RegExp(`(?:^|\\n)\\s*\\**(?:${h1}|${h2})\\**\\s*:`, 'gi');
+
+    let validLines: { speaker: string; text: string }[] = [];
+    const matches = [...script.matchAll(new RegExp(`(?:^|\\n)\\s*\\**(?:(${h1})|(${h2}))\\**\\s*:\\s*`, 'gi'))];
+
+    if (matches.length > 0) {
+      for (let i = 0; i < matches.length; i++) {
+        const m = matches[i];
+        const speaker = (m[1] || m[2]).trim();
+        const start = m.index! + m[0].length;
+        const end = i + 1 < matches.length ? matches[i + 1].index! : script.length;
+        const text = script.substring(start, end).replace(/^\*\*|\*\*$/g, '').replace(/\n/g, ' ').trim();
+        if (text) validLines.push({ speaker, text });
+      }
+    } else {
+      const lines = script.split('\n').map(l => l.replace(/^\*\*|\*\*$/g, '').trim()).filter(l => l.length > 0);
+      validLines = lines.map(line => {
+        const splitIdx = line.indexOf(':');
+        if (splitIdx === -1 || splitIdx > 30) return null;
+        const speaker = line.substring(0, splitIdx).trim();
+        const text = line.substring(splitIdx + 1).trim();
+        return { speaker, text };
+      }).filter(l => l !== null) as { speaker: string; text: string }[];
+    }
+
     const parsed: ScriptSegment[] = [];
     let accumulatedChars = 0;
-    const validLines = lines.map(line => {
-      const splitIdx = line.indexOf(':');
-      if (splitIdx === -1) return null;
-      const speaker = line.substring(0, splitIdx).trim();
-      const text = line.substring(splitIdx + 1).trim();
-      return { speaker, text };
-    }).filter(l => l !== null) as { speaker: string, text: string }[];
     const totalChars = validLines.reduce((acc, l) => acc + l.text.length, 0);
     validLines.forEach(l => {
       const startPct = accumulatedChars / (totalChars || 1);
