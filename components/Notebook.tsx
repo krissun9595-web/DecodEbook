@@ -9,7 +9,7 @@ import jsPDF from 'jspdf';
 
 import { Loader } from './ui/Loader';
 import { saveFile, buildCacheKey } from '../services/fileCache';
-import { ShareMenu } from './ShareMenu';
+import { shareFile } from '../utils/share';
 
 interface Props {
   items: NotebookItem[];
@@ -909,7 +909,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                     <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
                     <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
                     <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
-                    <ShareMenu getBlob={async () => { const result = await buildMindMapPdfBlob(); return result?.blob || null; }} filename={`mind-map-${activeChapter?.title || 'decodebook'}.pdf`} title={`Mind Map - ${activeChapter?.title || bookTitle || 'DecodEbook'}`} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" iconSize={14} />
+                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
                     <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#ff003c] text-[#ff003c] rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
                </div>
 
@@ -1093,7 +1093,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
                                    <button onClick={() => playPronunciation(item.id, item.text)} disabled={!!playingId} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-[#00f3ff] bg-[#00f3ff]/10 animate-pulse' : 'text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10'}`} title="Pronounce"><Volume2 size={14} /></button>
                                    <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
-                                   <ShareMenu getBlob={async () => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return null; return new Promise<Blob | null>(r => canvas.toBlob(b => r(b), 'image/png')); }} filename={`flash-note-${item.id}.png`} title={item.text.substring(0, 50)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" iconSize={14} />
+                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) shareFile(blob, `flash-note-${item.id}.png`, item.text.substring(0, 50)); }, 'image/png'); }} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Share"><Share2 size={14} /></button>
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-[#ff003c] bg-zinc-900/50 hover:bg-[#ff003c]/10 rounded border border-transparent hover:border-[#ff003c]/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">
