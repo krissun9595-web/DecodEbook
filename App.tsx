@@ -14,6 +14,7 @@ import { PricingModal } from './components/PricingModal';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
+import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import type { User } from '@supabase/supabase-js';
 
 const lazyRetry = <T,>(factory: () => Promise<T>): Promise<T> =>
@@ -40,7 +41,8 @@ const App: React.FC = () => {
 
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
-  
+  const [cloudSynced, setCloudSynced] = useState(false);
+
   // Notebook State
   const [notebook, setNotebook] = useState<NotebookItem[]>([]);
 
@@ -135,6 +137,28 @@ const App: React.FC = () => {
             }
           }).catch(e => console.warn('[Supabase] Failed to load settings:', e));
           fetchUserTier().then(setUserTier).catch(() => {});
+          // Cloud library sync
+          const uid = session.user.id;
+          Promise.all([loadLibraryFromCloud(uid), loadNotebookFromCloud(uid), loadReadingPositions(uid)]).then(([cloudLib, cloudNotes, positions]) => {
+            setLibrary(prev => {
+              const { merged, toUpload } = mergeLibrary(prev, cloudLib);
+              toUpload.forEach(item => saveBookToCloud(uid, item).catch(() => {}));
+              if (merged.length > 0 && !activeBookId) {
+                const firstBook = merged[0];
+                setActiveBookId(firstBook.book.id);
+                const pos = positions[firstBook.book.id];
+                if (pos != null) setActiveChapterId(pos);
+                else if (firstBook.book.chapters.length > 0) setActiveChapterId(firstBook.book.chapters[0].id);
+                if (merged.some(m => m.fileContext.content)) setView(AppView.DASHBOARD);
+              }
+              return merged;
+            });
+            setNotebook(prev => {
+              const merged = mergeNotebook(prev, cloudNotes);
+              return merged;
+            });
+            setCloudSynced(true);
+          }).catch(e => console.warn('[sync] Cloud sync failed:', e));
         }
       }).catch(e => console.warn('[Supabase] Failed to get session:', e))
         .finally(() => {
@@ -158,6 +182,7 @@ const App: React.FC = () => {
       } catch (e) {
         console.warn('Failed to save notebook to localStorage:', e);
       }
+      if (currentUser && cloudSynced) debouncedNotebookSync(currentUser.id, notebook);
   }, [notebook]);
 
   useEffect(() => {
@@ -250,6 +275,7 @@ const App: React.FC = () => {
   const handleDeleteBook = (bookId: string) => {
     const book = library.find(item => item.book.id === bookId)?.book;
     trackBookAction('delete', { title: book?.title }, bookId);
+    if (currentUser) deleteBookFromCloud(currentUser.id, bookId).catch(() => {});
     setLibrary(prev => prev.filter(item => item.book.id !== bookId));
     if (activeBookId === bookId) {
       const remaining = library.filter(item => item.book.id !== bookId);
@@ -283,6 +309,14 @@ const App: React.FC = () => {
           return item;
       }));
   };
+
+  const debouncedNotebookSync = useRef(debounce((userId: string, items: NotebookItem[]) => {
+    saveNotebookToCloud(userId, items).catch(() => {});
+  }, 1000)).current;
+
+  const debouncedReadingSync = useRef(debounce((userId: string, bookId: string, chapterId: number) => {
+    saveReadingPosition(userId, bookId, chapterId).catch(() => {});
+  }, 500)).current;
 
   const prevLanguageRef = useRef(settings.targetLanguage);
   useEffect(() => {
@@ -416,6 +450,7 @@ const App: React.FC = () => {
             setView(AppView.DASHBOARD);
             setShowLibraryList(false);
             trackBookAction('upload', { title: structure.title, chapter_count: structure.chapters.length, file_size: file.size, format: file.name.split('.').pop() }, structure.id);
+            if (currentUser) saveBookToCloud(currentUser.id, newItem).catch(() => {});
         } catch (err: any) {
             console.error("Analysis Error:", err);
             setError("Decoding failed. " + (err.message || "The file might be too complex or the model is busy."));
@@ -478,17 +513,22 @@ const App: React.FC = () => {
 
   const toggleBookmark = (chapterId: number) => {
     if (!activeBookId) return;
-    setLibrary(prev => prev.map(item => {
+    setLibrary(prev => {
+      const updated = prev.map(item => {
         if (item.book.id === activeBookId) {
             const bookmarks = item.book.bookmarks || [];
             const isBookmarked = bookmarks.includes(chapterId);
-            const newBookmarks = isBookmarked 
+            const newBookmarks = isBookmarked
                 ? bookmarks.filter(id => id !== chapterId)
                 : [...bookmarks, chapterId];
-            return { ...item, book: { ...item.book, bookmarks: newBookmarks } };
+            const newItem = { ...item, book: { ...item.book, bookmarks: newBookmarks } };
+            if (currentUser) saveBookToCloud(currentUser.id, newItem).catch(() => {});
+            return newItem;
         }
         return item;
-    }));
+      });
+      return updated;
+    });
   };
 
   const renderContent = () => {
@@ -739,7 +779,7 @@ const App: React.FC = () => {
                     return (
                         <div key={chapter.id} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
                             <button
-                                onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterId(chapter.id); closeSidebarMobile(); }}
+                                onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
                                 className={`flex-1 text-left flex items-center gap-3 border-l-2 py-1 transition-all min-w-0 pr-2 ${
                                     activeChapterId === chapter.id 
                                     ? 'border-[#00f3ff]' 
