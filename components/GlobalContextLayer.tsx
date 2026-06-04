@@ -29,7 +29,12 @@ interface DefinitionState {
   position: { x: number; y: number };
 }
 
-const isMobile = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+let lastInputWasTouch = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('touchstart', () => { lastInputWasTouch = true; }, { capture: true, passive: true });
+  window.addEventListener('mousedown', (e) => { if (e.detail > 0) lastInputWasTouch = false; }, { capture: true });
+}
+const isMobile = () => lastInputWasTouch;
 
 const getSelectionSource = (selection: Selection): string => {
   let source = "Input_Stream";
