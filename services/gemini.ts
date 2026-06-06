@@ -325,7 +325,7 @@ export const generatePodcastAudio = async (
   file: FileContext,
   chapter: Chapter,
   tone: string = 'Engaging',
-  hosts: { host1: string, voice1: string, host2: string, voice2: string },
+  hosts: { host1: string, voice1: string, desc1?: string, host2: string, voice2: string, desc2?: string },
   language: string = 'English'
 ): Promise<{ audio: string; script: string; episodeTitle: string }> => {
   return withRetry(async () => {
@@ -335,7 +335,7 @@ export const generatePodcastAudio = async (
       contents: {
         parts: [
           getFilePart(file),
-          { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use hosts ${hosts.host1} and ${hosts.host2}.\n\nCRITICAL PERSONALITY RULES:\n- ${hosts.host1} and ${hosts.host2} must have DISTINCT speaking styles throughout the ENTIRE script.\n- ${hosts.host1} leads the discussion, asks questions, and drives the narrative.\n- ${hosts.host2} responds, challenges, adds counterpoints, and reacts with a clearly different personality.\n- They must NEVER converge into the same tone. Maintain their unique voices from start to finish.\n- Alternate speakers frequently. Never have the same speaker talk for more than 3 consecutive lines.\n\nFORMAT RULES:\n- Output JSON with 'episodeTitle' and 'script'.\n- The 'script' MUST be formatted as lines of dialogue, one per line, each starting with the speaker name followed by a colon.\n- Example:\n${hosts.host1}: Welcome to the show!\n${hosts.host2}: Thanks for having me.\n- Every line must start with either "${hosts.host1}:" or "${hosts.host2}:". Do NOT merge multiple speakers into one line.` }
+          { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use EXACTLY these two hosts:\n\n- ${hosts.host1}: ${hosts.desc1 || 'leads the discussion'}\n- ${hosts.host2}: ${hosts.desc2 || 'responds and adds counterpoints'}\n\nCHARACTER RULES:\n- ${hosts.host1} MUST maintain their personality (${hosts.desc1 || 'lead host'}) in EVERY line they speak. Never break character.\n- ${hosts.host2} MUST maintain their personality (${hosts.desc2 || 'co-host'}) in EVERY line they speak. Never break character.\n- Their speaking styles must be clearly DIFFERENT from each other throughout the entire script.\n- Alternate speakers frequently. Never have the same speaker talk for more than 3 consecutive lines.\n\nFORMAT RULES:\n- Output JSON with 'episodeTitle' and 'script'.\n- The 'script' MUST be formatted as lines of dialogue, one per line.\n- Each line MUST start with EXACTLY "${hosts.host1}:" or "${hosts.host2}:" (no bold, no brackets, no variations).\n- Example:\n${hosts.host1}: Welcome to the show!\n${hosts.host2}: Thanks for having me.` }
         ]
       },
       config: {

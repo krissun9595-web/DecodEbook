@@ -58,19 +58,19 @@ let lastPodcastTone: string | null = null;
 let lastPodcastLanguage: string | null = null;
 let lastEpisodeTitle: string | null = null;
 
-const HOST_CONFIG: Record<string, { host1: string, voice1: string, host2: string, voice2: string }> = {
-  'Engaging': { host1: 'Alex', voice1: 'Puck', host2: 'Jordan', voice2: 'Kore' },
-  'Aggressive': { host1: 'Titan', voice1: 'Fenrir', host2: 'Viper', voice2: 'Charon' },
-  'Incisive': { host1: 'Cipher', voice1: 'Puck', host2: 'Oracle', voice2: 'Kore' },
-  'Humorous': { host1: 'Jester', voice1: 'Fenrir', host2: 'Pixel', voice2: 'Puck' },
-  'Instructive': { host1: 'Professor', voice1: 'Kore', host2: 'Student', voice2: 'Zephyr' },
-  'Cyber-Noir': { host1: 'Detective', voice1: 'Fenrir', host2: 'Client', voice2: 'Kore' },
-  'Sarcastic': { host1: 'Glitch', voice1: 'Puck', host2: 'System', voice2: 'Kore' },
-  'Philosophical': { host1: 'Sage', voice1: 'Charon', host2: 'Seeker', voice2: 'Zephyr' },
-  'Debate': { host1: 'Pro', voice1: 'Puck', host2: 'Con', voice2: 'Fenrir' },
-  'Street-Samurai': { host1: 'Ronin', voice1: 'Fenrir', host2: 'Katana', voice2: 'Kore' },
-  'Corpo-Rat': { host1: 'Exec', voice1: 'Charon', host2: 'Assistant', voice2: 'Puck' },
-  'Netrunner': { host1: 'Zero', voice1: 'Puck', host2: 'One', voice2: 'Kore' },
+const HOST_CONFIG: Record<string, { host1: string, voice1: string, desc1: string, host2: string, voice2: string, desc2: string }> = {
+  'Engaging': { host1: 'Alex', voice1: 'Puck', desc1: 'warm narrator, curious and enthusiastic', host2: 'Jordan', voice2: 'Kore', desc2: 'sharp analyst, adds depth and counterpoints' },
+  'Aggressive': { host1: 'Titan', voice1: 'Fenrir', desc1: 'intense and commanding, speaks with raw energy', host2: 'Viper', voice2: 'Charon', desc2: 'deep and menacing, calculated responses' },
+  'Incisive': { host1: 'Cipher', voice1: 'Puck', desc1: 'quick-witted investigator, asks piercing questions', host2: 'Oracle', voice2: 'Kore', desc2: 'all-knowing, delivers insights melodically' },
+  'Humorous': { host1: 'Jester', voice1: 'Fenrir', desc1: 'bold comedian, delivers punchlines with gravel voice', host2: 'Pixel', voice2: 'Puck', desc2: 'witty sidekick, quick comebacks and wordplay' },
+  'Instructive': { host1: 'Professor', voice1: 'Kore', desc1: 'patient teacher, explains with clarity and warmth', host2: 'Student', voice2: 'Zephyr', desc2: 'eager learner, asks thoughtful questions softly' },
+  'Cyber-Noir': { host1: 'Detective', voice1: 'Fenrir', desc1: 'gruff private eye, speaks in short hard-boiled sentences', host2: 'Client', voice2: 'Kore', desc2: 'mysterious informant, speaks smoothly with hidden motives' },
+  'Sarcastic': { host1: 'Glitch', voice1: 'Puck', desc1: 'sardonic hacker, dripping with irony', host2: 'System', voice2: 'Kore', desc2: 'deadpan AI, responds literally to sarcasm' },
+  'Philosophical': { host1: 'Sage', voice1: 'Charon', desc1: 'deep-voiced elder, speaks in measured profound statements', host2: 'Seeker', voice2: 'Zephyr', desc2: 'gentle questioner, probes with calm curiosity' },
+  'Debate': { host1: 'Pro', voice1: 'Puck', desc1: 'confident advocate, builds arguments persuasively', host2: 'Con', voice2: 'Fenrir', desc2: 'fierce challenger, dismantles arguments with intensity' },
+  'Street-Samurai': { host1: 'Ronin', voice1: 'Fenrir', desc1: 'battle-hardened warrior, speaks with gruff authority', host2: 'Katana', voice2: 'Kore', desc2: 'elegant strategist, precise and melodic' },
+  'Corpo-Rat': { host1: 'Exec', voice1: 'Charon', desc1: 'deep-voiced executive, speaks with boardroom authority', host2: 'Assistant', voice2: 'Puck', desc2: 'eager corporate climber, energetic and agreeable' },
+  'Netrunner': { host1: 'Zero', voice1: 'Puck', desc1: 'fast-talking hacker, excited about data', host2: 'One', voice2: 'Kore', desc2: 'cool AI companion, responds with smooth precision' },
 };
 
 export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings, bookId }) => {
@@ -129,14 +129,30 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
         if (text) validLines.push({ speaker, text });
       }
     } else {
+      // Fallback: parse any "Name: text" lines and map first two unique speakers to h1/h2
       const lines = script.split('\n').map(l => l.replace(/^\*\*|\*\*$/g, '').trim()).filter(l => l.length > 0);
-      validLines = lines.map(line => {
+      const speakerSet = new Set<string>();
+      const rawLines: { speaker: string; text: string }[] = [];
+      for (const line of lines) {
         const splitIdx = line.indexOf(':');
-        if (splitIdx === -1 || splitIdx > 30) return null;
+        if (splitIdx === -1 || splitIdx > 30) continue;
         const speaker = line.substring(0, splitIdx).trim();
         const text = line.substring(splitIdx + 1).trim();
-        return { speaker, text };
-      }).filter(l => l !== null) as { speaker: string; text: string }[];
+        if (!text) continue;
+        speakerSet.add(speaker.toUpperCase());
+        rawLines.push({ speaker, text });
+      }
+      // Map detected speakers to current host names for alignment
+      const uniqueSpeakers = [...speakerSet];
+      const speakerMap = new Map<string, string>();
+      if (uniqueSpeakers.length >= 2) {
+        speakerMap.set(uniqueSpeakers[0], h1);
+        speakerMap.set(uniqueSpeakers[1], h2);
+      }
+      validLines = rawLines.map(l => ({
+        speaker: speakerMap.get(l.speaker.toUpperCase()) || l.speaker,
+        text: l.text,
+      }));
     }
 
     const parsed: ScriptSegment[] = [];
@@ -149,7 +165,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
       parsed.push({ speaker: l.speaker, text: l.text, startPct, endPct });
     });
     setSegments(parsed);
-  }, [script]);
+  }, [script, hosts.host1, hosts.host2]);
 
   const pcmToWavBlob = (base64: string): Blob => {
     const binaryString = window.atob(base64);
@@ -202,6 +218,12 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
     let cancelled = false;
     const key = buildCacheKey(bookId, chapter.id, 'podcast-audio', selectedTone, selectedLanguage);
     podcastGenKeyRef.current = key;
+
+    // Clear previous state so old script with different host names doesn't linger
+    setScript(null);
+    setSegments([]);
+    setActiveIndex(-1);
+    if (audioSrc) { URL.revokeObjectURL(audioSrc); setAudioSrc(null); }
 
     const load = async () => {
       // 1. Try loading from cache

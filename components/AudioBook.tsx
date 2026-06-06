@@ -159,27 +159,25 @@ const paginateText = (text: string, targetSize: number): string[] => {
 };
 
 const ABBREV = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Gen|Gov|Sgt|Cpl|Pvt|Rev|Vol|Dept|Est|Inc|Ltd|Corp|vs|etc|approx|e\.g|i\.e|al|fig|no|op|ch|pt|pp)$/i;
-const OPEN_QUOTES = /[“‘「『（”]/g;
-const CLOSE_QUOTES = /[”’」』）”]/g;
-const quoteBalance = (s: string): number => {
-  return (s.match(OPEN_QUOTES) || []).length - (s.match(CLOSE_QUOTES) || []).length;
-};
 const splitIntoSentences = (text: string): string[] => {
   if (!text) return [];
   const results: string[] = [];
   let buf = '';
-  let openQuotes = 0;
-  const raw = text.match(/[^.!?]+[.!?]+[”'“'」』）”']*\s*|.+$/g) || [text];
+  let quoteDepth = 0;
+  const raw = text.match(/[^.!?]+[.!?]+["”’」』）']*\s*|.+$/g) || [text];
   for (const seg of raw) {
     buf += seg;
-    openQuotes += quoteBalance(seg);
-    const trimmed = buf.replace(/[.!?]+[”'“'」』）”']*\s*$/, '').trim();
+    for (const ch of seg) {
+      if (ch === '“' || ch === '「' || ch === '『' || ch === '（') quoteDepth++;
+      else if (ch === '”' || ch === '」' || ch === '』' || ch === '）') quoteDepth = Math.max(0, quoteDepth - 1);
+    }
+    const trimmed = buf.replace(/[.!?]+["”’」』）']*\s*$/, '').trim();
     const lastWord = trimmed.split(/\s+/).pop() || '';
     if (ABBREV.test(lastWord)) continue;
-    if (openQuotes > 0) continue;
+    if (quoteDepth > 0) continue;
     results.push(buf.trim());
     buf = '';
-    openQuotes = 0;
+    quoteDepth = 0;
   }
   if (buf.trim()) {
     if (results.length > 0) results[results.length - 1] += ' ' + buf.trim();
