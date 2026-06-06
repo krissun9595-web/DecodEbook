@@ -16,6 +16,7 @@ interface Props {
   settings: AppSettings;
   onSettingsUpdate: (settings: AppSettings) => void;
   bookId: string;
+  onChapterChange?: (chapterId: number) => void;
 }
 
 interface QuantumParticle {
@@ -157,10 +158,25 @@ const paginateText = (text: string, targetSize: number): string[] => {
   return pages;
 };
 
+const ABBREV = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Gen|Gov|Sgt|Cpl|Pvt|Rev|Vol|Dept|Est|Inc|Ltd|Corp|vs|etc|approx|e\.g|i\.e|al|fig|no|op|ch|pt|pp)$/i;
 const splitIntoSentences = (text: string): string[] => {
   if (!text) return [];
-  const sentences = text.match(/[^.!?]+[.!?]+["'”’]?\s*|.+$/g) || [text];
-  return sentences.map(s => s.trim()).filter(s => s.length > 0);
+  const results: string[] = [];
+  let buf = '';
+  const raw = text.match(/[^.!?]+[.!?]+[“’”’”」』）]*\s*|.+$/g) || [text];
+  for (const seg of raw) {
+    buf += seg;
+    const trimmed = buf.replace(/[.!?]+[“’”’”」』）]*\s*$/, '').trim();
+    const lastWord = trimmed.split(/\s+/).pop() || '';
+    if (ABBREV.test(lastWord)) continue;
+    results.push(buf.trim());
+    buf = '';
+  }
+  if (buf.trim()) {
+    if (results.length > 0) results[results.length - 1] += ' ' + buf.trim();
+    else results.push(buf.trim());
+  }
+  return results.filter(s => s.length > 0);
 };
 
 const processQueue = async <T, R>(
@@ -192,7 +208,7 @@ const processQueue = async <T, R>(
   return results;
 };
 
-export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId }) => {
+export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, onChapterChange }) => {
   const [pages, setPages] = useState<string[]>([]);
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
@@ -246,10 +262,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     setHasInitiated(false);
   };
 
-  // Fix: Added missing changePage function to navigate between pages
   const changePage = (next: boolean) => {
     if (next && currentPage < pages.length - 1) {
       setCurrentPage(prev => prev + 1);
+    } else if (next && currentPage === pages.length - 1 && onChapterChange) {
+      const curIdx = allChapters.findIndex(c => c.id === chapter.id);
+      if (curIdx >= 0 && curIdx < allChapters.length - 1) {
+        onChapterChange(allChapters[curIdx + 1].id);
+      }
     } else if (!next && currentPage > 0) {
       setCurrentPage(prev => prev - 1);
     }
@@ -301,7 +321,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   useEffect(() => {
      if (!pages[currentPage]) return;
      const pageText = pages[currentPage];
-     const rawParagraphs = pageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+     const splitParagraphs = pageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+     const rawParagraphs: string[] = [];
+     let pendingQuote = '';
+     for (const p of splitParagraphs) {
+       const joined = pendingQuote ? pendingQuote + '\n' + p : p;
+       const opens = (joined.match(/["“「『（]/g) || []).length;
+       const closes = (joined.match(/["”」』）]/g) || []).length;
+       if (opens > closes) { pendingQuote = joined; continue; }
+       rawParagraphs.push(joined);
+       pendingQuote = '';
+     }
+     if (pendingQuote) rawParagraphs.push(pendingQuote);
      const newParagraphData: ParagraphData[] = [];
      const newSentenceMap: SentenceMap[] = [];
      let globalIdx = 0;
@@ -911,7 +942,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                    <div className="flex items-center gap-1 md:gap-2">
                       <button onClick={() => changePage(false)} disabled={currentPage === 0} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
                       <h3 className="text-[9px] md:text-[10px] font-bold text-[#00f3ff] font-tech uppercase tracking-widest px-2 md:px-4">PG.{String(currentPage + 1).padStart(2,'0')}</h3>
-                      <button onClick={() => changePage(true)} disabled={currentPage === pages.length - 1} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
+                      <button onClick={() => changePage(true)} disabled={currentPage === pages.length - 1 && (!onChapterChange || allChapters.findIndex(c => c.id === chapter.id) >= allChapters.length - 1)} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
                   </div>
                   <div className="flex items-center gap-1 md:gap-2">
                       <button onClick={() => setViewMode(viewMode === 'split' ? 'single' : 'split')} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${viewMode === 'split' ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> <span className="hidden sm:inline">SPLIT</span></button>
@@ -921,10 +952,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           </div>
 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-[#050505] relative flex flex-col hud-border text-left">
-             <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8 pb-32 content-font">
+             <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-4 md:space-y-8 pb-32 content-font">
                 {paragraphData.map((para, pIdx) => (
                     <div key={pIdx} className={`w-full flex ${viewMode === 'split' ? '' : 'justify-center'}`}>
-                        <div className={`${viewMode === 'split' ? 'w-1/2 pr-6 border-r border-zinc-800/20' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-400 font-medium`}>
+                        <div className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-400 font-medium`}>
                             {para.original.map((sentence, sIdx) => {
                                 const mapping = flatSentenceMap.find(m => m.pIndex === pIdx && m.sIndex === sIdx);
                                 const globalIdx = mapping?.globalIndex ?? -1;
@@ -937,7 +968,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             })}
                         </div>
                         {viewMode === 'split' && (
-                            <div className={`w-1/2 pl-6 ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-500 font-medium`}>
+                            <div className={`w-1/2 pl-2 md:pl-6 ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-500 font-medium`}>
                                 {isTranslating && para.translated.length === 0 ? (
                                     <span className="animate-pulse text-[10px] font-mono text-zinc-700 uppercase">Decrypting_Matrix...</span>
                                 ) : (
