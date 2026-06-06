@@ -154,11 +154,32 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
   const pcmToWavBlob = (base64: string): Blob => {
     const binaryString = window.atob(base64);
     const len = binaryString.length;
-    const buffer = new ArrayBuffer(44 + len);
+
+    // Decode 16-bit PCM samples, find peak, and normalize
+    const sampleCount = Math.floor(len / 2);
+    const samples = new Int16Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      samples[i] = binaryString.charCodeAt(i * 2) | (binaryString.charCodeAt(i * 2 + 1) << 8);
+    }
+    let peak = 0;
+    for (let i = 0; i < sampleCount; i++) {
+      const abs = Math.abs(samples[i]);
+      if (abs > peak) peak = abs;
+    }
+    // Normalize to 90% of max if peak is too low (below 50% of max)
+    if (peak > 0 && peak < 16384) {
+      const gain = (32767 * 0.9) / peak;
+      for (let i = 0; i < sampleCount; i++) {
+        samples[i] = Math.max(-32768, Math.min(32767, Math.round(samples[i] * gain)));
+      }
+    }
+
+    const normalizedLen = sampleCount * 2;
+    const buffer = new ArrayBuffer(44 + normalizedLen);
     const view = new DataView(buffer);
     const writeString = (v: DataView, o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
     writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + len, true);
+    view.setUint32(4, 36 + normalizedLen, true);
     writeString(view, 8, 'WAVE');
     writeString(view, 12, 'fmt ');
     view.setUint32(16, 16, true);
@@ -169,9 +190,10 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
     view.setUint16(32, 2, true);
     view.setUint16(34, 16, true);
     writeString(view, 36, 'data');
-    view.setUint32(40, len, true);
-    const bytes = new Uint8Array(buffer, 44);
-    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+    view.setUint32(40, normalizedLen, true);
+    const outBytes = new Uint8Array(buffer, 44);
+    const sampleBytes = new Uint8Array(samples.buffer);
+    outBytes.set(sampleBytes);
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
@@ -375,6 +397,18 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
     const val = parseFloat(e.target.value);
     if (audioRef.current && duration) {
       audioRef.current.currentTime = (val / 100) * duration;
+    }
+  };
+
+  const seekToSegment = async (idx: number) => {
+    if (!audioRef.current || !duration || idx < 0 || idx >= segments.length) return;
+    const targetTime = segments[idx].startPct * duration;
+    audioRef.current.currentTime = targetTime;
+    setActiveIndex(idx);
+    if (!isPlaying) {
+      if (!audioContextRef.current) initAudioVisualizer();
+      if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume();
+      try { await audioRef.current.play(); setIsPlaying(true); } catch (e) { /* ignore */ }
     }
   };
 
@@ -656,7 +690,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                       const leftAligned = cur === h1 || cur.includes(h1);
                       return (
                         <div key={idx} ref={el => { segmentRefs.current[idx] = el; }} className={`flex w-full ${leftAligned ? 'justify-start' : 'justify-end'} animate-fade-in`}>
-                            <div className={`relative max-w-[85%] rounded-sm p-4 pt-5 border transition-all duration-300 ${isActive ? (leftAligned ? 'bg-cyan-950/20 border-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.3)] scale-[1.02]' : 'bg-rose-950/20 border-[#ff003c] shadow-[0_0_20px_rgba(255,0,60,0.3)] scale-[1.02]') : 'bg-zinc-900/30 border-zinc-800 hover:border-zinc-700'}`}>
+                            <div onClick={() => seekToSegment(idx)} className={`relative max-w-[85%] rounded-sm p-4 pt-5 border transition-all duration-300 cursor-pointer ${isActive ? (leftAligned ? 'bg-cyan-950/20 border-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.3)] scale-[1.02]' : 'bg-rose-950/20 border-[#ff003c] shadow-[0_0_20px_rgba(255,0,60,0.3)] scale-[1.02]') : 'bg-zinc-900/30 border-zinc-800 hover:border-zinc-700'}`}>
                                 <div className={`absolute -top-2.5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${leftAligned ? 'left-4 bg-cyan-900 border-cyan-500/50 text-cyan-200' : 'right-4 bg-rose-900 border-[#ff003c]/50 text-rose-200'}`}>{seg.speaker}</div>
                                 <p className={`leading-relaxed transition-colors duration-300 ${isActive ? 'text-white font-medium' : 'text-zinc-400'}`}>{seg.text}</p>
                                 {isActive && <div className={`absolute top-1/2 -translate-y-1/2 w-1.5 h-1/2 rounded-full ${leftAligned ? '-left-0.5 bg-cyan-500 shadow-[0_0_10px_#00f3ff]' : '-right-0.5 bg-[#ff003c] shadow-[0_0_10px_#ff003c]'}`}></div>}

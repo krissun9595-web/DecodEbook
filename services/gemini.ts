@@ -356,9 +356,21 @@ export const generatePodcastAudio = async (
     const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
+    // Clean script for TTS: strip markdown bold and normalize speaker names exactly
+    const cleanedScript = parsedResponse.script
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .split('\n')
+      .map(line => {
+        const m = line.match(new RegExp(`^\\s*(${hosts.host1}|${hosts.host2})\\s*:\\s*`, 'i'));
+        if (!m) return line;
+        const name = m[1].toLowerCase() === hosts.host1.toLowerCase() ? hosts.host1 : hosts.host2;
+        return `${name}: ${line.substring(m[0].length)}`;
+      })
+      .join('\n');
+
     const audioResponse = await ai.models.generateContent({
       model: _ttsModel,
-      contents: [{ parts: [{ text: parsedResponse.script }] }],
+      contents: [{ parts: [{ text: cleanedScript }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
