@@ -59,18 +59,18 @@ let lastPodcastLanguage: string | null = null;
 let lastEpisodeTitle: string | null = null;
 
 const HOST_CONFIG: Record<string, { host1: string, voice1: string, desc1: string, host2: string, voice2: string, desc2: string }> = {
-  'Engaging': { host1: 'Alex', voice1: 'Puck', desc1: 'warm narrator, curious and enthusiastic', host2: 'Jordan', voice2: 'Kore', desc2: 'sharp analyst, adds depth and counterpoints' },
-  'Aggressive': { host1: 'Titan', voice1: 'Fenrir', desc1: 'intense and commanding, speaks with raw energy', host2: 'Viper', voice2: 'Charon', desc2: 'deep and menacing, calculated responses' },
-  'Incisive': { host1: 'Cipher', voice1: 'Puck', desc1: 'quick-witted investigator, asks piercing questions', host2: 'Oracle', voice2: 'Kore', desc2: 'all-knowing, delivers insights melodically' },
-  'Humorous': { host1: 'Jester', voice1: 'Fenrir', desc1: 'bold comedian, delivers punchlines with gravel voice', host2: 'Pixel', voice2: 'Puck', desc2: 'witty sidekick, quick comebacks and wordplay' },
-  'Instructive': { host1: 'Professor', voice1: 'Kore', desc1: 'patient teacher, explains with clarity and warmth', host2: 'Student', voice2: 'Zephyr', desc2: 'eager learner, asks thoughtful questions softly' },
-  'Cyber-Noir': { host1: 'Detective', voice1: 'Fenrir', desc1: 'gruff private eye, speaks in short hard-boiled sentences', host2: 'Client', voice2: 'Kore', desc2: 'mysterious informant, speaks smoothly with hidden motives' },
-  'Sarcastic': { host1: 'Glitch', voice1: 'Puck', desc1: 'sardonic hacker, dripping with irony', host2: 'System', voice2: 'Kore', desc2: 'deadpan AI, responds literally to sarcasm' },
-  'Philosophical': { host1: 'Sage', voice1: 'Charon', desc1: 'deep-voiced elder, speaks in measured profound statements', host2: 'Seeker', voice2: 'Zephyr', desc2: 'gentle questioner, probes with calm curiosity' },
-  'Debate': { host1: 'Pro', voice1: 'Puck', desc1: 'confident advocate, builds arguments persuasively', host2: 'Con', voice2: 'Fenrir', desc2: 'fierce challenger, dismantles arguments with intensity' },
-  'Street-Samurai': { host1: 'Ronin', voice1: 'Fenrir', desc1: 'battle-hardened warrior, speaks with gruff authority', host2: 'Katana', voice2: 'Kore', desc2: 'elegant strategist, precise and melodic' },
-  'Corpo-Rat': { host1: 'Exec', voice1: 'Charon', desc1: 'deep-voiced executive, speaks with boardroom authority', host2: 'Assistant', voice2: 'Puck', desc2: 'eager corporate climber, energetic and agreeable' },
-  'Netrunner': { host1: 'Zero', voice1: 'Puck', desc1: 'fast-talking hacker, excited about data', host2: 'One', voice2: 'Kore', desc2: 'cool AI companion, responds with smooth precision' },
+  'Engaging': { host1: 'Alex', voice1: 'Puck', desc1: 'warm male narrator, curious and enthusiastic', host2: 'Jordan', voice2: 'Kore', desc2: 'sharp female analyst, adds depth and counterpoints' },
+  'Aggressive': { host1: 'Titan', voice1: 'Fenrir', desc1: 'intense male commander, speaks with raw energy', host2: 'Viper', voice2: 'Kore', desc2: 'calculating female operative, cold precision in every word' },
+  'Incisive': { host1: 'Cipher', voice1: 'Puck', desc1: 'quick-witted male investigator, asks piercing questions', host2: 'Oracle', voice2: 'Kore', desc2: 'all-knowing female oracle, delivers insights melodically' },
+  'Humorous': { host1: 'Jester', voice1: 'Fenrir', desc1: 'bold male comedian, delivers punchlines with gravel voice', host2: 'Pixel', voice2: 'Kore', desc2: 'witty female sidekick, quick comebacks and wordplay' },
+  'Instructive': { host1: 'Professor', voice1: 'Charon', desc1: 'authoritative male professor, explains with deep resonant voice', host2: 'Student', voice2: 'Zephyr', desc2: 'eager female learner, asks thoughtful questions softly' },
+  'Cyber-Noir': { host1: 'Detective', voice1: 'Fenrir', desc1: 'gruff male private eye, speaks in short hard-boiled sentences', host2: 'Client', voice2: 'Kore', desc2: 'mysterious female informant, speaks smoothly with hidden motives' },
+  'Sarcastic': { host1: 'Glitch', voice1: 'Puck', desc1: 'sardonic male hacker, dripping with irony', host2: 'System', voice2: 'Kore', desc2: 'deadpan female AI, responds literally to sarcasm' },
+  'Philosophical': { host1: 'Sage', voice1: 'Charon', desc1: 'deep-voiced male elder, speaks in measured profound statements', host2: 'Seeker', voice2: 'Zephyr', desc2: 'gentle female questioner, probes with calm curiosity' },
+  'Debate': { host1: 'Pro', voice1: 'Puck', desc1: 'confident male advocate, builds arguments persuasively', host2: 'Con', voice2: 'Kore', desc2: 'fierce female challenger, dismantles arguments with eloquence' },
+  'Street-Samurai': { host1: 'Ronin', voice1: 'Fenrir', desc1: 'battle-hardened male warrior, speaks with gruff authority', host2: 'Katana', voice2: 'Kore', desc2: 'elegant female strategist, precise and melodic' },
+  'Corpo-Rat': { host1: 'Exec', voice1: 'Charon', desc1: 'deep-voiced male executive, speaks with boardroom authority', host2: 'Assistant', voice2: 'Kore', desc2: 'sharp female corporate climber, energetic and agreeable' },
+  'Netrunner': { host1: 'Zero', voice1: 'Puck', desc1: 'fast-talking male hacker, excited about data', host2: 'One', voice2: 'Kore', desc2: 'cool female AI companion, responds with smooth precision' },
 };
 
 export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings, bookId }) => {

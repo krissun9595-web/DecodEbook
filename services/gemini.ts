@@ -356,37 +356,56 @@ export const generatePodcastAudio = async (
     const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
-    // Clean script for TTS: strip markdown bold and normalize speaker names exactly
-    const cleanedScript = parsedResponse.script
+    // Parse script into speaker/text lines
+    const cleanedLines = parsedResponse.script
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       .split('\n')
-      .map(line => {
-        const m = line.match(new RegExp(`^\\s*(${hosts.host1}|${hosts.host2})\\s*:\\s*`, 'i'));
-        if (!m) return line;
-        const name = m[1].toLowerCase() === hosts.host1.toLowerCase() ? hosts.host1 : hosts.host2;
-        return `${name}: ${line.substring(m[0].length)}`;
-      })
-      .join('\n');
+      .filter((l: string) => l.trim().length > 0);
 
-    const audioResponse = await ai.models.generateContent({
-      model: _ttsModel,
-      contents: [{ parts: [{ text: cleanedScript }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          multiSpeakerVoiceConfig: {
-            speakerVoiceConfigs: [
-              { speaker: hosts.host1, voiceConfig: { prebuiltVoiceConfig: { voiceName: hosts.voice1 } } },
-              { speaker: hosts.host2, voiceConfig: { prebuiltVoiceConfig: { voiceName: hosts.voice2 } } }
-            ]
-          }
-        }
-      }
-    });
-    
-    trackUsage('podcastAudio', extractTokens(audioResponse));
-    const base64Audio = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("Audio generation failed");
+    const voiceMap: Record<string, string> = {
+      [hosts.host1.toLowerCase()]: hosts.voice1,
+      [hosts.host2.toLowerCase()]: hosts.voice2,
+    };
+
+    const dialogueLines: { speaker: string; text: string; voice: string }[] = [];
+    for (const line of cleanedLines) {
+      const m = line.match(new RegExp(`^\\s*(?:${hosts.host1}|${hosts.host2})\\s*:\\s*`, 'i'));
+      if (!m) continue;
+      const rawName = m[0].replace(/:\s*$/, '').trim();
+      const voice = voiceMap[rawName.toLowerCase()] || hosts.voice1;
+      const text = line.substring(m[0].length).trim();
+      if (text) dialogueLines.push({ speaker: rawName, text, voice });
+    }
+
+    if (dialogueLines.length === 0) throw new Error("No dialogue lines parsed from script");
+
+    // Generate TTS per line with single-speaker voice — guarantees no voice drift
+    const BATCH_SIZE = 3;
+    const audioChunks: string[] = [];
+    for (let i = 0; i < dialogueLines.length; i += BATCH_SIZE) {
+      const batch = dialogueLines.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(line => generateSpeech(line.text, line.voice))
+      );
+      audioChunks.push(...results);
+    }
+
+    // Concatenate PCM audio (all segments are 24kHz 16-bit mono)
+    const binaryParts = audioChunks.map(b64 => window.atob(b64));
+    const totalLen = binaryParts.reduce((acc, b) => acc + b.length, 0);
+    const combined = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const part of binaryParts) {
+      for (let i = 0; i < part.length; i++) combined[offset++] = part.charCodeAt(i);
+    }
+    let binary = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < combined.length; i += CHUNK) {
+      binary += String.fromCharCode(...combined.subarray(i, i + CHUNK));
+    }
+    const base64Audio = window.btoa(binary);
+
+    trackUsage('podcastAudio', dialogueLines.length);
     return { audio: base64Audio, script: parsedResponse.script, episodeTitle: parsedResponse.episodeTitle };
   });
 };
