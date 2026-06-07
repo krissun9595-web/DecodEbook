@@ -163,21 +163,14 @@ const splitIntoSentences = (text: string): string[] => {
   if (!text) return [];
   const results: string[] = [];
   let buf = '';
-  let quoteDepth = 0;
-  const raw = text.match(/[^.!?]+[.!?]+["”’」』）']*\s*|.+$/g) || [text];
+  const raw = text.match(/[^.!?]+[.!?]+[“”'」』）']*\s*|.+$/g) || [text];
   for (const seg of raw) {
     buf += seg;
-    for (const ch of seg) {
-      if (ch === '“' || ch === '「' || ch === '『' || ch === '（') quoteDepth++;
-      else if (ch === '”' || ch === '」' || ch === '』' || ch === '）') quoteDepth = Math.max(0, quoteDepth - 1);
-    }
-    const trimmed = buf.replace(/[.!?]+["”’」』）']*\s*$/, '').trim();
+    const trimmed = buf.replace(/[.!?]+[“”'」』）']*\s*$/, '').trim();
     const lastWord = trimmed.split(/\s+/).pop() || '';
     if (ABBREV.test(lastWord)) continue;
-    if (quoteDepth > 0) continue;
     results.push(buf.trim());
     buf = '';
-    quoteDepth = 0;
   }
   if (buf.trim()) {
     if (results.length > 0) results[results.length - 1] += ' ' + buf.trim();
