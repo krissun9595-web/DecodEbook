@@ -158,15 +158,38 @@ const paginateText = (text: string, targetSize: number): string[] => {
   return pages;
 };
 
-const ABBREV = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Gen|Gov|Sgt|Cpl|Pvt|Rev|Vol|Dept|Est|Inc|Ltd|Corp|vs|etc|approx|e\.g|i\.e|al|fig|no|op|ch|pt|pp)$/i;
+const ABBREV = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Gen|Gov|Sgt|Cpl|Pvt|Rev|Vol|Dept|Est|Inc|Ltd|Corp|vs|etc|approx|e\.g|i\.e|al|fig|no|op|ch|pt|pp|Mme|Mlle|Mgr|Sra|Srta|Ud|Vd|Dra|Lic|z\.B|d\.h|usw|bzw|Nr|Abs|Aufl|Bd|hrsg|[A-Z])$/;
+const hasIntlSegmenter = typeof Intl !== 'undefined' && typeof (Intl as any).Segmenter === 'function';
 const splitIntoSentences = (text: string): string[] => {
   if (!text) return [];
+
+  if (hasIntlSegmenter) {
+    const segmenter = new (Intl as any).Segmenter(undefined, { granularity: 'sentence' });
+    const raw: string[] = [...segmenter.segment(text)].map((s: any) => s.segment);
+    const results: string[] = [];
+    let buf = '';
+    for (const seg of raw) {
+      buf += seg;
+      const trimmed = buf.trim();
+      const lastWord = trimmed.replace(/[.!?]+\s*$/, '').split(/\s+/).pop() || '';
+      if (ABBREV.test(lastWord)) continue;
+      if (trimmed.length > 0) results.push(trimmed);
+      buf = '';
+    }
+    if (buf.trim()) {
+      if (results.length > 0) results[results.length - 1] += ' ' + buf.trim();
+      else results.push(buf.trim());
+    }
+    return results.filter(s => s.length > 0);
+  }
+
+  // Fallback for browsers without Intl.Segmenter
   const results: string[] = [];
   let buf = '';
-  const raw = text.match(/[^.!?]+[.!?]+[“”'」』）']*\s*|.+$/g) || [text];
+  const raw = text.match(/[^.!?。！？]+[.!?。！？]+[“”'」』）']*\s*|.+$/g) || [text];
   for (const seg of raw) {
     buf += seg;
-    const trimmed = buf.replace(/[.!?]+[“”'」』）']*\s*$/, '').trim();
+    const trimmed = buf.replace(/[.!?。！？]+[“”'」』）']*\s*$/, '').trim();
     const lastWord = trimmed.split(/\s+/).pop() || '';
     if (ABBREV.test(lastWord)) continue;
     results.push(buf.trim());
