@@ -19,7 +19,7 @@ import { startSession, trackEvent, trackBookAction, trackNavigation, trackGenera
 import { trackReferralClick, registerReferralSignup } from './services/referral';
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
-import { buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters } from './utils/sourceIndex';
+import { buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import type { User } from '@supabase/supabase-js';
@@ -105,12 +105,15 @@ const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
     isReadableChapterTitle(chapter.sourceHeading || chapter.title)
   );
   const chapters = fileContext.isText
-    ? buildSourceIndexedChapters(
+    ? splitDetectedBackMatter(
         fileContext.content,
-        expandTopicSectionsIntoChapters(
+        buildSourceIndexedChapters(
           fileContext.content,
-          buildSourceIndexedChapters(fileContext.content, readableChapters),
-          10
+          expandTopicSectionsIntoChapters(
+            fileContext.content,
+            buildSourceIndexedChapters(fileContext.content, readableChapters),
+            10
+          )
         )
       )
     : readableChapters;
@@ -855,12 +858,15 @@ const App: React.FC = () => {
             const preparedContext = hydrateFileContext(context);
             const structure = await analyzeBookStructure(preparedContext);
             const indexedChapters = preparedContext.isText
-              ? buildSourceIndexedChapters(
+              ? splitDetectedBackMatter(
                   preparedContext.content,
-                  expandTopicSectionsIntoChapters(
+                  buildSourceIndexedChapters(
                     preparedContext.content,
-                    buildSourceIndexedChapters(preparedContext.content, structure.chapters),
-                    10
+                    expandTopicSectionsIntoChapters(
+                      preparedContext.content,
+                      buildSourceIndexedChapters(preparedContext.content, structure.chapters),
+                      10
+                    )
                   )
                 )
               : structure.chapters;

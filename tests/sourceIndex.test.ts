@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource } from '../utils/sourceIndex.ts';
+import { buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
 import type { Chapter } from '../types.ts';
 
 const chapterBody = (name: string) => [
@@ -349,6 +349,46 @@ const chapterBody = (name: string) => [
   assert.ok(indexText.startsWith('Abu-Lughod'), 'Index chapter should start at the index entries');
   const notesText = extractChapterFromSource(content, notes, indexed) || '';
   assert.ok(!notesText.includes('Abu-Lughod'), 'Notes chapter must not swallow the Index entries');
+}
+
+{
+  // When structure analysis omits "Index", the preceding Notes chapter runs to the
+  // end and swallows the index. splitDetectedBackMatter must split it back out.
+  const content = [
+    'Chapter 1: The First',
+    chapterBody('Chapter one'),
+    '',
+    'NOTES',
+    '1. First note here. 2. Second note about a topic.',
+    '',
+    'INDEX',
+    'A note about the index: page numbers refer to the print edition and are clickable.',
+    'Abu-Lughod, Janet, 213, 215',
+    'Africa, 388',
+  ].join('\n');
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Chapter 1: The First' },
+    { id: 2, title: 'Notes' }, // note: no Index in the list
+  ];
+  const resolved = buildSourceIndexedChapters(content, chapters);
+  const split = splitDetectedBackMatter(content, resolved);
+
+  const index = split.find(c => c.title === 'Index');
+  assert.ok(index, 'an Index chapter should be split off the Notes chapter');
+  const indexText = extractChapterFromSource(content, index!, split) || '';
+  assert.ok(indexText.includes('Abu-Lughod'), 'Index chapter should contain the index entries');
+  const notes = split.find(c => c.title === 'Notes')!;
+  const notesText = extractChapterFromSource(content, notes, split) || '';
+  assert.ok(!notesText.includes('Abu-Lughod'), 'Notes chapter should no longer contain the index entries');
+  assert.ok(!notesText.includes('A note about the index'), 'Notes chapter should end before the INDEX heading');
+}
+
+{
+  // A chapter with no embedded index heading must be left untouched.
+  const content = ['Chapter 1', chapterBody('Chapter one')].join('\n');
+  const resolved = buildSourceIndexedChapters(content, [{ id: 1, title: 'Chapter 1' }]);
+  const split = splitDetectedBackMatter(content, resolved);
+  assert.equal(split.length, 1, 'chapters without an embedded index must not be split');
 }
 
 console.log('sourceIndex regression tests passed');

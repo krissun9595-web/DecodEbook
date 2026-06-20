@@ -676,6 +676,56 @@ export const computeSourceHash = (content: string): string => {
   return `${content.length.toString(36)}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 };
 
+// A standalone "INDEX" heading line (its own line, optionally preceded by a page
+// marker). Used to split an index section off a chapter that swallowed it when the
+// structure analysis did not list "Index" as its own chapter.
+const STANDALONE_INDEX_HEADING_RE = /\n[ \t]*(?:\[\[PAGE[^\]\n]*\]\][ \t]*)*index[ \t]*(?=\r?\n)/i;
+
+const isIndexTitle = (value?: string): boolean => /^\s*index\s*$/i.test(value || '');
+
+// Some books' structure analysis omits the back-matter "Index" section, so the
+// preceding chapter (usually Notes) runs to the end of the book and absorbs the
+// whole index. Detect a standalone "INDEX" heading inside a resolved chapter and
+// split it into its own Index chapter so it gets index-aware extraction/rendering.
+export const splitDetectedBackMatter = (content: string, chapters: Chapter[]): Chapter[] => {
+  if (!content) return chapters;
+  const out: Chapter[] = [];
+  for (const chapter of chapters) {
+    if (isIndexTitle(chapter.title) || isIndexTitle(chapter.sourceHeading) || !hasUsableSourceRange(content, chapter)) {
+      out.push(chapter);
+      continue;
+    }
+    const start = chapter.sourceStart!;
+    const end = chapter.sourceEnd!;
+    const body = content.slice(start, end);
+    const match = STANDALONE_INDEX_HEADING_RE.exec(body);
+    // Require the heading to sit well into the chapter body (not be the chapter's
+    // own heading) and in the back portion of the whole book, to avoid false splits.
+    if (!match || match.index < 40 || start + match.index < content.length * 0.5) {
+      out.push(chapter);
+      continue;
+    }
+    const headingNewlineAbs = start + match.index;
+    const headingLineEndRel = body.indexOf('\n', match.index + 1);
+    const headingLineEndAbs = headingLineEndRel === -1 ? end : start + headingLineEndRel;
+    const indexContentStart = skipBlankLines(content, headingLineEndAbs);
+    if (indexContentStart >= end) {
+      out.push(chapter);
+      continue;
+    }
+    out.push({ ...chapter, sourceEnd: headingNewlineAbs });
+    out.push({
+      ...chapter,
+      title: 'Index',
+      sourceStart: indexContentStart,
+      sourceEnd: end,
+      sourceHeading: 'Index',
+      sourceHeadingVariants: undefined,
+    });
+  }
+  return out.map((chapter, index) => ({ ...chapter, id: index + 1 }));
+};
+
 export const buildSourceIndexedChapters = (content: string, chapters: Chapter[]): Chapter[] => {
   if (!content || chapters.length === 0) return chapters;
 
