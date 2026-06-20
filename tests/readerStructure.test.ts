@@ -56,6 +56,18 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // Real EPUB shape (The Sovereign Individual endnotes): a note whose final element
+  // is italic ends with a markdown "*" (e.g. "*Ibid.*", "*op. cit.*"). The trailing
+  // emphasis marker must not cause the NEXT note marker to be treated as running text.
+  const text = '[11](x.html#ch02en11). *Ibid.* [12](x.html#ch02en12). Durant, *op. cit.,* p. 43. [13](x.html#ch02en13). Ramsay MacMullen, *Corruption and the Decline of Rome* (New Haven: Yale University Press, 1988), p. 192. [16](x.html#ch02en16). Lane, “Economic Consequences of Organized Violence,” *op. cit.* [17](x.html#ch02en17). *Ibid.* [18](x.html#ch02en18). Susan Ailing Gregg, Foragers (Chicago, 1988), p. 9.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(normalized.includes('*Ibid.*\n[12]'), 'note after an italic-ending "*Ibid.*" should start a new line');
+  assert.ok(normalized.includes('*op. cit.*\n[17]'), 'note after an italic-ending "*op. cit.*" should start a new line');
+  assert.ok(normalized.includes('*Ibid.*\n[18]'), 'note after a second italic-ending "*Ibid.*" should start a new line');
+  assert.ok(normalized.includes('p. 192.\n[16]'), 'period-ending notes must still break normally');
+}
+
+{
   const text = '*Chapter 1. The Transition of the Year 2000: The Fourth Stage of Human Society* [1](part0007_split_000.html#ch01en1). Danny Hillis, “The Millennium Clock,” Wired, Special Edition, Fall 1995, p. 48. [2](part0007_split_001.html#ch01en2). Ericka Cheetham, The Final Prophecies of Nostradamus, p. 424.';
   const normalized = normalizeNotesReaderText(text);
   assert.ok(

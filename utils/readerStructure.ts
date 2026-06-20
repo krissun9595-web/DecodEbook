@@ -348,7 +348,10 @@ export const normalizeNotesReaderText = (value: string): string => {
     if (!before) return false;
     const previousBlock = before.split(/\n{2,}/).pop() || '';
     if (looksLikeNoteSectionHeading(previousBlock)) return false;
-    return !/[.!?。！？"”')\]}]$/u.test(before);
+    // Allow trailing markdown emphasis markers (e.g. a note ending in an italic
+    // term like "*Ibid.*" or "*op. cit.*") to count as sentence-final, so the next
+    // note marker is not mistaken for running text and dropped.
+    return !/[.!?。！？"”')\]}][*_~]*$/u.test(before);
   };
   const candidates = [...text.matchAll(NOTE_ENTRY_MARKER_RE)]
     .map(match => {
