@@ -1,20 +1,27 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, CreditCard } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
-import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem } from './types';
+import * as pdfjsLib from 'pdfjs-dist';
+import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget } from './types';
 import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
-import { AuthModal, AuthGate } from './components/AuthModal';
+import { AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { PricingModal } from './components/PricingModal';
+import { AccountPanel } from './components/PricingModal';
+import { LandingPage } from './components/LandingPage';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
+import { trackReferralClick, registerReferralSignup } from './services/referral';
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
+import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
+import { buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters } from './utils/sourceIndex';
+import { PDF_TEXT_EXTRACTION_VERSION } from './utils/sourceVersion';
+import { isReadableChapterTitle } from './utils/structureAnalysis';
 import type { User } from '@supabase/supabase-js';
 
 const lazyRetry = <T,>(factory: () => Promise<T>): Promise<T> =>
@@ -35,8 +42,153 @@ const AudioBook = React.lazy(() => lazyRetry(() => import('./components/AudioBoo
 const Notebook = React.lazy(() => lazyRetry(() => import('./components/Notebook').then(m => ({ default: m.Notebook }))));
 const GeneratedFilesPanel = React.lazy(() => lazyRetry(() => import('./components/GeneratedFilesPanel').then(m => ({ default: m.GeneratedFilesPanel }))));
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).toString();
+
+const SOURCE_CACHE_CHAPTER_ID = 0;
+const SOURCE_CACHE_VERSION = 'v4-internal-link-normalization';
+const PREVIOUS_SOURCE_CACHE_VERSION = 'v3-pdf-paragraph-boundary-corrections';
+const LEGACY_SOURCE_CACHE_VERSION = 'v1';
+const SOVEREIGN_CACHE_PURGE_PREFIX = 'decodebook_cache_purge_sovereign_individual_v1';
+const TARGET_LANGUAGES = [
+  'Original',
+  'Arabic',
+  'Chinese (Simplified)',
+  'Chinese (Traditional)',
+  'Dutch',
+  'English',
+  'French',
+  'German',
+  'Hindi',
+  'Indonesian',
+  'Italian',
+  'Japanese',
+  'Korean',
+  'Polish',
+  'Portuguese',
+  'Russian',
+  'Spanish',
+  'Swedish',
+  'Thai',
+  'Turkish',
+  'Vietnamese',
+];
+
+const sourceCacheKey = (bookId: string, version = SOURCE_CACHE_VERSION) =>
+  buildCacheKey(bookId, SOURCE_CACHE_CHAPTER_ID, 'source-file', version);
+
+const isSovereignIndividualTitle = (value?: string): boolean =>
+  /sovereign\s+individual/iu.test(value || '');
+
+const sanitizeInternalLinkMarkup = (content: string): string =>
+  content.replace(/\[\s*([^\]\n]{1,120}?)\s*\]\s*\(([^)\n]+)\)/g, (match, rawLabel: string, rawHref: string) => {
+    const label = rawLabel.replace(/\s+/g, ' ').trim();
+    const href = rawHref.trim();
+    return label && href ? `[${label}](${href})` : match;
+  });
+
+const hydrateFileContext = (fileContext: FileContext): FileContext => {
+  if (!fileContext.content) return fileContext;
+  const content = sanitizeInternalLinkMarkup(fileContext.content);
+  return {
+    ...fileContext,
+    content,
+    sourceHash: computeSourceHash(content),
+  };
+};
+
+const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
+  if (!item.fileContext.content) return item;
+
+  const fileContext = hydrateFileContext(item.fileContext);
+  const readableChapters = item.book.chapters.filter(chapter =>
+    isReadableChapterTitle(chapter.title) &&
+    isReadableChapterTitle(chapter.sourceHeading || chapter.title)
+  );
+  const chapters = fileContext.isText
+    ? buildSourceIndexedChapters(
+        fileContext.content,
+        expandTopicSectionsIntoChapters(
+          fileContext.content,
+          buildSourceIndexedChapters(fileContext.content, readableChapters),
+          10
+        )
+      )
+    : readableChapters;
+
+  return {
+    ...item,
+    book: { ...item.book, chapters },
+    fileContext,
+  };
+};
+
+const saveSourceToCache = async (item: LibraryItem): Promise<void> => {
+  if (!item.fileContext.content) return;
+  const content = sanitizeInternalLinkMarkup(item.fileContext.content);
+  const blob = new Blob([content], { type: 'text/plain' });
+  await saveFile(sourceCacheKey(item.book.id), blob, {
+    filename: `source-${item.book.id}.txt`,
+    mimeType: item.fileContext.mimeType,
+    timestamp: Date.now(),
+    bookId: item.book.id,
+    chapterId: SOURCE_CACHE_CHAPTER_ID,
+    componentSource: 'source-cache',
+    fileType: 'source-file',
+  });
+};
+
+const purgeSovereignIndividualDerivedCache = async (item: LibraryItem): Promise<void> => {
+  const purgeKey = `${SOVEREIGN_CACHE_PURGE_PREFIX}:${item.book.id}`;
+  if (localStorage.getItem(purgeKey) === '1') return;
+  if (!isSovereignIndividualTitle(item.book.title)) return;
+
+  if (item.fileContext.content) {
+    await saveSourceToCache(item);
+  }
+
+  const currentSourceKey = sourceCacheKey(item.book.id);
+  const files = await listFiles(item.book.id);
+  await Promise.all(files
+    .filter(file => file.key !== currentSourceKey)
+    .map(file => deleteFile(file.key).catch(() => undefined))
+  );
+  localStorage.setItem(purgeKey, '1');
+};
+
+const restoreLibrarySources = async (items: LibraryItem[]): Promise<LibraryItem[]> => {
+  const restored = await Promise.all(items.map(async item => {
+    if (item.fileContext.content) return hydrateLibraryItem(item);
+    try {
+      const sourceVersions = [
+        SOURCE_CACHE_VERSION,
+        PREVIOUS_SOURCE_CACHE_VERSION,
+        ...(item.fileContext.sourceKind === 'pdf' ? [LEGACY_SOURCE_CACHE_VERSION] : []),
+      ];
+      let cached = null;
+      for (const version of sourceVersions) {
+        cached = await getFile(sourceCacheKey(item.book.id, version));
+        if (cached) break;
+      }
+      if (!cached) return item;
+      return {
+        ...hydrateLibraryItem({
+          ...item,
+          fileContext: {
+            ...item.fileContext,
+            content: await cached.blob.text(),
+          },
+        }),
+      };
+    } catch {
+      return item;
+    }
+  }));
+  return restored;
+};
+
 const App: React.FC = () => {
-  const [view, setView] = useState<AppView>(AppView.UPLOAD);
+  const [view, setView] = useState<AppView>(AppView.LANDING);
+  const [landingVariant, setLandingVariant] = useState<'A' | 'B' | 'C' | 'D' | 'E'>('A');
   const unsubRef = useRef<(() => void) | null>(null);
 
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -50,6 +202,7 @@ const App: React.FC = () => {
   const activeFileContext = library.find(item => item.book.id === activeBookId)?.fileContext || null;
 
   const [activeChapterId, setActiveChapterId] = useState<number | null>(null);
+  const [activeChapterPageTarget, setActiveChapterPageTarget] = useState<ReaderPageTarget>('first');
   const activeChapter = activeBook?.chapters.find(c => c.id === activeChapterId) || null;
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.AUDIOBOOK);
@@ -57,10 +210,10 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showLibraryList, setShowLibraryList] = useState(false);
+  const [pendingLanguagePromptBookId, setPendingLanguagePromptBookId] = useState<string | null>(null);
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
@@ -79,11 +232,52 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
+    if (!activeBook || activeBook.chapters.length === 0) return;
+    if (activeChapterId != null && activeBook.chapters.some(chapter => chapter.id === activeChapterId)) return;
+    setActiveChapterPageTarget('first');
+    setActiveChapterId(activeBook.chapters[0].id);
+  }, [activeBook, activeChapterId]);
+
+  useEffect(() => {
+      let cancelled = false;
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get('v');
+      if (v === 'B' || v === 'b') setLandingVariant('B');
+      else if (v === 'C' || v === 'c') setLandingVariant('C');
+      else if (v === 'D' || v === 'd') setLandingVariant('D');
+      else if (v === 'E' || v === 'e') setLandingVariant('E');
+
+      // Handle referral link
+      const refCode = params.get('ref');
+      if (refCode) {
+        trackReferralClick(refCode).then(referrerId => {
+          if (referrerId) localStorage.setItem('referrer_id', referrerId);
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
       const savedNotebook = localStorage.getItem('notebook');
       if (savedNotebook) setNotebook(JSON.parse(savedNotebook));
 
       const savedLibrary = localStorage.getItem('library');
-      if (savedLibrary) setLibrary(JSON.parse(savedLibrary));
+      if (savedLibrary) {
+        const parsed = JSON.parse(savedLibrary);
+        setLibrary(parsed);
+        if (parsed.length > 0) setView(AppView.UPLOAD);
+        restoreLibrarySources(parsed).then(restored => {
+          if (cancelled) return;
+          setLibrary(restored);
+          const firstUsable = restored.find(item => item.fileContext.content);
+          if (firstUsable && !activeBookId) {
+            setActiveBookId(firstUsable.book.id);
+            if (firstUsable.book.chapters.length > 0) {
+              setActiveChapterPageTarget('first');
+              setActiveChapterId(firstUsable.book.chapters[0].id);
+            }
+            setView(AppView.DASHBOARD);
+          }
+        }).catch(e => console.warn('[source-cache] Failed to restore sources:', e));
+      }
 
       const savedSettings = localStorage.getItem('app_settings');
       if (savedSettings) {
@@ -142,16 +336,19 @@ const App: React.FC = () => {
           Promise.all([loadLibraryFromCloud(uid), loadNotebookFromCloud(uid), loadReadingPositions(uid)]).then(([cloudLib, cloudNotes, positions]) => {
             setLibrary(prev => {
               const { merged, toUpload } = mergeLibrary(prev, cloudLib);
-              toUpload.forEach(item => saveBookToCloud(uid, item).catch(() => {}));
-              if (merged.length > 0 && !activeBookId) {
-                const firstBook = merged[0];
+              const hydrated = merged.map(hydrateLibraryItem);
+              toUpload.map(hydrateLibraryItem).forEach(item => saveBookToCloud(uid, item).catch(() => {}));
+              hydrated.forEach(item => saveSourceToCache(item).catch(() => {}));
+              if (hydrated.length > 0 && !activeBookId) {
+                const firstBook = hydrated[0];
                 setActiveBookId(firstBook.book.id);
                 const pos = positions[firstBook.book.id];
+                setActiveChapterPageTarget('first');
                 if (pos != null) setActiveChapterId(pos);
                 else if (firstBook.book.chapters.length > 0) setActiveChapterId(firstBook.book.chapters[0].id);
-                if (merged.some(m => m.fileContext.content)) setView(AppView.DASHBOARD);
+                if (hydrated.some(m => m.fileContext.content)) setView(AppView.DASHBOARD);
               }
-              return merged;
+              return hydrated;
             });
             setNotebook(prev => {
               const merged = mergeNotebook(prev, cloudNotes);
@@ -168,12 +365,20 @@ const App: React.FC = () => {
             if (user) {
               setCurrentUser(user);
               setAuthGatePassed(true);
+              // Link referral if user just signed up via a referral link
+              const referrerId = localStorage.getItem('referrer_id');
+              if (referrerId) {
+                registerReferralSignup(referrerId).then(() => localStorage.removeItem('referrer_id'));
+              }
             }
           });
           if (cleanup) unsubRef.current = cleanup;
         });
 
-      return () => { if (unsubRef.current) unsubRef.current(); };
+      return () => {
+        cancelled = true;
+        if (unsubRef.current) unsubRef.current();
+      };
   }, []);
 
   useEffect(() => {
@@ -187,17 +392,26 @@ const App: React.FC = () => {
 
   useEffect(() => {
       try {
+        library.forEach(item => saveSourceToCache(item).catch(() => {}));
         // Save library metadata only — fileContext contains large base64 data
         // that can exceed localStorage's ~5MB limit with multiple books
         const libraryMeta = library.map(item => ({
           book: item.book,
-          fileContext: { content: '', mimeType: item.fileContext.mimeType, isText: item.fileContext.isText },
+          fileContext: { ...item.fileContext, content: '' },
           uploadDate: item.uploadDate
         }));
         localStorage.setItem('library', JSON.stringify(libraryMeta));
       } catch (e) {
         console.warn('Failed to save library to localStorage (likely quota exceeded):', e);
       }
+  }, [library]);
+
+  useEffect(() => {
+    library
+      .filter(item => isSovereignIndividualTitle(item.book.title))
+      .forEach(item => purgeSovereignIndividualDerivedCache(item).catch(error => {
+        console.warn('Sovereign Individual cache purge failed:', error);
+      }));
   }, [library]);
 
   // Persist settings to localStorage + Supabase, and sync API key
@@ -230,8 +444,29 @@ const App: React.FC = () => {
       // Clean text: remove ** characters and trim whitespace
       const cleanText = item.text.replace(/\*\*/g, '').trim();
 
-      // Duplicate check: if item already exists, do not add it
-      if (notebook.some(n => n.text === cleanText)) {
+      const normalizedContextSource =
+          item.inked === true && item.contextSource && !/inked/i.test(item.contextSource)
+              ? `${item.contextSource}:INKED`
+              : item.inked === false && item.contextSource
+                  ? item.contextSource.replace(/:INKED/ig, '')
+              : item.contextSource;
+
+      const existing = notebook.find(n => n.text === cleanText);
+      if (existing) {
+          setNotebook(prev => prev.map(n => {
+              if (n.text !== cleanText) return n;
+              return {
+                  ...n,
+                  definition: item.definition || n.definition,
+                  comment: item.comment !== undefined ? item.comment : n.comment,
+                  contextSource: normalizedContextSource || n.contextSource,
+                  inked: item.inked !== undefined ? item.inked : n.inked,
+              };
+          }));
+          return;
+      }
+
+      if (item.inked === false && !item.definition && item.comment === undefined) {
           return;
       }
 
@@ -250,6 +485,7 @@ const App: React.FC = () => {
       const newItem: NotebookItem = {
           ...item,
           text: cleanText,
+          contextSource: normalizedContextSource,
           id: crypto.randomUUID(),
           timestamp: Date.now(),
           type: detectedType,
@@ -276,12 +512,16 @@ const App: React.FC = () => {
     const book = library.find(item => item.book.id === bookId)?.book;
     trackBookAction('delete', { title: book?.title }, bookId);
     if (currentUser) deleteBookFromCloud(currentUser.id, bookId).catch(() => {});
+    deleteFile(sourceCacheKey(bookId)).catch(() => {});
     setLibrary(prev => prev.filter(item => item.book.id !== bookId));
     if (activeBookId === bookId) {
       const remaining = library.filter(item => item.book.id !== bookId);
       if (remaining.length > 0) {
         setActiveBookId(remaining[0].book.id);
-        if (remaining[0].book.chapters.length > 0) setActiveChapterId(remaining[0].book.chapters[0].id);
+        if (remaining[0].book.chapters.length > 0) {
+          setActiveChapterPageTarget('first');
+          setActiveChapterId(remaining[0].book.chapters[0].id);
+        }
       } else {
         setActiveBookId(null);
         setView(AppView.UPLOAD);
@@ -347,11 +587,16 @@ const App: React.FC = () => {
           const opfDoc = parser.parseFromString(opfContent, "text/xml");
           
           // 1. Map id -> href (Manifest)
-          const manifest: Record<string, string> = {};
+          const manifest: Record<string, { href: string; properties: string }> = {};
           Array.from(opfDoc.getElementsByTagName("item")).forEach(item => {
               const id = item.getAttribute("id");
               const href = item.getAttribute("href");
-              if (id && href) manifest[id] = href;
+              if (id && href) {
+                  manifest[id] = {
+                    href,
+                    properties: item.getAttribute("properties") || '',
+                  };
+              }
           });
 
           // 2. Get spine order (idref)
@@ -364,8 +609,11 @@ const App: React.FC = () => {
           
           spineIds.forEach(id => {
               if (manifest[id]) {
-                  const href = manifest[id];
+                  const entry = manifest[id];
+                  const href = entry.href;
                   const decodedHref = decodeURIComponent(href);
+                  const isNavDoc = /\bnav\b/i.test(entry.properties) || /(?:^|\/)(?:toc|nav)(?:[._-]|$)/i.test(decodedHref);
+                  if (isNavDoc) return;
                   const fullPath = opfDir + decodedHref;
                   
                   if (zip.files[fullPath]) {
@@ -380,10 +628,52 @@ const App: React.FC = () => {
 
       if (sortedFiles.length === 0) {
           sortedFiles = Object.keys(zip.files).filter(filename => 
-            filename.match(/\.(html|xhtml|htm)$/i) && !filename.includes('__MACOSX')
+            filename.match(/\.(html|xhtml|htm)$/i) &&
+            !filename.includes('__MACOSX') &&
+            !/(?:^|\/)(?:toc|nav)(?:[._-]|$)/i.test(filename)
           );
           sortedFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
       }
+
+      const nodeToMarkedText = (node: Node): string => {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const element = node as HTMLElement;
+        const tag = element.tagName.toLowerCase();
+        if (['script', 'style', 'nav', 'svg', 'math'].includes(tag)) return '';
+        if (tag === 'br') return '\n';
+
+        const childText = Array.from(element.childNodes).map(nodeToMarkedText).join('');
+        const trimmed = childText.trim();
+        if (!trimmed) return '';
+
+        if (tag === 'blockquote') return `\n\n*${trimmed}*\n\n`;
+        if (tag === 'cite') return `\n—— ${trimmed.replace(/^(?:——|--|—|–|-)\s*/u, '')}\n`;
+        if (tag === 'strong' || tag === 'b') return `**${trimmed}**`;
+        if (tag === 'em' || tag === 'i') return `*${trimmed}*`;
+        if (tag === 'u') return `__${trimmed}__`;
+        if (tag === 's' || tag === 'strike' || tag === 'del') return `~~${trimmed}~~`;
+        if (tag === 'a') {
+          const href = element.getAttribute('href') || '';
+          const label = trimmed.replace(/\s+/g, ' ').trim();
+          return href ? `[${label}](${href})` : label;
+        }
+        if (/^h[1-6]$/.test(tag) || ['p', 'div', 'section', 'article'].includes(tag)) {
+          return `\n\n${trimmed}\n\n`;
+        }
+        if (tag === 'li') {
+          const liClass = (element.getAttribute('class') || '').toLowerCase();
+          // Index entries are a structured list: emit each as its own paragraph so
+          // downstream prose-reflow can't merge them, and prefix sub-entries with
+          // non-breaking spaces (which survive whitespace collapsing) to preserve
+          // their indentation under the parent term.
+          if (liClass.includes('indexsub')) return `\n\n    ${trimmed}\n\n`;
+          if (liClass.includes('indexmain')) return `\n\n${trimmed}\n\n`;
+          return `\n${trimmed}\n`;
+        }
+        return childText;
+      };
 
       let fullText = "";
       for (const filename of sortedFiles) {
@@ -396,19 +686,143 @@ const App: React.FC = () => {
             .replace(/<\/li>/gi, '\n');
 
         const doc = parser.parseFromString(processedContent, "text/html");
-        const text = doc.body.textContent || "";
+        const text = nodeToMarkedText(doc.body)
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n[ \t]+/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/[ \t]{2,}/g, ' ');
         fullText += text.trim() + "\n\n";
       }
 
       if (!fullText) throw new Error("No readable text found in EPUB.");
-      if (fullText.length > 5000000) {
-          return fullText.substring(0, 5000000) + "\n\n[...Content truncated due to excessive size...]";
-      }
       return fullText;
 
     } catch (e) {
       console.error("EPUB processing error", e);
       throw new Error("Could not parse EPUB file. Structure may be corrupted.");
+    }
+  };
+
+  const processPdf = async (file: File): Promise<string> => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const pages: string[] = [];
+      const endsWithTerminalPunctuation = (value: string): boolean =>
+        /[.!?。！？]["'”’)\]]?$/u.test(value.trim());
+      const looksLikeQuotedTermLine = (value: string): boolean => {
+        const trimmed = value.trim();
+        if (!/^[‘']/u.test(trimmed)) return false;
+        const inner = trimmed.match(/^[‘']([^’']{1,80})[’'](?:\s*[.,;:!?])?$/u)?.[1]?.trim();
+        if (inner && !/\s/.test(inner) && /^[\p{Ll}\p{N}_-]+$/u.test(inner)) return true;
+        const afterOpen = trimmed.slice(1).trimStart();
+        return /^[\p{Ll}\p{N}_-]/u.test(afterOpen);
+      };
+      const startsDialogueLine = (value: string): boolean => {
+        const trimmed = value.trim();
+        if (!/^[“"‘'][^”"’']+/u.test(trimmed)) return false;
+        if (looksLikeQuotedTermLine(trimmed)) return false;
+        return true;
+      };
+      const startsParagraphTransitionLine = (value: string): boolean =>
+        /^(?:However|Therefore|Thus|Consequently|Moreover|Furthermore|Meanwhile|In ancient times|In contrast|At the same time|As a result|For example|For instance)\b/iu.test(value.trim());
+      const markPdfText = (value: string, item: any, styles: Record<string, any>): string => {
+        const text = String(value || '');
+        if (!text.trim()) return text;
+        const style = styles?.[item.fontName] || {};
+        const descriptor = `${item.fontName || ''} ${style.fontFamily || ''}`.toLowerCase();
+        const isBold = /\b(?:bold|black|heavy|semibold|demi)\b/.test(descriptor);
+        const isItalic = /\b(?:italic|oblique)\b/.test(descriptor);
+        if (isBold && isItalic) return `*${text}*`;
+        if (isBold) return `**${text}**`;
+        if (isItalic) return `*${text}*`;
+        return text;
+      };
+      const median = (values: number[]): number => {
+        if (values.length === 0) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)] || 0;
+      };
+      const mostFrequentLeft = (values: number[]): number => {
+        const buckets = new Map<number, { count: number; valueTotal: number }>();
+        values.forEach(value => {
+          const bucket = Math.round(value);
+          const entry = buckets.get(bucket) || { count: 0, valueTotal: 0 };
+          entry.count += 1;
+          entry.valueTotal += value;
+          buckets.set(bucket, entry);
+        });
+        const ranked = [...buckets.entries()].sort((a, b) => b[1].count - a[1].count || a[0] - b[0]);
+        return ranked[0] ? ranked[0][1].valueTotal / ranked[0][1].count : 0;
+      };
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const lines = new Map<number, { x: number; text: string }[]>();
+
+        for (const item of textContent.items as any[]) {
+          if (!('str' in item) || !item.str.trim()) continue;
+          const y = Math.round(item.transform?.[5] || 0);
+          const x = item.transform?.[4] || 0;
+          const line = lines.get(y) || [];
+          line.push({ x, text: markPdfText(item.str, item, textContent.styles || {}) });
+          lines.set(y, line);
+        }
+
+        const pageLines = [...lines.entries()]
+          .sort((a, b) => b[0] - a[0])
+          .map(([y, parts]) => {
+            const sortedParts = parts.sort((a, b) => a.x - b.x);
+            return {
+              y,
+              x: Math.min(...sortedParts.map(part => part.x)),
+              text: sortedParts
+                .map(part => part.text)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+            };
+          })
+          .filter(line => line.text);
+
+        const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
+        const lineGap = median(pageLines.slice(1).map((line, index) => pageLines[index].y - line.y).filter(gap => gap > 0));
+        const formattedLines: string[] = [];
+
+        pageLines.forEach((line, index) => {
+          const previous = pageLines[index - 1];
+          if (previous) {
+            const verticalGap = previous.y - line.y;
+            const isIndentedBodyLine = line.x > bodyLeft + 8 && !startsDialogueLine(line.text);
+            const startsNewParagraph =
+              (lineGap > 0 && verticalGap > lineGap * 1.35) ||
+              (endsWithTerminalPunctuation(previous.text) && (
+                isIndentedBodyLine ||
+                startsParagraphTransitionLine(line.text)
+              ));
+            if (startsNewParagraph && formattedLines.length > 0 && formattedLines[formattedLines.length - 1] !== '') {
+              formattedLines.push('');
+            }
+          }
+          formattedLines.push(line.text);
+        });
+
+        const pageText = formattedLines
+          .join('\n')
+          .trim();
+
+        if (pageText) {
+          pages.push(`[[PAGE ${pageNum}]]\n${pageText}`);
+        }
+      }
+
+      const fullText = pages.join('\n\n');
+      if (!fullText) throw new Error('No selectable text found in PDF.');
+      return fullText;
+    } catch (e) {
+      console.error('PDF processing error', e);
+      throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
     }
   };
 
@@ -438,16 +852,31 @@ const App: React.FC = () => {
 
     const finalizeUpload = async (context: FileContext) => {
         try {
-            const structure = await analyzeBookStructure(context);
+            const preparedContext = hydrateFileContext(context);
+            const structure = await analyzeBookStructure(preparedContext);
+            const indexedChapters = preparedContext.isText
+              ? buildSourceIndexedChapters(
+                  preparedContext.content,
+                  expandTopicSectionsIntoChapters(
+                    preparedContext.content,
+                    buildSourceIndexedChapters(preparedContext.content, structure.chapters),
+                    10
+                  )
+                )
+              : structure.chapters;
             const newItem: LibraryItem = {
-                book: structure,
-                fileContext: context,
+                book: { ...structure, chapters: indexedChapters },
+                fileContext: preparedContext,
                 uploadDate: Date.now()
             };
+            await saveSourceToCache(newItem);
             setLibrary(prev => [newItem, ...prev]);
             setActiveBookId(structure.id);
-            if (structure.chapters.length > 0) setActiveChapterId(structure.chapters[0].id);
-            setView(AppView.DASHBOARD);
+            if (structure.chapters.length > 0) {
+              setActiveChapterPageTarget('first');
+              setActiveChapterId(structure.chapters[0].id);
+            }
+            setPendingLanguagePromptBookId(structure.id);
             setShowLibraryList(false);
             trackBookAction('upload', { title: structure.title, chapter_count: structure.chapters.length, file_size: file.size, format: file.name.split('.').pop() }, structure.id);
             if (currentUser) saveBookToCloud(currentUser.id, newItem).catch(() => {});
@@ -465,10 +894,28 @@ const App: React.FC = () => {
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
-            isText: true
+            isText: true,
+            sourceKind: 'epub',
          });
        } catch (err: any) {
          setError(err.message || "Failed to process EPUB.");
+         setIsProcessing(false);
+       }
+       return;
+    }
+
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+       try {
+         const textContent = await processPdf(file);
+         await finalizeUpload({
+            content: textContent,
+            mimeType: 'text/plain',
+            isText: true,
+            sourceKind: 'pdf',
+            sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION,
+         });
+       } catch (err: any) {
+         setError(err.message || "Failed to process PDF.");
          setIsProcessing(false);
        }
        return;
@@ -484,9 +931,8 @@ const App: React.FC = () => {
 
     if (isTextBased) {
       reader.onload = async (e) => {
-        let content = e.target?.result as string;
-        if (content.length > 2000000) content = content.substring(0, 2000000) + "... [Truncated]";
-        await finalizeUpload({ content, mimeType: 'text/plain', isText: true });
+        const content = e.target?.result as string;
+        await finalizeUpload({ content, mimeType: 'text/plain', isText: true, sourceKind: 'text' });
       };
       reader.readAsText(file);
     } else {
@@ -565,7 +1011,7 @@ const App: React.FC = () => {
     let content;
     switch (activeTab) {
       case Tab.AUDIOBOOK:
-        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} onChapterChange={(chapterId) => { setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
+        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} initialPageTarget={activeChapterPageTarget} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
         break;
       case Tab.PODCAST:
         content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} />;
@@ -591,6 +1037,13 @@ const App: React.FC = () => {
     );
   };
 
+  const closeSidebarMobile = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
+  const switchTab = (tab: Tab) => { trackNavigation('module_switch', { from_module: activeTab, to_module: tab }); setActiveTab(tab); };
+  const continueAfterLanguagePrompt = () => {
+    setPendingLanguagePromptBookId(null);
+    setView(AppView.DASHBOARD);
+  };
+
   if (!configReady) {
     return (
       <div className="min-h-screen bg-[#020202] flex items-center justify-center">
@@ -607,6 +1060,26 @@ const App: React.FC = () => {
           onSkip={() => { setAuthGatePassed(true); localStorage.setItem('auth_gate_skipped', '1'); }}
         />
       </ErrorBoundary>
+    );
+  }
+
+  if (view === AppView.LANDING) {
+    return (
+      <>
+        <LandingPage
+          variant={landingVariant}
+          onEnterApp={() => setView(AppView.UPLOAD)}
+          onSignIn={() => setIsAccountOpen(true)}
+        />
+        <AccountPanel
+          isOpen={isAccountOpen}
+          onClose={() => setIsAccountOpen(false)}
+          user={currentUser}
+          onAuthChange={setCurrentUser}
+          proPriceId={localStorage.getItem('stripe_pro_price_id') || ''}
+          proAnnualPriceId={localStorage.getItem('stripe_pro_annual_price_id') || ''}
+        />
+      </>
     );
   }
 
@@ -667,12 +1140,40 @@ const App: React.FC = () => {
           )}
           {error && <p className="text-[#ff003c] text-xs font-mono border border-[#ff003c]/30 p-2 bg-[#ff003c]/5">{error}</p>}
         </div>
+        {pendingLanguagePromptBookId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+            <div className="w-full max-w-md bg-[#050505] border border-zinc-800 rounded-lg shadow-[0_0_50px_rgba(0,243,255,0.08)] overflow-hidden text-left">
+              <div className="h-[2px] bg-gradient-to-r from-[#00f3ff] to-[#ff003c]" />
+              <div className="p-6 space-y-5">
+                <div className="space-y-2">
+                  <div className="text-[10px] font-mono text-[#00f3ff] uppercase tracking-[0.3em]">Translation_Default</div>
+                  <h2 className="text-2xl font-black text-white uppercase tracking-tight">Choose Target Language</h2>
+                  <p className="text-xs text-zinc-500 leading-relaxed font-mono">
+                    This becomes the default translated layer for this and future books until you change it again.
+                  </p>
+                </div>
+                <select
+                  value={settings.targetLanguage}
+                  onChange={(e) => setSettings(prev => ({ ...prev, targetLanguage: e.target.value }))}
+                  className="w-full bg-[#020202] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-4 py-3 transition-all cursor-pointer"
+                >
+                  {TARGET_LANGUAGES.map(language => (
+                    <option key={language} value={language}>{language}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={continueAfterLanguagePrompt}
+                  className="w-full py-3 bg-[#00f3ff] text-black font-black uppercase tracking-[0.25em] text-xs rounded-sm hover:bg-white transition-colors"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
-
-  const closeSidebarMobile = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
-  const switchTab = (tab: Tab) => { trackNavigation('module_switch', { from_module: activeTab, to_module: tab }); setActiveTab(tab); };
 
   return (
     <div className="flex h-screen bg-[#020202] bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
@@ -688,17 +1189,14 @@ const App: React.FC = () => {
         settings={settings}
         onUpdate={setSettings}
       />
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
+      <AccountPanel
+        isOpen={isAccountOpen}
+        onClose={() => setIsAccountOpen(false)}
         user={currentUser}
         onAuthChange={setCurrentUser}
-      />
-      <PricingModal
-        isOpen={isPricingOpen}
-        onClose={() => setIsPricingOpen(false)}
         proPriceId={localStorage.getItem('stripe_pro_price_id') || ''}
-        unlimitedPriceId={localStorage.getItem('stripe_unlimited_price_id') || ''}
+        proAnnualPriceId={localStorage.getItem('stripe_pro_annual_price_id') || ''}
+        key={isAccountOpen ? 'open' : 'closed'}
       />
 
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
@@ -748,7 +1246,10 @@ const App: React.FC = () => {
                         <button
                             onClick={() => {
                                 setActiveBookId(item.book.id);
-                                if(item.book.chapters.length > 0) setActiveChapterId(item.book.chapters[0].id);
+                                if(item.book.chapters.length > 0) {
+                                  setActiveChapterPageTarget('first');
+                                  setActiveChapterId(item.book.chapters[0].id);
+                                }
                                 setShowLibraryList(false);
                                 closeSidebarMobile();
                             }}
@@ -779,7 +1280,7 @@ const App: React.FC = () => {
                     return (
                         <div key={chapter.id} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
                             <button
-                                onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
+                                onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterPageTarget('first'); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
                                 className={`flex-1 text-left flex items-center gap-3 border-l-2 py-1 transition-all min-w-0 pr-2 ${
                                     activeChapterId === chapter.id 
                                     ? 'border-[#00f3ff]' 
@@ -829,23 +1330,19 @@ const App: React.FC = () => {
             <span>SYS_CONFIG</span>
           </button>
           <button
-            onClick={() => setIsPricingOpen(true)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-[#00f3ff] transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
-          >
-            <CreditCard size={14} />
-            <span>SUBSCRIPTION</span>
-            {userTier && userTier.tier !== 'free' && (
-              <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded ${userTier.tier === 'pro' ? 'bg-[#00f3ff]/10 text-[#00f3ff]' : 'bg-amber-500/10 text-amber-400'}`}>
-                {userTier.tier.toUpperCase()}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setIsAuthOpen(true)}
+            onClick={() => setIsAccountOpen(true)}
             className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-emerald-500 hover:text-emerald-400' : 'text-zinc-500 hover:text-[#00f3ff]'}`}
           >
             <UserIcon size={14} />
             <span>MY_ACCOUNT</span>
+            {userTier && userTier.tier !== 'free' && (
+              <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded ${
+                userTier.tier === 'pro' ? 'bg-[#00f3ff]/10 text-[#00f3ff]' :
+                'bg-amber-500/10 text-amber-400'
+              }`}>
+                {userTier.tier.toUpperCase()}
+              </span>
+            )}
           </button>
         </div>
       </aside>
