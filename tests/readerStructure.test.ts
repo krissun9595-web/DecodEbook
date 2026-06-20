@@ -68,6 +68,22 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // Principled rule: a linked/bracketed marker is explicit note notation, so it must
+  // start a new line regardless of how the PREVIOUS note ended — including an italic
+  // term with a trailing comma ("*op. cit.,*" -> ",*") or a missing final period.
+  const text = '[14](x.html#ch03en14). See Bois, *op. cit.,* [15](x.html#ch03en15). See Frances and Joseph Gies, *Cathedral, Forge, and Waterwheel* (New York: HarperCollins, 1994), p. 40. [25](x.html#ch03en25). *Ibid.,* p. 150 [26](x.html#ch03en26). Gies, *op. cit.,* p. 2.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(normalized.includes('*op. cit.,*\n[15]'), 'note after italic term + trailing comma must start a new line');
+  assert.ok(normalized.includes('p. 150\n[26]'), 'note after a missing-period entry must start a new line');
+}
+
+{
+  // Bare numbers in running prose must still NOT be treated as note starts.
+  const prose = 'The army grew rapidly. By 1850 the force had 12 divisions and kept expanding for years.';
+  assert.equal(normalizeNotesReaderText(prose), prose, 'bare prose numbers must not be split into note lines');
+}
+
+{
   const text = '*Chapter 1. The Transition of the Year 2000: The Fourth Stage of Human Society* [1](part0007_split_000.html#ch01en1). Danny Hillis, “The Millennium Clock,” Wired, Special Edition, Fall 1995, p. 48. [2](part0007_split_001.html#ch01en2). Ericka Cheetham, The Final Prophecies of Nostradamus, p. 424.';
   const normalized = normalizeNotesReaderText(text);
   assert.ok(

@@ -358,16 +358,24 @@ export const normalizeNotesReaderText = (value: string): string => {
       const prefix = match[1] || '';
       const marker = match[3] || match[4] || match[5] || match[6] || '';
       const number = noteMarkerRank(marker);
+      // match[3]/[4] = bracketed "[N]"/"[N](href)" markers, match[5] = "note N".
+      // These are explicit note notation, never running prose. The page-label and
+      // running-text heuristics only exist to reject false positives among BARE
+      // numbers (match[6]) — applying them to explicit markers wrongly drops notes
+      // whose previous entry ends without terminal punctuation (e.g. an italic
+      // "*op. cit.,*" or a missing final period), squeezing them onto one line.
+      const isExplicitMarker = Boolean(match[3] || match[4] || match[5]);
       return {
         number,
         start: (match.index ?? 0) + prefix.length,
+        isExplicitMarker,
       };
     })
     .filter(candidate =>
       Number.isFinite(candidate.number) &&
       candidate.number > 0 &&
-      !followsBibliographicPageLabel(candidate.start) &&
-      !followsRunningText(candidate.start)
+      (candidate.isExplicitMarker ||
+        (!followsBibliographicPageLabel(candidate.start) && !followsRunningText(candidate.start)))
     );
   const sectionStarts = [...text.matchAll(/(^|\n{2,})\s*[*_~]*(?:#{1,6}\s*)?((?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\b[^\n*]{0,220})[*_~]*/giu)]
     .map(match => (match.index ?? 0) + match[1].length);
