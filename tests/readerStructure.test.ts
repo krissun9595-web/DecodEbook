@@ -39,6 +39,23 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // A following note number glued to the previous note's terminal period
+  // (e.g. "Ibid.12.", "op. cit.17.") must still start a new note line.
+  const text = '11. Ibid.12. Durant, op. cit., p. 43. 13. Ramsay MacMullen, Corruption and the Decline of Rome (New Haven: Yale University Press, 1988), p. 192. 16. Lane, “Economic Consequences of Organized Violence,” op. cit.17. Ibid.18. Susan Ailing Gregg, Foragers and Farmers (Chicago: University of Chicago Press, 1988), p. 9.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(normalized.includes('Ibid.\n12. Durant'), 'note number glued after "Ibid." should start a new line');
+  assert.ok(normalized.includes('op. cit.\n17. Ibid.'), 'note number glued after "op. cit." should start a new line');
+  assert.ok(normalized.includes('Ibid.\n18. Susan'), 'note number glued after a second "Ibid." should start a new line');
+  assert.ok(normalized.includes('p. 192.\n16. Lane'), 'space-separated notes should remain on their own lines');
+}
+
+{
+  // Guard against false positives: decimals and page refs must not gain note breaks.
+  assert.equal(normalizeNotesReaderText('The ratio was 3.14 in the study and held steady.'),
+    'The ratio was 3.14 in the study and held steady.', 'decimals must not be split into note lines');
+}
+
+{
   const text = '*Chapter 1. The Transition of the Year 2000: The Fourth Stage of Human Society* [1](part0007_split_000.html#ch01en1). Danny Hillis, “The Millennium Clock,” Wired, Special Edition, Fall 1995, p. 48. [2](part0007_split_001.html#ch01en2). Ericka Cheetham, The Final Prophecies of Nostradamus, p. 424.';
   const normalized = normalizeNotesReaderText(text);
   assert.ok(
