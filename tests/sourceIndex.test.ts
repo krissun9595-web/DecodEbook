@@ -1,0 +1,354 @@
+import assert from 'node:assert/strict';
+import { buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource } from '../utils/sourceIndex.ts';
+import type { Chapter } from '../types.ts';
+
+const chapterBody = (name: string) => [
+  `${name} begins with a real paragraph that is not a table of contents entry.`,
+  'It has multiple sentences and enough body text for the extractor to distinguish prose from a navigation list.',
+  'The chapter continues with source characters like **bold markers**, quotes, and punctuation that must remain intact.',
+].join(' ');
+
+{
+  const content = [
+    'Contents',
+    'The Signal ........ 5',
+    'Deep Work ........ 12',
+    '',
+    'Chapter 1',
+    'The Signal',
+    chapterBody('The Signal'),
+    '',
+    'Chapter 2',
+    'Deep Work',
+    chapterBody('Deep Work'),
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'The Signal' },
+    { id: 2, title: 'Deep Work' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+  const first = indexed[0];
+  const extracted = extractChapterFromSource(content, first, indexed);
+
+  assert.ok(first.sourceStart != null, 'first chapter should be indexed');
+  assert.ok(first.sourceStart > content.indexOf('Chapter 1'), 'TOC occurrence must not be accepted as the chapter body');
+  assert.ok(extracted?.includes('real paragraph'), 'body prose should be extracted');
+  assert.ok(!extracted?.includes('Deep Work ........ 12'), 'TOC entries should be excluded');
+}
+
+{
+  const content = [
+    'CHAPTER TWO - The Vanishing Point',
+    chapterBody('The Vanishing Point'),
+    '',
+    'CHAPTER THREE - Return',
+    chapterBody('Return'),
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 2, title: 'The Vanishing Point' },
+    { id: 3, title: 'Return' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+
+  assert.equal(indexed[0].sourceHeading, 'CHAPTER TWO - The Vanishing Point');
+  assert.ok(extractChapterFromSource(content, indexed[0], indexed)?.includes('The Vanishing Point begins'));
+}
+
+{
+  const content = [
+    'Chapter One',
+    chapterBody('Chapter One'),
+    '',
+    'Chapter Two',
+    chapterBody('Chapter Two'),
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Chapter One' },
+    { id: 2, title: 'Chapter Two' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+
+  assert.equal(indexed[0].sourceHeading, 'Chapter One');
+  assert.ok(extractChapterFromSource(content, indexed[0], indexed)?.includes('Chapter One begins'));
+  assert.ok(!extractChapterFromSource(content, indexed[0], indexed)?.includes('Chapter Two begins'));
+}
+
+{
+  const content = [
+    '1. Exact Strange-Heading',
+    chapterBody('Exact Strange-Heading'),
+    '',
+    '2. Next Heading',
+    chapterBody('Next Heading'),
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Semantic model title', sourceHeading: 'Exact Strange-Heading' },
+    { id: 2, title: 'Next Heading' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+
+  assert.ok(indexed[0].sourceStart != null, 'exact sourceHeading should anchor semantic title mismatches');
+  assert.ok(extractChapterFromSource(content, indexed[0], indexed)?.includes('**bold markers**'));
+}
+
+{
+  const content = [
+    '[[PAGE 10]]',
+    'This page is the full chapter body. It has enough sentences to be a valid PDF page extraction target.',
+    'More source text remains on page ten.',
+    '',
+    '[[PAGE 11]]',
+    'The next page belongs to a different chapter and must not be included.',
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Page Anchored', pageStart: 10, pageEnd: 10 },
+    { id: 2, title: 'Next Page', pageStart: 11, pageEnd: 11 },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+  const extracted = extractChapterFromSource(content, indexed[0], indexed);
+
+  assert.ok(extracted?.includes('full chapter body'));
+  assert.ok(!extracted?.includes('different chapter'));
+}
+
+{
+  const content = [
+    '[[PAGE 6]]',
+    'Previous page pull quote should not become part of the heading.',
+    '',
+    '[[PAGE 7]]',
+    'Introduction',
+    'First body words must not be skipped by the exact heading matcher.',
+    'The introduction continues with enough prose to score as body text.',
+    '',
+    '[[PAGE 8]]',
+    'Reality in an unfamiliar guise',
+    'Since time immemorial, these first words must remain readable.',
+    'The section continues with enough prose to score as body text.',
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Introduction' },
+    { id: 2, title: 'Reality in an unfamiliar guise' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+  const intro = extractChapterFromSource(content, indexed[0], indexed);
+  const reality = extractChapterFromSource(content, indexed[1], indexed);
+
+  assert.equal(indexed[0].sourceHeading, 'Introduction');
+  assert.equal(indexed[1].sourceHeading, 'Reality in an unfamiliar guise');
+  assert.ok(intro?.startsWith('First body words must not be skipped'));
+  assert.ok(reality?.startsWith('Since time immemorial'));
+  assert.ok(!intro?.includes('Previous page pull quote'));
+}
+
+{
+  const content = [
+    '[[PAGE 7]]',
+    'Introduction',
+    'Message to the Master',
+    'Once, in the distant past, the Universe forgot itself.',
+    'The introduction continues with enough prose to score as body text.',
+    'More body text confirms this is not the table of contents.',
+    '',
+    '[[PAGE 8]]',
+    'Reality in an unfamiliar guise',
+    'Since time immemorial, these first words must remain readable.',
+    'The section continues with enough prose to score as body text.',
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    {
+      id: 1,
+      title: 'Introduction',
+      sourceStart: 999999,
+      sourceEnd: 1000000,
+    },
+    { id: 2, title: 'Reality in an unfamiliar guise' },
+  ];
+  const intro = extractChapterFromSource(content, chapters[0], chapters);
+
+  assert.ok(intro?.includes('Message to the Master'));
+  assert.ok(intro?.includes('Once, in the distant past'));
+}
+
+{
+  const makePrincipleTopic = (heading: string) => [
+    heading,
+    'Principle',
+    `${heading} principle text has enough source prose for body scoring. It must stay attached to its numbered heading.`,
+    'Interpretation',
+    `${heading} interpretation text continues with normal sentences. It should not be merged into a neighboring chunk.`,
+  ].join('\n');
+
+  const content = [
+    makePrincipleTopic('1. Alternatives Flow'),
+    '',
+    makePrincipleTopic('11. Confidence'),
+    '',
+    makePrincipleTopic('21. The Master'),
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Topics 1-10', sourceHeading: '1. Alternatives Flow' },
+    { id: 2, title: 'Topics 11-20', sourceHeading: '11. Confidence' },
+    { id: 3, title: 'Topics 21-30', sourceHeading: '21. The Master' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+  const extracted = extractChapterFromSource(content, indexed[1], indexed);
+
+  assert.equal(indexed[1].sourceStart, content.indexOf('11. Confidence'));
+  assert.ok(extracted?.startsWith('11. Confidence\nPrinciple'));
+  assert.ok(!extracted?.includes('21. The Master'));
+}
+
+{
+  const makePrincipleTopic = (heading: string) => [
+    heading,
+    'Principle',
+    `${heading} principle text has enough source prose for deterministic indexing. It must stay attached to its numbered heading.`,
+    'Interpretation',
+    `${heading} interpretation text continues with enough normal sentences to score as body text.`,
+  ].join('\n');
+
+  const content = [
+    'Contents',
+    'Reality in an unfamiliar guise',
+    'Topics 1-10',
+    '1. Awakening',
+    '11. Confidence',
+    '21. The Master',
+    '',
+    'Reality in an unfamiliar guise',
+    chapterBody('Reality in an unfamiliar guise'),
+    '',
+    'Transurfing Principles',
+    makePrincipleTopic('1. Awakening'),
+    '',
+    makePrincipleTopic('11. Confidence'),
+    '',
+    makePrincipleTopic('21. The Master'),
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Reality in an unfamiliar guise' },
+    { id: 2, title: 'Topics 1-10' },
+    { id: 3, title: 'Topics 11-20' },
+    { id: 4, title: 'Topics 21-30' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+  const reality = extractChapterFromSource(content, indexed[0], indexed);
+  const firstChunk = extractChapterFromSource(content, indexed[1], indexed);
+  const secondChunk = extractChapterFromSource(content, indexed[2], indexed);
+
+  assert.equal(indexed[1].sourceHeading, '1. Awakening');
+  assert.equal(indexed[2].sourceHeading, '11. Confidence');
+  assert.ok(reality?.startsWith('Reality in an unfamiliar guise begins'));
+  assert.ok(!reality?.includes('1. Awakening'));
+  assert.ok(firstChunk?.startsWith('1. Awakening\nPrinciple'));
+  assert.ok(secondChunk?.startsWith('11. Confidence\nPrinciple'));
+}
+
+{
+  const makePrincipleTopic = (index: number) => [
+    `${index}. Topic ${index}`,
+    'Principle',
+    `Topic ${index} principle text has enough source prose for deterministic chunking. It must stay attached to its numbered heading.`,
+    'Interpretation',
+    `Topic ${index} interpretation text continues with enough normal sentences to score as body text.`,
+  ].join('\n');
+
+  const content = [
+    'Introduction',
+    chapterBody('Introduction'),
+    '',
+    'Transurfing Principles',
+    Array.from({ length: 21 }, (_, index) => makePrincipleTopic(index + 1)).join('\n\n'),
+  ].join('\n');
+
+  const initialChapters: Chapter[] = [
+    { id: 1, title: 'Introduction' },
+    { id: 2, title: 'Transurfing Principles' },
+  ];
+
+  const indexed = buildSourceIndexedChapters(content, initialChapters);
+  const chunked = expandTopicSectionsIntoChapters(content, indexed, 10);
+  const reindexed = buildSourceIndexedChapters(content, chunked);
+
+  assert.deepEqual(reindexed.map(chapter => chapter.title), [
+    'Introduction',
+    'Topics 1-10',
+    'Topics 11-20',
+    'Topic 21',
+  ]);
+  assert.equal(reindexed[1].sourceHeading, '1. Topic 1');
+  assert.equal(reindexed[2].sourceHeading, '11. Topic 11');
+  assert.equal(reindexed[3].sourceHeading, '21. Topic 21');
+  assert.ok(extractChapterFromSource(content, reindexed[1], reindexed)?.startsWith('1. Topic 1\nPrinciple'));
+  assert.ok(!extractChapterFromSource(content, reindexed[1], reindexed)?.includes('11. Topic 11'));
+}
+
+{
+  const content = [
+    'Contents',
+    'The Signal ........ 5',
+    'Deep Work ........ 12',
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'The Signal' },
+    { id: 2, title: 'Deep Work' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+
+  assert.equal(indexed[0].sourceStart, undefined, 'TOC-only content should fail closed');
+  assert.equal(extractChapterFromSource(content, indexed[0], indexed), null);
+}
+
+{
+  // A standalone "Index" back-matter section has a TOC-like body (terms + page
+  // numbers). It must still resolve as its own chapter, not be swallowed by the
+  // preceding Notes chapter.
+  const content = [
+    'Chapter 1: The First',
+    chapterBody('Chapter one'),
+    '',
+    'Chapter 2: The Second',
+    chapterBody('Chapter two'),
+    '',
+    'NOTES',
+    '1. First note here. 2. Second note here. 3. Third note about a topic.',
+    '',
+    'INDEX',
+    'Abu-Lughod, Janet, 213, 215',
+    'Africa, 388',
+    'Afro-Americans, 317',
+    '',
+    'Copyright',
+    'All rights reserved.',
+  ].join('\n');
+
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Chapter 1: The First' },
+    { id: 2, title: 'Chapter 2: The Second' },
+    { id: 3, title: 'Notes' },
+    { id: 4, title: 'Index' },
+    { id: 5, title: 'Copyright' },
+  ];
+  const indexed = buildSourceIndexedChapters(content, chapters);
+  const index = indexed.find(c => c.title === 'Index')!;
+  const notes = indexed.find(c => c.title === 'Notes')!;
+
+  assert.equal(typeof index.sourceStart, 'number', 'Index section must resolve to its own source range');
+  const indexText = extractChapterFromSource(content, index, indexed) || '';
+  assert.ok(indexText.startsWith('Abu-Lughod'), 'Index chapter should start at the index entries');
+  const notesText = extractChapterFromSource(content, notes, indexed) || '';
+  assert.ok(!notesText.includes('Abu-Lughod'), 'Notes chapter must not swallow the Index entries');
+}
+
+console.log('sourceIndex regression tests passed');
