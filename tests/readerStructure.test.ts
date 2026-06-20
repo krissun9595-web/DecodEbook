@@ -50,6 +50,16 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // A notes section heading with an italicized keyword ("<i>Chapter</i> 5" ->
+  // "*Chapter* 5") must still be detected and split onto its own line, not merged
+  // into the previous note.
+  const text = '[68](x#ch04en68). Tilly, *op. cit.,* p. 20. [69](x#ch04en69). *Ibid.,* p. 22.\n\n*Chapter* 5. *The Life and Death of the Nation-State: Democracy and Nationalism*\n\n[1](x#ch05en1). Quoted in Tilly, *op. cit.,* p. 84.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(/p\. 22\.\n\nChapter 5\./.test(normalized), 'italicized "Chapter N" heading should split onto its own line after the previous note');
+  assert.ok(/Nationalism\*\n\n\[1\]/.test(normalized), 'the next chapter\'s notes should start on their own line after the heading');
+}
+
+{
   // Guard against false positives: decimals and page refs must not gain note breaks.
   assert.equal(normalizeNotesReaderText('The ratio was 3.14 in the study and held steady.'),
     'The ratio was 3.14 in the study and held steady.', 'decimals must not be split into note lines');

@@ -265,6 +265,15 @@ const normalizeReaderText = (value: string): string => {
 
 export const normalizeNotesReaderText = (value: string): string => {
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // A notes section heading often italicizes just the keyword (e.g. "<i>Chapter</i> 5"
+  // -> "*Chapter* 5"), and the stray "*" breaks the "chapter <n>" heading detection,
+  // so the heading merges into the previous note's line. Unwrap emphasis that wraps
+  // only a heading keyword. Section detection still requires a paragraph-start
+  // position, so unwrapping a keyword inside note prose can't cause a false split.
+  text = text.replace(
+    /([*_~]{1,2})(Chapter|Part|Book|Afterword|Epilogue|Prologue|Introduction|Conclusion)\1(?=[\s.:;,]|\d)/giu,
+    '$2'
+  );
   // A following note number can be glued to the previous note's terminal period
   // (e.g. "Ibid.12.", "op. cit.17.", "Ibid.18.") when flattened from superscript
   // markers. Insert a separating space so the marker is detectable downstream;
