@@ -896,6 +896,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     target: Extract<ReaderPageTarget, { type: 'note' }>,
     readerPages: ReaderPage[]
   ): number => {
+    // A note's anchor key uniquely identifies it even across chapters whose note
+    // numbers restart at 1. Resolve by key first — this mirrors the active-note
+    // highlight and avoids landing on a same-numbered note in the wrong chapter.
+    if (target.noteKey) {
+      const keyedPageIndex = readerPages.findIndex(page =>
+        page.text
+          .split(/\n+/)
+          .some(line => sentenceStartsWithNoteMarker(line, target.marker, target.noteKey))
+      );
+      if (keyedPageIndex >= 0) return keyedPageIndex;
+    }
     const combinedParts: string[] = [];
     const pageStarts: number[] = [];
     readerPages.forEach(page => {
@@ -925,7 +936,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const titleScopedSectionIndex = scopeNeedles.length > 0
       ? sectionMatches.findIndex(section => {
           const normalized = normalizeNoteScopeText(section.title);
-          return scopeNeedles.some(needle => normalized.includes(needle) || needle.includes(normalized));
+          // Guard against empty/near-empty section titles (e.g. an italicized
+          // heading truncated to "Chapter 9. "), which would otherwise match every
+          // needle via needle.includes("") and pick the wrong section.
+          return normalized.length >= 4 &&
+            scopeNeedles.some(needle => normalized.includes(needle) || needle.includes(normalized));
         })
       : -1;
     const numberedChapterIndex = typeof target.sourceChapterIndex === 'number'
@@ -2034,6 +2049,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
   const plainParagraphStyleFor = (sentences: string[]): React.CSSProperties => {
     const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
+    // Index entries are list items, not prose — no first-line indent.
+    if (isIndexChapter) return noTextIndentStyle;
     if (isNotesSectionHeadingParagraph(sentences)) return noTextIndentStyle;
     if (isPlainSubtitleParagraph(sentences) || looksLikeAttributionLine(text) || looksLikeSignatureLine(text)) return noTextIndentStyle;
     return bodyParagraphStyle;
@@ -2052,6 +2069,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
   const paragraphSpacingClassFor = (value: string): string => {
     const clean = value.replace(/\s+/g, ' ').trim();
+    // Index entries are a tight list — no prose/citation top margins (an entry like
+    // "“Adult Literacy in America,” 227" would otherwise be treated as a quote).
+    if (isIndexChapter) return '';
     if (isNotesChapter && looksLikeNotesSectionHeading(clean)) return 'mt-10 mb-3';
     if (looksLikeCitationParagraph(clean)) return 'mt-5';
     if (looksLikeAttributionLine(clean)) return 'mt-2 mb-5';
