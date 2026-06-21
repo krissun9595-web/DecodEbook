@@ -280,6 +280,13 @@ interface FootnoteRef {
   // True for a roman/reference marker (rendered as a superscript), false for a
   // numeric footnote (rendered as a subscript).
   isReference?: boolean;
+  // True when the reference marker labels the start of the line (a note-definition
+  // label, e.g. "I. Nomenklaturas are…"). Such markers render BEFORE the translated
+  // content to mirror the original, instead of being appended at the end.
+  isLeading?: boolean;
+  // The marker's display text including its trailing separator (e.g. "I."), so the
+  // translated leading marker reads exactly like the original.
+  displayText?: string;
 }
 
 interface PositionedFootnoteRef extends FootnoteRef {
@@ -668,16 +675,23 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
 
 const footnoteRefsForText = (value: string, options: InlineParseOptions = {}): FootnoteRef[] => {
   const refs: FootnoteRef[] = [];
+  let seenContent = false;
   parseInlineFormatting(value, { internalNoteLinksAsFootnotes: true, ...options }).forEach(segment => {
-    if (segment.format !== 'footnote' && segment.format !== 'attributionFootnote' && segment.format !== 'referenceMarker') return;
+    if (segment.format !== 'footnote' && segment.format !== 'attributionFootnote' && segment.format !== 'referenceMarker') {
+      if (segment.text.trim().length > 0) seenContent = true;
+      return;
+    }
     // A leading roman reference marker (a list "i.") carries no href and isn't a
     // footnote — only inherit reference markers that link to a note.
-    if (segment.format === 'referenceMarker' && !segment.href) return;
+    if (segment.format === 'referenceMarker' && !segment.href) { seenContent = true; return; }
     const marker = cleanNoteMarkerLabel(segment.marker || segment.text);
     if (!marker) return;
     const isReference = segment.format === 'referenceMarker';
+    // A reference marker with no content before it labels the start of the line.
+    const isLeading = isReference && !seenContent;
+    seenContent = true;
     const exists = refs.some(ref => ref.marker === marker && (ref.href || '') === (segment.href || ''));
-    if (!exists) refs.push({ marker, href: segment.href, isReference });
+    if (!exists) refs.push({ marker, href: segment.href, isReference, isLeading, displayText: segment.text });
   });
   return refs;
 };
@@ -2605,8 +2619,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       visibleCursor = segmentEnd;
     });
 
-    inheritedFootnotes
-      .filter(ref => ref !== consumedInheritedFootnote && !hasFootnoteRef(textToRender, ref, parseOptions))
+    const inheritedToRender = inheritedFootnotes
+      .filter(ref => ref !== consumedInheritedFootnote && !hasFootnoteRef(textToRender, ref, parseOptions));
+    // A leading reference marker labels a note-definition line ("I. Nomenklaturas…").
+    // Render it BEFORE the translated content so it mirrors the original's layout —
+    // unless the notes-chapter leading-marker logic already prepended one.
+    const leadingInherited = hasNotesLeadingMarker ? [] : inheritedToRender.filter(ref => ref.isReference && ref.isLeading);
+    leadingInherited.forEach((ref, refIndex) => {
+      nodes.unshift(
+        <React.Fragment key={`inherited-leading-sp-${ref.marker}-${refIndex}`}>{' '}</React.Fragment>
+      );
+      nodes.unshift(renderTextLeaf(ref.displayText || ref.marker, `inherited-leading-${ref.marker}-${refIndex}`, 'referenceMarker', false, ref.href, footnoteClickHandler, playbackActive));
+    });
+    inheritedToRender
+      .filter(ref => !leadingInherited.includes(ref))
       .forEach((ref, refIndex) => {
         // Roman reference markers render as a superscript (referenceMarker) to match
         // the original; numeric footnotes as a subscript (footnote).
