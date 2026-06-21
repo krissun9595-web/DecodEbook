@@ -2131,6 +2131,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // "“Adult Literacy in America,” 227" would otherwise be treated as a quote).
     if (isIndexChapter) return '';
     if (isNotesChapter && looksLikeNotesSectionHeading(clean)) return 'mt-10 mb-3';
+    // A section subtitle (e.g. "THE END OF NATIONS", "PROMETHEUS UNBOUND: ...") is
+    // rendered bold but otherwise got no spacing, so it ran right into the
+    // surrounding prose. Give it room above and a little below.
+    if (isPlainSubtitleParagraph([clean])) return 'mt-8 mb-3';
     if (looksLikeCitationParagraph(clean)) return 'mt-5';
     // The author/attribution line already carries its own block margins
     // (mt-0.5 mb-4 from the 'attribution' segment style); adding paragraph-level
