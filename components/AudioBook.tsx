@@ -515,6 +515,35 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
   if (attributionLine) return attributionLine;
 
   const segments: InlineSegment[] = [];
+  // An emphasis span (e.g. a blockquote/epigraph extracted as *...*) can contain a
+  // footnote/reference link. The emphasis regex would otherwise swallow the link as
+  // plain text, so it renders as raw markdown. Pull nested links out, converting note
+  // links to footnote/reference markers and keeping the rest in the emphasis format.
+  const pushEmphasisContent = (inner: string, format: InlineFormat) => {
+    const linkRe = /\[([^\]]+)\]\s*\(([^)]+)\)/g;
+    let last = 0;
+    let linkMatch: RegExpExecArray | null;
+    let matchedLink = false;
+    while ((linkMatch = linkRe.exec(inner)) !== null) {
+      matchedLink = true;
+      if (linkMatch.index > last) segments.push({ text: inner.slice(last, linkMatch.index), format });
+      const label = cleanNoteMarkerLabel(linkMatch[1]);
+      const hasBodyBefore = inner.slice(0, linkMatch.index).trim().length > 0;
+      if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, linkMatch[2])) {
+        segments.push({ text: label, format: 'referenceMarker' });
+      } else if (options.internalNoteLinksAsFootnotes && hasBodyBefore && isLikelyInternalNoteLink(label, linkMatch[2])) {
+        segments.push({ text: label, format: 'footnote', href: linkMatch[2] });
+      } else {
+        segments.push({ text: linkMatch[1], format: 'link', href: linkMatch[2] });
+      }
+      last = linkRe.lastIndex;
+    }
+    if (!matchedLink) {
+      segments.push({ text: inner, format });
+      return;
+    }
+    if (last < inner.length) segments.push({ text: inner.slice(last), format });
+  };
   const leadingRomanReference = options.romanMarkersAsReferences
     ? value.match(/^\s*([ivxlcdm]{1,8})([.)])(?:\s|\u00a0)+(?=[\p{Lu}"“‘《])/iu)
     : null;
@@ -545,13 +574,13 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
         segments.push({ text: match[1], format: 'link', href: match[2] });
       }
     } else if (match[3]) {
-      segments.push({ text: match[3], format: 'bold' });
+      pushEmphasisContent(match[3], 'bold');
     } else if (match[4]) {
-      segments.push({ text: match[4], format: 'underline' });
+      pushEmphasisContent(match[4], 'underline');
     } else if (match[5]) {
-      segments.push({ text: match[5], format: 'strike' });
+      pushEmphasisContent(match[5], 'strike');
     } else if (match[6]) {
-      segments.push({ text: match[6], format: 'italic' });
+      pushEmphasisContent(match[6], 'italic');
     }
     cursor = pattern.lastIndex;
   }
