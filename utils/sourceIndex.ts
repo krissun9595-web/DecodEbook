@@ -521,6 +521,15 @@ const scoreCandidate = (
     else if (headingWords > 30) score -= 12;
 
     if (looksLikeTocEntryLine(headingText)) score -= 55;
+
+    // A heading line that carries an explicit "Chapter/Part/Book N" marker is the
+    // real chapter heading, not a running header that merely repeats the title on
+    // every page. Without this, the (often long) real heading loses on length to a
+    // short running header and the chapter resolves several pages late, pulling its
+    // opening into the previous chapter.
+    if (/^(?:\[\[PAGE[^\]]*\]\]\s*)?(?:chapter|ch\.?|part|book|volume|vol\.?)\s+[\divxlcdm]+\b/iu.test(headingText.trim())) {
+      score += 50;
+    }
   }
 
   if (chapter.pageStart && candidate.page != null) {

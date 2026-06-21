@@ -391,4 +391,36 @@ const chapterBody = (name: string) => [
   assert.equal(split.length, 1, 'chapters without an embedded index must not be split');
 }
 
+{
+  // A chapter title that repeats as a running header on every page must still
+  // resolve to the real "CHAPTER N ..." heading, not a later running header — or
+  // the chapter's opening (and its first footnotes) get absorbed into the previous
+  // chapter.
+  const content = [
+    'CHAPTER 4 THE LAST DAYS OF POLITICS',
+    chapterBody('Chapter four'),
+    '',
+    'CHAPTER 5 THE LIFE AND DEATH OF THE NATION-STATE Democracy and Nationalism as Resource Strategies in the Age of Violence',
+    'The opening sentence of chapter five begins its first real paragraph of prose content here.',
+    'It continues with several more sentences so the body reads as genuine chapter prose rather than a list.',
+    '',
+    'The Life and Death of the Nation-State',
+    'The fall of the Berlin Wall was more than a visible symbol; it marked a turning point discussed here.',
+    'A second paragraph of prose continues the chapter past the running-header page break with more text.',
+    '',
+    'CHAPTER 6 THE MEGAPOLITICS OF THE INFORMATION AGE',
+    chapterBody('Chapter six'),
+  ].join('\n');
+  const chapters: Chapter[] = [
+    { id: 1, title: 'Chapter 4: The Last Days of Politics' },
+    { id: 2, title: 'The Life and Death of the Nation-State' }, // title only, matches running headers too
+    { id: 3, title: 'Chapter 6: The Megapolitics of the Information Age' },
+  ];
+  const out = buildSourceIndexedChapters(content, chapters);
+  const ch5Text = extractChapterFromSource(content, out[1], out) || '';
+  const ch4Text = extractChapterFromSource(content, out[0], out) || '';
+  assert.ok(ch5Text.includes('opening sentence of chapter five'), 'Chapter 5 must resolve at its real heading, not a later running header');
+  assert.ok(!ch4Text.includes('opening sentence of chapter five'), 'Chapter 4 must not absorb Chapter 5\'s opening');
+}
+
 console.log('sourceIndex regression tests passed');
