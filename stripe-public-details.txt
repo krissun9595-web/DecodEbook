@@ -1,0 +1,5 @@
+Statement descriptor: DECODEBOOK
+Shortened descriptor: DCDBOOK
+Customer support phone: (leave blank if you don't have one)
+Customer support email: tongtao.wang@gmail.com
+Customer support URL: https://decodebook.app

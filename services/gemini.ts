@@ -2,8 +2,13 @@
 import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
+import { CREDIT_COSTS } from "./stripe";
+import { extractChapterFromSource } from "../utils/sourceIndex";
+import { buildLocalTextStructure, buildStructureAnalysisText, isReadableChapterTitle } from "../utils/structureAnalysis";
+import { PDF_TEXT_EXTRACTION_VERSION } from "../utils/sourceVersion";
 
 let _userApiKey: string | null = null;
+const DEFAULT_TEXT_MODEL = 'gemini-3-flash-preview';
 let _selectedModel: string = 'gemini-3-flash-preview';
 let _ttsModel: string = 'gemini-3.1-flash-tts-preview';
 let _imageModel: string = 'gemini-3-pro-image-preview';
@@ -18,17 +23,50 @@ export const getVideoModel = () => _videoModel;
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
 const isGeminiModel = (model?: string) => !(model || _selectedModel).startsWith('gpt-') && !(model || _selectedModel).startsWith('claude-');
+const isMissingProviderKeyError = (message: string): boolean =>
+  /(?:openai|anthropic)\s+api\s+key\s+not\s+configured/i.test(message);
 
-const trackUsage = (action: string, tokensUsed: number = 0) => {
+// Cost per million tokens (USD cents) by model family
+const COST_PER_M: Record<string, { input: number; output: number }> = {
+  'gemini-3-flash':   { input: 10, output: 40 },
+  'gemini-3-pro':     { input: 125, output: 500 },
+  'gemini-3.1-flash': { input: 10, output: 40 },
+  'gpt-4o':           { input: 250, output: 1000 },
+  'gpt-4o-mini':      { input: 15, output: 60 },
+  'claude-sonnet':    { input: 300, output: 1500 },
+  'claude-haiku':     { input: 80, output: 400 },
+};
+
+function estimateCostCents(inputTokens: number, outputTokens: number, model: string): number {
+  const key = Object.keys(COST_PER_M).find(k => model.startsWith(k)) || 'gemini-3-flash';
+  const rate = COST_PER_M[key];
+  return Math.round((inputTokens * rate.input + outputTokens * rate.output) / 1_000_000);
+}
+
+interface TokenInfo {
+  total: number;
+  input: number;
+  output: number;
+}
+
+const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string) => {
+  const t: TokenInfo = typeof tokens === 'number'
+    ? { total: tokens, input: 0, output: 0 }
+    : tokens;
+  const costCents = (t.input || t.output) ? estimateCostCents(t.input, t.output, model || _selectedModel) : 0;
+  const creditKey = action.startsWith('text:') ? 'translate' : action;
+  const creditsCost = CREDIT_COSTS[creditKey] || 1;
   getUser().then(user => {
-    if (user) logUsage(user.id, action, tokensUsed);
+    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost);
   }).catch(() => {});
 };
 
-const extractTokens = (response: any): number => {
+const extractTokens = (response: any): TokenInfo => {
   const meta = response?.usageMetadata;
-  if (!meta) return 0;
-  return (meta.promptTokenCount || 0) + (meta.candidatesTokenCount || 0);
+  if (!meta) return { total: 0, input: 0, output: 0 };
+  const input = meta.promptTokenCount || 0;
+  const output = meta.candidatesTokenCount || 0;
+  return { total: input + output, input, output };
 };
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
@@ -53,6 +91,7 @@ const callUnifiedLLM = async (params: {
   contents: any;
   systemInstruction?: string;
   generationConfig?: any;
+  creditAction?: string;
 }): Promise<string> => {
   const model = params.model || _selectedModel;
 
@@ -63,7 +102,7 @@ const callUnifiedLLM = async (params: {
     if (params.generationConfig) Object.assign(config, params.generationConfig);
     config.thinkingConfig = { thinkingBudget: 0 };
     const response = await ai.models.generateContent({ model, contents: params.contents, config });
-    trackUsage(`text:${model}`, extractTokens(response));
+    trackUsage(`text:${model}`, extractTokens(response), model);
     return response.text || '';
   }
 
@@ -76,14 +115,25 @@ const callUnifiedLLM = async (params: {
       contents: Array.isArray(params.contents) ? params.contents : [params.contents],
       systemInstruction: params.systemInstruction,
       generationConfig: params.generationConfig,
+      creditAction: params.creditAction || 'translate',
     }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error((err as any).error || 'LLM request failed');
+    const message = (err as any).error || 'LLM request failed';
+    if (model !== DEFAULT_TEXT_MODEL && isMissingProviderKeyError(message)) {
+      console.warn(`${message}; falling back to ${DEFAULT_TEXT_MODEL}.`);
+      return callUnifiedLLM({ ...params, model: DEFAULT_TEXT_MODEL });
+    }
+    throw new Error(message);
   }
   const data = await res.json() as any;
-  trackUsage(`text:${model}`, data.usage?.total_tokens || 0);
+  const usage = data.usage || {};
+  trackUsage(`text:${model}`, {
+    total: usage.total_tokens || 0,
+    input: usage.prompt_tokens || 0,
+    output: usage.completion_tokens || 0,
+  }, model);
   return data.text || '';
 };
 
@@ -176,91 +226,292 @@ const getFilePart = (file: FileContext): Part => {
   return { inlineData: { mimeType: file.mimeType, data: file.content } };
 };
 
+const getStructureFilePart = (file: FileContext): Part => {
+  if (!file.isText) return getFilePart(file);
+  return { text: buildStructureAnalysisText(file.content) };
+};
+
 export const analyzeBookStructure = async (file: FileContext): Promise<BookStructure> => {
-  return withRetry(async () => {
-    const ai = await getAi();
-    
-    // Switched to gemini-3-flash-preview to prevent 429 Resource Exhausted errors on Pro quota
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", 
-      contents: {
-        parts: [
-          getFilePart(file),
-          { text: "Analyze the document structure. Return a valid JSON object with 'title', 'author', and 'chapters' (an array of objects with 'id' (number), 'title' (string), and 'description' (string)). Ensure the JSON is clean and strictly follows this schema." }
-        ]
-      },
-      config: {
-        systemInstruction: "You are a specialized document parser. Your output must be ONLY a valid JSON object. Do not include markdown code blocks (```json), conversational text, or introductions. If the document is large, identify the main sections as chapters.",
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            author: { type: Type.STRING },
-            chapters: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.INTEGER },
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING }
+  try {
+    return await withRetry(async () => {
+      const ai = await getAi();
+
+      // Switched to gemini-3-flash-preview to prevent 429 Resource Exhausted errors on Pro quota
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: {
+          parts: [
+            getStructureFilePart(file),
+            { text: "Analyze the document structure. Return a valid JSON object with 'title', 'author', and 'chapters' (an array of ordered readable sections with 'id' (number), 'title' (string), 'description' (string), optional 'sourceHeading' with the exact visible heading text, and optional 'pageStart'/'pageEnd' numbers if page markers like [[PAGE N]] are present). Include readable front/back matter such as foreword, preface, introduction, prologue, epilogue, afterword, appendices, notes, and bibliography when they appear as substantial sections. Do NOT include title page, cover page, copyright page, contents, or table of contents as chapters. Ensure the JSON is clean and strictly follows this schema." }
+          ]
+        },
+        config: {
+          systemInstruction: "You are a specialized document parser. Your output must be ONLY a valid JSON object. Do not include markdown code blocks (```json), conversational text, or introductions. If the document is large or represented by a LONG_SOURCE_OUTLINE, identify ordered readable sections from the heading candidates, including foreword and afterword pages, and preserve exact headings in sourceHeading. Never return title page, cover page, copyright page, contents, or table of contents as chapters.",
+          responseMimeType: "application/json",
+          thinkingConfig: { thinkingBudget: 0 },
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              author: { type: Type.STRING },
+              chapters: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.INTEGER },
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    sourceHeading: { type: Type.STRING },
+                    pageStart: { type: Type.INTEGER },
+                    pageEnd: { type: Type.INTEGER }
+                  },
+                  required: ["id", "title"]
                 },
-                required: ["id", "title"]
               }
-            }
-          },
-          required: ["title", "author", "chapters"]
+            },
+            required: ["title", "author", "chapters"]
+          }
         }
-      }
-    });
-    
-    trackUsage('analyzeBookStructure', extractTokens(response));
-    if (!response.text) throw new Error("Empty response from model");
+      });
 
-    const data = safeJsonParse<any>(response.text);
+      trackUsage('analyzeBookStructure', extractTokens(response), 'gemini-3-flash-preview');
+      if (!response.text) throw new Error("Empty response from model");
 
-    const chapters = Array.isArray(data.chapters) ? data.chapters.map((c: any, i: number) => ({
+      const data = safeJsonParse<any>(response.text);
+
+      const chapters = Array.isArray(data.chapters) ? data.chapters.map((c: any, i: number) => ({
         id: c.id || i + 1,
         title: c.title || `Chapter ${i + 1}`,
-        description: c.description || ""
-    })) : [];
+        description: c.description || "",
+        sourceHeading: typeof c.sourceHeading === 'string' ? c.sourceHeading : undefined,
+        pageStart: typeof c.pageStart === 'number' ? c.pageStart : undefined,
+        pageEnd: typeof c.pageEnd === 'number' ? c.pageEnd : undefined
+      })).filter((chapter: Chapter) =>
+        isReadableChapterTitle(chapter.title) &&
+        isReadableChapterTitle(chapter.sourceHeading || chapter.title)
+      ).map((chapter: Chapter, index: number) => ({
+        ...chapter,
+        id: index + 1,
+      })) : [];
 
-    return { 
+      if (chapters.length === 0 && file.isText && file.content?.trim()) {
+        const fallback = buildLocalTextStructure(file.content);
+        return {
+          ...fallback,
+          title: data.title || fallback.title,
+          author: data.author || fallback.author,
+        };
+      }
+
+      return {
         title: data.title || "Untitled Document",
         author: data.author || "Unknown Author",
         chapters: chapters,
-        id: crypto.randomUUID(), 
-        bookmarks: [] 
-    } as BookStructure;
-  });
+        id: crypto.randomUUID(),
+        bookmarks: []
+      } as BookStructure;
+    });
+  } catch (error: any) {
+    const status = error?.status || error?.response?.status || error?.code;
+    const message = error?.message || JSON.stringify(error);
+    const canFallback =
+      file.isText &&
+      file.content?.trim() &&
+      (status === 400 || /invalid argument|request contains an invalid argument|request.*too large|payload|too many tokens/i.test(message));
+
+    if (canFallback) {
+      console.warn('Structure analysis request failed; using local text heading fallback.', error);
+      return buildLocalTextStructure(file.content);
+    }
+    throw error;
+  }
 };
 
 export const translateSentences = async (sentences: string[], targetLanguage: string): Promise<string[]> => {
   if (sentences.length === 0) return [];
   const batchSize = 10;
   const results: string[] = [];
-  
-  for (let i = 0; i < sentences.length; i += batchSize) {
-    const batch = sentences.slice(i, i + batchSize);
+  const SEGMENT_ID_PREFIX = 'DBSEG';
+  const NAME_TOKEN_PREFIX = 'DBNAME';
+  const isLongSemicolonList = (sentence: string): boolean => {
+    const semicolons = (sentence.match(/;/g) || []).length;
+    return semicolons >= 6 && sentence.length >= 240;
+  };
+
+  const protectNameListItems = (sentence: string): { text: string; names: string[] } => {
+    const names: string[] = [];
+    const protect = (value: string): string => {
+      const token = `[[${NAME_TOKEN_PREFIX}_${names.length}]]`;
+      names.push(value.trim());
+      return token;
+    };
+
+    const text = sentence
+      .split(/(;)/)
+      .map((part, index, parts) => {
+        if (part === ';') return part;
+        const previous = index > 0 ? parts[index - 1] : '';
+        const next = index < parts.length - 1 ? parts[index + 1] : '';
+        const trimmed = part.trim();
+        if (!trimmed || next !== ';') return part;
+
+        const prefixMatch = trimmed.match(/^(.*?\b(?:of|and|to)\s+)([A-Z][\p{L}.'-]*(?:\s+[A-Z][\p{L}.'-]*)*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|IV|V))?)$/u);
+        if (prefixMatch && !previous) {
+          return part.replace(prefixMatch[2], protect(prefixMatch[2]));
+        }
+
+        const looksLikeNameItem =
+          /^[A-Z][\p{L}.'-]*(?:,\s*[A-Z][\p{L}.'-]*)?(?:\s+(?:and\s+)?[A-Z][\p{L}.'-]*)*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|IV|V))?$/u.test(trimmed) &&
+          !/\b(?:and|or|but|who|which|that|with|without|because|while|when|where|helped|acknowledge|acknowledgments?)\b/iu.test(trimmed);
+        return looksLikeNameItem ? part.replace(trimmed, protect(trimmed)) : part;
+      })
+      .join('');
+
+    return { text, names };
+  };
+
+  const isNameListItem = (value: string): boolean => {
+    const trimmed = value.trim().replace(/\.$/, '');
+    if (!trimmed) return false;
+    return /^[A-Z][\p{L}.'-]*(?:,\s*[A-Z][\p{L}.'-]*)?(?:\s+(?:and\s+)?[A-Z][\p{L}.'-]*)*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|IV|V))?$/u.test(trimmed) &&
+      !/\b(?:who|which|that|with|without|because|while|when|where|helped|acknowledge|acknowledgments?|friendship|families)\b/iu.test(trimmed);
+  };
+
+  const translateShortFragment = async (fragment: string): Promise<string> => {
+    const text = await callUnifiedLLM({
+      contents: {
+        parts: [{ text: `Translate this short phrase to ${targetLanguage}. Return ONLY the translation, no added context.\n\n${fragment}` }]
+      },
+      creditAction: 'translate',
+    });
+    return cleanGenAiText(text || '').trim();
+  };
+
+  const translateNameListPassage = async (sentence: string): Promise<string | null> => {
+    const parts = sentence.split(';');
+    if (parts.length < 7) return null;
+
+    const first = parts[0].trim();
+    const firstNameMatch = first.match(/^(.*?\b(?:of|to|for)\s+)([A-Z][\p{L}.'-]*(?:\s+[A-Z][\p{L}.'-]*)*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|IV|V))?)$/u);
+    if (!firstNameMatch) return null;
+
+    const prefix = firstNameMatch[1].trim();
+    const names = [firstNameMatch[2].trim()];
+    let tail = '';
+
+    for (const rawPart of parts.slice(1)) {
+      const trimmed = rawPart.trim();
+      if (!trimmed) continue;
+      const isFinal = /\.$/.test(trimmed);
+      const withoutFinalPeriod = trimmed.replace(/\.$/, '').trim();
+      const finalFamilyMatch = withoutFinalPeriod.match(/^and\s+our\s+families$/iu);
+      if (finalFamilyMatch) {
+        tail = 'and our families';
+        continue;
+      }
+      if (!isNameListItem(withoutFinalPeriod)) return null;
+      names.push(withoutFinalPeriod);
+      if (isFinal) tail = '';
+    }
+
+    const translatedPrefix = await translateShortFragment(prefix);
+    const translatedTail = tail ? await translateShortFragment(tail) : '';
+    const separator = /Chinese|Japanese|Korean/i.test(targetLanguage) ? '；' : '; ';
+    const finalSeparator = /Chinese|Japanese|Korean/i.test(targetLanguage) ? '以及' : ' and ';
+    const namesText = names.join(separator);
+    const finalText = translatedTail
+      ? `${namesText}${finalSeparator}${translatedTail}`
+      : namesText;
+    return `${translatedPrefix} ${finalText}.`.replace(/\s+([。.!?])/g, '$1').trim();
+  };
+
+  const restoreProtectedNames = (text: string, names: string[]): string => {
+    return names.reduce((result, name, index) => {
+      const tokenPattern = new RegExp(`\\[\\[${NAME_TOKEN_PREFIX}_${index}\\]\\]`, 'g');
+      return result.replace(tokenPattern, name);
+    }, text);
+  };
+
+  const buildSegmentId = (absoluteIndex: number): string => `${SEGMENT_ID_PREFIX}_${absoluteIndex.toString().padStart(4, '0')}`;
+
+  const parseAlignedBatch = (
+    value: unknown,
+    batchItems: { id: string; text: string }[]
+  ): string[] | null => {
+    if (!Array.isArray(value)) return null;
+
+    const byId = new Map<string, string>();
+    for (const item of value) {
+      if (!item || typeof item !== 'object') return null;
+      const entry = item as { id?: unknown; translation?: unknown };
+      if (typeof entry.id !== 'string' || typeof entry.translation !== 'string') return null;
+      if (byId.has(entry.id)) return null;
+      byId.set(entry.id, entry.translation.trim());
+    }
+
+    if (byId.size !== batchItems.length) return null;
+    const aligned = batchItems.map(item => byId.get(item.id) || '');
+    return aligned.every(Boolean) ? aligned : null;
+  };
+
+  const translateSinglePassage = async (sentence: string): Promise<string> => {
+    const deterministicListTranslation = await translateNameListPassage(sentence);
+    if (deterministicListTranslation) return deterministicListTranslation;
+
+    const protectedPassage = protectNameListItems(sentence);
+    const text = await callUnifiedLLM({
+      contents: {
+        parts: [{ text: `Translate this single complete passage to ${targetLanguage}. Return ONLY the translated passage as one string. Do not split semicolon-separated names into separate list items. Tokens like [[${NAME_TOKEN_PREFIX}_0]] are protected personal names: copy every token exactly, keep each token in its original position, and do not translate or alter tokens. Preserve the paragraph meaning.\n\nPassage:\n${protectedPassage.text}` }]
+      },
+      creditAction: 'translate',
+    });
+    return restoreProtectedNames(cleanGenAiText(text || '').trim(), protectedPassage.names);
+  };
+
+  for (let i = 0; i < sentences.length;) {
+    if (isLongSemicolonList(sentences[i])) {
+      results.push(await withRetry(() => translateSinglePassage(sentences[i])));
+      i += 1;
+      continue;
+    }
+
+    const batch: { id: string; text: string }[] = [];
+    while (i < sentences.length && batch.length < batchSize && !isLongSemicolonList(sentences[i])) {
+      batch.push({ id: buildSegmentId(i), text: sentences[i] });
+      i += 1;
+    }
+
     const batchResult = await withRetry(async () => {
       const text = await callUnifiedLLM({
         contents: {
-          parts: [{ text: `Translate the following sentences to ${targetLanguage}. Return a JSON array of strings. Maintain 1:1 mapping.\n\nSentences: ${JSON.stringify(batch)}` }]
+          parts: [{ text: `Translate these source segments to ${targetLanguage}.\n\nReturn ONLY a JSON array of objects. Every output object MUST have exactly these fields:\n- "id": copy the input id exactly\n- "translation": the translation for only that same input segment\n\nHard alignment rules:\n- Return exactly ${batch.length} objects.\n- Copy every id exactly once. Do not invent, omit, rename, sort, merge, or split ids.\n- Translate each segment independently. Never attach translation from a previous or later segment.\n- If a segment is a sentence fragment, translate only that fragment; do not complete it from surrounding context.\n- Preserve personal names exactly, including initials and generational suffixes such as "V. Harwood Bocker, III" and "Robert Lawrence, III".\n- Do not treat "III" or a single-letter initial period as a sentence boundary.\n\nInput segments:\n${JSON.stringify(batch)}` }]
         },
+        creditAction: 'translate',
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.ARRAY,
-            items: { type: Type.STRING }
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                translation: { type: Type.STRING }
+              },
+              required: ['id', 'translation']
+            }
           }
         }
       });
-      return safeJsonParse<string[]>(text || "[]");
+      const parsed = safeJsonParse<unknown>(text || "[]");
+      const aligned = parseAlignedBatch(parsed, batch);
+      if (aligned) return aligned;
+
+      console.warn('Translation batch failed strict id alignment; falling back to single-segment translation.');
+      return Promise.all(batch.map(item => translateSinglePassage(item.text)));
     });
     results.push(...batchResult);
-    if (i + batchSize < sentences.length) {
+    if (i < sentences.length) {
         await new Promise(r => setTimeout(r, 200));
     }
   }
@@ -268,58 +519,18 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
 };
 
 export const extractChapterText = async (file: FileContext, chapter: Chapter, allChapters?: Chapter[]): Promise<string> => {
-  if (file.isText) {
-    const local = extractChapterLocal(file.content, chapter, allChapters);
-    if (local && local.length > 200) return local;
+  if (!file.isText || !file.content) {
+    throw new Error("AudioBook requires locally extracted source text. Re-upload the file so DecodEbook can extract verbatim text.");
+  }
+  if (file.sourceKind === 'pdf' && file.sourceExtractorVersion !== PDF_TEXT_EXTRACTION_VERSION) {
+    throw new Error("This PDF was extracted by an older text engine that discarded paragraph boundaries. Re-upload the PDF so DecodEbook can preserve paragraph breaks from the original layout.");
   }
 
-  return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: {
-        parts: [
-          getFilePart(file),
-          { text: `Reproduce the COMPLETE ORIGINAL text of the chapter titled "${chapter.title}" from the document above. Output EVERY paragraph, sentence, and word EXACTLY as written — do NOT summarize, paraphrase, shorten, or skip any content. Preserve the original wording. Use double newlines between paragraphs.` }
-        ]
-      },
-      config: {
-        systemInstruction: "You are a text extraction tool. Your ONLY job is to copy text verbatim from the source document. Never summarize, never paraphrase, never add commentary. If the chapter is long, output ALL of it.",
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    });
-    trackUsage('extractChapterText', extractTokens(response));
-    return response.text || "";
-  });
+  const local = extractChapterFromSource(file.content, chapter, allChapters);
+  if (local && local.length > 0) return local;
+
+  throw new Error(`Could not locate the verbatim text for "${chapter.title}" in the extracted source. Try a text-based EPUB/TXT, or check that the detected chapter titles match the book.`);
 };
-
-function extractChapterLocal(content: string, chapter: Chapter, allChapters?: Chapter[]): string | null {
-  if (!allChapters || allChapters.length === 0) return null;
-
-  const sorted = [...allChapters].sort((a, b) => a.id - b.id);
-  const idx = sorted.findIndex(c => c.id === chapter.id);
-  if (idx === -1) return null;
-
-  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const title = chapter.title;
-  const startPattern = new RegExp(`(?:^|\\n)(?:#{1,4}\\s*)?${escapeRegex(title)}\\s*\\n`, 'im');
-  const startMatch = content.match(startPattern);
-  if (!startMatch || startMatch.index === undefined) return null;
-
-  const startPos = startMatch.index + startMatch[0].length;
-
-  let endPos = content.length;
-  if (idx + 1 < sorted.length) {
-    const nextTitle = sorted[idx + 1].title;
-    const endPattern = new RegExp(`(?:^|\\n)(?:#{1,4}\\s*)?${escapeRegex(nextTitle)}\\s*\\n`, 'im');
-    const endMatch = content.substring(startPos).match(endPattern);
-    if (endMatch && endMatch.index !== undefined) {
-      endPos = startPos + endMatch.index;
-    }
-  }
-
-  return content.substring(startPos, endPos).trim();
-}
 
 export const generatePodcastAudio = async (
   file: FileContext,
@@ -335,7 +546,7 @@ export const generatePodcastAudio = async (
       contents: {
         parts: [
           getFilePart(file),
-          { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use EXACTLY these two hosts:\n\n- ${hosts.host1}: ${hosts.desc1 || 'leads the discussion'}\n- ${hosts.host2}: ${hosts.desc2 || 'responds and adds counterpoints'}\n\nCHARACTER RULES:\n- ${hosts.host1} MUST maintain their personality (${hosts.desc1 || 'lead host'}) in EVERY line they speak. Never break character.\n- ${hosts.host2} MUST maintain their personality (${hosts.desc2 || 'co-host'}) in EVERY line they speak. Never break character.\n- Their speaking styles must be clearly DIFFERENT from each other throughout the entire script.\n- Alternate speakers frequently. Never have the same speaker talk for more than 3 consecutive lines.\n\nFORMAT RULES:\n- Output JSON with 'episodeTitle' and 'script'.\n- The 'script' MUST be formatted as lines of dialogue, one per line.\n- Each line MUST start with EXACTLY "${hosts.host1}:" or "${hosts.host2}:" (no bold, no brackets, no variations).\n- Example:\n${hosts.host1}: Welcome to the show!\n${hosts.host2}: Thanks for having me.` }
+          { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use EXACTLY these two hosts:\n\n- ${hosts.host1}: ${hosts.desc1 || 'leads the discussion'}\n- ${hosts.host2}: ${hosts.desc2 || 'responds and adds counterpoints'}\n\nCHARACTER CONSISTENCY RULES (CRITICAL):\n- ${hosts.host1} speaks with the SAME energy, vocabulary, and attitude in EVERY single line. If they are gruff, they are gruff even when agreeing. If they are enthusiastic, they stay enthusiastic even when confused. NEVER let a character become generic or neutral.\n- ${hosts.host2} speaks with the SAME energy, vocabulary, and attitude in EVERY single line. Their style must be distinctly DIFFERENT from ${hosts.host1} in sentence length, word choice, and tone.\n- Write each line so it could ONLY have been said by that character. A reader should identify the speaker without seeing the name prefix.\n- Alternate speakers frequently. Never have the same speaker talk for more than 3 consecutive lines.\n\nFORMAT RULES:\n- Output JSON with 'episodeTitle' and 'script'.\n- The 'script' MUST be formatted as lines of dialogue, one per line.\n- Each line MUST start with EXACTLY "${hosts.host1}:" or "${hosts.host2}:" (no bold, no brackets, no variations).\n- Example:\n${hosts.host1}: Welcome to the show!\n${hosts.host2}: Thanks for having me.` }
         ]
       },
       config: {
@@ -352,7 +563,7 @@ export const generatePodcastAudio = async (
       }
     });
 
-    trackUsage('podcastScript', extractTokens(scriptResponse));
+    trackUsage('podcastScript', extractTokens(scriptResponse), 'gemini-3-flash-preview');
     const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
@@ -379,7 +590,7 @@ export const generatePodcastAudio = async (
 
     if (dialogueLines.length === 0) throw new Error("No dialogue lines parsed from script");
 
-    // Generate TTS per line with single-speaker voice — guarantees no voice drift
+    // Per-line single-speaker TTS — each line locked to its voice
     const BATCH_SIZE = 3;
     const audioChunks: string[] = [];
     for (let i = 0; i < dialogueLines.length; i += BATCH_SIZE) {
@@ -390,23 +601,47 @@ export const generatePodcastAudio = async (
       audioChunks.push(...results);
     }
 
-    // Concatenate PCM audio (all segments are 24kHz 16-bit mono)
-    const binaryParts = audioChunks.map(b64 => window.atob(b64));
-    const totalLen = binaryParts.reduce((acc, b) => acc + b.length, 0);
+    // Normalize each segment individually, then concatenate
+    const TARGET_PEAK = 0.9 * 32767;
+    const normalizedSegments: Uint8Array[] = [];
+    for (const b64 of audioChunks) {
+      const raw = window.atob(b64);
+      const sampleCount = Math.floor(raw.length / 2);
+      const samples = new Int16Array(sampleCount);
+      for (let i = 0; i < sampleCount; i++) {
+        samples[i] = raw.charCodeAt(i * 2) | (raw.charCodeAt(i * 2 + 1) << 8);
+      }
+      let peak = 0;
+      for (let i = 0; i < sampleCount; i++) {
+        const abs = Math.abs(samples[i]);
+        if (abs > peak) peak = abs;
+      }
+      if (peak > 0 && peak < 16384) {
+        const gain = TARGET_PEAK / peak;
+        for (let i = 0; i < sampleCount; i++) {
+          samples[i] = Math.max(-32768, Math.min(32767, Math.round(samples[i] * gain)));
+        }
+      }
+      normalizedSegments.push(new Uint8Array(samples.buffer));
+    }
+
+    const totalLen = normalizedSegments.reduce((acc, s) => acc + s.length, 0);
     const combined = new Uint8Array(totalLen);
     let offset = 0;
-    for (const part of binaryParts) {
-      for (let i = 0; i < part.length; i++) combined[offset++] = part.charCodeAt(i);
+    for (const seg of normalizedSegments) {
+      combined.set(seg, offset);
+      offset += seg.length;
     }
     let binary = '';
     const CHUNK = 8192;
     for (let i = 0; i < combined.length; i += CHUNK) {
       binary += String.fromCharCode(...combined.subarray(i, i + CHUNK));
     }
-    const base64Audio = window.btoa(binary);
+    const finalAudio = window.btoa(binary);
 
-    trackUsage('podcastAudio', dialogueLines.length);
-    return { audio: base64Audio, script: parsedResponse.script, episodeTitle: parsedResponse.episodeTitle };
+    const totalChars = dialogueLines.reduce((sum, l) => sum + l.text.length, 0);
+    trackUsage('podcastAudio', { total: totalChars, input: totalChars, output: dialogueLines.length }, _ttsModel);
+    return { audio: finalAudio, script: parsedResponse.script, episodeTitle: parsedResponse.episodeTitle };
   });
 };
 
@@ -438,7 +673,7 @@ export const extractConcepts = async (file: FileContext, chapter: Chapter): Prom
         }
       }
     });
-    trackUsage('extractConcepts', extractTokens(response));
+    trackUsage('extractConcepts', extractTokens(response), 'gemini-3-flash-preview');
     return safeJsonParse<Concept[]>(response.text || "[]");
   });
 };
@@ -486,7 +721,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
           }
       }
     });
-    trackUsage('generateImage', extractTokens(response));
+    trackUsage('generateImage', extractTokens(response), _imageModel);
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
@@ -522,7 +757,7 @@ export const extractDictionary = async (file: FileContext, chapter: Chapter): Pr
         }
       }
     });
-    trackUsage('extractDictionary', extractTokens(response));
+    trackUsage('extractDictionary', extractTokens(response), 'gemini-3-flash-preview');
     return safeJsonParse<DictionaryEntry[]>(response.text || "[]");
   });
 };
@@ -569,7 +804,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
         },
       },
     });
-    trackUsage('tts', extractTokens(response));
+    trackUsage('tts', extractTokens(response), _ttsModel);
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Failed to generate audio");
     return base64Audio;
@@ -581,7 +816,8 @@ export const translateText = async (text: string, targetLanguage: string): Promi
     return callUnifiedLLM({
       contents: {
         parts: [{ text: `Translate the following to ${targetLanguage}. Return ONLY translation.\n\n${text}` }]
-      }
+      },
+      creditAction: 'translate',
     });
   });
 };
@@ -591,7 +827,8 @@ export const getQuickDefinition = async (text: string, language: string): Promis
     const result = await callUnifiedLLM({
       contents: {
         parts: [{ text: `Act as a reading assistant. Analyze and define this text in ${language}: "${text}". Output strictly a concise, insightful definition or explanation. No introductory phrases.` }]
-      }
+      },
+      creditAction: 'quickDefinition',
     });
     if (!result?.trim()) throw new Error("Empty definition generated");
     return result.trim();
@@ -605,6 +842,7 @@ export const batchGetDefinitions = async (items: { id: string, text: string }[],
       contents: {
         parts: [{ text: `Provide concise one-sentence definitions in ${language} for the following items. Return a JSON array of objects, each containing an "id" field (matching the input) and a "definition" field. \n\nItems: ${JSON.stringify(items)}` }]
       },
+      creditAction: 'quickDefinition',
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -665,7 +903,7 @@ export const generateSummaryVideo = async (
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
-    trackUsage('videoPrompt', extractTokens(promptResponse));
+    trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview');
     const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
 
     onStatus("Transmitting to Veo Core...");
@@ -685,7 +923,7 @@ export const generateSummaryVideo = async (
       operation = await ai.operations.getVideosOperation({operation: operation});
     }
 
-    trackUsage('videoVeo');
+    trackUsage('videoVeo', { total: 0, input: videoPrompt.length, output: 0 }, _videoModel);
     onStatus("Finalizing transmission...");
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     const authHeaders = await getAuthHeaders();
@@ -722,7 +960,7 @@ export const generateSeedanceVideo = async (
     },
     config: { thinkingConfig: { thinkingBudget: 0 } }
   });
-  trackUsage('videoPrompt', extractTokens(promptResponse));
+  trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview');
   const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
 
   onStatus("Transmitting to Seedance Core...");
@@ -759,7 +997,8 @@ export const generateSeedanceVideo = async (
   }
 
   if (status === 'failed' || !videoUrl) throw new Error('Seedance video generation failed');
-  trackUsage('videoSeedance', tokensUsed);
+  const seedanceAction = _videoModel.includes('fast') ? 'videoSeedanceFast' : 'videoSeedance';
+  trackUsage(seedanceAction, { total: tokensUsed, input: videoPrompt.length, output: 0 }, _videoModel);
 
   onStatus("Finalizing transmission...");
   const dlRes = await fetch('/api/seedance/download', {
@@ -803,7 +1042,7 @@ export const sendMessageToChat = async (chat: Chat, message: string | Part[], si
         response = await chat.sendMessage(messageContent as any);
     }
     
-    trackUsage('chat', extractTokens(response));
+    trackUsage('chat', extractTokens(response), 'gemini-3-flash-preview');
     return response.text || "";
   }, 3, 2000, signal);
 };
@@ -819,6 +1058,7 @@ export const generateMindMapStructure = async (items: NotebookItem[], bookTitle:
           { text: `Organize the following study notes from the book "${bookTitle}" into a structured mind map hierarchy. \n${contextStr}\n\nNotes:\n${itemsStr}\n\nOutput a strictly valid JSON object where the root node is the main topic (e.g. Chapter Title), and children are categories or themes. \n\nRULES:\n1. For vocabulary/words: The word itself is a node. Its definition must be a CHILD node of that word.\n2. For themes/sentences: The sentence text is a node. Its interpretation/definition must be a CHILD node of that sentence.\n\nStructure: { id, label, type: 'root'|'category'|'item', children: [...] }. Ensure 'id' is unique for every node.` }
         ]
       },
+      creditAction: 'generateMindMap',
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {

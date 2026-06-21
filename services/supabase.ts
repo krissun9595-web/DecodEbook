@@ -37,19 +37,25 @@ export function isSupabaseConfigured(): boolean {
 }
 
 export async function bootstrapSupabase(): Promise<boolean> {
-  if (isSupabaseConfigured()) return true;
+  const alreadyConfigured = isSupabaseConfigured();
   try {
     const res = await fetch('/api/config');
-    if (!res.ok) return false;
+    if (!res.ok) return alreadyConfigured;
     const data = await res.json();
+    if (data.stripeProPriceId) localStorage.setItem('stripe_pro_price_id', data.stripeProPriceId);
+    if (data.stripeProAnnualPriceId) localStorage.setItem('stripe_pro_annual_price_id', data.stripeProAnnualPriceId);
+    if (data.stripeByokPriceId) localStorage.setItem('stripe_byok_price_id', data.stripeByokPriceId);
+    if (data.stripeUnlimitedPriceId) localStorage.setItem('stripe_unlimited_price_id', data.stripeUnlimitedPriceId);
+    if (data.stripePackSPriceId) localStorage.setItem('stripe_pack_s_price_id', data.stripePackSPriceId);
+    if (data.stripePackMPriceId) localStorage.setItem('stripe_pack_m_price_id', data.stripePackMPriceId);
+    if (data.stripePackLPriceId) localStorage.setItem('stripe_pack_l_price_id', data.stripePackLPriceId);
+    if (alreadyConfigured) return true;
     if (data.supabaseUrl && data.supabaseAnonKey) {
       configureSupabase(data.supabaseUrl, data.supabaseAnonKey);
-      if (data.stripeProPriceId) localStorage.setItem('stripe_pro_price_id', data.stripeProPriceId);
-      if (data.stripeUnlimitedPriceId) localStorage.setItem('stripe_unlimited_price_id', data.stripeUnlimitedPriceId);
       return true;
     }
   } catch {}
-  return false;
+  return alreadyConfigured;
 }
 
 export async function handleOAuthCallback(): Promise<Session | null> {
@@ -201,10 +207,10 @@ export async function saveUserSettings(userId: string, settings: UserSettings) {
 
 // ---- Usage logging ----
 
-export async function logUsage(userId: string, action: string, tokensUsed: number = 0, costCents: number = 0) {
+export async function logUsage(userId: string, action: string, tokensUsed: number = 0, costCents: number = 0, inputTokens: number = 0, outputTokens: number = 0, creditsCost: number = 0) {
   const client = getSupabase();
   if (!client) return;
   await client
     .from('usage_logs')
-    .insert({ user_id: userId, action, tokens_used: tokensUsed, cost_cents: costCents });
+    .insert({ user_id: userId, action, tokens_used: tokensUsed, cost_cents: costCents, input_tokens: inputTokens, output_tokens: outputTokens, credits_cost: creditsCost });
 }

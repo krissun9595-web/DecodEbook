@@ -4,6 +4,7 @@ import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
 import { shareFile } from '../utils/share';
+import { titleCase } from '../utils/filename';
 import JSZip from 'jszip';
 
 interface Props {
@@ -134,7 +135,9 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `decodebook-files-${Date.now()}.zip`;
+      const bookLabel = filterBook !== 'all' ? titleCase(getBookTitle(filterBook)) : 'AllBooks';
+      const typeLabel = filterType !== 'all' ? titleCase(filterType, 20) : 'AllTypes';
+      a.download = `archive-${typeLabel}-${bookLabel}.zip`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {

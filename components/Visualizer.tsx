@@ -5,6 +5,7 @@ import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { shareFile } from '../utils/share';
+import { titleCase } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import JSZip from 'jszip';
 import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
@@ -81,7 +82,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
         const imgBlob = await imgResp.blob();
         const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
         saveFile(key, imgBlob, {
-          filename: `concept-${slugify(concept.term)}.png`,
+          filename: `concept-ch${chapter.id}-${titleCase(concept.term)}.png`,
           mimeType: 'image/png',
           timestamp: Date.now(),
           bookId,
@@ -251,8 +252,8 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                             <img src={images[currentConcept.term]} alt={currentConcept.term} className="w-full h-full object-contain animate-fade-in" />
                             <div className="absolute inset-0 bg-black/70 opacity-0 group-hover/image:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm z-20 pointer-events-none">
                                 <div className="pointer-events-auto flex gap-3">
-                                    <a href={images[currentConcept.term]} download={`lumina-concept-${currentConcept.term}.png`} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Download"><Download size={20} /></a>
-                                    <button onClick={async () => { const r = await fetch(images[currentConcept.term]); const b = await r.blob(); shareFile(b, `decodebook-${currentConcept.term}.png`, currentConcept.term); }} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Share"><Share2 size={20} /></button>
+                                    <a href={images[currentConcept.term]} download={`concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Download"><Download size={20} /></a>
+                                    <button onClick={async () => { const r = await fetch(images[currentConcept.term]); const b = await r.blob(); const fn = `concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`; shareFile(b, fn, `${chapter.title} - ${currentConcept.term}`); }} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Share"><Share2 size={20} /></button>
                                     <button onClick={handleCopyPrompt} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Copy Prompt"><Copy size={20} /></button>
                                     <button onClick={() => handleGenerateImage(currentConcept, true)} className="p-3 bg-zinc-900 text-[#ff003c] rounded-sm hover:bg-[#ff003c] hover:text-white transition-all border border-[#ff003c]/30" title="Regenerate"><RefreshCw size={20} /></button>
                                 </div>

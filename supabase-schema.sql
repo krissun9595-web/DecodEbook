@@ -22,6 +22,8 @@ create table if not exists usage_logs (
   user_id uuid references auth.users,
   action text,
   tokens_used int default 0,
+  input_tokens int default 0,
+  output_tokens int default 0,
   cost_cents int default 0,
   created_at timestamptz default now()
 );
@@ -42,7 +44,7 @@ create table if not exists subscriptions (
   stripe_customer_id text not null,
   stripe_subscription_id text unique,
   stripe_price_id text,
-  tier text not null default 'free' check (tier in ('free', 'pro', 'unlimited')),
+  tier text not null default 'free' check (tier in ('free', 'pro', 'byok', 'unlimited')),
   status text not null default 'active' check (status in ('active', 'canceled', 'past_due', 'incomplete', 'trialing')),
   current_period_start timestamptz,
   current_period_end timestamptz,
@@ -74,6 +76,7 @@ declare
   v_tts_count int;
   v_image_count int;
   v_video_count int;
+  v_chat_count int;
 begin
   select tier, current_period_start, current_period_end, cancel_at_period_end
     into v_tier, v_period_start, v_period_end, v_cancel
@@ -87,12 +90,13 @@ begin
   select
     coalesce(sum(case when action like 'text:%' or action in (
       'analyzeBookStructure','extractChapterText','extractConcepts',
-      'extractDictionary','podcastScript','chat','videoPrompt'
+      'extractDictionary','podcastScript','videoPrompt'
     ) then 1 else 0 end), 0),
     coalesce(sum(case when action in ('tts','podcastAudio') then 1 else 0 end), 0),
     coalesce(sum(case when action = 'generateImage' then 1 else 0 end), 0),
-    coalesce(sum(case when action in ('videoVeo','videoSeedance') then 1 else 0 end), 0)
-  into v_text_count, v_tts_count, v_image_count, v_video_count
+    coalesce(sum(case when action in ('videoVeo','videoSeedance') then 1 else 0 end), 0),
+    coalesce(sum(case when action = 'chat' then 1 else 0 end), 0)
+  into v_text_count, v_tts_count, v_image_count, v_video_count, v_chat_count
   from usage_logs
   where user_id = p_user_id and created_at >= v_period_start;
 
@@ -104,7 +108,8 @@ begin
     'text_used', v_text_count,
     'tts_used', v_tts_count,
     'image_used', v_image_count,
-    'video_used', v_video_count
+    'video_used', v_video_count,
+    'chat_used', v_chat_count
   );
 end;
 $$;

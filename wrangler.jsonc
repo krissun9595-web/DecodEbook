@@ -9,5 +9,17 @@
   },
   "build": {
     "command": "npm run build"
+  },
+  "env": {
+    "staging": {
+      "workers_dev": true,
+      "assets": {
+        "directory": "./dist",
+        "binding": "ASSETS"
+      },
+      "vars": {
+        "ENVIRONMENT": "staging"
+      }
+    }
   }
 }

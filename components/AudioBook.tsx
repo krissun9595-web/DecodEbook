@@ -331,7 +331,15 @@ const stripFootnoteMarkers = (value: string): string => value.replace(
 // ("1999.[2](...#...)") would flatten to a bare "1999.2" whose "2" the decimal guard
 // in stripFootnoteMarkers then keeps, leaking the number into translation/audio.
 const stripInternalFootnoteLinks = (value: string): string =>
-  value.replace(/\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)/giu, '');
+  value
+    // A leading note/reference marker ("[I](#...). " at the very start of a line) is a
+    // label, not content. Strip the marker AND its trailing separator punctuation so the
+    // remaining text (used for translation/audio/matching) does not begin with a stray
+    // ". " — otherwise the translation keeps the leading period, which splits into its own
+    // sentence and the inherited reference marker latches onto it, rendering ".¹" with the
+    // period before the numeral instead of after it.
+    .replace(/^([ \t ]*)\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)[.)]?[ \t ]*/iu, '$1')
+    .replace(/\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)/giu, '');
 
 // Drop orphan emphasis markers (e.g. a lone "*" left by a blockquote's tangled
 // emphasis) before stripping footnote markers, otherwise a stray "*" between the

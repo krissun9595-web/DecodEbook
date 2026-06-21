@@ -1,10 +1,41 @@
 
 import { getSupabase } from './supabase';
-import type { LibraryItem, NotebookItem } from '../types';
+import type { FileContext, LibraryItem, NotebookItem } from '../types';
 
 function sb() {
   return getSupabase();
 }
+
+const encodeMimeType = (fileContext: FileContext): string => {
+  const parts = [fileContext.mimeType || 'text/plain'];
+  if (fileContext.sourceKind) parts.push(`sourceKind=${fileContext.sourceKind}`);
+  if (fileContext.sourceExtractorVersion) parts.push(`sourceExtractorVersion=${fileContext.sourceExtractorVersion}`);
+  return parts.join(';');
+};
+
+const decodeMimeType = (value: string): Pick<FileContext, 'mimeType' | 'sourceKind' | 'sourceExtractorVersion'> => {
+  const [base, ...params] = (value || 'text/plain').split(';').map(part => part.trim()).filter(Boolean);
+  const decoded: Pick<FileContext, 'mimeType' | 'sourceKind' | 'sourceExtractorVersion'> = {
+    mimeType: base || 'text/plain',
+  };
+  params.forEach(param => {
+    const [key, rawValue] = param.split('=');
+    const decodedValue = rawValue?.trim();
+    if (key === 'sourceKind' && /^(pdf|epub|text)$/.test(decodedValue || '')) {
+      decoded.sourceKind = decodedValue as FileContext['sourceKind'];
+    }
+    if (key === 'sourceExtractorVersion' && decodedValue) {
+      decoded.sourceExtractorVersion = decodedValue;
+    }
+  });
+  return decoded;
+};
+
+const mergeFileContextMetadata = (contentOwner: FileContext, metadataOwner: FileContext): FileContext => ({
+  ...contentOwner,
+  sourceKind: contentOwner.sourceKind || metadataOwner.sourceKind,
+  sourceExtractorVersion: contentOwner.sourceExtractorVersion || metadataOwner.sourceExtractorVersion,
+});
 
 // --- Books ---
 
@@ -20,7 +51,7 @@ export async function saveBookToCloud(userId: string, item: LibraryItem): Promis
     chapters: item.book.chapters,
     bookmarks: item.book.bookmarks || [],
     content: canSyncContent ? item.fileContext.content : null,
-    mime_type: item.fileContext.mimeType,
+    mime_type: encodeMimeType(item.fileContext),
     is_text: item.fileContext.isText,
     upload_date: item.uploadDate,
   }, { onConflict: 'id,user_id' });
@@ -53,7 +84,7 @@ export async function loadLibraryFromCloud(userId: string): Promise<LibraryItem[
     },
     fileContext: {
       content: row.content || '',
-      mimeType: row.mime_type,
+      ...decodeMimeType(row.mime_type),
       isText: row.is_text,
     },
     uploadDate: row.upload_date,
@@ -76,7 +107,9 @@ export async function saveNotebookToCloud(userId: string, items: NotebookItem[])
     book_title: item.bookTitle || null,
     book_author: item.bookAuthor || null,
     comment: item.comment || null,
-    context_source: item.contextSource || null,
+    context_source: item.inked && item.contextSource && !/inked/i.test(item.contextSource)
+      ? `${item.contextSource}:INKED`
+      : item.contextSource || null,
   }));
   await client.from('user_notebook').delete().eq('user_id', userId);
   if (rows.length > 0) {
@@ -105,6 +138,7 @@ export async function loadNotebookFromCloud(userId: string): Promise<NotebookIte
     bookAuthor: row.book_author || undefined,
     comment: row.comment || undefined,
     contextSource: row.context_source || undefined,
+    inked: /inked/i.test(row.context_source || ''),
   }));
 }
 
@@ -150,7 +184,10 @@ export function mergeLibrary(local: LibraryItem[], cloud: LibraryItem[]): { merg
       // Cloud has full content; local may have content stripped to ''
       if (cloudItem.fileContext.content && !localItem.fileContext.content) {
         // Prefer cloud for content, but keep local bookmarks if newer
-        const item = { ...cloudItem };
+        const item: LibraryItem = {
+          ...cloudItem,
+          fileContext: mergeFileContextMetadata(cloudItem.fileContext, localItem.fileContext),
+        };
         if (localItem.book.bookmarks?.length > (cloudItem.book.bookmarks?.length || 0)) {
           item.book = { ...item.book, bookmarks: localItem.book.bookmarks };
         }

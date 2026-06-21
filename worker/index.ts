@@ -7,21 +7,34 @@ interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PRO_PRICE_ID: string;
+  STRIPE_PRO_ANNUAL_PRICE_ID: string;
+  STRIPE_BYOK_PRICE_ID: string;
   STRIPE_UNLIMITED_PRICE_ID: string;
+  STRIPE_PACK_S_PRICE_ID: string;
+  STRIPE_PACK_M_PRICE_ID: string;
+  STRIPE_PACK_L_PRICE_ID: string;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
-  ASSETS: Fetcher;
+  ASSETS: { fetch: typeof fetch };
 }
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
 const BYTEPLUS_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';
 
-const TIER_LIMITS: Record<string, { text: number; tts: number; image: number; video: number }> = {
-  free:      { text: 50,  tts: 10,  image: 3,   video: 0 },
-  pro:       { text: 500, tts: 100, image: 30,  video: 5 },
-  unlimited: { text: Infinity, tts: Infinity, image: Infinity, video: Infinity },
+const TIER_CREDITS: Record<string, number> = {
+  free: 100, pro: 1000, byok: Infinity, unlimited: Infinity,
 };
+
+const CREDIT_COSTS: Record<string, number> = {
+  translate: 1, quickDefinition: 1, chat: 1,
+  analyzeBookStructure: 2, extractConcepts: 2, extractDictionary: 2, generateMindMap: 2,
+  extractChapterText: 3, podcastScript: 3,
+  tts: 5, generateImage: 10, podcastAudio: 40,
+  videoSeedanceFast: 30, videoSeedance: 50, videoVeo: 150,
+};
+
+const PACK_CREDITS: Record<string, number> = { S: 1000, M: 2500, L: 4000 };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -43,7 +56,12 @@ export default {
         supabaseUrl: env.SUPABASE_URL || '',
         supabaseAnonKey: env.SUPABASE_ANON_KEY || '',
         stripeProPriceId: env.STRIPE_PRO_PRICE_ID || '',
+        stripeProAnnualPriceId: env.STRIPE_PRO_ANNUAL_PRICE_ID || '',
+        stripeByokPriceId: env.STRIPE_BYOK_PRICE_ID || '',
         stripeUnlimitedPriceId: env.STRIPE_UNLIMITED_PRICE_ID || '',
+        stripePackSPriceId: env.STRIPE_PACK_S_PRICE_ID || '',
+        stripePackMPriceId: env.STRIPE_PACK_M_PRICE_ID || '',
+        stripePackLPriceId: env.STRIPE_PACK_L_PRICE_ID || '',
       }), { headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -57,34 +75,59 @@ export default {
     if (url.pathname === '/api/stripe/portal' && request.method === 'POST') {
       return handleStripePortal(request, env);
     }
+    if (url.pathname === '/api/stripe/pack-checkout' && request.method === 'POST') {
+      return handlePackCheckout(request, env);
+    }
     if (url.pathname === '/api/user/tier') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
       return handleGetTier(auth.userId, env);
     }
 
-    // --- AI routes (auth + quota) ---
+    // --- Referral routes ---
+    if (url.pathname === '/api/ref/code') {
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      return handleGetReferralCode(auth.userId, env);
+    }
+    if (url.pathname === '/api/ref/stats') {
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      return handleGetReferralStats(auth.userId, env);
+    }
+    if (url.pathname === '/api/ref/track' && request.method === 'POST') {
+      return handleTrackClick(request, env);
+    }
+    if (url.pathname === '/api/ref/signup' && request.method === 'POST') {
+      return handleReferralSignup(request, env);
+    }
+
+    // --- AI routes (auth + credit check) ---
     if (url.pathname === '/api/llm/generate') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
-      const quota = await checkUsageQuota(auth.userId, 'text', env);
-      if (quota) return quota;
+      const body = await request.clone().json() as any;
+      const creditAction = body.creditAction || 'translate';
+      const check = await checkCreditBalance(auth.userId, creditAction, env);
+      if (check) return check;
       return handleUnifiedLLM(request, env);
     }
 
     if (url.pathname === '/api/fal/image') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
-      const quota = await checkUsageQuota(auth.userId, 'image', env);
-      if (quota) return quota;
+      const check = await checkCreditBalance(auth.userId, 'generateImage', env);
+      if (check) return check;
       return handleFalImage(request, env);
     }
 
     if (url.pathname === '/api/seedance/generate') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
-      const quota = await checkUsageQuota(auth.userId, 'video', env);
-      if (quota) return quota;
+      const body = await request.clone().json() as any;
+      const isFast = (body.model || '').includes('fast');
+      const check = await checkCreditBalance(auth.userId, isFast ? 'videoSeedanceFast' : 'videoSeedance', env);
+      if (check) return check;
       return handleSeedanceGenerate(request, env);
     }
 
@@ -359,8 +402,8 @@ function supabaseAdmin(env: Env, path: string, options: RequestInit = {}) {
 // --- Tier & quota ---
 
 async function handleGetTier(userId: string, env: Env): Promise<Response> {
-  if (!env.SUPABASE_SERVICE_ROLE_KEY) return jsonResponse({ tier: 'free', text_used: 0, tts_used: 0, image_used: 0, video_used: 0 });
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_tier_and_usage`, {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return jsonResponse({ tier: 'free', credits_used: 0, pack_credits: 0, bonus_credits: 0, period_start: '', period_end: null, cancel_at_period_end: false });
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_credits`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -369,15 +412,21 @@ async function handleGetTier(userId: string, env: Env): Promise<Response> {
     },
     body: JSON.stringify({ p_user_id: userId }),
   });
-  if (!res.ok) return jsonResponse({ tier: 'free', text_used: 0, tts_used: 0, image_used: 0, video_used: 0 });
-  const data = await res.json();
+  if (!res.ok) return jsonResponse({ tier: 'free', credits_used: 0, pack_credits: 0, bonus_credits: 0, period_start: '', period_end: null, cancel_at_period_end: false });
+  const data = await res.json() as any;
+
+  // Check referral activation (non-blocking)
+  if (data.credits_used >= 10) {
+    checkReferralActivation(userId, env).catch(() => {});
+  }
+
   return jsonResponse(data);
 }
 
-async function checkUsageQuota(userId: string, category: 'text' | 'tts' | 'image' | 'video', env: Env): Promise<Response | null> {
+async function checkCreditBalance(userId: string, action: string, env: Env): Promise<Response | null> {
   if (!env.SUPABASE_SERVICE_ROLE_KEY) return null;
   try {
-    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_tier_and_usage`, {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_credits`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -387,20 +436,164 @@ async function checkUsageQuota(userId: string, category: 'text' | 'tts' | 'image
       body: JSON.stringify({ p_user_id: userId }),
     });
     if (!res.ok) return null;
-    const usage = await res.json() as any;
-    const tier = usage.tier || 'free';
-    const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
-    const used = usage[`${category}_used`] || 0;
-    if (used >= limits[category]) {
+    const data = await res.json() as any;
+    const tier = data.tier || 'free';
+    const monthlyCredits = TIER_CREDITS[tier] || TIER_CREDITS.free;
+    if (monthlyCredits === Infinity) return null;
+    const creditsUsed = data.credits_used || 0;
+    const packCredits = data.pack_credits || 0;
+    const bonusCredits = data.bonus_credits || 0;
+    const cost = CREDIT_COSTS[action] || 1;
+    const available = Math.max(0, monthlyCredits - creditsUsed) + packCredits + bonusCredits;
+    if (available < cost) {
       return new Response(JSON.stringify({
-        error: 'Usage limit reached',
-        tier, category, used, limit: limits[category],
+        error: 'Insufficient credits',
+        credits_available: available,
+        credits_required: cost,
+        tier,
       }), { status: 429, headers: { 'Content-Type': 'application/json' } });
     }
     return null;
   } catch {
     return null;
   }
+}
+
+// --- Referral handlers ---
+
+async function checkReferralActivation(userId: string, env: Env) {
+  // Check if this user was referred and not yet activated
+  const res = await supabaseAdmin(env, `/referral_signups?referred_user_id=eq.${userId}&activated=eq.false&select=id,referrer_id`, {
+    method: 'GET', headers: { 'Prefer': '' },
+  });
+  const signups = await res.json() as any[];
+  if (!signups?.length) return;
+
+  const signup = signups[0];
+  // Mark as activated
+  await supabaseAdmin(env, `/referral_signups?id=eq.${signup.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ activated: true, referrer_credited: true }),
+  });
+  // Award referrer 100 bonus credits
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/add_bonus_credits`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ p_user_id: signup.referrer_id, p_credits: 100 }),
+  });
+}
+
+async function handleGetReferralCode(userId: string, env: Env): Promise<Response> {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_or_create_referral_code`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ p_user_id: userId }),
+  });
+  if (!res.ok) return jsonError('Failed to get referral code', 500);
+  const code = await res.json();
+  return jsonResponse({ code });
+}
+
+async function handleGetReferralStats(userId: string, env: Env): Promise<Response> {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_referral_stats`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ p_user_id: userId }),
+  });
+  if (!res.ok) return jsonError('Failed to get referral stats', 500);
+  const stats = await res.json();
+  return jsonResponse(stats);
+}
+
+async function handleTrackClick(request: Request, env: Env): Promise<Response> {
+  const { code } = await request.json() as { code: string };
+  if (!code) return jsonError('Missing referral code', 400);
+
+  // Look up referrer by code
+  const codeRes = await supabaseAdmin(env, `/referral_codes?code=eq.${code}&select=user_id`, {
+    method: 'GET', headers: { 'Prefer': '' },
+  });
+  const codes = await codeRes.json() as any[];
+  if (!codes?.length) return jsonError('Invalid referral code', 404);
+  const referrerId = codes[0].user_id;
+
+  // Hash visitor IP for uniqueness
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
+  const enc = new TextEncoder();
+  const hashBuf = await crypto.subtle.digest('SHA-256', enc.encode(ip + referrerId));
+  const visitorHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+
+  // Insert click (ignore duplicate)
+  const clickRes = await supabaseAdmin(env, '/referral_clicks', {
+    method: 'POST',
+    headers: { 'Prefer': 'resolution=ignore-duplicates,return=representation' },
+    body: JSON.stringify({ referrer_id: referrerId, visitor_hash: visitorHash, credited: false }),
+  });
+
+  // Check if this is a new unique click
+  const clicks = await clickRes.json() as any[];
+  if (clicks?.length > 0) {
+    // Count total credited clicks for this referrer
+    const countRes = await supabaseAdmin(env, `/referral_clicks?referrer_id=eq.${referrerId}&credited=eq.true&select=id`, {
+      method: 'GET', headers: { 'Prefer': 'count=exact' },
+    });
+    const countHeader = countRes.headers.get('content-range');
+    const creditedCount = countHeader ? parseInt(countHeader.split('/')[1] || '0') : 0;
+
+    if (creditedCount < 10) { // cap at 10 clicks * 5 cr = 50 cr
+      // Mark this click as credited
+      await supabaseAdmin(env, `/referral_clicks?referrer_id=eq.${referrerId}&visitor_hash=eq.${visitorHash}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ credited: true }),
+      });
+      // Award 5 bonus credits
+      await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/add_bonus_credits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+          'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ p_user_id: referrerId, p_credits: 5 }),
+      });
+    }
+  }
+
+  return jsonResponse({ ok: true, referrer_id: referrerId });
+}
+
+async function handleReferralSignup(request: Request, env: Env): Promise<Response> {
+  const auth = await getUserIdFromAuth(request, env);
+  if (auth instanceof Response) return auth;
+
+  const { referrer_id } = await request.json() as { referrer_id: string };
+  if (!referrer_id || referrer_id === auth.userId) return jsonError('Invalid referral', 400);
+
+  // Check not already referred
+  const existRes = await supabaseAdmin(env, `/referral_signups?referred_user_id=eq.${auth.userId}&select=id`, {
+    method: 'GET', headers: { 'Prefer': '' },
+  });
+  const existing = await existRes.json() as any[];
+  if (existing?.length > 0) return jsonResponse({ ok: true, already: true });
+
+  await supabaseAdmin(env, '/referral_signups', {
+    method: 'POST',
+    body: JSON.stringify({ referrer_id: referrer_id, referred_user_id: auth.userId }),
+  });
+
+  return jsonResponse({ ok: true });
 }
 
 // --- Stripe handlers ---
@@ -434,6 +627,7 @@ async function handleStripeCheckout(request: Request, env: Env): Promise<Respons
     'line_items[0][quantity]': '1',
     'metadata[user_id]': userId,
     'subscription_data[metadata][user_id]': userId,
+    'allow_promotion_codes': 'true',
   };
   if (stripeCustomerId) {
     params['customer'] = stripeCustomerId;
@@ -481,6 +675,49 @@ async function handleStripePortal(request: Request, env: Env): Promise<Response>
   return jsonResponse({ url: portal.url });
 }
 
+async function handlePackCheckout(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return jsonError('Stripe not configured', 500);
+  const auth = await getUserIdFromAuth(request, env);
+  if (auth instanceof Response) return auth;
+
+  const subRes = await supabaseAdmin(env, `/subscriptions?user_id=eq.${auth.userId}&select=stripe_customer_id,tier&status=eq.active&limit=1`, {
+    method: 'GET', headers: { 'Prefer': '' },
+  });
+  const subs = await subRes.json() as any[];
+  if (!subs?.length) return jsonError('Pro subscription required to buy credit packs', 403);
+  if (subs[0].tier !== 'pro') return jsonError('Credit packs are available for Pro subscribers only', 403);
+
+  const { priceId } = await request.json() as { priceId: string };
+  let packType = 'S';
+  let credits = 1000;
+  if (priceId === env.STRIPE_PACK_M_PRICE_ID) { packType = 'M'; credits = 2500; }
+  else if (priceId === env.STRIPE_PACK_L_PRICE_ID) { packType = 'L'; credits = 4000; }
+
+  const params: Record<string, string> = {
+    'mode': 'payment',
+    'success_url': `${new URL(request.url).origin}?pack=success`,
+    'cancel_url': new URL(request.url).origin,
+    'line_items[0][price]': priceId,
+    'line_items[0][quantity]': '1',
+    'customer': subs[0].stripe_customer_id,
+    'metadata[user_id]': auth.userId,
+    'metadata[pack_type]': packType,
+    'metadata[credits]': String(credits),
+  };
+
+  const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+  const session = await stripeRes.json() as any;
+  if (session.error) return jsonError(session.error.message, 400);
+  return jsonResponse({ url: session.url });
+}
+
 async function handleStripeWebhook(request: Request, env: Env): Promise<Response> {
   if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) return jsonError('Stripe not configured', 500);
   const signature = request.headers.get('stripe-signature');
@@ -498,14 +735,40 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
       const userId = session.metadata?.user_id;
       const customerId = session.customer;
       const subscriptionId = session.subscription;
+
+      if (session.mode === 'payment' && userId && session.metadata?.pack_type) {
+        const credits = parseInt(session.metadata.credits, 10) || 0;
+        const packType = session.metadata.pack_type;
+        if (credits > 0) {
+          await supabaseAdmin(env, '/rpc/add_pack_credits', {
+            method: 'POST',
+            body: JSON.stringify({ p_user_id: userId, p_credits: credits }),
+          });
+          await supabaseAdmin(env, '/credit_pack_purchases', {
+            method: 'POST',
+            body: JSON.stringify({
+              user_id: userId,
+              stripe_session_id: session.id,
+              pack_type: packType,
+              credits,
+              amount_cents: session.amount_total || 0,
+            }),
+          });
+        }
+        break;
+      }
+
       if (!userId || !subscriptionId) break;
 
       const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
         headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}` },
       });
       const sub = await subRes.json() as any;
-      const priceId = sub.items?.data?.[0]?.price?.id;
+      const item = sub.items?.data?.[0];
+      const priceId = item?.price?.id;
       const tier = mapPriceToTier(priceId, env);
+      const periodStart = sub.current_period_start || item?.current_period_start || sub.start_date;
+      const periodEnd = sub.current_period_end || item?.current_period_end;
 
       await supabaseAdmin(env, '/subscriptions', {
         method: 'POST',
@@ -517,8 +780,8 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
           stripe_price_id: priceId,
           tier,
           status: sub.status,
-          current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+          current_period_start: periodStart ? new Date(periodStart * 1000).toISOString() : new Date().toISOString(),
+          current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
           cancel_at_period_end: sub.cancel_at_period_end || false,
           updated_at: new Date().toISOString(),
         }),
@@ -529,16 +792,19 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     case 'customer.subscription.updated':
     case 'customer.subscription.deleted': {
       const sub = event.data.object;
-      const priceId = sub.items?.data?.[0]?.price?.id;
+      const subItem = sub.items?.data?.[0];
+      const priceId = subItem?.price?.id;
       const tier = event.type === 'customer.subscription.deleted' ? 'free' : mapPriceToTier(priceId, env);
       const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
+      const pStart = sub.current_period_start || subItem?.current_period_start || sub.start_date;
+      const pEnd = sub.current_period_end || subItem?.current_period_end;
 
       await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${sub.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           tier, status, stripe_price_id: priceId,
-          current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+          current_period_start: pStart ? new Date(pStart * 1000).toISOString() : new Date().toISOString(),
+          current_period_end: pEnd ? new Date(pEnd * 1000).toISOString() : null,
           cancel_at_period_end: sub.cancel_at_period_end || false,
           updated_at: new Date().toISOString(),
         }),
@@ -564,12 +830,15 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
           headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}` },
         });
         const sub = await subRes.json() as any;
+        const invItem = sub.items?.data?.[0];
+        const invStart = sub.current_period_start || invItem?.current_period_start || sub.start_date;
+        const invEnd = sub.current_period_end || invItem?.current_period_end;
         await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${subscriptionId}`, {
           method: 'PATCH',
           body: JSON.stringify({
             status: 'active',
-            current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+            current_period_start: invStart ? new Date(invStart * 1000).toISOString() : new Date().toISOString(),
+            current_period_end: invEnd ? new Date(invEnd * 1000).toISOString() : null,
             updated_at: new Date().toISOString(),
           }),
         });
@@ -583,6 +852,8 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 
 function mapPriceToTier(priceId: string, env: Env): string {
   if (env.STRIPE_PRO_PRICE_ID && priceId === env.STRIPE_PRO_PRICE_ID) return 'pro';
+  if (env.STRIPE_PRO_ANNUAL_PRICE_ID && priceId === env.STRIPE_PRO_ANNUAL_PRICE_ID) return 'pro';
+  if (env.STRIPE_BYOK_PRICE_ID && priceId === env.STRIPE_BYOK_PRICE_ID) return 'byok';
   if (env.STRIPE_UNLIMITED_PRICE_ID && priceId === env.STRIPE_UNLIMITED_PRICE_ID) return 'unlimited';
   return 'pro';
 }

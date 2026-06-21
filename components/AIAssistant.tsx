@@ -3,6 +3,7 @@ import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus,
 import { createChatSession, sendMessageToChat } from '../services/gemini';
 import { FileContext } from '../types';
 import { Chat, Content } from "@google/genai";
+import { fetchUserTier, getAvailableCredits, CREDIT_COSTS, TIER_CREDITS } from '../services/stripe';
 
 interface Props {
   fileContext: FileContext | null;
@@ -28,7 +29,27 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [quotaError, setQuotaError] = useState('');
+  const [lowCredits, setLowCredits] = useState(false);
+
+  const checkChatQuota = async (): Promise<boolean> => {
+    try {
+      const tier = await fetchUserTier();
+      const available = getAvailableCredits(tier);
+      const monthly = TIER_CREDITS[tier.tier] || 100;
+      if (monthly !== Infinity) setLowCredits(available < monthly * 0.2);
+      const cost = CREDIT_COSTS['chat'] || 1;
+      if (available !== Infinity && available < cost) {
+        setQuotaError(`Insufficient credits (${available} available, ${cost} needed). Upgrade or buy a credit pack.`);
+        return false;
+      }
+      setQuotaError('');
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   // Voice Input State
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -200,6 +221,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     
                     if (!chatSession) return;
 
+                    const allowed = await checkChatQuota();
+                    if (!allowed) return;
+
                     setMessages(prev => [...prev, { role: 'user', text: '[Audio Input]' }]);
                     setIsLoading(true);
                     
@@ -238,7 +262,10 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
 
   const handleSend = async () => {
     if (!input.trim() || !chatSession) return;
-    
+
+    const allowed = await checkChatQuota();
+    if (!allowed) return;
+
     const userMsg = input.trim();
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
@@ -396,16 +423,20 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         {isRecording ? <Square size={16} fill="currentColor" /> : <Mic size={16} />}
                     </button>
 
-                    <input 
-                        type="text" 
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        placeholder={isRecording ? "Listening..." : "Input command..."}
-                        className="flex-1 bg-[#050505] border border-zinc-700 rounded-sm px-3 py-2 text-xs text-[#00f3ff] focus:border-[#00f3ff] focus:outline-none font-mono placeholder:text-zinc-700 disabled:opacity-50"
-                        disabled={isRecording || isLoading}
-                    />
+                    <div className="flex-1 relative">
+                        {quotaError && <div className="absolute -top-7 left-0 right-0 text-[9px] text-rose-400 font-mono truncate">{quotaError}</div>}
+                        {!quotaError && lowCredits && <div className="absolute -top-7 left-0 right-0 text-[9px] text-amber-400/70 font-mono truncate">Running low? Invite a friend for +100 credits.</div>}
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => { setInput(e.target.value); if (quotaError) setQuotaError(''); }}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            placeholder={isRecording ? "Listening..." : "Input command..."}
+                            className="w-full bg-[#050505] border border-zinc-700 rounded-sm px-3 py-2 text-xs text-[#00f3ff] focus:border-[#00f3ff] focus:outline-none font-mono placeholder:text-zinc-700 disabled:opacity-50"
+                            disabled={isRecording || isLoading}
+                        />
+                    </div>
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleSend(); }}
                         disabled={isLoading || !input.trim() || isRecording}

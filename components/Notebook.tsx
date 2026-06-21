@@ -2,14 +2,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NotebookItem, AppSettings, Chapter, MindMapNode } from '../types';
 import { Trash2, Quote, Book, BookOpen, Clock, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Zap, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
-import { generateSpeech } from '../services/gemini';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
 
 import { Loader } from './ui/Loader';
 import { saveFile, buildCacheKey } from '../services/fileCache';
+import { playPronunciationAudio, prefetchPronunciation } from '../services/pronunciationAudio';
 import { shareFile } from '../utils/share';
+import { titleCase } from '../utils/filename';
 import { trackNotebook } from '../utils/analytics';
 
 interface Props {
@@ -25,6 +26,24 @@ interface Props {
 }
 
 type FilterType = 'all' | 'word' | 'phrase' | 'sentence';
+
+const INK_TEXT_STYLES: Record<AppSettings['highlightColor'], string> = {
+  indigo: 'decoration-[#00f3ff]',
+  emerald: 'decoration-emerald-400',
+  rose: 'decoration-[#ff003c]',
+  amber: 'decoration-amber-400',
+  violet: 'decoration-violet-400',
+  pink: 'decoration-[#ff4fd8]',
+};
+
+const INK_BADGE_STYLES: Record<AppSettings['highlightColor'], string> = {
+  indigo: 'bg-[#00f3ff]/10 border-[#00f3ff]/30 text-[#00f3ff]',
+  emerald: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+  rose: 'bg-[#ff003c]/10 border-[#ff003c]/30 text-[#ff003c]',
+  amber: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+  violet: 'bg-violet-500/10 border-violet-500/30 text-violet-400',
+  pink: 'bg-[#ff4fd8]/10 border-[#ff4fd8]/30 text-[#ff4fd8]',
+};
 
 interface LayoutNode {
     id: string;
@@ -52,6 +71,7 @@ interface LayoutLink {
 export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle, bookId }) => {
   const fontStyle = {}; // Font now applied globally via CSS --content-font variable
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const pronunciationPrefetchTimer = useRef<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [activeBookFilter, setActiveBookFilter] = useState<string>('all');
   const bookTitles = useMemo(() => [...new Set(items.map(i => i.bookTitle).filter(Boolean) as string[])], [items]);
@@ -86,55 +106,32 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       return result;
   }, [items, activeFilter, activeBookFilter]);
 
-  const pcmToWav = (base64Pcm: string) => {
-    const binaryString = atob(base64Pcm);
-    const len = binaryString.length;
-    const buffer = new ArrayBuffer(44 + len);
-    const view = new DataView(buffer);
-    const writeString = (v: DataView, offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) v.setUint8(offset + i, str.charCodeAt(i));
-    };
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + len, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, 24000, true);
-    view.setUint32(28, 48000, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, len, true);
-    const bytes = new Uint8Array(buffer, 44);
-    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-    return new Blob([buffer], { type: 'audio/wav' });
-  };
+  useEffect(() => () => {
+    if (pronunciationPrefetchTimer.current !== null) window.clearTimeout(pronunciationPrefetchTimer.current);
+  }, []);
 
   const playPronunciation = async (id: string, text: string) => {
      if (playingId) return;
      setPlayingId(id);
-     let audioUrl: string | null = null;
      try {
-          const b64 = await generateSpeech(text, "Puck");
-          if(b64) {
-             const blob = pcmToWav(b64);
-             audioUrl = URL.createObjectURL(blob);
-             const audio = new Audio(audioUrl);
-             audio.onended = () => {
-                 setPlayingId(null);
-                 if (audioUrl) URL.revokeObjectURL(audioUrl);
-             };
-             await audio.play();
-          } else {
-             setPlayingId(null);
-          }
+          await playPronunciationAudio(text, "Puck");
       } catch (e) {
           console.error("Playback failed:", e);
+      } finally {
           setPlayingId(null);
-          if (audioUrl) URL.revokeObjectURL(audioUrl);
       }
+  };
+
+  const prefetchNotebookPronunciation = (text: string, immediate = false) => {
+    if (!text || playingId) return;
+    if (pronunciationPrefetchTimer.current !== null) window.clearTimeout(pronunciationPrefetchTimer.current);
+    if (immediate) {
+      prefetchPronunciation(text, "Puck");
+      return;
+    }
+    pronunciationPrefetchTimer.current = window.setTimeout(() => {
+      prefetchPronunciation(text, "Puck");
+    }, 120);
   };
 
   const buildStickyNoteCanvas = (item: NotebookItem): HTMLCanvasElement | null => {
@@ -142,70 +139,75 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
       const W = 800;
+      const H = 800;
       const margin = 50;
       const contentWidth = W - (margin * 2);
       const mainFont = settings.font ? `"${settings.font}", sans-serif` : 'Georgia';
       const FOOTER_HEIGHT = 60;
+      const footerTop = H - FOOTER_HEIGHT;
+      const bodyBottom = footerTop - 28;
 
-      // --- Pass 1: measure total content height ---
-      let y = margin + 40;
-      y += 25;
-      if (item.bookTitle) y += 25;
-      y += 1 + 40; // separator + gap
-
-      let fontSize = 32;
-      ctx.font = `${fontSize}px ${mainFont}`;
-      const words = item.text.split(' ');
-      let lines: string[] = [];
-      let line = '';
-      const calculateLines = () => {
-         lines = []; line = '';
-         for (let n = 0; n < words.length; n++) {
-            const testLine = line + words[n] + ' ';
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > contentWidth && n > 0) {
-              lines.push(line); line = words[n] + ' ';
-            } else { line = testLine; }
-         }
-         lines.push(line);
-      };
-      calculateLines();
-      const maxMainHeight = 350;
-      while (lines.length * (fontSize * 1.5) > maxMainHeight && fontSize > 14) {
-          fontSize -= 2; ctx.font = `${fontSize}px ${mainFont}`; calculateLines();
-      }
-      const lineHeight = fontSize * 1.5;
-      y += lines.length * lineHeight + 30;
-
-      const wrapLines = (text: string, font: string, lh: number): string[] => {
+      const wrapLines = (text: string, font: string, width = contentWidth): string[] => {
         ctx.font = font;
-        const ws = text.split(' ');
+        const ws = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
         const result: string[] = [];
         let cur = '';
-        for (let n = 0; n < ws.length; n++) {
-          const test = cur + ws[n] + ' ';
-          if (ctx.measureText(test).width > contentWidth && n > 0) {
-            result.push(cur); cur = ws[n] + ' ';
-          } else { cur = test; }
-        }
-        result.push(cur);
-        return result;
+        const pushToken = (token: string) => {
+          let remaining = token;
+          while (ctx.measureText(remaining).width > width && remaining.length > 1) {
+            let cut = remaining.length;
+            while (cut > 1 && ctx.measureText(remaining.slice(0, cut)).width > width) cut--;
+            if (cur.trim()) {
+              result.push(cur.trim());
+              cur = '';
+            }
+            result.push(remaining.slice(0, cut));
+            remaining = remaining.slice(cut);
+          }
+          const test = cur ? `${cur} ${remaining}` : remaining;
+          if (ctx.measureText(test).width > width && cur) {
+            result.push(cur.trim());
+            cur = remaining;
+          } else {
+            cur = test;
+          }
+        };
+        ws.forEach(pushToken);
+        if (cur.trim()) result.push(cur.trim());
+        return result.length ? result : [''];
       };
+
+      const clampLines = (value: string[], maxLines: number): string[] => {
+        if (value.length <= maxLines) return value;
+        const next = value.slice(0, maxLines);
+        let last = next[next.length - 1].replace(/\s+$/g, '');
+        while (last.length > 1 && ctx.measureText(`${last}...`).width > contentWidth) {
+          last = last.slice(0, -1);
+        }
+        next[next.length - 1] = `${last}...`;
+        return next;
+      };
+
+      let fontSize = 34;
+      let lineHeight = fontSize * 1.35;
+      let lines: string[] = [];
+      do {
+        ctx.font = `${fontSize}px ${mainFont}`;
+        lines = wrapLines(item.text, `${fontSize}px ${mainFont}`);
+        lineHeight = fontSize * 1.35;
+        if (lines.length * lineHeight <= 250 || fontSize <= 18) break;
+        fontSize -= 2;
+      } while (fontSize > 18);
+      lines = clampLines(lines, Math.max(3, Math.floor(250 / lineHeight)));
 
       let defLines: string[] = [];
       if (item.definition) {
-        y += 20;
-        defLines = wrapLines(item.definition, '14px "Courier New", monospace', 18);
-        y += defLines.length * 18 + 35;
+        defLines = clampLines(wrapLines(item.definition, '14px "Courier New", monospace'), 7);
       }
       let commentLines: string[] = [];
       if (item.comment) {
-        y += 20;
-        commentLines = wrapLines(item.comment, 'italic 14px "Courier New", monospace', 18);
-        y += commentLines.length * 18 + 35;
+        commentLines = clampLines(wrapLines(item.comment, 'italic 14px "Courier New", monospace'), 5);
       }
-
-      const H = Math.max(y + FOOTER_HEIGHT, 400);
 
       // --- Pass 2: draw ---
       canvas.width = W;
@@ -223,7 +225,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       ctx.fillRect(margin, H - margin - cs, cs, cs);
       ctx.fillRect(W - margin - cs, H - margin - cs, cs, cs);
 
-      y = margin + 40;
+      let y = margin + 40;
       ctx.textAlign = 'left';
       ctx.fillStyle = '#ff003c'; ctx.font = 'bold 16px "Courier New", monospace';
       ctx.fillText(`// LOG_DATE: ${new Date(item.timestamp).toISOString().split('T')[0]}`, margin, y);
@@ -231,8 +233,11 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       if (item.bookTitle) {
           ctx.fillStyle = '#00f3ff'; ctx.font = 'bold 20px "Courier New", monospace';
           const authorText = item.bookAuthor ? ` | ${item.bookAuthor}` : '';
-          ctx.fillText(`BOOK: ${item.bookTitle.toUpperCase().substring(0, 20)}${authorText.substring(0, 15)}`, margin, y);
-          y += 25;
+          const bookLines = clampLines(wrapLines(`BOOK: ${item.bookTitle.toUpperCase()}${authorText}`, 'bold 20px "Courier New", monospace'), 2);
+          for (const bookLine of bookLines) {
+            ctx.fillText(bookLine, margin, y);
+            y += 24;
+          }
       }
       ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(margin, y); ctx.lineTo(W - margin, y); ctx.stroke();
@@ -241,21 +246,29 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       ctx.fillStyle = '#334155'; ctx.font = `${fontSize * 3}px ${mainFont}`;
       ctx.fillText('"', margin - 20, y + fontSize);
       ctx.fillStyle = '#e2e8f0'; ctx.font = `${fontSize}px ${mainFont}`;
-      for (let i = 0; i < lines.length; i++) { ctx.fillText(lines[i], margin, y); y += lineHeight; }
+      for (let i = 0; i < lines.length && y < bodyBottom; i++) { ctx.fillText(lines[i], margin, y); y += lineHeight; }
       y += 30;
 
-      if (item.definition) {
+      if (item.definition && y < bodyBottom - 40) {
           ctx.fillStyle = '#22d3ee'; ctx.font = 'bold 14px "Courier New", monospace';
           ctx.fillText(">> ANALYSIS_OUTPUT:", margin, y); y += 20;
           ctx.fillStyle = '#94a3b8'; ctx.font = '14px "Courier New", monospace';
-          for (const dl of defLines) { ctx.fillText(dl, margin, y); y += 18; }
+          for (const dl of defLines) {
+            if (y > bodyBottom) break;
+            ctx.fillText(dl, margin, y);
+            y += 18;
+          }
           y += 35;
       }
-      if (item.comment) {
+      if (item.comment && y < bodyBottom - 40) {
           ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 14px "Courier New", monospace';
           ctx.fillText(">> USER_ANNOTATION:", margin, y); y += 20;
           ctx.fillStyle = '#b45309'; ctx.font = 'italic 14px "Courier New", monospace';
-          for (const cl of commentLines) { ctx.fillText(cl, margin, y); y += 18; }
+          for (const cl of commentLines) {
+            if (y > bodyBottom) break;
+            ctx.fillText(cl, margin, y);
+            y += 18;
+          }
           y += 35;
       }
 
@@ -277,7 +290,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   const generateStickyNote = (item: NotebookItem) => {
       const canvas = buildStickyNoteCanvas(item);
       if (!canvas) return;
-      const filename = `flash-note-${item.id}.png`;
+      const filename = `note-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`;
       const link = document.createElement('a');
       link.download = filename;
       link.href = canvas.toDataURL();
@@ -609,7 +622,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     });
 
     const blob = await Packer.toBlob(doc);
-    const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.docx`;
+    const filename = `mindmap-${titleCase(activeChapter?.title || bookTitle || 'export')}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -664,7 +677,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     zip.file("metadata.json", "{}");
 
     const blob = await zip.generateAsync({ type: "blob" });
-    const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.xmind`;
+    const filename = `mindmap-${titleCase(activeChapter?.title || bookTitle || 'export')}.xmind`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -798,7 +811,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         });
 
         doc.addImage(dataUrl, 'PNG', 0, 0, fullW, fullH);
-        const filename = `mind-map-${activeChapter?.title || bookTitle || 'export'}.pdf`;
+        const filename = `mindmap-${titleCase(activeChapter?.title || bookTitle || 'export')}.pdf`;
         const pdfBlob = doc.output('blob');
         return { blob: pdfBlob, filename };
     } catch (e) {
@@ -1089,20 +1102,23 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
                        {filteredItems.map((item, idx) => {
                            const typeColor = item.type === 'phrase' ? 'text-[#ff003c]' : item.type === 'word' ? 'text-cyan-400' : 'text-[#00f3ff]';
+                           const inkTextClass = INK_TEXT_STYLES[settings.highlightColor] || INK_TEXT_STYLES.indigo;
+                           const inkBadgeClass = INK_BADGE_STYLES[settings.highlightColor] || INK_BADGE_STYLES.indigo;
                            return (
                            <div key={item.id} className="bg-[#0a0a0c] border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${idx * 0.05}s` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
-                                   <button onClick={() => playPronunciation(item.id, item.text)} disabled={!!playingId} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-[#00f3ff] bg-[#00f3ff]/10 animate-pulse' : 'text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10'}`} title="Pronounce"><Volume2 size={14} /></button>
+	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-[#00f3ff] bg-[#00f3ff]/10 animate-pulse' : 'text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10'}`} title="Pronounce"><Volume2 size={14} /></button>
                                    <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
-                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) shareFile(blob, `flash-note-${item.id}.png`, item.text.substring(0, 50)); }, 'image/png'); }} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Share"><Share2 size={14} /></button>
+                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `note-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Share"><Share2 size={14} /></button>
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-[#ff003c] bg-zinc-900/50 hover:bg-[#ff003c]/10 rounded border border-transparent hover:border-[#ff003c]/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">
                                    <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-[#00f3ff]" /> : item.type === 'phrase' ? <Zap size={16} className="text-[#ff003c]" /> : <Type size={16} className="text-cyan-400" />}</div>
                                    <div className="flex-1 min-w-0 space-y-3">
-                                       <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words">{item.text}</p>
+                                       <div><p className={`text-white text-base font-medium leading-relaxed font-serif break-words ${item.inked ? `underline ${inkTextClass} decoration-1 underline-offset-4` : ''}`}>{item.text}</p>
                                            <div className="flex items-center gap-3 mt-2 flex-wrap">
                                                <span className={`text-[9px] font-mono uppercase tracking-wide bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 ${typeColor}`}>{item.type}</span>
+                                               {item.inked && <span className={`text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded border ${inkBadgeClass}`}>INKED</span>}
                                                {item.bookTitle && <span className="text-[10px] font-mono text-cyan-500/60 truncate max-w-[150px]">{item.bookTitle}</span>}
                                                {item.sourceChapter && <span className="text-[10px] font-mono text-zinc-600 truncate max-w-[200px]">CH: {item.sourceChapter}</span>}
                                                <span className="text-[10px] font-mono text-zinc-700 flex items-center gap-1"><Clock size={10} />{new Date(item.timestamp).toLocaleDateString()}</span>
