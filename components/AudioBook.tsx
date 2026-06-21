@@ -1285,31 +1285,40 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     return () => window.removeEventListener('decodebook:ink-selection', handleInkSelection);
   }, [inkStorageKey, flatSentenceMap, translationState.byIndex]);
 
+  // Rebuild sentence data and reset audio/translation only when the page itself
+  // changes — NOT when pendingNavigationTarget changes. Clicking a sentence clears
+  // that target, and including it here used to re-fire this effect and wipe the
+  // page's audio (play button dead, waveform gone) after any footnote/page jump.
   useEffect(() => {
      if (!pages[currentPage]) return;
      const { paragraphData: newParagraphData, flatSentenceMap: newSentenceMap } =
        buildPageSentenceData(pages[currentPage].text);
-     
+
      setParagraphData(newParagraphData);
      setFlatSentenceMap(newSentenceMap);
      resetAudioState();
      setActiveSentenceIndex(-1);
-     if (pendingNavigationTarget && typeof pendingNavigationTarget === 'object') {
-       if (pendingNavigationTarget.type === 'page') {
-         setNavigationSentenceIndex(pendingNavigationTarget.sentenceIndex ?? -1);
-       } else if (pendingNavigationTarget.type === 'note') {
-         const target = newSentenceMap.find(mapping => sentenceStartsWithNoteMarker(mapping.text, pendingNavigationTarget.marker, pendingNavigationTarget.noteKey));
-         setNavigationSentenceIndex(target?.globalIndex ?? -1);
-       }
-     } else {
-       setNavigationSentenceIndex(-1);
-     }
      abortGenerationRef.current = true;
      latestTranslationRequestRef.current = '';
-     setIsTranslating(false); 
+     setIsTranslating(false);
      setTranslationError(null);
      setTranslationState({ identity: '', byIndex: {} });
-  }, [currentPage, pages, pendingNavigationTarget]);
+  }, [currentPage, pages]);
+
+  // Resolve the navigation target (footnote/page jump) to a sentence to highlight.
+  // Separate from the page reset above so it doesn't touch the audio.
+  useEffect(() => {
+    if (pendingNavigationTarget && typeof pendingNavigationTarget === 'object') {
+      if (pendingNavigationTarget.type === 'page') {
+        setNavigationSentenceIndex(pendingNavigationTarget.sentenceIndex ?? -1);
+      } else if (pendingNavigationTarget.type === 'note') {
+        const target = flatSentenceMap.find(mapping => sentenceStartsWithNoteMarker(mapping.text, pendingNavigationTarget.marker, pendingNavigationTarget.noteKey));
+        setNavigationSentenceIndex(target?.globalIndex ?? -1);
+      }
+    } else {
+      setNavigationSentenceIndex(-1);
+    }
+  }, [pendingNavigationTarget, flatSentenceMap]);
 
   useEffect(() => {
     let cancelled = false;

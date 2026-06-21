@@ -6,17 +6,20 @@ export type InkLine = 'full' | 'curvy' | 'dotted';
 //  - dotted: sparse dots (thicker than the browser default so the density is lower)
 export const inkLineStyle = (inkLine: InkLine, color: string): Record<string, string> => {
   if (inkLine === 'curvy') {
-    // Long-wavelength wave SVG, tiled horizontally below the text.
+    // One full wave per 18px. The path starts and ends at y=2.5 with the same slope,
+    // so tiles join seamlessly (no cracks), and the amplitude stays within the 5px
+    // height so the stroke isn't clipped. paddingBottom drops it clear of the text.
     const svg =
       'data:image/svg+xml,' +
       encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="5"><path d="M0 3 Q4.5 0.6 9 3 T18 3" fill="none" stroke="${color}" stroke-width="1.1"/></svg>`
+        `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="5"><path d="M0 2.5 Q4.5 0.5 9 2.5 T18 2.5" fill="none" stroke="${color}" stroke-width="1"/></svg>`
       );
     return {
       backgroundImage: `url("${svg}")`,
       backgroundRepeat: 'repeat-x',
       backgroundPosition: '0 100%',
       backgroundSize: '18px 5px',
+      paddingBottom: '5px',
     };
   }
   return {
