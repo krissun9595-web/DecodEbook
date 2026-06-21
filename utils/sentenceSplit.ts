@@ -147,11 +147,42 @@ const splitSentenceCore = (segmentText: string): string[] => {
   return splitTrailingFootnoteLinks(results).filter(s => s.length > 0);
 };
 
+// Open emphasis wrappers remaining at the end of `text`, starting from `initial`.
+// Link hrefs are masked first so underscores inside them (part0023_split_001) don't
+// register as underline markers.
+const openEmphasisWrappers = (text: string, initial: string[]): string[] => {
+  const scan = text.replace(/\[[^\]\n]*\]\([^)\n]*\)/g, 'x');
+  const stack = [...initial];
+  const re = /\*\*|__|~~|\*|_|~/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(scan)) !== null) {
+    const token = match[0];
+    if (stack.length && stack[stack.length - 1] === token) stack.pop();
+    else stack.push(token);
+  }
+  return stack;
+};
+
+// An emphasis span (e.g. an italic blockquote) can cover several sentences. Splitting
+// it leaves the open/close markers on different sentences, so each renders plain.
+// Re-wrap every sentence in the emphasis that is open across it — but only when the
+// block's emphasis is balanced overall, so a stray marker can't wrap the remainder.
+const rebalanceEmphasisAcrossSentences = (sentences: string[]): string[] => {
+  if (sentences.length < 2) return sentences;
+  if (openEmphasisWrappers(sentences.join(' '), []).length > 0) return sentences;
+  let open: string[] = [];
+  return sentences.map(sentence => {
+    const reopened = open.join('') + sentence;
+    open = openEmphasisWrappers(reopened, []);
+    return open.length ? reopened + [...open].reverse().join('') : reopened;
+  });
+};
+
 export const splitIntoSentences = (text: string): string[] => {
   if (!text) return [];
 
   const segmentText = normalizeSoftLineBreaks(text);
   if (!segmentText) return [];
 
-  return splitWrappedInlineText(segmentText) || splitSentenceCore(segmentText);
+  return rebalanceEmphasisAcrossSentences(splitWrappedInlineText(segmentText) || splitSentenceCore(segmentText));
 };

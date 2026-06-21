@@ -325,6 +325,20 @@ const stripFootnoteMarkers = (value: string): string => value.replace(
 const stripInlineFormatSyntax = (value: string): string =>
   stripFootnoteMarkers(stripOrphanDisplayMarkers(stripInlineMarkupSyntax(value)));
 
+// The emphasis wrapper a whole sentence is in (e.g. "*...*" for an italic quote,
+// "**...**" for bold), ignoring a trailing footnote link. Used so the translated
+// layer can match the original's italic/bold formatting. Returns '' if none.
+const wholeSentenceEmphasisWrapper = (value: string): string => {
+  const core = value.trim().replace(/\[[^\]\n]*\]\([^)\n]*\)\s*$/u, '').trim();
+  for (const wrapper of ['**', '__', '~~', '*', '_', '~']) {
+    if (core.length > wrapper.length * 2 && core.startsWith(wrapper) && core.endsWith(wrapper)) {
+      const inner = core.slice(wrapper.length, core.length - wrapper.length);
+      if (!inner.includes(wrapper)) return wrapper;
+    }
+  }
+  return '';
+};
+
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const cleanNoteMarkerLabel = (value: string): string =>
@@ -2584,6 +2598,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         : (translatedText.trim() ? [translatedText] : ['']);
       const positionedRefs = isIndexChapter ? [] : positionedFootnoteRefsForText(run.text);
       const leadingNoteRef = isNotesChapter ? leadingNoteRefForText(run.text) : null;
+      // Match the original's italic/bold so the translation reads as the same quote.
+      const emphasisWrapper = wholeSentenceEmphasisWrapper(run.text);
       const refsForTranslatedPart = (partIndex: number): FootnoteRef[] =>
         positionedRefs.filter(ref =>
           Math.min(ref.sentenceIndex, translatedParts.length - 1) === partIndex
@@ -2600,7 +2616,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           {translatedParts.map((part, partIndex) => (
             <React.Fragment key={`tp-${partIndex}`}>
               {renderInkableText(
-                part,
+                emphasisWrapper && part.trim() ? `${emphasisWrapper}${part}${emphasisWrapper}` : part,
                 run.globalIndex,
                 isActive,
                 refsForTranslatedPart(partIndex),
@@ -2930,6 +2946,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                     : (tText.trim() ? [tText] : ['']);
                                   const positionedRefs = isIndexChapter ? [] : positionedFootnoteRefsForText(sentence);
                                   const leadingNoteRef = isNotesChapter ? leadingNoteRefForText(sentence) : null;
+                                  // Match the original's italic/bold in the translation.
+                                  const emphasisWrapper = wholeSentenceEmphasisWrapper(sentence);
                                   const refsForTranslatedPart = (partIndex: number): FootnoteRef[] =>
                                     positionedRefs.filter(ref =>
                                       Math.min(ref.sentenceIndex, translatedParts.length - 1) === partIndex
@@ -2946,7 +2964,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       {translatedParts.map((part, partIndex) => (
                                         <React.Fragment key={`tp-${partIndex}`}>
                                           {renderInkableText(
-                                            part,
+                                            emphasisWrapper && part.trim() ? `${emphasisWrapper}${part}${emphasisWrapper}` : part,
                                             globalIndex,
                                             isActive,
                                             refsForTranslatedPart(partIndex),

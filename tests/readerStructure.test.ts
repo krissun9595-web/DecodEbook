@@ -83,6 +83,26 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // An italic span (e.g. a blockquote) covering several sentences must keep each
+  // sentence individually wrapped after splitting, or the quote renders plain.
+  const quote = '*“It feels like something big is about to happen. They all soar up to an asymptote. The end of everything we know. The beginning of something we may never understand.”*[1](x#ch01-en1)';
+  const parts = splitIntoSentences(quote);
+  assert.ok(parts.length >= 3, 'the multi-sentence quote should split into several sentences');
+  parts.forEach(p => {
+    const stars = (p.replace(/\[[^\]]*\]\([^)]*\)/g, '').match(/\*/g) || []).length;
+    assert.equal(stars % 2, 0, `each quote sentence must have balanced italic markers: ${JSON.stringify(p)}`);
+    assert.ok(p.trimStart().startsWith('*'), `each quote sentence must stay italic: ${JSON.stringify(p)}`);
+  });
+}
+
+{
+  // A stray (unbalanced overall) marker must NOT be "balanced" into wrapping the rest.
+  const stray = 'The formula a * b is shown. Then we compute the result here.';
+  assert.deepEqual(splitIntoSentences(stray), ['The formula a * b is shown.', 'Then we compute the result here.'],
+    'a stray asterisk must not be turned into an emphasis span');
+}
+
+{
   // Guard against false positives: decimals and page refs must not gain note breaks.
   assert.equal(normalizeNotesReaderText('The ratio was 3.14 in the study and held steady.'),
     'The ratio was 3.14 in the study and held steady.', 'decimals must not be split into note lines');
