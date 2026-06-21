@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Globe, Highlighter, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
+import { X, Globe, Highlighter, PenLine, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
 import { AppSettings, ThemeColor } from '../types';
 
 interface Props {
@@ -16,6 +16,13 @@ const COLORS: { id: ThemeColor; label: string; class: string }[] = [
   { id: 'rose', label: 'Laser Red', class: 'bg-[#ff003c]' },
   { id: 'amber', label: 'Amber', class: 'bg-amber-500' },
   { id: 'violet', label: 'Violet', class: 'bg-violet-400' },
+  { id: 'pink', label: 'Neural Pink', class: 'bg-[#ff4fd8]' },
+];
+
+const INK_LINES: { id: AppSettings['inkLine']; label: string; style: 'solid' | 'wavy' | 'dotted' }[] = [
+  { id: 'full', label: 'Full', style: 'solid' },
+  { id: 'curvy', label: 'Curvy', style: 'wavy' },
+  { id: 'dotted', label: 'Dotted', style: 'dotted' },
 ];
 
 const FONTS = [
@@ -215,6 +222,32 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                   }`}
                   title={c.label}
                 />
+              ))}
+            </div>
+          </div>
+
+          {/* Ink Line Style */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-[#ff003c] mb-2">
+              <PenLine size={18} />
+              <label className="text-xs font-bold uppercase tracking-widest font-mono">Ink_Line</label>
+            </div>
+            <div className="flex gap-3">
+              {INK_LINES.map((line) => (
+                <button
+                  key={line.id}
+                  onClick={() => onUpdate({ ...settings, inkLine: line.id })}
+                  className={`flex-1 px-3 py-2 rounded-sm border text-[10px] font-mono uppercase tracking-wider transition-all ${
+                    (settings.inkLine || 'full') === line.id
+                      ? 'border-[#ff003c] text-white bg-[#ff003c]/10'
+                      : 'border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+                  }`}
+                  title={`${line.label} ink line`}
+                >
+                  <span style={{ textDecorationLine: 'underline', textDecorationStyle: line.style, textUnderlineOffset: '4px', textDecorationThickness: '1px' }}>
+                    {line.label}
+                  </span>
+                </button>
               ))}
             </div>
           </div>

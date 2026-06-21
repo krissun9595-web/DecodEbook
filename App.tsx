@@ -224,6 +224,7 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>({
     targetLanguage: 'Spanish',
     highlightColor: 'indigo',
+    inkLine: 'full',
     textSize: 'base',
     lineHeight: 'normal',
     letterSpacing: 'normal',

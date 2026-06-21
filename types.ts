@@ -5,7 +5,39 @@ export interface Chapter {
   pageStart?: number; // Optional, AI estimated
   pageEnd?: number;   // Optional, AI estimated
   description?: string;
+  sourceStart?: number;
+  sourceEnd?: number;
+  sourceHeading?: string;
+  sourceHeadingVariants?: string[];
+  sourcePageStart?: number;
+  sourcePageEnd?: number;
+  sourceMethod?: 'heading' | 'page' | 'hybrid';
 }
+
+export type ReaderPageTarget =
+  | 'first'
+  | 'last'
+  | {
+      type: 'page';
+      pageIndex: number;
+      sentenceIndex?: number;
+    }
+  | {
+      type: 'note';
+      marker: string;
+      targetHref?: string;
+      noteKey?: string;
+      sourceChapterId?: number;
+      sourceChapterIndex?: number;
+      sourceChapterNumber?: number;
+      sourceChapterTitle?: string;
+      sourceChapterHeading?: string;
+      returnTarget: {
+        chapterId: number;
+        pageIndex: number;
+        sentenceIndex?: number;
+      };
+    };
 
 export interface BookStructure {
   id: string; // Unique ID for the book in library
@@ -54,6 +86,9 @@ export interface FileContext {
   content: string; // Base64 string for PDF, or raw text string for text files
   mimeType: string;
   isText: boolean; // Flag to determine how to send to Gemini
+  sourceHash?: string;
+  sourceKind?: 'pdf' | 'epub' | 'text';
+  sourceExtractorVersion?: string;
 }
 
 export interface NotebookItem {
@@ -67,6 +102,7 @@ export interface NotebookItem {
   bookAuthor?: string;
   comment?: string;
   contextSource?: string; // e.g. "Neural_Podcast", "Input_Stream", "Decoded_Layer"
+  inked?: boolean;
 }
 
 export interface MindMapNode {
@@ -79,6 +115,7 @@ export interface MindMapNode {
 }
 
 export enum AppView {
+  LANDING = 'LANDING',
   UPLOAD = 'UPLOAD',
   DASHBOARD = 'DASHBOARD'
 }
@@ -92,11 +129,12 @@ export enum Tab {
   GEN_FILES = 'GEN_FILES'
 }
 
-export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'violet';
+export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'violet' | 'pink';
 
 export interface AppSettings {
   targetLanguage: string;
   highlightColor: ThemeColor;
+  inkLine: 'full' | 'curvy' | 'dotted';
   textSize: 'sm' | 'base' | 'lg' | 'xl';
   lineHeight: 'tight' | 'normal' | 'relaxed' | 'loose';
   letterSpacing: 'tighter' | 'normal' | 'wide' | 'wider';
@@ -115,7 +153,7 @@ export interface LibraryItem {
   uploadDate: number;
 }
 
-export type CachedFileType = 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation';
+export type CachedFileType = 'source-file' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation';
 
 export interface CachedFileMetadata {
   key: string;

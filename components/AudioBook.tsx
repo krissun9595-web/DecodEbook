@@ -2256,6 +2256,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const style = {
       ...(inked ? {
         textDecorationColor: INK_LINE_COLORS[settings.highlightColor],
+        textDecorationStyle: settings.inkLine === 'curvy' ? 'wavy' : settings.inkLine === 'dotted' ? 'dotted' : 'solid',
         textDecorationThickness: '1px',
         textUnderlineOffset: '4px',
       } : {}),
