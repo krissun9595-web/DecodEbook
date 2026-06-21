@@ -318,7 +318,12 @@ const stripFootnoteMarkers = (value: string): string => value.replace(
   }
 );
 
-const stripInlineFormatSyntax = (value: string): string => stripFootnoteMarkers(stripInlineMarkupSyntax(value));
+// Drop orphan emphasis markers (e.g. a lone "*" left by a blockquote's tangled
+// emphasis) before stripping footnote markers, otherwise a stray "*" between the
+// punctuation and a footnote number prevents the number from being stripped — so it
+// leaks into translation/audio input and gets echoed as prose.
+const stripInlineFormatSyntax = (value: string): string =>
+  stripFootnoteMarkers(stripOrphanDisplayMarkers(stripInlineMarkupSyntax(value)));
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -2095,8 +2100,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const looksLikeCitationParagraph = (value: string): boolean => {
     const clean = value.replace(/\s+/g, ' ').trim();
     if (!clean || clean.length > 900) return false;
-    if (/^\*?[“"‘']/.test(clean)) return true;
-    return /^\*[^*]{20,900}\*$/.test(clean);
+    // Allow any leading emphasis markers: a blockquote wrapping already-italic text
+    // yields a quote that starts with "**" (tangled emphasis), which a single "\*?"
+    // would miss — so the quote wouldn't get its citation spacing (blank line before).
+    if (/^[*_~]*[“"‘']/.test(clean)) return true;
+    return /^[*_~]{1,2}[^*]{20,900}[*_~]{1,2}$/.test(clean);
   };
   const paragraphSpacingClassFor = (value: string): string => {
     const clean = value.replace(/\s+/g, ' ').trim();
