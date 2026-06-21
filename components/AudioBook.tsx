@@ -71,7 +71,7 @@ const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const PAGE_TARGET_SIZE = 1600;
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v27-internal-link-normalization';
+const CHAPTER_TEXT_CACHE_VERSION = 'v28-italic-heading-detection';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v17-source-segment-translation';
 
@@ -2111,7 +2111,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const sentenceHoverClass = 'hover:text-white hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.45)] cursor-pointer';
   const normalizeSentenceForMatch = (value: string): string => stripInlineFormatSyntax(value).replace(/\s+/g, ' ').trim();
   const isPlainSubtitleParagraph = (sentences: string[]): boolean => {
-    const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
+    // Strip wrapping emphasis so an italic subtitle ("*Genius and Nemesis*") is detected.
+    const text = stripOrphanDisplayMarkers(sentences.join(' ')).replace(/\s+/g, ' ').trim();
     if (!text || text.length > 90 || sentences.length !== 1) return false;
     if (/[.!?。！？]$/u.test(text)) return false;
     if (/[;,]/u.test(text)) return false;

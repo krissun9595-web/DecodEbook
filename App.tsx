@@ -674,6 +674,20 @@ const App: React.FC = () => {
           // their indentation under the parent term.
           if (liClass.includes('indexsub')) return `\n\n    ${trimmed}\n\n`;
           if (liClass.includes('indexmain')) return `\n\n${trimmed}\n\n`;
+          // Reveal list structure: bullets for <ul>, numbers for <ol>. Skip when the
+          // item already carries its own marker (e.g. endnote backlinks "[2](...)"),
+          // so notes aren't double-numbered.
+          const parentTag = element.parentElement?.tagName.toLowerCase();
+          const alreadyMarked = /^\[?\s*[0-9ivxlcdm]{1,8}[.)\]]/i.test(trimmed);
+          if (!alreadyMarked) {
+            if (parentTag === 'ol') {
+              const items = Array.from(element.parentElement!.children).filter(c => c.tagName.toLowerCase() === 'li');
+              return `\n${items.indexOf(element) + 1}. ${trimmed}\n`;
+            }
+            if (parentTag === 'ul') {
+              return `\n• ${trimmed}\n`;
+            }
+          }
           return `\n${trimmed}\n`;
         }
         return childText;
