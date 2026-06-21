@@ -96,6 +96,17 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // An italic title whose period sits inside the span ("*The Great Reckoning.*")
+  // leaves the closing "*" orphaned on the next sentence; the rebalancer must move it
+  // back, not combine it with a reopened marker into "**" (which turned text bold).
+  const para = '*The Sovereign Individual* builds on *Blood in the Streets* and *The Great Reckoning.* Like those books, it does more.';
+  const parts = splitIntoSentences(para);
+  assert.ok(parts.some(p => /\*The Great Reckoning\.\*/.test(p)), 'the italic title keeps its own balanced markers');
+  parts.forEach(p => assert.ok(!/\*\*/.test(p), `no sentence should gain bold "**": ${JSON.stringify(p)}`));
+  assert.ok(parts.some(p => /^\s*Like those books/.test(p)), 'the following sentence stays plain');
+}
+
+{
   // A stray (unbalanced overall) marker must NOT be "balanced" into wrapping the rest.
   const stray = 'The formula a * b is shown. Then we compute the result here.';
   assert.deepEqual(splitIntoSentences(stray), ['The formula a * b is shown.', 'Then we compute the result here.'],

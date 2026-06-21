@@ -163,19 +163,41 @@ const openEmphasisWrappers = (text: string, initial: string[]): string[] => {
   return stack;
 };
 
-// An emphasis span (e.g. an italic blockquote) can cover several sentences. Splitting
-// it leaves the open/close markers on different sentences, so each renders plain.
-// Re-wrap every sentence in the emphasis that is open across it — but only when the
+// An emphasis span can be left open across a sentence boundary in two ways:
+//  - genuinely spanning several sentences (an italic blockquote), where the close
+//    marker lands on a later sentence and the middle ones have none; or
+//  - a span whose close marker was simply orphaned onto the next sentence because the
+//    sentence-ending period sat *inside* the span (e.g. an italic title "*... Reckoning.*").
+// For the first, close the previous sentence and reopen on this one. For the second,
+// move the orphaned close marker back so it doesn't combine with a reopened marker
+// into a heavier wrapper (which turned the next sentence bold). Only act when the
 // block's emphasis is balanced overall, so a stray marker can't wrap the remainder.
 const rebalanceEmphasisAcrossSentences = (sentences: string[]): string[] => {
   if (sentences.length < 2) return sentences;
   if (openEmphasisWrappers(sentences.join(' '), []).length > 0) return sentences;
+  const result: string[] = [];
   let open: string[] = [];
-  return sentences.map(sentence => {
-    const reopened = open.join('') + sentence;
-    open = openEmphasisWrappers(reopened, []);
-    return open.length ? reopened + [...open].reverse().join('') : reopened;
-  });
+  for (let sentence of sentences) {
+    if (open.length && result.length) {
+      const close = open[open.length - 1];
+      const lead = sentence.match(/^\s*/)![0];
+      const rest = sentence.slice(lead.length);
+      if (rest.startsWith(close)) {
+        // Orphaned close marker: give it back to the sentence that opened the span.
+        result[result.length - 1] += close;
+        sentence = lead + rest.slice(close.length);
+        open.pop();
+      } else {
+        // Genuine span: close the previous sentence and reopen on this one.
+        result[result.length - 1] += [...open].reverse().join('');
+        sentence = open.join('') + sentence;
+      }
+    }
+    open = openEmphasisWrappers(sentence, []);
+    result.push(sentence);
+  }
+  if (open.length && result.length) result[result.length - 1] += [...open].reverse().join('');
+  return result;
 };
 
 export const splitIntoSentences = (text: string): string[] => {
