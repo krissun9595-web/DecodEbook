@@ -2505,6 +2505,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       inferBareFootnotes: parseOptions.inferBareFootnotes,
       romanMarkersAsReferences: parseOptions.romanMarkersAsReferences,
     });
+    // If this line is an attribution (e.g. translated author/source) and its footnote
+    // was stripped from the translation, attach the inherited footnote inside the
+    // attribution block so it sits at the end of the right-aligned author line — not
+    // dumped on a new line after it.
+    let consumedInheritedFootnote: FootnoteRef | undefined;
+    if (inheritedFootnotes.length > 0) {
+      const attributionSegment = [...segments].reverse().find(segment => segment.format === 'attribution');
+      if (attributionSegment) {
+        consumedInheritedFootnote = inheritedFootnotes[0];
+        attributionSegment.format = 'attributionFootnote';
+        attributionSegment.marker = consumedInheritedFootnote.marker;
+        attributionSegment.href = consumedInheritedFootnote.href;
+      }
+    }
     const visibleText = segments
       .filter(segment => segment.format !== 'footnote' && segment.format !== 'lineBreak')
       .map(segment => segment.text)
@@ -2569,7 +2583,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     });
 
     inheritedFootnotes
-      .filter(ref => !hasFootnoteRef(textToRender, ref, parseOptions))
+      .filter(ref => ref !== consumedInheritedFootnote && !hasFootnoteRef(textToRender, ref, parseOptions))
       .forEach((ref, refIndex) => {
         nodes.push(renderTextLeaf(ref.marker, `inherited-footnote-${ref.marker}-${refIndex}`, 'footnote', false, ref.href, footnoteClickHandler, playbackActive));
       });
