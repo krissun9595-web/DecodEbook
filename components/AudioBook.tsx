@@ -2417,21 +2417,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     }
 
     if (format === 'referenceMarker') {
+      // Roman reference markers are non-interactive by design — they label the note,
+      // they don't navigate. Render plain superscript text with no button/href.
       return (
         <sup key={key} data-reference-marker="true" className={`align-super select-none ${className}`}>
-          {href && onFootnoteClick ? (
-            <button
-              type="button"
-              className="cursor-pointer hover:text-white focus:outline-none focus:text-white"
-              title={`Go to note ${text}`}
-              draggable={false}
-              onClick={(event) => onFootnoteClick(text, event, href)}
-            >
-              {text}
-            </button>
-          ) : (
-            text
-          )}
+          {text}
         </sup>
       );
     }
