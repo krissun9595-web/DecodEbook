@@ -1402,7 +1402,10 @@ const App: React.FC = () => {
                             </span>
                             <span className="text-[8px] font-mono text-zinc-600 shrink-0">PG.{String(hit.pageNumber).padStart(2, '0')}{hit.occurrences > 1 ? ` ×${hit.occurrences}` : ''}</span>
                           </div>
-                          <p className="text-[10px] leading-snug text-zinc-500 group-hover:text-zinc-300 break-words">
+                          <p
+                            className="text-[10px] leading-snug text-zinc-500 group-hover:text-zinc-300 break-words overflow-hidden"
+                            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', height: '2.75em' } as React.CSSProperties}
+                          >
                             {hit.snippet.slice(0, hit.matchStart)}
                             <mark className="bg-transparent text-[#00f3ff] font-semibold">{hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength)}</mark>
                             {hit.snippet.slice(hit.matchStart + hit.matchLength)}
