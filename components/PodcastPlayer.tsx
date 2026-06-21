@@ -6,6 +6,7 @@ import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
+import { titleCase } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 
 interface Props {
@@ -52,11 +53,47 @@ interface InFlightPodcast {
   abort: () => void;
 }
 const inflightPodcastMap = new Map<string, InFlightPodcast>();
+// Last playback position per podcast (cache key), so leaving and returning to the
+// net_cast resumes where the user left off instead of resetting the progress bar.
+const podcastPlaybackPositions = new Map<string, number>();
 
 // Persist user selections across unmount/remount
 let lastPodcastTone: string | null = null;
 let lastPodcastLanguage: string | null = null;
 let lastEpisodeTitle: string | null = null;
+let lastPodcastPlayerMinimized: boolean | null = null;
+
+const readStoredValue = (key: string): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredValue = (key: string, value: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures; in-memory defaults still work for this session.
+  }
+};
+
+const initialPodcastLanguage = (): string => {
+  if (lastPodcastLanguage) return lastPodcastLanguage;
+  const stored = readStoredValue('podcast_language');
+  lastPodcastLanguage = stored || 'Original';
+  return lastPodcastLanguage;
+};
+
+const initialPodcastPlayerMinimized = (): boolean => {
+  if (lastPodcastPlayerMinimized !== null) return lastPodcastPlayerMinimized;
+  const stored = readStoredValue('podcast_player_minimized');
+  lastPodcastPlayerMinimized = stored === null ? true : stored !== 'false';
+  return lastPodcastPlayerMinimized;
+};
 
 const HOST_CONFIG: Record<string, { host1: string, voice1: string, desc1: string, host2: string, voice2: string, desc2: string }> = {
   'Engaging': { host1: 'Alex', voice1: 'Puck', desc1: 'warm male narrator, curious and enthusiastic', host2: 'Jordan', voice2: 'Kore', desc2: 'sharp female analyst, adds depth and counterpoints' },
@@ -73,7 +110,7 @@ const HOST_CONFIG: Record<string, { host1: string, voice1: string, desc1: string
   'Netrunner': { host1: 'Zero', voice1: 'Puck', desc1: 'fast-talking male hacker, excited about data', host2: 'One', voice2: 'Kore', desc2: 'cool female AI companion, responds with smooth precision' },
 };
 
-export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings, bookId }) => {
+export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId }) => {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [episodeTitle, setEpisodeTitle] = useState<string>(lastEpisodeTitle || '');
   const [script, setScript] = useState<string | null>(null);
@@ -84,9 +121,9 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState(lastPodcastTone || 'Engaging');
-  const [selectedLanguage, setSelectedLanguage] = useState(lastPodcastLanguage || settings.targetLanguage);
+  const [selectedLanguage, setSelectedLanguage] = useState(initialPodcastLanguage);
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [isPlayerMinimized, setIsPlayerMinimized] = useState(() => window.innerWidth < 768);
+  const [isPlayerMinimized, setIsPlayerMinimized] = useState(initialPodcastPlayerMinimized);
   
   // Progress State
   const [currentTime, setCurrentTime] = useState(0);
@@ -306,7 +343,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
         // Cache results (runs even if component is unmounted)
         const audioCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-audio', capturedTone, capturedLanguage);
         saveFile(audioCacheKey, audioBlob, {
-          filename: `podcast-${capturedChapter.id}.wav`,
+          filename: `podcast-ch${capturedChapter.id}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${titleCase(capturedChapter.title)}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -317,7 +354,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
         const scriptBlob = new Blob([result.script], { type: 'text/plain' });
         const scriptCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-script', capturedTone, capturedLanguage);
         saveFile(scriptCacheKey, scriptBlob, {
-          filename: `podcast-script-${capturedChapter.id}.txt`,
+          filename: `script-ch${capturedChapter.id}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${titleCase(capturedChapter.title)}.txt`,
           mimeType: 'text/plain',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -412,7 +449,22 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
       setCurrentTime(audio.currentTime);
       setDuration(audio.duration || 0);
       setPlaybackProgress(audio.duration > 0 ? (audio.currentTime / audio.duration) * 100 : 0);
+      if (podcastGenKeyRef.current && audio.currentTime > 0.1) {
+        podcastPlaybackPositions.set(podcastGenKeyRef.current, audio.currentTime);
+      }
     }
+  };
+
+  // Restore the saved position when the audio (re)loads, so returning to the net_cast
+  // doesn't lose progress.
+  const handleLoadedMetadata = () => {
+    if (!audioRef.current) return;
+    const d = audioRef.current.duration || 0;
+    const saved = podcastGenKeyRef.current ? podcastPlaybackPositions.get(podcastGenKeyRef.current) : undefined;
+    if (saved !== undefined && saved > 0.1 && saved < d - 0.1) {
+      audioRef.current.currentTime = saved;
+    }
+    handleTimeUpdate();
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -588,7 +640,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `podcast-script-${chapter.id}.txt`;
+    const fn = `script-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.txt`;
+    a.download = fn;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -608,7 +661,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                  <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  <div className="w-[1px] h-4 bg-zinc-700"></div>
                  <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={14} /></div>
-                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
+                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; writeStoredValue('podcast_language', e.target.value); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
               </div>
               <button
                 onClick={handleToggleGeneration}
@@ -686,9 +739,14 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
                    <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                        <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                        <button onClick={downloadScript} disabled={!script} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={16} /></button>
-                       <a href={audioSrc || '#'} download={`podcast-${chapter.id}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={16} /></a>
-                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); shareFile(b, `podcast-${chapter.id}.wav`, `Podcast - ${chapter.title}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>
-                       <button onClick={() => setIsPlayerMinimized(!isPlayerMinimized)} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}</button>
+                       <a href={audioSrc || '#'} download={`podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={16} /></a>
+                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - ${selectedTone} Podcast`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={16} /></button>
+                       <button onClick={() => {
+                         const nextMinimized = !isPlayerMinimized;
+                         setIsPlayerMinimized(nextMinimized);
+                         lastPodcastPlayerMinimized = nextMinimized;
+                         writeStoredValue('podcast_player_minimized', String(nextMinimized));
+                       }} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}</button>
                    </div>
                </div>
            </div>
@@ -698,7 +756,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, settings,
              onEnded={() => setIsPlaying(false)} 
              onPlay={() => { if(audioRef.current) audioRef.current.playbackRate = playbackRate; }}
              onTimeUpdate={handleTimeUpdate}
-             onLoadedMetadata={handleTimeUpdate}
+             onLoadedMetadata={handleLoadedMetadata}
              className="hidden" 
            />
            {segments.length > 0 ? (

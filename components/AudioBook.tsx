@@ -140,6 +140,10 @@ const initialVoiceSynthMinimized = (): boolean => {
 const timingsCache = new Map<string, ChunkTiming[]>();
 const translationJobMap = new Map<string, Promise<string[] | null>>();
 const translationMemoryCache = new Map<string, string[]>();
+// Remembers the last playback position per audio (cache key) so leaving the module
+// — e.g. clicking a footnote — and returning resumes where the user left off instead
+// of snapping the progress bar back to the start.
+const audioPlaybackPositions = new Map<string, number>();
 
 interface ChunkTiming {
   text: string;
@@ -1579,7 +1583,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const d = audio.duration || 0;
       setDuration(d);
       setPlaybackProgress(d > 0 ? (t / d) * 100 : 0);
-      
+      // Remember where we are so returning to this audio resumes here.
+      if (loadedAudioKeyRef.current && t > 0.1) audioPlaybackPositions.set(loadedAudioKeyRef.current, t);
+
       const activeIdx = timings.findIndex(chunk => !chunk.isWhitespace && t >= chunk.start && t < chunk.end);
       if (activeIdx !== -1 && activeIdx !== activeSentenceIndex) {
           setActiveSentenceIndex(activeIdx);
@@ -1693,6 +1699,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   }, [activeSentenceIndex, navigationSentenceIndex, autoScroll, flatSentenceMap]);
 
   const audioGenKeyRef = useRef('');
+
+  // The cache key of the audio currently loaded, kept in a ref so timeupdate/seek can
+  // read it without recomputing the (hashed) key on every tick.
+  const loadedAudioKeyRef = useRef('');
+  useEffect(() => {
+    loadedAudioKeyRef.current = currentPageText
+      ? audioCacheKeyFor(currentPage, currentPageText, selectedVoice, audioLanguage)
+      : '';
+  }, [currentPage, currentPageText, selectedVoice, audioLanguage]);
 
   // On mount, re-attach to any in-flight generation for this page/voice/language
   useEffect(() => {
@@ -2746,7 +2761,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         onEnded={() => setIsPlaying(false)} 
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={() => {
-          if (audioRef.current) setDuration(audioRef.current.duration || 0);
+          if (!audioRef.current) return;
+          const d = audioRef.current.duration || 0;
+          setDuration(d);
+          // Restore the saved playback position so progress isn't lost when returning
+          // to this audio after leaving the module (e.g. via a footnote).
+          const saved = loadedAudioKeyRef.current ? audioPlaybackPositions.get(loadedAudioKeyRef.current) : undefined;
+          if (saved !== undefined && saved > 0.1 && saved < d - 0.1) {
+            audioRef.current.currentTime = saved;
+            setCurrentTime(saved);
+            setPlaybackProgress(d > 0 ? (saved / d) * 100 : 0);
+          }
         }}
         onPlay={() => { if(audioRef.current) audioRef.current.playbackRate = playbackRate; }}
         className="hidden" 
