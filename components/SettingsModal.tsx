@@ -2,6 +2,7 @@
 import React from 'react';
 import { X, Globe, Highlighter, PenLine, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
 import { AppSettings, ThemeColor } from '../types';
+import { inkLineStyle } from '../utils/inkLine';
 
 interface Props {
   isOpen: boolean;
@@ -208,7 +209,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
           {/* Highlight Color */}
           <div className="space-y-3">
-             <div className="flex items-center gap-2 text-[#ff003c] mb-2">
+             <div className="flex items-center gap-2 text-[#00f3ff] mb-2">
               <Highlighter size={18} />
               <label className="text-xs font-bold uppercase tracking-widest font-mono">Highlight_Hue</label>
             </div>
@@ -228,7 +229,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
           {/* Ink Line Style */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[#ff003c] mb-2">
+            <div className="flex items-center gap-2 text-[#00f3ff] mb-2">
               <PenLine size={18} />
               <label className="text-xs font-bold uppercase tracking-widest font-mono">Ink_Line</label>
             </div>
@@ -239,12 +240,12 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                   onClick={() => onUpdate({ ...settings, inkLine: line.id })}
                   className={`flex-1 px-3 py-2 rounded-sm border text-[10px] font-mono uppercase tracking-wider transition-all ${
                     (settings.inkLine || 'full') === line.id
-                      ? 'border-[#ff003c] text-white bg-[#ff003c]/10'
+                      ? 'border-[#00f3ff] text-white bg-[#00f3ff]/10'
                       : 'border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
                   }`}
                   title={`${line.label} ink line`}
                 >
-                  <span style={{ textDecorationLine: 'underline', textDecorationStyle: line.style, textUnderlineOffset: '4px', textDecorationThickness: '1px' }}>
+                  <span style={inkLineStyle(line.id, '#00f3ff') as React.CSSProperties}>
                     {line.label}
                   </span>
                 </button>
@@ -256,7 +257,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
           {/* Typography Settings */}
           <div className="space-y-6">
-            <div className="flex items-center gap-2 text-white">
+            <div className="flex items-center gap-2 text-[#00f3ff]">
               <Type size={18} />
               <label className="text-xs font-bold uppercase tracking-widest font-mono">Typography_Modules</label>
             </div>

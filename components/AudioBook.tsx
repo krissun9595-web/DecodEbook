@@ -21,6 +21,7 @@ import {
   type ReaderTopicBlock,
 } from '../utils/readerStructure';
 import { splitIntoSentences } from '../utils/sentenceSplit';
+import { inkLineStyle } from '../utils/inkLine';
 import {
   isBibleReferenceAtEnd,
   isBibleReferenceMarkerCandidate,
@@ -2251,15 +2252,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (format === 'lineBreak') return <br key={key} />;
     const className = [
       inlineFormatClassFor(format),
-      inked ? 'underline decoration-1 underline-offset-4 transition-colors text-zinc-300' : '',
+      inked ? 'transition-colors text-zinc-300' : '',
     ].filter(Boolean).join(' ');
     const style = {
-      ...(inked ? {
-        textDecorationColor: INK_LINE_COLORS[settings.highlightColor],
-        textDecorationStyle: settings.inkLine === 'curvy' ? 'wavy' : settings.inkLine === 'dotted' ? 'dotted' : 'solid',
-        textDecorationThickness: '1px',
-        textUnderlineOffset: '4px',
-      } : {}),
+      ...(inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor]) : {}),
       ...(playbackActive && format !== 'footnote' ? {
         color: HIGHLIGHT_TEXT_COLORS[settings.highlightColor],
       } : {}),
