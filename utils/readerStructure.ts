@@ -51,6 +51,10 @@ interface ReaderPaginationOptions {
   minTopicCount?: number;
   targetSize?: number;
   leadingHeading?: string;
+  // Size pages by rendered (visible) length, excluding hidden link hrefs. Needed
+  // for link-dense chapters (e.g. an index) where the (...) part of [label](href)
+  // would otherwise eat the page budget and leave pages mostly empty.
+  measureVisibleLength?: boolean;
 }
 
 const DEFAULT_TOPICS_PER_PAGE = 10;
@@ -652,7 +656,29 @@ export const detectPrincipleTopicPages = (
   return pages.length > 0 ? pages : null;
 };
 
-export const paginatePlainText = (text: string, targetSize: number): ReaderPage[] => {
+// Raw offset at which the visible (rendered) length of `value` reaches
+// `visibleTarget`, counting only the label of [label](href) links, not the hidden
+// href. Single forward pass (sticky regex), so it stays O(n).
+const visibleAwareLimit = (value: string, visibleTarget: number): number => {
+  const linkRe = /\[([^\]\n]*)\]\(([^)\n]+)\)/y;
+  let visible = 0;
+  let i = 0;
+  while (i < value.length) {
+    linkRe.lastIndex = i;
+    const match = linkRe.exec(value);
+    if (match) {
+      visible += match[1].length;
+      i = linkRe.lastIndex;
+    } else {
+      visible += 1;
+      i += 1;
+    }
+    if (visible >= visibleTarget) return i;
+  }
+  return value.length;
+};
+
+export const paginatePlainText = (text: string, targetSize: number, measureVisible = false): ReaderPage[] => {
   const pages: ReaderPage[] = [];
   let remaining = text;
   const endsWithDetachedNoteMarker = (value: string): boolean =>
@@ -709,25 +735,28 @@ export const paginatePlainText = (text: string, targetSize: number): ReaderPage[
   };
 
   while (remaining.length > 0) {
-    if (remaining.length <= targetSize) {
+    // The raw offset that holds ~targetSize of *visible* text. For normal chapters
+    // (measureVisible off) this is just targetSize.
+    const limit = measureVisible ? visibleAwareLimit(remaining, targetSize) : targetSize;
+    if (remaining.length <= limit) {
       const pageText = remaining.trim();
       if (pageText) {
         pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }] });
       }
       break;
     }
-    let splitIdx = targetSize;
-    const paragraphBreak = remaining.lastIndexOf('\n\n', targetSize);
-    if (paragraphBreak > targetSize * 0.7) {
+    let splitIdx = limit;
+    const paragraphBreak = remaining.lastIndexOf('\n\n', limit);
+    if (paragraphBreak > limit * 0.7) {
       splitIdx = paragraphBreak;
     } else {
-      const sentenceBreak = findSafeSentenceBreak(remaining, targetSize);
-      if (sentenceBreak > targetSize * 0.5) splitIdx = sentenceBreak + 1;
+      const sentenceBreak = findSafeSentenceBreak(remaining, limit);
+      if (sentenceBreak > limit * 0.5) splitIdx = sentenceBreak + 1;
       else {
-        const forwardSentenceBreak = findNearForwardSentenceBreak(remaining, targetSize);
+        const forwardSentenceBreak = findNearForwardSentenceBreak(remaining, limit);
         if (forwardSentenceBreak > 0) splitIdx = forwardSentenceBreak + 1;
         else {
-          const spaceBreak = findSafeSoftBreak(remaining, targetSize);
+          const spaceBreak = findSafeSoftBreak(remaining, limit);
           if (spaceBreak > 0) splitIdx = spaceBreak;
         }
       }
@@ -746,5 +775,5 @@ export const paginateReaderText = (
   targetSize: number,
   options: Omit<ReaderPaginationOptions, 'targetSize'> = {}
 ): ReaderPage[] => {
-  return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize);
+  return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize, options.measureVisibleLength);
 };

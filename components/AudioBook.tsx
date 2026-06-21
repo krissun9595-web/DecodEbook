@@ -1118,6 +1118,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const paginatedPages = paginateReaderText(cleanText, PAGE_TARGET_SIZE, {
         topicsPerPage: 10,
         leadingHeading: leadingTopicHeadingFor(chapter, fileContext.content, cleanText),
+        // The index is link-dense; size its pages by visible text so they fill up.
+        measureVisibleLength: isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || ''),
       });
       setPages(paginatedPages);
       if (typeof initialPageTarget === 'object' && initialPageTarget.type === 'note') {
