@@ -277,6 +277,9 @@ interface InlineSegment {
 interface FootnoteRef {
   marker: string;
   href?: string;
+  // True for a roman/reference marker (rendered as a superscript), false for a
+  // numeric footnote (rendered as a subscript).
+  isReference?: boolean;
 }
 
 interface PositionedFootnoteRef extends FootnoteRef {
@@ -658,11 +661,15 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
 const footnoteRefsForText = (value: string, options: InlineParseOptions = {}): FootnoteRef[] => {
   const refs: FootnoteRef[] = [];
   parseInlineFormatting(value, { internalNoteLinksAsFootnotes: true, ...options }).forEach(segment => {
-    if (segment.format !== 'footnote' && segment.format !== 'attributionFootnote') return;
+    if (segment.format !== 'footnote' && segment.format !== 'attributionFootnote' && segment.format !== 'referenceMarker') return;
+    // A leading roman reference marker (a list "i.") carries no href and isn't a
+    // footnote — only inherit reference markers that link to a note.
+    if (segment.format === 'referenceMarker' && !segment.href) return;
     const marker = cleanNoteMarkerLabel(segment.marker || segment.text);
     if (!marker) return;
+    const isReference = segment.format === 'referenceMarker';
     const exists = refs.some(ref => ref.marker === marker && (ref.href || '') === (segment.href || ''));
-    if (!exists) refs.push({ marker, href: segment.href });
+    if (!exists) refs.push({ marker, href: segment.href, isReference });
   });
   return refs;
 };
@@ -2593,7 +2600,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     inheritedFootnotes
       .filter(ref => ref !== consumedInheritedFootnote && !hasFootnoteRef(textToRender, ref, parseOptions))
       .forEach((ref, refIndex) => {
-        nodes.push(renderTextLeaf(ref.marker, `inherited-footnote-${ref.marker}-${refIndex}`, 'footnote', false, ref.href, footnoteClickHandler, playbackActive));
+        // Roman reference markers render as a superscript (referenceMarker) to match
+        // the original; numeric footnotes as a subscript (footnote).
+        const inheritedFormat = ref.isReference ? 'referenceMarker' : 'footnote';
+        nodes.push(renderTextLeaf(ref.marker, `inherited-footnote-${ref.marker}-${refIndex}`, inheritedFormat, false, ref.href, footnoteClickHandler, playbackActive));
       });
 
     return nodes;
