@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget } from './types';
@@ -22,6 +22,7 @@ import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './servi
 import { buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
+import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
 import type { User } from '@supabase/supabase-js';
 
 const lazyRetry = <T,>(factory: () => Promise<T>): Promise<T> =>
@@ -207,6 +208,69 @@ const App: React.FC = () => {
   const [activeChapterId, setActiveChapterId] = useState<number | null>(null);
   const [activeChapterPageTarget, setActiveChapterPageTarget] = useState<ReaderPageTarget>('first');
   const activeChapter = activeBook?.chapters.find(c => c.id === activeChapterId) || null;
+
+  // --- Full-text search (sidebar) ---------------------------------------------
+  // Self-contained: indexes the active book's reader text and navigates via the
+  // same chapter/page primitives the TOC already uses, so it never touches the
+  // reader/audio/translation modules.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [searchActive, setSearchActive] = useState(false); // a query has been run
+  const [isIndexing, setIsIndexing] = useState(false);
+  const searchIndexCache = useRef<Map<string, ChapterPageIndex[]>>(new Map());
+  const activeChapterItemRef = useRef<HTMLDivElement | null>(null);
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchActive(false);
+    setIsIndexing(false);
+  }, []);
+
+  // Plain function (not useCallback) so it doesn't reference currentUser at render
+  // time — currentUser is declared further down; the body runs only on click.
+  const handleSearchResultClick = (hit: SearchHit) => {
+    setActiveChapterPageTarget({ type: 'page', pageIndex: hit.pageIndex });
+    setActiveChapterId(hit.chapterId);
+    if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, hit.chapterId);
+    closeSidebarMobile();
+    // Keep the result list — the user can jump to other results at any time.
+  };
+
+  // Reset search when the open book changes.
+  useEffect(() => { clearSearch(); }, [activeBookId, clearSearch]);
+
+  // Debounced search: build (and cache) the book index lazily, then match.
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2 || !activeBook || !activeFileContext?.content) {
+      setSearchResults([]);
+      setSearchActive(query.length >= 2);
+      return;
+    }
+    let cancelled = false;
+    setIsIndexing(true);
+    const handle = setTimeout(() => {
+      try {
+        let index = searchIndexCache.current.get(activeBook.id);
+        if (!index) {
+          index = buildBookPageIndex(activeFileContext.content, activeBook.chapters);
+          searchIndexCache.current.set(activeBook.id, index);
+        }
+        if (cancelled) return;
+        setSearchResults(searchBookIndex(index, query));
+        setSearchActive(true);
+      } finally {
+        if (!cancelled) setIsIndexing(false);
+      }
+    }, 220);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [searchQuery, activeBook, activeFileContext]);
+
+  // Scroll the TOC so the active chapter is in view after a jump.
+  useEffect(() => {
+    activeChapterItemRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [activeChapterId]);
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.AUDIOBOOK);
   const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
@@ -1252,9 +1316,9 @@ const App: React.FC = () => {
                 </div>
             )}
         </div>
-        <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {showLibraryList ? (
-             <div className="flex flex-col animate-fade-in">
+             <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col animate-fade-in">
                 {library.map(item => (
                     <div
                         key={item.book.id}
@@ -1295,11 +1359,65 @@ const App: React.FC = () => {
                 ))}
              </div>
           ) : (
-             <div className="py-2 animate-fade-in">
+             <div className="flex-1 min-h-0 flex flex-col">
+                {/* Full-text search */}
+                <div className="shrink-0 px-3 pt-3 pb-2 border-b border-zinc-900 bg-black/40">
+                  <div className="relative flex items-center">
+                    <Search size={12} className="absolute left-2 text-zinc-600 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="SEARCH_FULLTEXT"
+                      className="w-full bg-zinc-900/60 border border-zinc-800 focus:border-[#00f3ff]/50 rounded-sm pl-7 pr-7 py-1.5 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-700 focus:outline-none tracking-wide"
+                    />
+                    {searchQuery && (
+                      <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-[#ff003c] transition-colors" title="Clear search">
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                  {searchActive && (
+                    <div className="mt-1.5 flex items-center justify-between text-[8px] font-mono uppercase tracking-widest text-zinc-600">
+                      <span>{isIndexing ? 'INDEXING…' : `${searchResults.length} MATCH${searchResults.length === 1 ? '' : 'ES'}`}</span>
+                      <button onClick={clearSearch} className="text-zinc-600 hover:text-[#00f3ff] transition-colors">CLEAR</button>
+                    </div>
+                  )}
+                </div>
+                {/* Results — bounded + independently scrollable, persist until cleared */}
+                {searchActive && (
+                  <div className="shrink-0 max-h-[45%] overflow-y-auto custom-scrollbar border-b border-zinc-900/70 bg-black/20">
+                    {!isIndexing && searchResults.length === 0 ? (
+                      <div className="px-4 py-4 text-[9px] font-mono uppercase tracking-widest text-zinc-700">No matches found</div>
+                    ) : (
+                      searchResults.map((hit, i) => (
+                        <button
+                          key={`${hit.chapterId}-${hit.pageIndex}-${i}`}
+                          onClick={() => handleSearchResultClick(hit)}
+                          className="w-full text-left px-4 py-2.5 border-b border-zinc-900/50 hover:bg-[#00f3ff]/5 group transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-[8px] font-mono uppercase tracking-wider text-[#00f3ff] truncate">
+                              {String(hit.chapterNumber).padStart(2, '0')} · {hit.chapterTitle}
+                            </span>
+                            <span className="text-[8px] font-mono text-zinc-600 shrink-0">PG.{String(hit.pageNumber).padStart(2, '0')}{hit.occurrences > 1 ? ` ×${hit.occurrences}` : ''}</span>
+                          </div>
+                          <p className="text-[10px] leading-snug text-zinc-500 group-hover:text-zinc-300 break-words">
+                            {hit.snippet.slice(0, hit.matchStart)}
+                            <mark className="bg-transparent text-[#00f3ff] font-semibold">{hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength)}</mark>
+                            {hit.snippet.slice(hit.matchStart + hit.matchLength)}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+                {/* Chapter list (TOC) */}
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2">
                 {activeBook?.chapters.map((chapter, idx) => {
                     const isBookmarked = activeBook.bookmarks?.includes(chapter.id);
                     return (
-                        <div key={chapter.id} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
+                        <div key={chapter.id} ref={activeChapterId === chapter.id ? activeChapterItemRef : undefined} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
                             <button
                                 onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterPageTarget('first'); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
                                 className={`flex-1 text-left flex items-center gap-3 border-l-2 py-1 transition-all min-w-0 pr-2 ${
@@ -1327,6 +1445,7 @@ const App: React.FC = () => {
                         </div>
                     );
                 })}
+                </div>
              </div>
           )}
         </div>
