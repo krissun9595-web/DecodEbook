@@ -60,6 +60,29 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // A page label italicized through the page number boundary ("*op. cit., p.* 173")
+  // must still be recognized so the page number isn't misread as the next note's
+  // marker (which split the note and broke the following footnote's link).
+  const text = '[32](x#ch11en32). Hirshleifer, *op. cit., p.* 173. [33](x#ch11en33). Tanzi, *op. cit.,* pp. 167, 170.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(/p\.\* 173\.\n\[33\]/.test(normalized), 'an italicized "p." page label must keep its page number, not start a new note at it');
+  assert.ok(!/p\.\*\n173/.test(normalized), 'the page number must not be split onto its own line');
+}
+
+{
+  // Notes/index are item-per-line: pagination must break between items, not mid-item
+  // (e.g. inside "op. cit." or after an initial like "V.H.").
+  const notes = Array.from({ length: 20 }, (_, i) =>
+    `[${i + 80}](x#en${i + 80}). See V.H. Atrill, How All Economies Work (Calgary, Canada: Dimensionless Science Publications, ${1979 + i}), p. 27f.`
+  ).join('\n');
+  const pages = paginatePlainText(notes, 200, false, true);
+  assert.ok(pages.every(p => !/V\.H\.$/.test(p.text.trim())), 'pages must not end mid-note at "V.H."');
+  // Same content without the flag is allowed to break mid-note (proves the flag matters).
+  const naive = paginatePlainText(notes, 200, false, false);
+  assert.ok(naive.some(p => /V\.H\.$/.test(p.text.trim())), 'sanity: without preferLineBreaks pagination does break mid-note');
+}
+
+{
   // Guard against false positives: decimals and page refs must not gain note breaks.
   assert.equal(normalizeNotesReaderText('The ratio was 3.14 in the study and held steady.'),
     'The ratio was 3.14 in the study and held steady.', 'decimals must not be split into note lines');

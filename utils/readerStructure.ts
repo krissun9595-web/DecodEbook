@@ -55,6 +55,11 @@ interface ReaderPaginationOptions {
   // for link-dense chapters (e.g. an index) where the (...) part of [label](href)
   // would otherwise eat the page budget and leave pages mostly empty.
   measureVisibleLength?: boolean;
+  // Prefer breaking pages at line (\n) boundaries. For list-like chapters (notes,
+  // index) each item is its own line, so this keeps items intact instead of
+  // splitting one mid-way at a sentence/soft break (e.g. inside "op. cit." or after
+  // an initial like "V.H.").
+  preferLineBreaks?: boolean;
 }
 
 const DEFAULT_TOPICS_PER_PAGE = 10;
@@ -344,7 +349,10 @@ export const normalizeNotesReaderText = (value: string): string => {
     return total;
   };
   const followsBibliographicPageLabel = (start: number): boolean => {
-    const before = text.slice(Math.max(0, start - 24), start);
+    // Strip emphasis markers so an italicized page label ("*op. cit., p.* 173",
+    // i.e. "p." inside the italic) is still recognized — otherwise the trailing "*"
+    // hides the "p." and the page number is misread as a note marker.
+    const before = text.slice(Math.max(0, start - 26), start).replace(/[*_~]/g, '');
     return /(?:^|[\s(,;])p{1,2}\.\s*$/iu.test(before);
   };
   const stripHeadingDisplayMarkers = (value: string): string =>
@@ -678,7 +686,7 @@ const visibleAwareLimit = (value: string, visibleTarget: number): number => {
   return value.length;
 };
 
-export const paginatePlainText = (text: string, targetSize: number, measureVisible = false): ReaderPage[] => {
+export const paginatePlainText = (text: string, targetSize: number, measureVisible = false, preferLineBreaks = false): ReaderPage[] => {
   const pages: ReaderPage[] = [];
   let remaining = text;
   const endsWithDetachedNoteMarker = (value: string): boolean =>
@@ -747,8 +755,13 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     }
     let splitIdx = limit;
     const paragraphBreak = remaining.lastIndexOf('\n\n', limit);
+    const lineBreak = preferLineBreaks ? remaining.lastIndexOf('\n', limit) : -1;
     if (paragraphBreak > limit * 0.7) {
       splitIdx = paragraphBreak;
+    } else if (lineBreak > limit * 0.5) {
+      // List items (notes, index entries) are their own lines — break between them
+      // rather than mid-item.
+      splitIdx = lineBreak;
     } else {
       const sentenceBreak = findSafeSentenceBreak(remaining, limit);
       if (sentenceBreak > limit * 0.5) splitIdx = sentenceBreak + 1;
@@ -775,5 +788,5 @@ export const paginateReaderText = (
   targetSize: number,
   options: Omit<ReaderPaginationOptions, 'targetSize'> = {}
 ): ReaderPage[] => {
-  return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize, options.measureVisibleLength);
+  return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize, options.measureVisibleLength, options.preferLineBreaks);
 };

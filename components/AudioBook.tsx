@@ -1120,11 +1120,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         cleanText = normalizeNotesReaderText(cleanText);
       }
 
+      const paginatedReaderIsNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
+      const paginatedReaderIsIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
       const paginatedPages = paginateReaderText(cleanText, PAGE_TARGET_SIZE, {
         topicsPerPage: 10,
         leadingHeading: leadingTopicHeadingFor(chapter, fileContext.content, cleanText),
         // The index is link-dense; size its pages by visible text so they fill up.
-        measureVisibleLength: isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || ''),
+        measureVisibleLength: paginatedReaderIsIndex,
+        // Notes and index are item-per-line lists — break pages between items, not
+        // mid-item (which would split a note inside "op. cit." or after "V.H.").
+        preferLineBreaks: paginatedReaderIsNotes || paginatedReaderIsIndex,
       });
       setPages(paginatedPages);
       if (typeof initialPageTarget === 'object' && initialPageTarget.type === 'note') {
