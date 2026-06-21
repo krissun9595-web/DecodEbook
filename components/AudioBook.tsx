@@ -323,12 +323,19 @@ const stripFootnoteMarkers = (value: string): string => value.replace(
   }
 );
 
+// Remove internal footnote/reference links entirely — the marker is not content.
+// Done before the generic link->label flattening, otherwise a footnote after a number
+// ("1999.[2](...#...)") would flatten to a bare "1999.2" whose "2" the decimal guard
+// in stripFootnoteMarkers then keeps, leaking the number into translation/audio.
+const stripInternalFootnoteLinks = (value: string): string =>
+  value.replace(/\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)/giu, '');
+
 // Drop orphan emphasis markers (e.g. a lone "*" left by a blockquote's tangled
 // emphasis) before stripping footnote markers, otherwise a stray "*" between the
 // punctuation and a footnote number prevents the number from being stripped — so it
 // leaks into translation/audio input and gets echoed as prose.
 const stripInlineFormatSyntax = (value: string): string =>
-  stripFootnoteMarkers(stripOrphanDisplayMarkers(stripInlineMarkupSyntax(value)));
+  stripFootnoteMarkers(stripOrphanDisplayMarkers(stripInlineMarkupSyntax(stripInternalFootnoteLinks(value))));
 
 // The emphasis wrapper a whole sentence is in (e.g. "*...*" for an italic quote,
 // "**...**" for bold), ignoring a trailing footnote link. Used so the translated
