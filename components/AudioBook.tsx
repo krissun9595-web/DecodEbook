@@ -554,7 +554,7 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       const label = cleanNoteMarkerLabel(linkMatch[1]);
       const hasBodyBefore = inner.slice(0, linkMatch.index).trim().length > 0;
       if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, linkMatch[2])) {
-        segments.push({ text: label, format: 'referenceMarker' });
+        segments.push({ text: label, format: 'referenceMarker', href: linkMatch[2] });
       } else if (options.internalNoteLinksAsFootnotes && hasBodyBefore && isLikelyInternalNoteLink(label, linkMatch[2])) {
         segments.push({ text: label, format: 'footnote', href: linkMatch[2] });
       } else {
@@ -590,7 +590,7 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, match[2])) {
         const labelPunctuation = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
         const trailingPunctuation = labelPunctuation || (value[pattern.lastIndex] === '.' ? '.' : '');
-        segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker' });
+        segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker', href: match[2] });
         if (!labelPunctuation && trailingPunctuation) pattern.lastIndex += 1;
       } else if (options.internalNoteLinksAsFootnotes && hasBodyTextBeforeLink && isLikelyInternalNoteLink(label, match[2])) {
         segments.push({ text: label, format: 'footnote', href: match[2] });
@@ -2004,6 +2004,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
   const shouldIgnoreSentenceClick = (event: React.MouseEvent<HTMLElement>): boolean => {
     if (event.detail > 1 || hasActiveTextSelection()) return true;
+    // A click on a footnote/reference marker must navigate to the note, not be
+    // treated as a click on the surrounding sentence (which would seek + play it).
+    if ((event.target as HTMLElement)?.closest?.('[data-footnote-marker],[data-reference-marker]')) return true;
 
     const start = sentencePointerRef.current;
     if (!start) return false;
@@ -2303,11 +2306,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         const label = cleanNoteMarkerLabel(linkMatch[1]);
         const hrefValue = linkMatch[2].trim();
         if (isRomanNoteMarkerText(label)) {
-          parts.push(
-            <sup key={`${key}-safe-${parts.length}`} data-reference-marker="true" className={`align-super select-none ${inlineFormatClassFor('referenceMarker')}`}>
-              {label}
-            </sup>
-          );
+          parts.push(renderTextLeaf(label, `${key}-safe-${parts.length}`, 'referenceMarker', false, hrefValue, onFootnoteClick, playbackActive));
         } else if (isNumericNoteMarkerText(label)) {
           parts.push(renderTextLeaf(label, `${key}-safe-${parts.length}`, 'footnote', false, hrefValue, onFootnoteClick, playbackActive));
         } else {
@@ -2383,7 +2382,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (format === 'referenceMarker') {
       return (
         <sup key={key} data-reference-marker="true" className={`align-super select-none ${className}`}>
-          {text}
+          {href && onFootnoteClick ? (
+            <button
+              type="button"
+              className="cursor-pointer hover:text-white focus:outline-none focus:text-white"
+              title={`Go to note ${text}`}
+              draggable={false}
+              onClick={(event) => onFootnoteClick(text, event, href)}
+            >
+              {text}
+            </button>
+          ) : (
+            text
+          )}
         </sup>
       );
     }
