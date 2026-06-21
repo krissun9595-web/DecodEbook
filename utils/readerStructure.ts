@@ -296,9 +296,14 @@ export const normalizeNotesReaderText = (value: string): string => {
     /(^|[\n \t\u00a0])(\d{1,3})[.)](?=[\p{Lu}“"‘'\[]|\*)/giu,
     '$1$2. '
   );
+  // Set off an inline notes section heading ("Chapter 5. Title", "Introduction ...")
+  // with blank lines — but only at a real boundary (line start or after sentence-ending
+  // punctuation). Requiring the boundary avoids matching these words mid-citation, e.g.
+  // the book title "An Introduction to the Principles..." (which would split the title
+  // and scramble its italics).
   text = text.replace(
-    /\s+((?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\.?\s+.{4,180}?)(?=\s+\d{1,3}[.)]\s+)/giu,
-    '\n\n$1\n\n'
+    /(^|\n|[.!?。！？][”"’")\]]?)[ \t]*((?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\.?\s+.{4,180}?)(?=\s+\d{1,3}[.)]\s+)/giu,
+    '$1\n\n$2\n\n'
   );
   const collapseNoteEntryText = (source: string): string =>
     source
@@ -379,13 +384,13 @@ export const normalizeNotesReaderText = (value: string): string => {
       const prefix = match[1] || '';
       const marker = match[3] || match[4] || match[5] || match[6] || '';
       const number = noteMarkerRank(marker);
-      // match[3]/[4] = bracketed "[N]"/"[N](href)" markers, match[5] = "note N".
-      // These are explicit note notation, never running prose. The page-label and
-      // running-text heuristics only exist to reject false positives among BARE
-      // numbers (match[6]) — applying them to explicit markers wrongly drops notes
-      // whose previous entry ends without terminal punctuation (e.g. an italic
-      // "*op. cit.,*" or a missing final period), squeezing them onto one line.
-      const isExplicitMarker = Boolean(match[3] || match[4] || match[5]);
+      // match[3]/[4] = bracketed "[N]"/"[N](href)" markers. These are explicit note
+      // notation, never running prose, so they bypass the page-label and running-text
+      // heuristics (which exist only to reject false positives among BARE numbers).
+      // match[5] = "no./note N" is NOT treated as explicit: "no. 1" inside a citation
+      // ("vol. 1, no. 1") is a journal issue, not a note start, and must still be
+      // caught by the running-text guard.
+      const isExplicitMarker = Boolean(match[3] || match[4]);
       return {
         number,
         start: (match.index ?? 0) + prefix.length,

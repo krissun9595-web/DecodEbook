@@ -103,6 +103,28 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // "no. N" inside a citation (a journal issue: "vol. 1, no. 1") is not a note start
+  // and must not truncate the note.
+  const text = '[27](x#en27). Quoted by West, *op. cit.,* p. 58; see also Williamson, *Journal of Economic Behaviour,* vol. 1, no. 1. [28](x#en28). Next note, op. cit., p. 5.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(/vol\. 1, no\. 1\.\n\[28\]/.test(normalized), '"no. 1" in a citation must stay inside its note');
+  assert.ok(!/\nno\. 1\./.test(normalized), '"no. 1" must not become its own line');
+}
+
+{
+  // A book title containing "Introduction" ("An Introduction to the Principles...")
+  // must not be mistaken for an inline section heading and split with blank lines.
+  const text = '[16](x#en16). Prior note, op. cit., p. 1.\n[17](x#en17). Jeremy Bentham, *An Introduction to the Principles of Morals and Legislation,* J. H. Burns and H. L. A. Hart, eds. (London: Methuen, 1982), p. 296, cited by Billig, *op. cit.,* p. 84.\n[18](x#en18). Next, op. cit., p. 5.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(/Bentham, \*An Introduction to the Principles/.test(normalized), 'the italic book title must stay on one line');
+  assert.ok(!/\*An\n/.test(normalized), '"An" and "Introduction" must not be split by a blank line');
+  // But a genuine inline section heading after a note IS still set off.
+  const heading = 'Some note ends here. Chapter 5. The Title Of The Chapter 1. First note of chapter five here.';
+  assert.ok(/here\.\n\nChapter 5\. The Title Of The Chapter\n\n1\. First note/.test(normalizeNotesReaderText(heading)),
+    'a real inline "Chapter N" heading should still be separated with blank lines');
+}
+
+{
   // Guard against false positives: decimals and page refs must not gain note breaks.
   assert.equal(normalizeNotesReaderText('The ratio was 3.14 in the study and held steady.'),
     'The ratio was 3.14 in the study and held steady.', 'decimals must not be split into note lines');
