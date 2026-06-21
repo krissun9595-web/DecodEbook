@@ -2113,7 +2113,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (isIndexChapter) return '';
     if (isNotesChapter && looksLikeNotesSectionHeading(clean)) return 'mt-10 mb-3';
     if (looksLikeCitationParagraph(clean)) return 'mt-5';
-    if (looksLikeAttributionLine(clean)) return 'mt-2 mb-5';
+    // The author/attribution line already carries its own block margins
+    // (mt-0.5 mb-4 from the 'attribution' segment style); adding paragraph-level
+    // mt-2/mb-5 on top stacked them, leaving too much space above and below. Let
+    // the segment's own margins stand so the author sits snugly under its quote.
+    if (looksLikeAttributionLine(clean)) return '';
     if (looksLikeSignatureLine(clean)) return 'mt-1';
     return '';
   };
