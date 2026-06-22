@@ -915,12 +915,17 @@ const App: React.FC = () => {
               const glue = !!prev && prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold;
               const trimmed = it.str.trim();
               // A small-font number not at the line start is a flattened superscript
-              // footnote marker: glue it (no space) to the preceding token so the reader's
-              // bare-footnote inference recognises it (e.g. "Colchester.14").
+              // footnote marker. Geometry (a raised, smaller glyph) is a far more reliable
+              // signal than the reader's text heuristic, which cannot tell a footnote after
+              // a number ("1999.²") from a decimal. So emit it structurally — the same
+              // "[N](#href)" form an EPUB <a href="#..."> footnote produces — so the shared
+              // renderer recognises it via the internal-note-link path and skips the
+              // ambiguous bare-digit inference. The #pdfnote-<page>-<n> key is stable for
+              // later linking to the note body without re-extracting.
               const isMarker = idx > 0 && /^\d{1,3}$/.test(trimmed) && it.h < lineBodyHeight * 0.84;
               if (isMarker) {
                 if (open) { out += MARK[open]; open = null; }
-                out += trimmed;
+                out += `[${trimmed}](#pdfnote-${pageNum}-${trimmed})`;
                 return;
               }
               // Wrap maximal runs of one emphasis style once, so a multi-item italic
