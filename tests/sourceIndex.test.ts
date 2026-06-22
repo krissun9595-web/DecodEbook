@@ -423,4 +423,53 @@ const chapterBody = (name: string) => [
   assert.ok(!ch4Text.includes('opening sentence of chapter five'), 'Chapter 4 must not absorb Chapter 5\'s opening');
 }
 
+{
+  // Endnotes are commonly grouped under per-chapter labels inside the Notes
+  // section, e.g. "Chapter 4: ...\n1. Author... 2. ...". Such a label is a
+  // "Chapter N" heading and would otherwise win the same +50 bonus the real
+  // chapter heading gets — resolving Chapter 4 into the back matter, swallowing
+  // the chapters in between and leaving Notes itself unlocatable. The real
+  // chapter (prose body) must win; the Notes label must not.
+  // The real chapter heading is title-only (the "Chapter N" marker did not survive
+  // extraction), while the Notes label carries the marker — so absent the fix the
+  // label, not the real heading, wins the +50 "Chapter N" bonus.
+  const content = [
+    'The Reckoning',
+    chapterBody('Chapter four'),
+    '',
+    'The Aftermath',
+    chapterBody('Chapter five'),
+    '',
+    'NOTES',
+    'Chapter 4. The Reckoning',
+    '1. Smith, John, A History of Things (Press, 1999), 12.',
+    '2. Jones, Mary, "An Article Title," Journal 4 (2001): 33.',
+    '3. Ibid., 41.',
+    '4. Doe, Jane, Another Book (Press, 2003), 88.',
+    '',
+    'INDEX',
+    'Aardvark, 12',
+    'Zebra, 88',
+  ].join('\n');
+  const chapters: Chapter[] = [
+    { id: 1, title: 'The Reckoning' },
+    { id: 2, title: 'The Aftermath' },
+    { id: 3, title: 'Notes' },
+    { id: 4, title: 'Index' },
+  ];
+  const out = buildSourceIndexedChapters(content, chapters);
+  const ch4 = out.find(c => c.title === 'The Reckoning')!;
+  const ch4Text = extractChapterFromSource(content, ch4, out) || '';
+  assert.ok(ch4Text.includes('Chapter four begins with a real paragraph'),
+    'Chapter 4 must resolve to its real prose body, not the Notes group label');
+  assert.ok(!ch4Text.includes('Smith, John, A History of Things'),
+    'Chapter 4 must not resolve into the Notes section');
+
+  const notes = out.find(c => c.title === 'Notes')!;
+  assert.equal(typeof notes.sourceStart, 'number', 'Notes chapter must remain locatable');
+  const notesText = extractChapterFromSource(content, notes, out) || '';
+  assert.ok(notesText.includes('Smith, John, A History of Things'),
+    'Notes chapter should contain the grouped endnotes');
+}
+
 console.log('sourceIndex regression tests passed');

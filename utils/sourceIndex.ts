@@ -218,7 +218,7 @@ const findTopicRangeCandidates = (
 
   const escapedStart = escapeRegex(String(start));
   const pattern = new RegExp(
-    `(?:^|\\n)[ \\t]*(?:\\[\\[PAGE\\s+\\d+\\]\\][ \\t]*)?(?:#{1,6}[ \\t]*)?(?:(?:topic|day|lesson)[ \\t]+)?${escapedStart}[\\).:\\-–—|][ \\t]+([^\\r\\n]+)(?:\\r?\\n|$)`,
+    `(?:^|\\n)[ \\t]*(?:\\[\\[PAGE\\s+\\d+\\]\\][ \\t]*)?(?:#{1,6}[ \\t]*)?(?:[*_~]{1,3}[ \\t]*)?(?:(?:topic|day|lesson)[ \\t]+)?${escapedStart}[\\).:\\-–—|][ \\t]+([^\\r\\n]+)(?:\\r?\\n|$)`,
     'giu'
   );
   const candidates: HeadingCandidate[] = [];
@@ -513,6 +513,19 @@ const scoreCandidate = (
   const headingText = candidate.headingText;
   const headingWords = countWords(headingText);
 
+  const sample = content.slice(candidate.contentStart, candidate.contentStart + 1600);
+  const isChapterMarkerHeading = /^(?:\[\[PAGE[^\]]*\]\]\s*)?(?:[*_~]{1,3}\s*)?(?:chapter|ch\.?|part|book|volume|vol\.?)\s+[\divxlcdm]+\b/iu.test((headingText || '').trim());
+  // A "Chapter N. Title" line immediately followed by a numbered reference list is a
+  // per-chapter label *inside the Notes/back-matter section*, not the chapter's real
+  // body heading. (Endnotes are grouped as "Chapter 4. ...\n1. Author... 2. ...".)
+  // Without recognising this, such a label wins the "Chapter N" bonus below and the
+  // chapter resolves into the back matter — swallowing the real chapters between and
+  // leaving the Notes chapter itself unlocatable. Gated on the heading being a
+  // "Chapter N" marker so a chapter that legitimately opens with a numbered topic
+  // list ("1. Topic 1 ...") is not mistaken for a notes group.
+  const numberedEntries = (sample.slice(0, 1200).match(/(?:^|\n)\s*\d{1,3}[.)]\s+["“A-Z]/g) || []).length;
+  const looksLikeNotesGroupLabel = isChapterMarkerHeading && numberedEntries >= 3;
+
   if (headingText) {
     if (headingText.length <= 120) score += 12;
     else score -= 16;
@@ -526,8 +539,8 @@ const scoreCandidate = (
     // real chapter heading, not a running header that merely repeats the title on
     // every page. Without this, the (often long) real heading loses on length to a
     // short running header and the chapter resolves several pages late, pulling its
-    // opening into the previous chapter.
-    if (/^(?:\[\[PAGE[^\]]*\]\]\s*)?(?:chapter|ch\.?|part|book|volume|vol\.?)\s+[\divxlcdm]+\b/iu.test(headingText.trim())) {
+    // opening into the previous chapter. Excludes Notes-section group labels.
+    if (isChapterMarkerHeading && !looksLikeNotesGroupLabel) {
       score += 50;
     }
   }
@@ -539,8 +552,9 @@ const scoreCandidate = (
     score -= 12;
   }
 
-  const sample = content.slice(candidate.contentStart, candidate.contentStart + 1600);
   score += scoreBodySample(sample);
+  // Never resolve a chapter's body to a Notes-section group label.
+  if (looksLikeNotesGroupLabel) score -= 70;
   // A real "Index" section legitimately has a TOC-like body (terms + page numbers),
   // so the TOC-region penalty would wrongly reject it and let the previous chapter
   // (e.g. Notes) swallow it. The heading-line TOC-entry check above still guards
@@ -594,7 +608,7 @@ const findHeadingCandidates = (
   for (const variant of variants) {
     const escaped = escapeRegex(variant);
     const pattern = new RegExp(
-      `(?:^|\\n)[ \\t]*(?:\\[\\[PAGE\\s+\\d+\\]\\][ \\t]*)?(?:#{1,6}[ \\t]*)?(?:(?:Chapter|Ch\\.?|Part|Section|Book|Volume|Vol\\.?)\\s+[\\p{L}\\p{N}IVXLCDM.-]+[ \\t]*[:.\\-—]?[ \\t]*)?${escaped}[ \\t]*(?:\\r?\\n|$)`,
+      `(?:^|\\n)[ \\t]*(?:\\[\\[PAGE\\s+\\d+\\]\\][ \\t]*)?(?:#{1,6}[ \\t]*)?(?:[*_~]{1,3}[ \\t]*)?(?:(?:Chapter|Ch\\.?|Part|Section|Book|Volume|Vol\\.?)\\s+[\\p{L}\\p{N}IVXLCDM.-]+[ \\t]*[:.\\-—]?[ \\t]*)?${escaped}(?:[ \\t]*[*_~]{1,3})?[ \\t]*(?:\\r?\\n|$)`,
       'giu'
     );
 
