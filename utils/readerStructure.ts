@@ -274,6 +274,44 @@ const normalizeReaderText = (value: string): string => {
 
 export const normalizeNotesReaderText = (value: string): string => {
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // De-fragment a multi-line "Chapter N. Title" notes heading. PDF extraction emits each
+  // visual line of such a heading as its own emphasis-wrapped paragraph ("*Chapter 4. …
+  // Between*", "*…Decline of the…*", "*Nanny State*"); the trailing fragment lacks
+  // terminal punctuation, so the heading's first note ("1. …") is read as running text
+  // and swallowed by the heading — leaving that note undetectable and unlinkable. When
+  // (and only when) such continuation fragments actually follow an emphasis-wrapped
+  // heading, fold them back into one clean heading line. A normal single-line heading has
+  // no following fragments, so it is left untouched (EPUB note headings are unaffected).
+  {
+    const isContinuationFragment = (block: string): boolean =>
+      /^[*_~].*[*_~]$/u.test(block) &&
+      block.length <= 80 &&
+      !/^\[?\s*\d{1,3}[.)]/.test(block) &&
+      !/[.!?。！？]$/u.test(block.replace(/[*_~]+$/u, ''));
+    const blocks = text.split(/\n{2,}/);
+    const merged: string[] = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i].trim();
+      const isEmphasisedHeading =
+        /^[*_~]/.test(block) &&
+        /^[*_~]{0,2}\s*(?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\b/iu.test(block);
+      if (isEmphasisedHeading) {
+        const fragments: string[] = [];
+        let j = i + 1;
+        while (j < blocks.length && isContinuationFragment(blocks[j].trim())) {
+          fragments.push(blocks[j].trim());
+          j++;
+        }
+        if (fragments.length > 0) {
+          merged.push([block, ...fragments].join(' ').replace(/[*_~]+/g, '').replace(/\s+/g, ' ').trim());
+          i = j - 1;
+          continue;
+        }
+      }
+      merged.push(blocks[i]);
+    }
+    text = merged.join('\n\n');
+  }
   // A notes section heading often italicizes just the keyword (e.g. "<i>Chapter</i> 5"
   // -> "*Chapter* 5"), and the stray "*" breaks the "chapter <n>" heading detection,
   // so the heading merges into the previous note's line. Unwrap emphasis that wraps

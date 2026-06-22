@@ -142,6 +142,34 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // A PDF multi-line "Chapter N. Title" notes heading extracts as several emphasis-
+  // wrapped paragraphs; the trailing fragment has no terminal punctuation, so the
+  // heading's first note ("1. …") was read as running text and swallowed — leaving it
+  // undetectable and unlinkable. The fragments must fold into one heading and note 1
+  // must stand on its own so it can be matched and linked.
+  const fragmented = [
+    '*Chapter 4. The Last Days of Politics: Parallels Between*', '',
+    '*the Senile Decline of the Holy Mother Church and the*', '',
+    '*Nanny State*', '',
+    '1. Clarke, *op. cit.,* p. 9.', '',
+    '2. Van Creveld, *The Transformation of War.*',
+  ].join('\n');
+  const out = normalizeNotesReaderText(fragmented);
+  assert.ok(
+    /^Chapter 4\. The Last Days of Politics: Parallels Between the Senile Decline of the Holy Mother Church and the Nanny State\n\n1\. Clarke/.test(out),
+    'a fragmented multi-line chapter label must fold into one heading with its first note set off',
+  );
+
+  // EPUB safety: a single-line heading has no continuation fragments, so it is left as
+  // it was (the heading line is not stripped/merged and note 1 still follows).
+  assert.equal(
+    normalizeNotesReaderText('Chapter 4. The Last Days\n\n1. A note here about something important.\n\n2. Another note follows here.'),
+    'Chapter 4. The Last Days\n\n1. A note here about something important.\n2. Another note follows here.',
+    'a normal single-line heading must be left intact (no fragments to fold)',
+  );
+}
+
+{
   // Real EPUB shape (The Sovereign Individual endnotes): a note whose final element
   // is italic ends with a markdown "*" (e.g. "*Ibid.*", "*op. cit.*"). The trailing
   // emphasis marker must not cause the NEXT note marker to be treated as running text.

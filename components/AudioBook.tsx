@@ -382,6 +382,15 @@ const isRomanNoteMarkerText = (value: string): boolean =>
 
 const noteKeyFromHref = (href?: string): string | undefined => {
   if (!href) return undefined;
+  // A PDF footnote marker carries a synthetic "#pdfnote-<page>-<n>" href: it identifies
+  // the marker for recognition, but the back-matter note entries it points at have no
+  // matching anchor (PDF notes are bare "N." lines scoped by a "Chapter N" label). A
+  // note key derived from it could never match an entry, and a present-but-unmatchable
+  // key makes the resolver give up and suppresses the note→marker back-link. So treat
+  // these as anchorless and let the chapter-scope path (by chapter + marker number)
+  // resolve them — the same path anchorless EPUB notes already use. (EPUB anchors never
+  // start with "#pdfnote", so EPUB note keys are unaffected.)
+  if (/^#pdfnote-/iu.test(href)) return undefined;
   const hash = href.match(/#([^#/?]+)/u)?.[1];
   const raw = hash || href;
   const normalized = raw.toLowerCase().replace(/[^a-z0-9]+/gu, '');
