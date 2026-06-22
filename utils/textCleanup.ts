@@ -126,7 +126,13 @@ const looksLikeCitationBody = (value: string): boolean => {
 
 const splitAttributionTail = (value: string): string => {
   const clean = value.replace(/\s+/g, ' ').trim();
-  const match = clean.match(/^(.{20,900}?[.!?。！？"”’](?:\d{1,3})?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^.!?\n]{2,140})$/u);
+  // The body ends with the quote's terminal punctuation, then an optional footnote
+  // marker and emphasis markers in any order. The marker is either a bare digit or a
+  // structural note link ("[1](#pdfnote-…)", as the PDF extractor now emits and EPUB
+  // always has), and a multi-line italic epigraph puts the closing emphasis before the
+  // marker ("understand.”*1" / "understand.”*[1](#…)"). markCitationBody strips the
+  // emphasis and re-glues the marker to the quote, so every ordering normalises the same.
+  const match = clean.match(/^(.{20,900}?[.!?。！？"”’][*_~]{0,2}(?:\d{1,3}|\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^.!?\n]{2,140})$/u);
   if (!match) return value;
   const body = match[1].trim();
   const attribution = stripDisplayStyleMarkers(match[2]).trim();

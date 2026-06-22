@@ -717,6 +717,24 @@ const makeTopic = (index: number): string => [
     rearrangeAndCleanText('*“The* *future* *is disorder.”1*\n\n—DANNY HILLIS'),
     '*“The future is disorder.”1*\n\n—— DANNY HILLIS'
   );
+  // Real PDF extraction of a multi-line italic epigraph: each visual line carries its
+  // own emphasis, the superscript footnote lands AFTER the closing marker
+  // ("disorder.”*1", not "disorder.”1*"), and the attribution is on the very next line
+  // (a single newline, so the same paragraph). The footnote must glue back inside the
+  // quote and the attribution must split onto its own block.
+  assert.equal(
+    rearrangeAndCleanText('*“The* *future* *is disorder.”*1\n—DANNY HILLIS'),
+    '*“The future is disorder.”1*\n\n—— DANNY HILLIS'
+  );
+  // PDF extraction now emits a detected superscript as a structural note link
+  // ("[1](#pdfnote-<page>-<n>)", the same shape an EPUB <a href="#…"> footnote produces)
+  // so the renderer recognises it via the internal-note-link path rather than the
+  // ambiguous bare-digit heuristic. The inline epigraph (quote + single-newline
+  // attribution) must still split, keeping the note link on the quote.
+  assert.equal(
+    rearrangeAndCleanText('*“The* *future* *is disorder.”*[1](#pdfnote-11-1)\n—DANNY HILLIS'),
+    '*“The future is disorder.”*[1](#pdfnote-11-1)\n\n—— DANNY HILLIS'
+  );
   assert.equal(
     rearrangeAndCleanText('—MICHAEL GRASSO[4](part0023_split_001.html#ch01-en4)'),
     '—— MICHAEL GRASSO[4](part0023_split_001.html#ch01-en4)'
