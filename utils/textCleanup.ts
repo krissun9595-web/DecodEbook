@@ -7,7 +7,17 @@ const looksLikeHeadingOrStructure = (value: string): boolean => {
   const trimmed = value.trim().replace(/^[*_~]+\s*/u, '').replace(/\s*[*_~]+$/u, '').trim();
   if (!trimmed) return false;
   const withoutHashes = trimmed.replace(/^#{1,6}\s*/, '');
-  if (/^(?:chapter|part|book|section|appendix)\s+[\wivxlcdm\d]/iu.test(withoutHashes)) return true;
+  // A structural heading's designation is a number, roman numeral, or capitalised word
+  // ("Chapter 1", "Book III", "Part One") — never a lowercase prose word. Requiring an
+  // uppercase/digit after the keyword stops a soft-wrapped continuation line that merely
+  // begins with one of these common words ("book tells why…", "Part of the reason…",
+  // "section on trade…") from being misread as a heading and split into its own
+  // paragraph — which shreds a sentence across paragraphs. (EPUB paragraphs arrive
+  // pre-joined from <p> tags, so they don't begin mid-sentence; only PDF soft-wrapped
+  // lines do.) The first char after the keyword is tested case-sensitively, so the
+  // keyword itself still matches in any case (Chapter/chapter/CHAPTER).
+  const headingDesignation = withoutHashes.match(/^(?:chapter|part|book|section|appendix)\s+(\S)/iu);
+  if (headingDesignation && /[A-Z0-9]/.test(headingDesignation[1])) return true;
   if (/^(?:introduction|preface|foreword|afterword|epilogue|prologue|acknowledg(?:e)?ments?|contents?)$/iu.test(withoutHashes)) return true;
   const numberedHeading = trimmed.match(/^(?:#{1,6}\s*)?(?:(?:topic|day|lesson)\s+)?\d{1,3}[\).:\-–—|]\s+(.+)$/iu);
   if (numberedHeading) {
@@ -159,12 +169,27 @@ const markCitationBlocks = (paragraphs: string[]): string[] => paragraphs.map((p
 
 const looksLikeContinuationAfterArtificialBreak = (previous: string, current: string): boolean => {
   const prev = previous.trim();
-  const cur = current.trim();
+  // A PDF page boundary injects a "[[PAGE n]]" marker at the start of the next block, so
+  // a sentence that runs across the page break ("…is rapidly" / "[[PAGE 15]] eroding.")
+  // is split into two paragraphs and the marker blocks the continuation heuristics below.
+  // Look past a leading page marker when deciding continuation; the marker stays in the
+  // merged text (it's load-bearing for pagination and stripped at render). EPUB has no
+  // page markers, so this never changes EPUB behaviour.
+  const cur = current.trim().replace(/^\[\[PAGE\s+\d+\]\]\s*/iu, '');
+  // The previous block may itself end with an attribution line — e.g. splitAttributionTail
+  // returns "*quote*\n\n—— AUTHOR" as one block when a quote and its credit shared a
+  // paragraph (the PDF epigraph case). The credit must never absorb the next body
+  // paragraph, but the whole-block checks below miss it (the block starts with the quote,
+  // not the dash), so a body paragraph starting with a capitalised word ("We believe…")
+  // gets wrongly merged as a name continuation. Guard on the block's last line too.
+  const prevLastLine = (prev.split('\n').pop() || '').trim();
   if (
     !prev ||
     !cur ||
     endsWithTerminalPunctuation(prev) ||
     looksLikeAttributionLine(prev) ||
+    looksLikeAttributionLine(prevLastLine) ||
+    looksLikeSignatureLine(prevLastLine) ||
     looksLikeAttributionLine(cur) ||
     looksLikeSignatureLine(prev) ||
     looksLikeSignatureLine(cur) ||

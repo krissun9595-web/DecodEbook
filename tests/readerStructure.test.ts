@@ -763,6 +763,33 @@ const makeTopic = (index: number): string => [
     rearrangeAndCleanText('*“The* *future* *is disorder.”*[1](#pdfnote-11-1)\n—DANNY HILLIS'),
     '*“The future is disorder.”*[1](#pdfnote-11-1)\n\n—— DANNY HILLIS'
   );
+  // An epigraph attribution must not absorb the body paragraph that follows it. The
+  // citation collapses to one "*quote*…\n\n—— AUTHOR" block; when the next paragraph
+  // opens with a capitalised word ("We believe…") the line-continuation merge used to
+  // glue it onto the attribution (prev ends with a capitalised name, next starts with
+  // one). The attribution's own line is an attribution, so the merge must be refused.
+  assert.equal(
+    rearrangeAndCleanText('*“A long enough citation body that reads as a real quotation, ending here properly.”*[1](#pdfnote-1-1)\n—VITO TANZI\n\nWe believe that the next body paragraph begins with a capitalised word and must stay separate.'),
+    '*“A long enough citation body that reads as a real quotation, ending here properly.”*[1](#pdfnote-1-1)\n\n—— VITO TANZI\n\nWe believe that the next body paragraph begins with a capitalised word and must stay separate.'
+  );
+  // A soft-wrapped PDF continuation line that merely begins with a structural keyword
+  // ("book", "part", "section"…) followed by a lowercase prose word must NOT be treated
+  // as a heading and split into its own paragraph — that shredded sentences across
+  // paragraphs. A real heading designation (number/roman/Capitalised word) still is one.
+  assert.equal(
+    rearrangeAndCleanText('We believe the modern phase will end with it. This\nbook tells why in detail across the following pages here.'),
+    'We believe the modern phase will end with it. This book tells why in detail across the following pages here.'
+  );
+  assert.equal(
+    rearrangeAndCleanText('Some closing prose sentence here.\n\nBook III\n\nthe content of book three flows on here with more words to be safe and long.'),
+    'Some closing prose sentence here.\n\nBook III\n\nthe content of book three flows on here with more words to be safe and long.'
+  );
+  // A sentence running across a PDF page boundary is split by the injected "[[PAGE n]]"
+  // marker; it must be rejoined (the marker stays inline — it is stripped at render).
+  assert.equal(
+    rearrangeAndCleanText('A long sentence running toward the page edge that is rapidly\n\n[[PAGE 15]] eroding into the next page here with more following text to be safe.'),
+    'A long sentence running toward the page edge that is rapidly [[PAGE 15]] eroding into the next page here with more following text to be safe.'
+  );
   assert.equal(
     rearrangeAndCleanText('—MICHAEL GRASSO[4](part0023_split_001.html#ch01-en4)'),
     '—— MICHAEL GRASSO[4](part0023_split_001.html#ch01-en4)'
