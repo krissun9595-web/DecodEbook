@@ -861,7 +861,7 @@ const App: React.FC = () => {
         ]);
         const fontCache = new Map<string, { italic: boolean; bold: boolean }>();
 
-        type PdfGlyph = { x: number; y: number; h: number; str: string; italic: boolean; bold: boolean };
+        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean };
         const glyphs: PdfGlyph[] = [];
         for (const item of textContent.items as any[]) {
           if (!('str' in item) || !item.str.trim()) continue;
@@ -871,6 +871,7 @@ const App: React.FC = () => {
             x: tr[4] || 0,
             y: tr[5] || 0,
             h: Math.hypot(tr[0] || 0, tr[1] || 0) || item.height || 0,
+            w: item.width || 0,
             str: item.str,
             italic: emphasis.italic,
             bold: emphasis.bold,
@@ -903,9 +904,15 @@ const App: React.FC = () => {
           .map(group => {
             const items = group.items.sort((a, b) => a.x - b.x);
             const lineBodyHeight = mode(items.map(it => Math.round(it.h))) || group.baseH;
+            const gapThreshold = Math.max(1, lineBodyHeight * 0.12);
             let out = '';
             let open: 'italic' | 'bold' | null = null;
             items.forEach((it, idx) => {
+              const prev = idx > 0 ? items[idx - 1] : null;
+              // No space when the horizontal gap to the previous glyph is tiny — rejoins
+              // letter-spaced small caps ("C LIVE" -> "CLIVE") without merging real words
+              // (body word-gaps are far larger than this threshold).
+              const glue = !!prev && prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold;
               const trimmed = it.str.trim();
               // A small-font number not at the line start is a flattened superscript
               // footnote marker: glue it (no space) to the preceding token so the reader's
@@ -919,7 +926,7 @@ const App: React.FC = () => {
               // Wrap maximal runs of one emphasis style once, so a multi-item italic
               // title becomes "*A B C*" rather than fragmented "*A* *B* *C*".
               const style: 'italic' | 'bold' | null = it.italic ? 'italic' : it.bold ? 'bold' : null;
-              const separator = out === '' ? '' : ' ';
+              const separator = out === '' ? '' : (glue ? '' : ' ');
               if (style !== open) {
                 if (open) out += MARK[open];
                 out += separator;
@@ -957,6 +964,17 @@ const App: React.FC = () => {
           }
           formattedLines.push(line.text);
         });
+
+        // Join a word hyphenated across a line break onto the next line without the
+        // inserted space, so "nation-\nstate" reads "nation-state". The hyphen is kept:
+        // most line-end hyphens in real books are genuine compounds (nation-state,
+        // cost-benefit), and dropping the hyphen would corrupt them.
+        for (let i = 0; i < formattedLines.length - 1; i++) {
+          if (/[A-Za-z]-$/.test(formattedLines[i]) && formattedLines[i + 1] && /^[a-z]/.test(formattedLines[i + 1])) {
+            formattedLines[i] = formattedLines[i] + formattedLines.splice(i + 1, 1)[0];
+            i--;
+          }
+        }
 
         const pageText = formattedLines
           .join('\n')
