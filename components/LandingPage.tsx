@@ -11,9 +11,38 @@ function useUnlockScroll() {
   useEffect(() => {
     const root = document.getElementById('root');
     if (!root) return;
+    const body = document.body;
+    const html = document.documentElement;
+    const previous = {
+      rootPosition: root.style.position,
+      rootOverflow: root.style.overflow,
+      rootHeight: root.style.height,
+      rootMinHeight: root.style.minHeight,
+      bodyOverflow: body.style.overflow,
+      bodyHeight: body.style.height,
+      htmlOverflow: html.style.overflow,
+      htmlHeight: html.style.height,
+    };
+
     root.style.position = 'static';
-    root.style.overflow = 'auto';
-    return () => { root.style.position = ''; root.style.overflow = ''; };
+    root.style.overflow = 'visible';
+    root.style.height = 'auto';
+    root.style.minHeight = '100%';
+    body.style.overflow = 'auto';
+    body.style.height = 'auto';
+    html.style.overflow = 'auto';
+    html.style.height = 'auto';
+
+    return () => {
+      root.style.position = previous.rootPosition;
+      root.style.overflow = previous.rootOverflow;
+      root.style.height = previous.rootHeight;
+      root.style.minHeight = previous.rootMinHeight;
+      body.style.overflow = previous.bodyOverflow;
+      body.style.height = previous.bodyHeight;
+      html.style.overflow = previous.htmlOverflow;
+      html.style.height = previous.htmlHeight;
+    };
   }, []);
 }
 
@@ -1052,15 +1081,32 @@ type FeatureE = {
   patternBreak?: boolean;
 };
 
+const LANDING_E_PALETTE = {
+  cyan: '#00f3ff',
+  emerald: '#34d399',
+  rose: '#ff003c',
+  amber: '#fbbf24',
+  violet: '#a78bfa',
+  pink: '#ff4fd8',
+};
+
+function MediaFrameE({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative w-full max-w-[580px] mx-auto aspect-[4/3]">
+      {children}
+    </div>
+  );
+}
+
 function VoiceSynthDemo() {
   return (
-    <div className="bg-[#0a0a0c] border border-[#00f3ff]/20 rounded-sm p-5 sm:p-6 font-mono text-[11px] sm:text-xs space-y-4 relative overflow-hidden">
+    <div className="h-full bg-[#0a0a0c] border border-[#00f3ff]/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#00f3ff]/40 to-transparent" />
       <div className="flex items-center justify-between">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-600">Le Petit Prince · Ch. 21</p>
+        <p className="text-[8px] sm:text-[9px] uppercase tracking-widest text-zinc-600">Le Petit Prince · Ch. 21</p>
         <span className="text-[9px] text-zinc-600">FR ↔ EN</span>
       </div>
-      <div className="grid grid-cols-2 gap-4 text-zinc-400 leading-relaxed">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 text-zinc-400 leading-[1.6]">
         <div>
           <p className="text-[9px] uppercase tracking-widest text-zinc-600 mb-2">Original</p>
           <p>"Je ne suis pas <span className="bg-[#00f3ff]/15 text-[#00f3ff] px-1 rounded-sm">apprivoisé</span>", dit le renard.</p>
@@ -1070,9 +1116,9 @@ function VoiceSynthDemo() {
           <p>"I am not <span className="bg-[#00f3ff]/15 text-[#00f3ff] px-1 rounded-sm">tamed</span>", said the fox.</p>
         </div>
       </div>
-      <div className="border-t border-zinc-800 pt-3 space-y-1.5">
+      <div className="border-t border-zinc-800 pt-3 space-y-1.5 flex-1 min-h-0">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">apprivoisé · in this passage</p>
-        <p className="text-zinc-400 leading-relaxed">Tamed — but in Saint-Exupéry's hands it means something deeper. <em className="text-zinc-300 not-italic">To be bound to another by ritual and care.</em> The fox is about to teach the prince the difference.</p>
+        <p className="text-zinc-400 leading-[1.65]">Tamed, but in Saint-Exupery's hands it means something deeper: <em className="text-zinc-300 not-italic">to be bound to another by ritual and care.</em></p>
       </div>
       <div className="flex items-center gap-3 pt-1">
         <div className="w-7 h-7 rounded-full bg-[#00f3ff]/10 border border-[#00f3ff]/40 flex items-center justify-center shrink-0">
@@ -1087,29 +1133,29 @@ function VoiceSynthDemo() {
 
 function PodcastDemo() {
   return (
-    <div className="bg-[#0a0a0c] border border-[#f59e0b]/20 rounded-sm p-5 sm:p-6 font-mono text-[11px] sm:text-xs space-y-4 relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#f59e0b]/40 to-transparent" />
+    <div className="h-full bg-[#0a0a0c] border border-[#fbbf24]/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#fbbf24]/40 to-transparent" />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-[9px] uppercase tracking-widest text-zinc-600">Ep · ch. 21</span>
-          <span className="text-[#f59e0b]">●</span>
+          <span className="text-[#fbbf24]">●</span>
           <span className="text-[9px] text-zinc-500">FR book · EN discussion · late-night</span>
         </div>
         <span className="text-[9px] text-zinc-600">12:04</span>
       </div>
-      <div className="flex items-end gap-[2px] h-12">
+      <div className="flex items-end gap-[2px] h-10 sm:h-12 shrink-0">
         {[3,7,4,8,5,9,6,4,7,8,5,3,6,9,7,4,8,5,9,6,3,7,5,8,4,6,9,5,3,7,4,8,5,9,6,4,7,5,3,6,8,4,9,5,7].map((h,i) => (
-          <div key={i} className="flex-1 bg-[#f59e0b]/50" style={{ height: `${h*10}%` }} />
+          <div key={i} className="flex-1 bg-[#fbbf24]/50" style={{ height: `${h*10}%` }} />
         ))}
       </div>
-      <div className="border-t border-zinc-800 pt-3 space-y-2.5">
+      <div className="border-t border-zinc-800 pt-3 space-y-2.5 flex-1 min-h-0">
         <div className="flex gap-2.5">
-          <span className="text-[9px] text-[#f59e0b] uppercase tracking-widest shrink-0 w-10">Maya</span>
-          <p className="text-zinc-400 leading-relaxed">"The fox doesn't just teach a moral here — he reframes what 'taming' means. It's almost a contract between two beings."</p>
+          <span className="text-[9px] text-[#fbbf24] uppercase tracking-widest shrink-0 w-10">Maya</span>
+          <p className="text-zinc-400 leading-[1.6]">"The fox is not defining taming. He is showing how responsibility begins."</p>
         </div>
         <div className="flex gap-2.5">
           <span className="text-[9px] text-zinc-500 uppercase tracking-widest shrink-0 w-10">Jules</span>
-          <p className="text-zinc-500 leading-relaxed">"Right — and Saint-Exupéry borrows that from his own pilot life. The rituals, the trust, the slow approach…"</p>
+          <p className="text-zinc-500 leading-[1.6]">"Exactly. The rituals, the trust, the slow approach. The relationship creates the meaning."</p>
         </div>
       </div>
     </div>
@@ -1118,13 +1164,13 @@ function PodcastDemo() {
 
 function VisualCoreDemo() {
   return (
-    <div className="bg-[#0a0a0c] border border-[#a78bfa]/20 rounded-sm p-5 sm:p-6 space-y-4 relative overflow-hidden">
+    <div className="h-full bg-[#0a0a0c] border border-[#a78bfa]/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#a78bfa]/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Style · cinematic still · 16:9</p>
         <span className="text-[9px] text-zinc-600">×3 variants</span>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 shrink-0">
         {[0,1,2].map(i => (
           <div key={i} className="aspect-video rounded-sm relative overflow-hidden" style={{
             background: i === 0
@@ -1138,8 +1184,8 @@ function VisualCoreDemo() {
           </div>
         ))}
       </div>
-      <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono leading-relaxed">
-        <span className="text-zinc-600">prompt ›</span> the little prince stands on his tiny asteroid, watching forty-four sunsets in a single day
+      <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono leading-[1.65] flex-1 min-h-0">
+        <span className="text-zinc-600">prompt ›</span> tiny asteroid, forty-four sunsets, loneliness made visible
       </p>
       <div className="flex items-center gap-2 pt-1 font-mono">
         {['Cinematic', 'Watercolor', 'Line drawing', 'Ukiyo-e'].map((s, i) => (
@@ -1152,13 +1198,13 @@ function VisualCoreDemo() {
 
 function CineRenderDemo() {
   return (
-    <div className="bg-[#0a0a0c] border border-[#ff003c]/20 rounded-sm p-5 sm:p-6 space-y-4 relative overflow-hidden">
+    <div className="h-full bg-[#0a0a0c] border border-[#ff003c]/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#ff003c]/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Ch. 21 · The Fox</p>
         <span className="text-[9px] text-zinc-600">1080p · 1:24</span>
       </div>
-      <div className="aspect-video rounded-sm relative overflow-hidden" style={{ background: 'radial-gradient(circle at 30% 60%, #fbbf24 0%, #f97316 30%, #1f0f3a 70%, #020202 100%)' }}>
+      <div className="aspect-video rounded-sm relative overflow-hidden shrink-0" style={{ background: 'radial-gradient(circle at 30% 60%, #fbbf24 0%, #f97316 30%, #1f0f3a 70%, #020202 100%)' }}>
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 backdrop-blur-sm border border-white/40 flex items-center justify-center">
@@ -1167,7 +1213,7 @@ function CineRenderDemo() {
         </div>
         <p className="absolute bottom-3 left-3 right-3 text-[10px] text-white/80 font-mono leading-snug">"You become responsible, forever, for what you have tamed."</p>
       </div>
-      <div className="flex gap-1">
+      <div className="flex gap-1 shrink-0">
         {[0,1,2,3,4,5].map(i => (
           <div key={i} className="flex-1 aspect-video rounded-[2px]" style={{
             background: `linear-gradient(${120 + i*20}deg, #ff003c${i === 2 ? '70' : '20'}, #1a0510)`
@@ -1180,22 +1226,22 @@ function CineRenderDemo() {
 
 function MemLogDemo() {
   return (
-    <div className="bg-[#0a0a0c] border border-[#10b981]/20 rounded-sm p-5 sm:p-6 space-y-3 relative overflow-hidden min-h-[260px]">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#10b981]/40 to-transparent" />
+    <div className="h-full bg-[#0a0a0c] border border-[#34d399]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#34d399]/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Notebook · 12 sparks · 4 chapters</p>
-        <span className="text-[9px] text-[#10b981]">Mind map ready</span>
+        <span className="text-[9px] text-[#34d399]">Mind map ready</span>
       </div>
-      <div className="relative h-[200px]">
-        <div className="absolute top-2 left-1 w-32 sm:w-36 p-3 rounded-sm shadow-md bg-[#fef3c7] rotate-[-3deg] text-[11px] leading-tight text-zinc-800">
+      <div className="relative flex-1 min-h-0">
+        <div className="absolute top-2 left-1 w-32 sm:w-36 p-3 rounded-sm shadow-md bg-[#fef3c7] rotate-[-3deg] text-[10px] sm:text-[11px] leading-[1.35] text-zinc-800">
           <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 mb-1">apprivoiser</p>
-          <p>to tame — but really, "to make tied to one another"</p>
+          <p>to tame, but with ritual and responsibility</p>
         </div>
-        <div className="absolute top-9 left-24 sm:left-32 w-36 sm:w-40 p-3 rounded-sm shadow-md bg-[#fce7f3] rotate-[2deg] text-[11px] leading-tight text-zinc-800">
+        <div className="absolute top-9 left-24 sm:left-32 w-36 sm:w-40 p-3 rounded-sm shadow-md bg-[#fce7f3] rotate-[2deg] text-[10px] sm:text-[11px] leading-[1.35] text-zinc-800">
           <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 mb-1">ch.1 · spark</p>
           <p>"All grown-ups were once children, but few of them remember it."</p>
         </div>
-        <div className="absolute bottom-1 left-8 sm:left-16 w-32 sm:w-36 p-3 rounded-sm shadow-md bg-[#d1fae5] rotate-[-1deg] text-[11px] leading-tight text-zinc-800">
+        <div className="absolute bottom-1 left-8 sm:left-16 w-32 sm:w-36 p-3 rounded-sm shadow-md bg-[#d1fae5] rotate-[-1deg] text-[10px] sm:text-[11px] leading-[1.35] text-zinc-800">
           <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 mb-1">mind map</p>
           <p>Fox → Rose → Prince · the ritual of taming</p>
         </div>
@@ -1236,35 +1282,35 @@ function GenFilesDemo() {
 
 function AiTutorDemo() {
   return (
-    <div className="bg-[#0a0a0c] border border-[#22d3ee]/20 rounded-sm p-5 sm:p-6 font-mono text-[11px] sm:text-xs space-y-3 relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#22d3ee]/40 to-transparent" />
+    <div className="h-full bg-[#0a0a0c] border border-[#ff4fd8]/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#ff4fd8]/40 to-transparent" />
       <div className="flex items-center justify-between">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Tutor · Le Petit Prince · Ch. 21</p>
-        <span className="text-[9px] text-[#22d3ee]">● online</span>
+        <span className="text-[9px] text-[#ff4fd8]">● online</span>
       </div>
-      <div className="space-y-3 pt-1">
+      <div className="space-y-2.5 sm:space-y-3 pt-1 flex-1 min-h-0">
         <div className="flex justify-end">
-          <div className="max-w-[85%] bg-zinc-900/80 border border-zinc-800 rounded-lg rounded-tr-sm px-3 py-2 text-zinc-300 leading-relaxed">
+          <div className="max-w-[85%] bg-zinc-900/80 border border-zinc-800 rounded-lg rounded-tr-sm px-3 py-2 text-zinc-300 leading-[1.55]">
             Why does the fox suddenly say "tu" instead of "vous"?
           </div>
         </div>
         <div className="flex">
-          <div className="max-w-[85%] bg-[#22d3ee]/8 border border-[#22d3ee]/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-relaxed space-y-1.5">
+          <div className="max-w-[85%] bg-[#ff4fd8]/10 border border-[#ff4fd8]/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] space-y-1.5">
             <p>French has two "you" forms — <em className="text-zinc-200 not-italic">vous</em> (formal, distant) and <em className="text-zinc-200 not-italic">tu</em> (intimate, between friends).</p>
-            <p>Saint-Exupéry shifts to <em className="text-[#22d3ee] not-italic">tu</em> the moment the fox accepts the prince's friendship. The pronoun is the bond made visible.</p>
+            <p>Saint-Exupery shifts to <em className="text-[#ff4fd8] not-italic">tu</em> when the fox accepts the prince's friendship. The pronoun makes the bond visible.</p>
           </div>
         </div>
         <div className="flex justify-end">
-          <div className="max-w-[85%] bg-zinc-900/80 border border-zinc-800 rounded-lg rounded-tr-sm px-3 py-2 text-zinc-300 leading-relaxed">
+          <div className="max-w-[85%] bg-zinc-900/80 border border-zinc-800 rounded-lg rounded-tr-sm px-3 py-2 text-zinc-300 leading-[1.55]">
             Does he ever switch back?
           </div>
         </div>
         <div className="flex">
-          <div className="max-w-[80%] bg-[#22d3ee]/8 border border-[#22d3ee]/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-relaxed flex items-center gap-2">
+          <div className="max-w-[80%] bg-[#ff4fd8]/10 border border-[#ff4fd8]/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] flex items-center gap-2">
             <span className="inline-flex gap-0.5">
-              <span className="w-1 h-1 rounded-full bg-[#22d3ee] animate-pulse" />
-              <span className="w-1 h-1 rounded-full bg-[#22d3ee] animate-pulse" style={{ animationDelay: '0.2s' }} />
-              <span className="w-1 h-1 rounded-full bg-[#22d3ee] animate-pulse" style={{ animationDelay: '0.4s' }} />
+              <span className="w-1 h-1 rounded-full bg-[#ff4fd8] animate-pulse" />
+              <span className="w-1 h-1 rounded-full bg-[#ff4fd8] animate-pulse" style={{ animationDelay: '0.2s' }} />
+              <span className="w-1 h-1 rounded-full bg-[#ff4fd8] animate-pulse" style={{ animationDelay: '0.4s' }} />
             </span>
             <span className="text-zinc-500">tutor is reading…</span>
           </div>
@@ -1276,48 +1322,60 @@ function AiTutorDemo() {
 
 const FEATURES_E: FeatureE[] = [
   {
-    id: 'voice_synth', num: '01', codename: 'voice_synth', label: 'Read & Listen', side: 'left', color: '#00f3ff',
-    before: 'You used to fight the original line by line, dictionary always open.',
-    after: <>Now you read with a translation at your side, and a <span className="text-[#00f3ff]">voice in your ears</span>.</>,
-    cta: 'Try voice_synth',
+    id: 'guided_reader', num: '01', codename: 'guided_reader', label: 'Read & Listen', side: 'left', color: LANDING_E_PALETTE.cyan,
+    before: 'The original used to mean reading line by line with a dictionary always open.',
+    after: <>Now the original, translation, and narration stay synced, with <span className="text-[#00f3ff]">contextual meaning on tap</span>.</>,
+    cta: 'Open the reader',
     demo: <VoiceSynthDemo />,
   },
   {
-    id: 'ai_tutor', num: '02', codename: 'ai_tutor', label: 'Ask the Book', side: 'right', color: '#22d3ee',
-    before: 'You used to close the book with three questions and no one to ask them.',
-    after: <>Now you <span className="text-[#22d3ee]">ask the book anything</span> — and a tutor who's read the whole thing answers, in your language.</>,
-    cta: 'Try ai_tutor',
+    id: 'context_tutor', num: '02', codename: 'context_tutor', label: 'Ask the Book', side: 'right', color: LANDING_E_PALETTE.pink,
+    before: 'Your questions used to outlive the reading session.',
+    after: <>Now you ask about grammar, nuance, and context, and get <span className="text-[#ff4fd8]">answers grounded in the chapter</span>.</>,
+    cta: 'Ask the tutor',
     demo: <AiTutorDemo />,
   },
   {
-    id: 'podcast', num: '03', codename: 'podcast', label: 'Discuss', side: 'left', color: '#f59e0b',
-    before: 'You used to push through a dense textbook — and quit by page ten.',
-    after: <>Now two hosts walk you through it, in whatever <span className="text-[#f59e0b]">tone and language you choose</span>. Listen on the walk.</>,
-    cta: 'Try podcast',
+    id: 'chapter_podcast', num: '03', codename: 'chapter_podcast', label: 'Discuss', side: 'left', color: LANDING_E_PALETTE.amber,
+    before: 'Dense chapters used to demand a desk, silence, and an hour of focus.',
+    after: <>Now two hosts unpack the chapter in the <span className="text-[#fbbf24]">tone and language you choose</span>. Listen anywhere.</>,
+    cta: 'Create a podcast',
     demo: <PodcastDemo />,
   },
   {
-    id: 'visual_core', num: '04', codename: 'visual_core', label: 'Visualize', side: 'right', color: '#a78bfa',
-    before: 'You used to strain to picture abstract ideas, guessing at what the author meant.',
-    after: <>Now you <span className="text-[#a78bfa]">see them</span> — rendered however suits the chapter. Line drawing. Watercolor. Cinematic still.</>,
-    cta: 'Try visual_core',
+    id: 'visual_notes', num: '04', codename: 'visual_notes', label: 'Visualize', side: 'right', color: LANDING_E_PALETTE.violet,
+    before: 'Abstract scenes and ideas used to stay vague.',
+    after: <>Now key concepts become <span className="text-[#a78bfa]">reference images</span> in the style and ratio you choose.</>,
+    cta: 'Generate visuals',
     demo: <VisualCoreDemo />,
   },
   {
-    id: 'cine_render', num: '05', codename: 'cine_render', label: 'Watch', side: 'left', color: '#ff003c',
+    id: 'video_summary', num: '05', codename: 'video_summary', label: 'Watch', side: 'left', color: LANDING_E_PALETTE.rose,
     patternBreak: true,
     before: <span className="not-italic text-zinc-300">Some chapters stay with you.</span>,
-    after: <><span className="text-[#ff003c]">Now all of them can</span> — a short summary, in moving pictures. The kind that stays.</>,
-    cta: 'Try cine_render',
+    after: <>Now more of them can: <span className="text-[#ff003c]">short summary videos</span> give each chapter a memorable shape.</>,
+    cta: 'Make a video',
     demo: <CineRenderDemo />,
   },
   {
-    id: 'Mem_log', num: '06', codename: 'Mem_log', label: 'Keep & Share', side: 'right', color: '#10b981',
-    before: "You always wanted to keep the lines that moved you, the ideas you'd return to.",
-    after: <>Now your <span className="text-[#10b981]">notebook builds itself</span> — sticky notes to share, a mind map to revisit, every artifact downloadable, forever.</>,
-    cta: 'Try Mem_log',
+    id: 'study_notebook', num: '06', codename: 'study_notebook', label: 'Keep & Share', side: 'right', color: LANDING_E_PALETTE.emerald,
+    before: 'Highlights used to scatter across screenshots, notes, and downloads.',
+    after: <>Now saved words, lines, mind maps, and generated files stay <span className="text-[#34d399]">organized by book</span>.</>,
+    cta: 'Open the notebook',
     demo: <MemLogDemo />,
   },
+];
+
+const LANDING_E_SECTION_IDS = [
+  'e-hero',
+  ...FEATURES_E.map(feature => `e-feature-${feature.id}`),
+  'e-cta',
+];
+
+const LANDING_E_SECTION_ACCENTS = [
+  LANDING_E_PALETTE.cyan,
+  ...FEATURES_E.map(feature => feature.color),
+  LANDING_E_PALETTE.cyan,
 ];
 
 function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; index: number; onEnterApp: () => void }) {
@@ -1325,19 +1383,18 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
   const textOrder = feature.side === 'left' ? 'md:order-1' : 'md:order-2';
   const demoOrder = feature.side === 'left' ? 'md:order-2' : 'md:order-1';
   const beforeClass = feature.patternBreak
-    ? 'text-[1.4rem] sm:text-2xl md:text-[2rem] text-zinc-300 leading-[1.2] max-w-md font-medium tracking-tight'
-    : 'text-[15px] sm:text-lg md:text-xl text-zinc-500 leading-[1.55] max-w-md italic';
-  const beforeStyle = feature.patternBreak ? undefined : { fontFamily: 'Georgia, "Times New Roman", serif' };
+    ? 'text-[1.35rem] sm:text-2xl md:text-[2rem] text-zinc-300 leading-[1.25] max-w-[31rem] font-medium tracking-normal'
+    : 'text-[15px] sm:text-[17px] md:text-[18px] text-zinc-500 leading-[1.7] max-w-[32rem]';
   return (
-    <section ref={ref} className="min-h-screen flex items-center px-4 sm:px-6 md:px-10 py-16 sm:py-20 border-t border-zinc-900/50" id={`e-screen-${index + 2}`}>
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 sm:gap-16 md:gap-20 items-center w-full">
+    <section ref={ref} className="min-h-[100svh] scroll-mt-16 flex items-center px-4 sm:px-6 md:px-10 py-20 sm:py-24 border-t border-zinc-900/50" id={`e-feature-${feature.id}`}>
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 sm:gap-14 md:gap-20 items-center w-full">
         <div className={`space-y-5 sm:space-y-6 ${textOrder} transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
           <div className="flex items-baseline gap-3 flex-wrap">
             <span className="text-[10px] sm:text-xs font-mono tracking-[0.25em] text-zinc-600">{feature.num}</span>
             <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.25em]" style={{ color: feature.color }}>{feature.codename}</span>
             <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">· {feature.label}</span>
           </div>
-          <p className={beforeClass} style={beforeStyle}>
+          <p className={beforeClass}>
             {feature.before}
           </p>
           {/* Transformation marker — hairline with accent pulse */}
@@ -1346,7 +1403,7 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
             <ArrowRight size={11} style={{ color: feature.color }} strokeWidth={2} />
             <div className="flex-1 h-[1px]" style={{ background: `linear-gradient(to right, transparent, ${feature.color}66, transparent)` }} />
           </div>
-          <h2 className="text-[1.65rem] sm:text-3xl md:text-[2.5rem] font-semibold tracking-tight text-white leading-[1.15] max-w-lg">
+          <h2 className="text-[1.65rem] sm:text-3xl md:text-[2.5rem] font-semibold tracking-normal text-white leading-[1.16] max-w-[34rem]">
             {feature.after}
           </h2>
           <button
@@ -1358,7 +1415,7 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
           </button>
         </div>
         <div className={`${demoOrder} transition-all duration-700 delay-150 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          {feature.demo}
+          <MediaFrameE>{feature.demo}</MediaFrameE>
         </div>
       </div>
     </section>
@@ -1368,19 +1425,57 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
 function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
   useUnlockScroll();
   const [screen, setScreen] = useState(0);
-  const totalScreens = 1 + FEATURES_E.length + 1; // hero + features + cta = 8
+  const totalScreens = LANDING_E_SECTION_IDS.length;
+  const activeAccent = LANDING_E_SECTION_ACCENTS[screen] || LANDING_E_PALETTE.cyan;
+  const progressPercent = totalScreens > 1 ? (screen / (totalScreens - 1)) * 100 : 0;
 
   useEffect(() => {
-    const onScroll = () => {
-      const h = window.innerHeight;
-      setScreen(Math.min(totalScreens - 1, Math.round(window.scrollY / h)));
+    let frame = 0;
+    const updateActiveScreen = () => {
+      frame = 0;
+      const viewportCenter = window.innerHeight * 0.5;
+      let nextScreen = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      LANDING_E_SECTION_IDS.forEach((id, index) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        const rect = element.getBoundingClientRect();
+        if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
+          nextScreen = index;
+          nearestDistance = 0;
+          return;
+        }
+        const distance = Math.abs(rect.top + rect.height / 2 - viewportCenter);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nextScreen = index;
+        }
+      });
+
+      setScreen(current => current === nextScreen ? current : nextScreen);
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [totalScreens]);
+
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateActiveScreen);
+    };
+    scheduleUpdate();
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('orientationchange', scheduleUpdate);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('orientationchange', scheduleUpdate);
+    };
+  }, []);
 
   const scrollToScreen = (i: number) => {
-    window.scrollTo({ top: i * window.innerHeight, behavior: 'smooth' });
+    const target = document.getElementById(LANDING_E_SECTION_IDS[Math.max(0, Math.min(totalScreens - 1, i))]);
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
   };
 
   return (
@@ -1398,29 +1493,52 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
 
       {/* Progress rail */}
       <div className="hidden sm:flex fixed right-5 top-1/2 -translate-y-1/2 z-40 flex-col gap-2.5">
+        <div className="absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-zinc-800/70" />
+        <div
+          className="absolute left-1/2 top-0 w-px -translate-x-1/2 transition-all duration-300"
+          style={{ height: `${progressPercent}%`, background: `linear-gradient(to bottom, ${activeAccent}, ${activeAccent}55)` }}
+        />
         {Array.from({ length: totalScreens }).map((_, i) => (
           <button
             key={i}
             onClick={() => scrollToScreen(i)}
-            className={`w-1.5 h-1.5 rounded-full transition-all ${screen === i ? 'bg-[#00f3ff] scale-150 shadow-[0_0_8px_rgba(0,243,255,0.6)]' : 'bg-zinc-700 hover:bg-zinc-500'}`}
+            className={`relative z-10 w-2 h-2 rounded-full border transition-all ${screen === i ? 'scale-125' : 'bg-[#020202] border-zinc-700 hover:border-zinc-500'}`}
+            style={screen === i ? { backgroundColor: activeAccent, borderColor: activeAccent, boxShadow: `0 0 10px ${activeAccent}99` } : undefined}
             aria-label={`Screen ${i + 1}`}
           />
         ))}
       </div>
+      <div className="sm:hidden fixed left-0 right-0 top-[49px] z-50 h-[2px] bg-zinc-900/80">
+        <div
+          className="h-full transition-all duration-300"
+          style={{ width: `${progressPercent}%`, backgroundColor: activeAccent, boxShadow: `0 0 12px ${activeAccent}99` }}
+        />
+      </div>
 
       {/* Screen 1 — Hero */}
-      <section className="h-screen flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden">
+      <section id="e-hero" className="min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden">
         <div className="absolute inset-0 bg-grid opacity-20" />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,243,255,0.07) 0%, transparent 60%)' }} />
-        <div className="relative z-10 text-center max-w-4xl space-y-8 sm:space-y-10">
-          <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.3em] text-zinc-600 animate-fade-in">Six transformations · one book</p>
-          <h1 className="text-[2.25rem] sm:text-5xl md:text-7xl font-semibold tracking-[-0.02em] leading-[1.05] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            Start to truly understand<br />
-            <span className="text-[#00f3ff] drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">a&nbsp;book</span>.
+        <div className="relative z-10 text-center max-w-4xl space-y-7 sm:space-y-9">
+          <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.3em] text-zinc-600 animate-fade-in">One book · six ways to understand</p>
+          <h1 className="text-[2.3rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            Read the original.<br />
+            <span className="text-[#00f3ff] drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
           </h1>
-          <p className="text-zinc-500 text-sm sm:text-base max-w-md mx-auto leading-relaxed animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            Six ways the book stops being a wall and starts being a conversation.
+          <p className="text-zinc-500 text-sm sm:text-base max-w-[34rem] mx-auto leading-[1.75] animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            DecodEbook turns EPUB, PDF, and text into a bilingual reader, pronunciation coach, AI tutor, podcast, visual brief, video summary, and notebook.
           </p>
+          <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: '0.25s' }}>
+            {FEATURES_E.map(feature => (
+              <span
+                key={feature.id}
+                className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.18em] px-2.5 py-1 rounded-sm border bg-black/20"
+                style={{ color: feature.color, borderColor: `${feature.color}40` }}
+              >
+                {feature.label}
+              </span>
+            ))}
+          </div>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
             <button onClick={onEnterApp} className="px-7 py-3 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
               Decode Your First Chapter <ArrowRight size={14} />
@@ -1442,23 +1560,23 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         <div className="max-w-5xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 text-center">
             <div className="space-y-1">
-              <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">3,400+</p>
-              <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">readers finished their first foreign-language book this quarter</p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-normal text-white">EPUB, PDF, TXT</p>
+              <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">Bring the book you already have</p>
             </div>
             <div className="hidden md:block w-px h-12 bg-zinc-800" />
             <div className="space-y-1">
-              <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">47 <span className="text-[#00f3ff]">countries</span></p>
-              <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">where readers have decoded a chapter this month</p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-normal text-white">50+ <span className="text-[#00f3ff]">languages</span></p>
+              <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">Read in the original, learn in yours</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Screen 8 — Final CTA */}
-      <section className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden">
+      <section id="e-cta" className="min-h-[100svh] scroll-mt-16 flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 70%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-3xl space-y-8 sm:space-y-10">
-          <h2 className="text-[2rem] sm:text-4xl md:text-[3.75rem] font-semibold tracking-[-0.02em] leading-[1.08] text-white">
+          <h2 className="text-[2rem] sm:text-4xl md:text-[3.75rem] font-semibold tracking-normal leading-[1.1] text-white">
             Decode your first chapter<br /><span className="text-[#00f3ff]">for free</span>.
           </h2>
           <p className="text-[11px] sm:text-xs text-zinc-500 font-mono tracking-wider">

@@ -808,22 +808,35 @@ const App: React.FC = () => {
       };
       const startsParagraphTransitionLine = (value: string): boolean =>
         /^(?:However|Therefore|Thus|Consequently|Moreover|Furthermore|Meanwhile|In ancient times|In contrast|At the same time|As a result|For example|For instance)\b/iu.test(value.trim());
-      const markPdfText = (value: string, item: any, styles: Record<string, any>): string => {
-        const text = String(value || '');
-        if (!text.trim()) return text;
-        const style = styles?.[item.fontName] || {};
-        const descriptor = `${item.fontName || ''} ${style.fontFamily || ''}`.toLowerCase();
-        const isBold = /\b(?:bold|black|heavy|semibold|demi)\b/.test(descriptor);
-        const isItalic = /\b(?:italic|oblique)\b/.test(descriptor);
-        if (isBold && isItalic) return `*${text}*`;
-        if (isBold) return `**${text}**`;
-        if (isItalic) return `*${text}*`;
-        return text;
-      };
       const median = (values: number[]): number => {
         if (values.length === 0) return 0;
         const sorted = [...values].sort((a, b) => a - b);
         return sorted[Math.floor(sorted.length / 2)] || 0;
+      };
+      const mode = (values: number[]): number => {
+        const counts = new Map<number, number>();
+        let best = 0, bestCount = -1;
+        values.forEach(v => { const c = (counts.get(v) || 0) + 1; counts.set(v, c); if (c > bestCount) { bestCount = c; best = v; } });
+        return best;
+      };
+      // Resolve a font subset to italic/bold from its real descriptor name. PDF text
+      // extraction reports opaque subset names (e.g. "g_d0_f3"), but the loaded font
+      // object exposes the real name ("EBGaramond-Italic") — the only reliable emphasis
+      // signal. Requires getOperatorList() to have loaded the page's fonts first.
+      const fontEmphasisFor = (page: any, fontName: string, cache: Map<string, { italic: boolean; bold: boolean }>) => {
+        const cached = cache.get(fontName);
+        if (cached) return cached;
+        let italic = false, bold = false;
+        try {
+          if (page.commonObjs?.has?.(fontName)) {
+            const realName = String(page.commonObjs.get(fontName)?.name || '').toLowerCase();
+            italic = /italic|oblique/.test(realName);
+            bold = /bold|black|heavy|semibold|demi/.test(realName);
+          }
+        } catch { /* font flags unavailable — fall back to plain text */ }
+        const style = { italic, bold };
+        cache.set(fontName, style);
+        return style;
       };
       const mostFrequentLeft = (values: number[]): number => {
         const buckets = new Map<number, { count: number; valueTotal: number }>();
@@ -840,33 +853,88 @@ const App: React.FC = () => {
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const lines = new Map<number, { x: number; text: string }[]>();
+        // getOperatorList loads the page's fonts (so their real italic/bold names are
+        // resolvable); getTextContent gives the glyph runs. Run both together.
+        const [, textContent] = await Promise.all([
+          page.getOperatorList().catch(() => null),
+          page.getTextContent(),
+        ]);
+        const fontCache = new Map<string, { italic: boolean; bold: boolean }>();
 
+        type PdfGlyph = { x: number; y: number; h: number; str: string; italic: boolean; bold: boolean };
+        const glyphs: PdfGlyph[] = [];
         for (const item of textContent.items as any[]) {
           if (!('str' in item) || !item.str.trim()) continue;
-          const y = Math.round(item.transform?.[5] || 0);
-          const x = item.transform?.[4] || 0;
-          const line = lines.get(y) || [];
-          line.push({ x, text: markPdfText(item.str, item, textContent.styles || {}) });
-          lines.set(y, line);
+          const tr = item.transform || [];
+          const emphasis = fontEmphasisFor(page, item.fontName, fontCache);
+          glyphs.push({
+            x: tr[4] || 0,
+            y: tr[5] || 0,
+            h: Math.hypot(tr[0] || 0, tr[1] || 0) || item.height || 0,
+            str: item.str,
+            italic: emphasis.italic,
+            bold: emphasis.bold,
+          });
+        }
+        if (glyphs.length === 0) continue;
+
+        // Cluster glyphs into visual lines by baseline with a tolerance, so a raised
+        // superscript footnote marker (smaller font, a few points above the baseline)
+        // joins its own line instead of becoming a detached digit on its own line.
+        const bodyHeight = mode(glyphs.map(g => Math.round(g.h))) || median(glyphs.map(g => g.h));
+        const lineTolerance = Math.max(2, bodyHeight * 0.5);
+        glyphs.sort((a, b) => b.y - a.y || a.x - b.x);
+        const groups: { baseY: number; baseH: number; items: PdfGlyph[] }[] = [];
+        for (const g of glyphs) {
+          let best: { baseY: number; baseH: number; items: PdfGlyph[] } | null = null;
+          let bestDist = Infinity;
+          for (const group of groups) {
+            const dist = Math.abs(group.baseY - g.y);
+            if (dist <= lineTolerance && dist < bestDist) { bestDist = dist; best = group; }
+          }
+          if (!best) { best = { baseY: g.y, baseH: g.h, items: [] }; groups.push(best); }
+          best.items.push(g);
+          // Anchor the line on its tallest glyph (the body baseline), not a superscript.
+          if (g.h > best.baseH * 1.05) { best.baseY = g.y; best.baseH = g.h; }
         }
 
-        const pageLines = [...lines.entries()]
-          .sort((a, b) => b[0] - a[0])
-          .map(([y, parts]) => {
-            const sortedParts = parts.sort((a, b) => a.x - b.x);
-            return {
-              y,
-              x: Math.min(...sortedParts.map(part => part.x)),
-              text: sortedParts
-                .map(part => part.text)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-            };
+        const MARK = { italic: '*', bold: '**' } as const;
+        const pageLines = groups
+          .map(group => {
+            const items = group.items.sort((a, b) => a.x - b.x);
+            const lineBodyHeight = mode(items.map(it => Math.round(it.h))) || group.baseH;
+            let out = '';
+            let open: 'italic' | 'bold' | null = null;
+            items.forEach((it, idx) => {
+              const trimmed = it.str.trim();
+              // A small-font number not at the line start is a flattened superscript
+              // footnote marker: glue it (no space) to the preceding token so the reader's
+              // bare-footnote inference recognises it (e.g. "Colchester.14").
+              const isMarker = idx > 0 && /^\d{1,3}$/.test(trimmed) && it.h < lineBodyHeight * 0.84;
+              if (isMarker) {
+                if (open) { out += MARK[open]; open = null; }
+                out += trimmed;
+                return;
+              }
+              // Wrap maximal runs of one emphasis style once, so a multi-item italic
+              // title becomes "*A B C*" rather than fragmented "*A* *B* *C*".
+              const style: 'italic' | 'bold' | null = it.italic ? 'italic' : it.bold ? 'bold' : null;
+              const separator = out === '' ? '' : ' ';
+              if (style !== open) {
+                if (open) out += MARK[open];
+                out += separator;
+                if (style) out += MARK[style];
+                open = style;
+              } else {
+                out += separator;
+              }
+              out += it.str;
+            });
+            if (open) out += MARK[open];
+            return { y: group.baseY, x: Math.min(...items.map(it => it.x)), text: out.replace(/\s+/g, ' ').trim() };
           })
-          .filter(line => line.text);
+          .filter(line => line.text)
+          .sort((a, b) => b.y - a.y);
 
         const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
         const lineGap = median(pageLines.slice(1).map((line, index) => pageLines[index].y - line.y).filter(gap => gap > 0));
