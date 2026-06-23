@@ -11,7 +11,17 @@ export interface Chapter {
   sourceHeadingVariants?: string[];
   sourcePageStart?: number;
   sourcePageEnd?: number;
-  sourceMethod?: 'heading' | 'page' | 'hybrid';
+  sourceMethod?: 'heading' | 'page' | 'hybrid' | 'outline';
+}
+
+// A PDF's built-in outline (bookmarks) entry, resolved to a 1-based page number.
+// Captured during PDF extraction so chapters can be built from the document's own
+// structure instead of heuristic chapter resolution.
+export interface PdfOutlineItem {
+  title: string;
+  page: number;            // 1-based page number the bookmark points to
+  level: number;           // 0 = top-level chapter/section, 1+ = nested sub-heading
+  offset?: number;         // exact heading offset in the extracted content (Y-resolved), if found
 }
 
 export type ReaderPageTarget =
@@ -89,6 +99,7 @@ export interface FileContext {
   sourceHash?: string;
   sourceKind?: 'pdf' | 'epub' | 'text';
   sourceExtractorVersion?: string;
+  pdfOutline?: PdfOutlineItem[]; // PDF bookmarks (top-level), if the document has them
 }
 
 export interface NotebookItem {

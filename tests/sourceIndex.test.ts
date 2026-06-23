@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
+import { buildChaptersFromOutline, buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, isUsablePdfOutline, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
 import type { Chapter } from '../types.ts';
 
 const chapterBody = (name: string) => [
@@ -473,3 +473,70 @@ const chapterBody = (name: string) => [
 }
 
 console.log('sourceIndex regression tests passed');
+
+{
+  // Phase A: build chapters directly from a PDF outline (bookmarks). Page destinations
+  // map to "[[PAGE n]]" offsets; each chapter runs to the next; order is by offset.
+  const content = [
+    '[[PAGE 1]]', 'Cover', '',
+    '[[PAGE 2]]', 'Chapter One', chapterBody('Chapter one'), '',
+    '[[PAGE 5]]', 'Chapter Two', chapterBody('Chapter two'), '',
+    '[[PAGE 9]]', 'Notes', '1. A note here about something.',
+  ].join('\n');
+  const outline = [
+    { title: 'Cover', page: 1, level: 0 },
+    { title: 'Chapter One', page: 2, level: 0 },
+    { title: 'Chapter Two', page: 5, level: 0 },
+    { title: 'Notes', page: 9, level: 0 },
+  ];
+  assert.equal(isUsablePdfOutline(content, outline), true, 'a 4-entry resolvable outline is usable');
+  assert.equal(isUsablePdfOutline(content, []), false, 'empty outline is not usable');
+  assert.equal(isUsablePdfOutline(content, [{ title: 'Cover', page: 1, level: 0 }]), false, 'a 1-entry outline is not usable');
+
+  const chapters = buildChaptersFromOutline(content, outline);
+  assert.equal(chapters.length, 4, 'one chapter per resolvable outline entry');
+  assert.deepEqual(chapters.map(c => c.title), ['Cover', 'Chapter One', 'Chapter Two', 'Notes']);
+  assert.equal(chapters[0].sourceStart, content.indexOf('[[PAGE 1]]'), 'chapter starts at its page marker');
+  assert.equal(chapters[1].sourceStart, content.indexOf('[[PAGE 2]]'));
+  assert.equal(chapters[1].sourceEnd, content.indexOf('[[PAGE 5]]'), 'chapter ends where the next begins');
+  assert.equal(chapters[3].sourceEnd, content.length, 'last chapter runs to the end');
+  assert.ok(chapters.every((c, i) => i === 0 || c.sourceStart! > chapters[i - 1].sourceStart!), 'offsets are strictly increasing');
+  assert.equal(chapters[0].sourceMethod, 'outline');
+
+  // Missing page marker (e.g. an image-only page) falls back to the nearest following page.
+  const gap = ['[[PAGE 1]]', 'A', '', '[[PAGE 4]]', 'B body text here.', '', '[[PAGE 7]]', 'C body text here.'].join('\n');
+  const gapCh = buildChaptersFromOutline(gap, [
+    { title: 'A', page: 1, level: 0 }, { title: 'B', page: 3, level: 0 }, { title: 'C', page: 7, level: 0 },
+  ]);
+  assert.equal(gapCh[1].sourceStart, gap.indexOf('[[PAGE 4]]'), 'page 3 (no marker) resolves to nearest following page 4');
+
+  // Multiple bookmarks on one text page collapse to the first (page-granularity).
+  const same = ['[[PAGE 1]]', 'Intro', '', '[[PAGE 2]]', 'Lesson one and two share this page.'].join('\n');
+  const sameCh = buildChaptersFromOutline(same, [
+    { title: 'Intro', page: 1, level: 0 }, { title: 'Lesson 1', page: 2, level: 0 }, { title: 'Lesson 2', page: 2, level: 0 },
+  ]);
+  assert.equal(sameCh.length, 2, 'two bookmarks on the same page collapse to one chapter');
+  assert.equal(sameCh[1].title, 'Lesson 1', 'the first bookmark on the shared page wins');
+}
+
+{
+  // Phase A — Y-resolved heading offsets: when outline entries carry an explicit `offset`
+  // (resolved from the bookmark's Y during extraction), it is preferred over the page
+  // marker, so multiple bookmarks on the same text page no longer collapse.
+  const content = [
+    '[[PAGE 28]]', 'Transurfing Principles', 'Intro line for principles here.',
+    '1. Awakening', 'Body of awakening lesson goes here with enough words.',
+    '2. Hacking the Dream', 'Body of the hacking lesson goes here with words.',
+  ].join('\n');
+  const oStart = content.indexOf('1. Awakening');
+  const oTwo = content.indexOf('2. Hacking the Dream');
+  const chapters = buildChaptersFromOutline(content, [
+    { title: 'Transurfing Principles', page: 28, level: 0, offset: content.indexOf('Transurfing Principles') },
+    { title: '1. Awakening', page: 28, level: 0, offset: oStart },
+    { title: '2. Hacking the Dream', page: 28, level: 0, offset: oTwo },
+  ]);
+  assert.equal(chapters.length, 3, 'distinct Y-resolved offsets keep same-page bookmarks separate');
+  assert.equal(chapters[1].sourceStart, oStart, 'chapter starts at its Y-resolved heading offset, not the page top');
+  assert.equal(chapters[1].sourceEnd, oTwo);
+  assert.deepEqual(chapters.map(c => c.title), ['Transurfing Principles', '1. Awakening', '2. Hacking the Dream']);
+}

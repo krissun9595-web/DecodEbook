@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react
 import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
-import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget } from './types';
+import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
 import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthGate } from './components/AuthModal';
@@ -19,7 +19,7 @@ import { startSession, trackEvent, trackBookAction, trackNavigation, trackGenera
 import { trackReferralClick, registerReferralSignup } from './services/referral';
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
-import { buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, splitDetectedBackMatter } from './utils/sourceIndex';
+import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
@@ -785,11 +785,35 @@ const App: React.FC = () => {
     }
   };
 
-  const processPdf = async (file: File): Promise<string> => {
+  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[] }> => {
     try {
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
       const pages: string[] = [];
+
+      // Resolve the PDF's outline (bookmarks) up front: each entry's destination gives a
+      // page and a Y position. Capturing it now lets us anchor each chapter to its exact
+      // heading line (by page + Y) while the per-page glyph geometry is still in scope —
+      // which also separates multiple bookmarks that share one page. Failures are
+      // non-fatal; unresolved entries are dropped and the caller falls back to heuristics.
+      const outlineEntries: { title: string; page: number; y: number | null }[] = [];
+      try {
+        const rawOutline = await pdf.getOutline();
+        for (const item of rawOutline || []) {
+          try {
+            const dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
+            if (!dest || !dest[0]) continue;
+            const page = (await pdf.getPageIndex(dest[0])) + 1;
+            const y = typeof dest[3] === 'number' ? dest[3] : null;
+            const title = (item.title || '').replace(/\s+/g, ' ').trim();
+            if (page && title) outlineEntries.push({ title, page, y });
+          } catch { /* skip unresolvable entry */ }
+        }
+      } catch (e) {
+        console.warn('PDF outline unavailable; will fall back to heuristic chapters', e);
+      }
+      const outlinePages = new Set(outlineEntries.map(o => o.page));
+      const pageLineGeom = new Map<number, { y: number; text: string }[]>();
       const endsWithTerminalPunctuation = (value: string): boolean =>
         /[.!?。！？]["'”’)\]]?$/u.test(value.trim());
       const looksLikeQuotedTermLine = (value: string): boolean => {
@@ -978,6 +1002,12 @@ const App: React.FC = () => {
           const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
           return tier >= 1 ? Math.min(tier, 3) : 0;
         };
+        // Retain this page's line geometry (baseline Y + text) when an outline bookmark
+        // points at it, so chapter starts can be anchored to the exact heading line.
+        if (outlinePages.has(pageNum)) {
+          pageLineGeom.set(pageNum, pageLines.map(line => ({ y: line.y, text: line.text })));
+        }
+
         const formattedLines: string[] = [];
 
         pageLines.forEach((line, index) => {
@@ -1020,7 +1050,31 @@ const App: React.FC = () => {
 
       const fullText = pages.join('\n\n');
       if (!fullText) throw new Error('No selectable text found in PDF.');
-      return fullText;
+
+      // Anchor each outline entry to its exact heading offset: pick the line on the
+      // destination page whose baseline Y is closest to the bookmark's Y, then locate that
+      // line's text within the page's block in the extracted content. This separates
+      // multiple bookmarks on one page and starts chapters at the heading rather than the
+      // page top. When the heading can't be located (corrupt/short text), `offset` is left
+      // undefined and the chapter falls back to the page-start marker downstream.
+      const outline: PdfOutlineItem[] = outlineEntries.map(entry => {
+        let offset: number | undefined;
+        const geom = pageLineGeom.get(entry.page);
+        const blockStart = fullText.indexOf(`[[PAGE ${entry.page}]]`);
+        if (geom && geom.length && blockStart >= 0) {
+          const heading = entry.y == null
+            ? geom[0]
+            : geom.reduce((best, line) => Math.abs(line.y - entry.y!) < Math.abs(best.y - entry.y!) ? line : best, geom[0]);
+          if (heading.text && heading.text.length >= 3) {
+            const nextBlock = fullText.indexOf('[[PAGE ', blockStart + 1);
+            const within = fullText.indexOf(heading.text, blockStart);
+            if (within >= 0 && (nextBlock < 0 || within < nextBlock)) offset = within;
+          }
+        }
+        return { title: entry.title, page: entry.page, level: 0, offset };
+      });
+
+      return { content: fullText, outline };
     } catch (e) {
       console.error('PDF processing error', e);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
@@ -1055,7 +1109,16 @@ const App: React.FC = () => {
         try {
             const preparedContext = hydrateFileContext(context);
             const structure = await analyzeBookStructure(preparedContext);
-            const indexedChapters = preparedContext.isText
+            // Phase A (PDF only): when the PDF carries a usable outline (bookmarks), build
+            // chapters directly from it — the page destinations are authoritative, so no
+            // heuristic title-to-offset scoring is needed. Any PDF without a usable outline,
+            // and all EPUB/text sources, keep the existing pipeline unchanged.
+            const useOutline =
+              preparedContext.sourceKind === 'pdf' &&
+              isUsablePdfOutline(preparedContext.content, preparedContext.pdfOutline);
+            const indexedChapters = useOutline
+              ? buildChaptersFromOutline(preparedContext.content, preparedContext.pdfOutline!)
+              : preparedContext.isText
               ? splitDetectedBackMatter(
                   preparedContext.content,
                   buildSourceIndexedChapters(
@@ -1110,13 +1173,14 @@ const App: React.FC = () => {
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
        try {
-         const textContent = await processPdf(file);
+         const { content: textContent, outline: pdfOutline } = await processPdf(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
             isText: true,
             sourceKind: 'pdf',
             sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION,
+            pdfOutline,
          });
        } catch (err: any) {
          setError(err.message || "Failed to process PDF.");

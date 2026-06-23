@@ -1,4 +1,4 @@
-import { Chapter } from '../types';
+import { Chapter, PdfOutlineItem } from '../types';
 
 const PAGE_MARKER_RE = /\[\[PAGE\s+(\d+)\]\]/g;
 const TITLE_PREFIX_RE = /^(?:chapter|ch\.?|part|section|book|volume|vol\.?)\s+[\p{L}\p{N}ivxlcdm.-]+\s*[:.\-—]?\s*/iu;
@@ -859,4 +859,62 @@ export const extractChapterFromSource = (
   }
 
   return null;
+};
+
+// Locate the offset of a "[[PAGE n]]" marker for a 1-based page number. Pages with no
+// extractable text emit no marker, so fall back to the nearest following page within a
+// small window.
+const offsetForPage = (content: string, page: number): number | null => {
+  for (let p = page; p < page + 12; p++) {
+    const idx = content.indexOf(`[[PAGE ${p}]]`);
+    if (idx >= 0) return idx;
+  }
+  return null;
+};
+
+// True when a PDF outline has enough resolvable, real content entries to be worth using
+// in place of heuristic chapter resolution. Guards against trivial outlines (e.g. a lone
+// "Cover" bookmark) and outlines whose pages don't map to extracted text.
+export const isUsablePdfOutline = (content: string, outline: PdfOutlineItem[] | undefined): boolean => {
+  if (!outline || outline.length === 0) return false;
+  const resolved = outline.filter(
+    item => item.title.trim().length > 0 && offsetForPage(content, item.page) != null
+  );
+  return resolved.length >= 3;
+};
+
+// Build the chapter list directly from a PDF's own outline (bookmarks): map each entry's
+// page to its "[[PAGE n]]" offset in the extracted text, in document order, with each
+// chapter running until the next. This replaces heuristic title-to-offset resolution for
+// PDFs that carry a usable outline — the page destinations are authoritative, so no
+// scoring/guessing is involved. Falls back (returns []) when the outline is unusable, so
+// the caller can use the existing pipeline.
+export const buildChaptersFromOutline = (content: string, outline: PdfOutlineItem[]): Chapter[] => {
+  const resolved = outline
+    // Prefer the Y-resolved heading offset (separates same-page bookmarks); fall back to
+    // the page-start marker when extraction couldn't locate the heading.
+    .map(item => ({
+      title: item.title.replace(/\s+/g, ' ').trim(),
+      page: item.page,
+      start: item.offset ?? offsetForPage(content, item.page),
+    }))
+    .filter((item): item is { title: string; page: number; start: number } => Boolean(item.title) && item.start != null)
+    .sort((a, b) => a.start - b.start);
+
+  // Collapse entries that still resolve to the same (or earlier) offset — e.g. same-page
+  // bookmarks whose heading text couldn't be located; keep the first.
+  const monotonic: typeof resolved = [];
+  for (const item of resolved) {
+    if (monotonic.length && item.start <= monotonic[monotonic.length - 1].start) continue;
+    monotonic.push(item);
+  }
+
+  return monotonic.map((item, index) => ({
+    id: index + 1,
+    title: item.title,
+    sourceStart: item.start,
+    sourceEnd: monotonic[index + 1]?.start ?? content.length,
+    sourcePageStart: item.page,
+    sourceMethod: 'outline' as const,
+  }));
 };
