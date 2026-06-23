@@ -814,6 +814,19 @@ const App: React.FC = () => {
       }
       const outlinePages = new Set(outlineEntries.map(o => o.page));
       const pageLineGeom = new Map<number, { y: number; text: string }[]>();
+
+      // Phase B: a footnote/cross-reference marker is a Link annotation whose destination
+      // is the note. As we emit each marker (on its body page) we record the destination
+      // (page + Y) so that, when the destination page is later processed, we can inject a
+      // matching anchor onto the exact note line — making PDF footnotes structurally
+      // identical to EPUB anchored footnotes (shared key) so the proven note-navigation
+      // path handles them. Keyed by destination page; notes pages follow body pages, so
+      // the targets are known by the time we reach them.
+      const noteAnchorTargets = new Map<number, { y: number; key: string }[]>();
+      // Only inject a note anchor when a real footnote MARKER with that key was emitted —
+      // so a table-of-contents / cross-reference link (which also has a destination but no
+      // numeric marker) never turns a destination heading into a spurious footnote.
+      const emittedMarkerKeys = new Set<string>();
       const endsWithTerminalPunctuation = (value: string): boolean =>
         /[.!?。！？]["'”’)\]]?$/u.test(value.trim());
       const looksLikeQuotedTermLine = (value: string): boolean => {
@@ -879,26 +892,60 @@ const App: React.FC = () => {
         const page = await pdf.getPage(pageNum);
         // getOperatorList loads the page's fonts (so their real italic/bold names are
         // resolvable); getTextContent gives the glyph runs. Run both together.
-        const [, textContent] = await Promise.all([
+        const [, textContent, annotations] = await Promise.all([
           page.getOperatorList().catch(() => null),
           page.getTextContent(),
+          page.getAnnotations().catch(() => [] as any[]),
         ]);
         const fontCache = new Map<string, { italic: boolean; bold: boolean }>();
 
-        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean };
+        // Link annotations on this page: external URLs (rendered as hyperlinks) and
+        // internal go-to destinations (footnote/cross-reference markers). For each go-to
+        // marker, resolve its destination to a page + Y and stash a note-anchor target so
+        // the destination page can be anchored with the same key (see noteAnchorTargets).
+        const uriLinks: { rect: number[]; url: string }[] = [];
+        const gotoLinks: { rect: number[]; key: string }[] = [];
+        for (const a of (annotations as any[]) || []) {
+          if (a?.subtype !== 'Link' || !a.rect) continue;
+          if (a.url) { uriLinks.push({ rect: a.rect, url: a.url }); continue; }
+          if (!a.dest) continue;
+          try {
+            const dest = typeof a.dest === 'string' ? await pdf.getDestination(a.dest) : a.dest;
+            if (!dest || !dest[0]) continue;
+            const destPage = (await pdf.getPageIndex(dest[0])) + 1;
+            const destY = typeof dest[3] === 'number' ? dest[3] : null;
+            if (destY == null) continue;
+            const key = `pdffn-p${destPage}-y${Math.round(destY)}`;
+            gotoLinks.push({ rect: a.rect, key });
+            const targets = noteAnchorTargets.get(destPage) || [];
+            targets.push({ y: destY, key });
+            noteAnchorTargets.set(destPage, targets);
+          } catch { /* unresolvable destination — skip */ }
+        }
+        const coveringLink = (gx: number, gw: number, gy: number): { url?: string; noteKey?: string } | null => {
+          const cx = gx + (gw || 0) / 2;
+          for (const u of uriLinks) { const [x1, y1, x2, y2] = u.rect; if (cx >= x1 - 1 && cx <= x2 + 1 && gy >= y1 - 2 && gy <= y2 + 2) return { url: u.url }; }
+          for (const gl of gotoLinks) { const [x1, y1, x2, y2] = gl.rect; if (cx >= x1 - 1 && cx <= x2 + 1 && gy >= y1 - 2 && gy <= y2 + 2) return { noteKey: gl.key }; }
+          return null;
+        };
+
+        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; linkUrl?: string; noteKey?: string };
         const glyphs: PdfGlyph[] = [];
         for (const item of textContent.items as any[]) {
           if (!('str' in item) || !item.str.trim()) continue;
           const tr = item.transform || [];
           const emphasis = fontEmphasisFor(page, item.fontName, fontCache);
+          const x = tr[4] || 0, y = tr[5] || 0, w = item.width || 0;
+          const link = coveringLink(x, w, y);
           glyphs.push({
-            x: tr[4] || 0,
-            y: tr[5] || 0,
+            x, y,
             h: Math.hypot(tr[0] || 0, tr[1] || 0) || item.height || 0,
-            w: item.width || 0,
+            w,
             str: item.str,
             italic: emphasis.italic,
             bold: emphasis.bold,
+            linkUrl: link?.url,
+            noteKey: link?.noteKey,
           });
         }
         if (glyphs.length === 0) continue;
@@ -929,48 +976,112 @@ const App: React.FC = () => {
             const items = group.items.sort((a, b) => a.x - b.x);
             const lineBodyHeight = mode(items.map(it => Math.round(it.h))) || group.baseH;
             const gapThreshold = Math.max(1, lineBodyHeight * 0.12);
+
+            // Pre-scan: a contiguous run of glyphs sharing one internal go-to link
+            // annotation is a footnote / cross-reference marker. If the run reads as a 1–3
+            // digit number (optionally bracketed) emit it once as a footnote link
+            // "[N](#key)" — the same key the note anchor on the destination page carries —
+            // catching both raised superscripts and full-size bracketed markers. Otherwise
+            // the run is prose that merely carries a link (a cross-reference); drop the
+            // link and keep the text.
+            const markerEmit: ({ label: string; key: string } | null)[] = items.map(() => null);
+            const skip: boolean[] = items.map(() => false);
+            for (let i = 0; i < items.length;) {
+              const key = items[i].noteKey;
+              if (!key) { i++; continue; }
+              let j = i, txt = '';
+              while (j < items.length && items[j].noteKey === key) { txt += items[j].str.trim(); j++; }
+              const digits = txt.replace(/\D+/g, '');
+              // Only a forward link (destination on a later page) is a body footnote marker.
+              // A note's number often carries the PDF's own backward link (note → marker);
+              // leaving that as plain text lets the forward note-anchor be injected onto it,
+              // and the reader provides the back-navigation. Cross-references stay text too.
+              const destPage = Number(key.match(/^pdffn-p(\d+)-/)?.[1] || 0);
+              const markerLike = destPage > pageNum && digits.length >= 1 && digits.length <= 3 && /^[\[(]?\d{1,3}[.)\]]?$/.test(txt);
+              if (markerLike) { markerEmit[i] = { label: digits, key }; for (let k = i + 1; k < j; k++) skip[k] = true; }
+              else { for (let k = i; k < j; k++) items[k].noteKey = undefined; }
+              i = j;
+            }
+
             let out = '';
             let open: 'italic' | 'bold' | null = null;
+            let openLink: string | null = null; // open external-URL link span, if any
             items.forEach((it, idx) => {
+              if (skip[idx]) return; // glyph already consumed by a footnote-marker run
               const prev = idx > 0 ? items[idx - 1] : null;
               // No space when the horizontal gap to the previous glyph is tiny — rejoins
               // letter-spaced small caps ("C LIVE" -> "CLIVE") without merging real words
               // (body word-gaps are far larger than this threshold).
               const glue = !!prev && prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold;
               const trimmed = it.str.trim();
-              // A small-font number not at the line start is a flattened superscript
-              // footnote marker. Geometry (a raised, smaller glyph) is a far more reliable
-              // signal than the reader's text heuristic, which cannot tell a footnote after
-              // a number ("1999.²") from a decimal. So emit it structurally — the same
-              // "[N](#href)" form an EPUB <a href="#..."> footnote produces — so the shared
-              // renderer recognises it via the internal-note-link path and skips the
-              // ambiguous bare-digit inference. The #pdfnote-<page>-<n> key is stable for
-              // later linking to the note body without re-extracting.
+
+              // Footnote / cross-reference marker backed by a real link annotation.
+              const marker = markerEmit[idx];
+              if (marker) {
+                if (open) { out += MARK[open]; open = null; }
+                if (openLink) { out += `](${openLink})`; openLink = null; }
+                out += (out === '' ? '' : (glue ? '' : ' ')) + `[${marker.label}](#${marker.key})`;
+                emittedMarkerKeys.add(marker.key);
+                return;
+              }
+
+              // A small-font number not at the line start, with no link annotation, is a
+              // flattened superscript footnote marker. Emit the geometry-only #pdfnote key
+              // (resolved by chapter scope downstream) for PDFs whose footnotes carry no
+              // link annotations.
               const isMarker = idx > 0 && /^\d{1,3}$/.test(trimmed) && it.h < lineBodyHeight * 0.84;
               if (isMarker) {
                 if (open) { out += MARK[open]; open = null; }
+                if (openLink) { out += `](${openLink})`; openLink = null; }
                 out += `[${trimmed}](#pdfnote-${pageNum}-${trimmed})`;
                 return;
               }
-              // Wrap maximal runs of one emphasis style once, so a multi-item italic
-              // title becomes "*A B C*" rather than fragmented "*A* *B* *C*".
+
+              // Wrap maximal runs of one emphasis style / one external link once, so a
+              // multi-glyph italic title becomes "*A B C*" and a hyperlink becomes
+              // "[A B C](url)" rather than fragmented per glyph.
               const style: 'italic' | 'bold' | null = it.italic ? 'italic' : it.bold ? 'bold' : null;
               const separator = out === '' ? '' : (glue ? '' : ' ');
-              if (style !== open) {
-                if (open) out += MARK[open];
+              const linkChanged = (it.linkUrl || null) !== openLink;
+              if (linkChanged || style !== open) {
+                if (open) { out += MARK[open]; open = null; }
+                if (linkChanged && openLink) { out += `](${openLink})`; openLink = null; }
                 out += separator;
-                if (style) out += MARK[style];
-                open = style;
+                if (linkChanged && it.linkUrl) { out += '['; openLink = it.linkUrl; }
+                if (style) { out += MARK[style]; open = style; }
               } else {
                 out += separator;
               }
               out += it.str;
             });
             if (open) out += MARK[open];
+            if (openLink) out += `](${openLink})`;
             return { y: group.baseY, x: Math.min(...items.map(it => it.x)), text: out.replace(/\s+/g, ' ').trim() };
           })
           .filter(line => line.text)
           .sort((a, b) => b.y - a.y);
+
+        // Phase B: inject note anchors for any markers whose destination is this page. For
+        // each target, find the note line whose baseline is the first at/below the
+        // destination top (a /XYZ destination's Y is the line top, ~one ascent above the
+        // baseline), then turn its leading "N." into the linked marker "[N](#key)" — the
+        // same key the body marker carries, so they pair up like EPUB anchors.
+        const anchorTargets = noteAnchorTargets.get(pageNum);
+        if (anchorTargets) {
+          for (const target of anchorTargets) {
+            if (!emittedMarkerKeys.has(target.key)) continue; // only real footnote targets
+            let noteLine: { y: number; x: number; text: string } | null = null;
+            for (const line of pageLines) {
+              if (line.y <= target.y + 2 && (!noteLine || line.y > noteLine.y)) noteLine = line;
+            }
+            if (noteLine && !/^\s*\[/.test(noteLine.text)) {
+              noteLine.text = noteLine.text.replace(
+                /^(\s*)(\d{1,3})[.)]\s*/,
+                (_m, sp, n) => `${sp}[${n}](#${target.key}) `
+              );
+            }
+          }
+        }
 
         const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
         const lineGap = median(pageLines.slice(1).map((line, index) => pageLines[index].y - line.y).filter(gap => gap > 0));
@@ -1062,9 +1173,15 @@ const App: React.FC = () => {
         const geom = pageLineGeom.get(entry.page);
         const blockStart = fullText.indexOf(`[[PAGE ${entry.page}]]`);
         if (geom && geom.length && blockStart >= 0) {
+          // A /XYZ destination's Y is the line TOP (~one ascent above the baseline), so the
+          // heading is the first line whose baseline sits at/just below it — not the
+          // nearest baseline, which would pick the line above.
           const heading = entry.y == null
             ? geom[0]
-            : geom.reduce((best, line) => Math.abs(line.y - entry.y!) < Math.abs(best.y - entry.y!) ? line : best, geom[0]);
+            : (geom.reduce<{ y: number; text: string } | null>(
+                (best, line) => (line.y <= entry.y! + 2 && (!best || line.y > best.y)) ? line : best,
+                null,
+              ) || geom[0]);
           if (heading.text && heading.text.length >= 3) {
             const nextBlock = fullText.indexOf('[[PAGE ', blockStart + 1);
             const within = fullText.indexOf(heading.text, blockStart);
