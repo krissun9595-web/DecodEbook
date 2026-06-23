@@ -950,6 +950,34 @@ const App: React.FC = () => {
 
         const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
         const lineGap = median(pageLines.slice(1).map((line, index) => pageLines[index].y - line.y).filter(gap => gap > 0));
+
+        // Index/contents pages: encode each entry's left-indent depth as leading
+        // non-breaking spaces (4 per level) so the reader can render index sub-entry
+        // indentation — a PDF's x-position is otherwise discarded. Only mark pages that
+        // look like an index/contents (≥6 lines ending in a page reference), so body
+        // prose is never touched. Depth is measured relative to the leftmost *entry*
+        // (a line ending in a page reference), so the running heading/intro and one-off
+        // centred lines stay at level 0 and the levels are stable across index pages
+        // (where only the first carries the heading). Body chapters strip these via the
+        // prose cleanup's per-line trim; only the index keeps them.
+        const INDENT_TOL = 4;
+        const endsWithPageRef = (value: string): boolean => /[\d](?:[–—-]\d+)?\s*$/u.test(value);
+        const isListPage = pageLines.filter(line => endsWithPageRef(line.text)).length >= 6;
+        const indentTiers: number[] = [];
+        if (isListPage) {
+          const entryBaseLeft = Math.min(...pageLines.filter(line => endsWithPageRef(line.text)).map(line => line.x));
+          const clusters: { x: number; count: number }[] = [];
+          for (const line of pageLines) {
+            if (line.x < entryBaseLeft - INDENT_TOL) continue;
+            const cluster = clusters.find(c => Math.abs(c.x - line.x) <= INDENT_TOL);
+            if (cluster) cluster.count++; else clusters.push({ x: line.x, count: 1 });
+          }
+          indentTiers.push(...clusters.filter(c => c.count >= 2).map(c => c.x).sort((a, b) => a - b));
+        }
+        const indentDepthFor = (x: number): number => {
+          const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
+          return tier >= 1 ? Math.min(tier, 3) : 0;
+        };
         const formattedLines: string[] = [];
 
         pageLines.forEach((line, index) => {
@@ -967,7 +995,7 @@ const App: React.FC = () => {
               formattedLines.push('');
             }
           }
-          formattedLines.push(line.text);
+          formattedLines.push('\u00a0'.repeat(4 * indentDepthFor(line.x)) + line.text);
         });
 
         // Join a word hyphenated across a line break onto the next line without the

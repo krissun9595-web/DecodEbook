@@ -322,6 +322,23 @@ const normalizeInternalLinkMarkup = (value: string): string =>
     return label && href ? `[${label}](${href})` : match;
   });
 
+// A PDF index: processPdf emits one entry per line and encodes each entry's depth as
+// leading non-breaking spaces (4 per level). Drop the page markers, make each entry its
+// own paragraph (so buildPageSentenceData captures the per-entry indent), and keep the
+// leading NBSP so the renderer applies the matching left padding. EPUB indexes keep their
+// own light cleanup path; this runs only for PDF sources.
+const formatPdfIndexEntries = (rawText: string): string =>
+  normalizeInternalLinkMarkup(rawText)
+    .replace(/\[\[PAGE\s+\d+\]\]/g, '')
+    .split('\n')
+    .map(line => {
+      const indent = line.match(/^ +/)?.[0] ?? '';
+      const body = line.slice(indent.length).trim();
+      return body ? indent + body : '';
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
 const stripFootnoteMarkers = (value: string): string => value.replace(
   FOOTNOTE_MARKER_PATTERN,
   (match, punctuation: string, _marker: string, offset: number, source: string) => {
@@ -872,7 +889,7 @@ const buildPageSentenceData = (pageText: string): {
     // Leading non-breaking spaces encode index sub-entry indentation (the only
     // text that survives extraction without being collapsed). Capture the depth
     // as metadata and strip the markers so the entry text itself stays clean.
-    const indentMatch = rawPText.match(/^ +/);
+    const indentMatch = rawPText.match(/^\\u00a0+/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? rawPText.slice(indentMatch![0].length) : rawPText;
     const lines = pText.split('\n').map(line => line.trim()).filter(Boolean);
@@ -1164,8 +1181,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // sub-entry indentation. Use a light cleanup that preserves both.
         const isIndexChapterSource =
           isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
+        // A PDF source (its extraction carries "[[PAGE n]]" markers) encodes index
+        // sub-entry depth as leading non-breaking spaces and emits one entry per line, so
+        // it needs its own entry-per-paragraph formatting; EPUB indexes keep the existing
+        // light cleanup untouched.
+        const isPdfSource = fileContext.content.includes('[[PAGE ');
         cleanText = isIndexChapterSource
-          ? normalizeInternalLinkMarkup(normalizeInternalLinkMarkup(rawText).replace(/\n{3,}/g, '\n\n').trim())
+          ? isPdfSource
+            ? formatPdfIndexEntries(rawText)
+            : normalizeInternalLinkMarkup(normalizeInternalLinkMarkup(rawText).replace(/\n{3,}/g, '\n\n').trim())
           : normalizeInternalLinkMarkup(rearrangeAndCleanText(normalizeInternalLinkMarkup(rawText)));
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });
