@@ -21,6 +21,7 @@ import {
   type ReaderTopicBlock,
 } from '../utils/readerStructure';
 import { splitIntoSentences } from '../utils/sentenceSplit';
+import { looksLikeAttributionAuthor, looksLikePersonName } from '../utils/personName';
 import { inkLineStyle } from '../utils/inkLine';
 import {
   isBibleReferenceAtEnd,
@@ -496,12 +497,14 @@ const isLikelyInternalRomanReferenceLink = (text: string, href?: string): boolea
 
 const attributionTailFor = (value: string): { body: string; attribution: string } | null => {
   const clean = value.replace(/\s+/g, ' ').trim();
-  const match = clean.match(/^(.{20,900}?[.!?。！？"”’](?:\d{1,3})?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^.!?\n]{2,140})$/u);
+  const match = clean.match(/^(.{20,900}?[.!?。！？"”’](?:\d{1,3})?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^!?\n]{2,140})$/u);
   if (!match) return null;
   const body = match[1].trim();
   const attribution = stripOrphanDisplayMarkers(match[2]).trim();
   if (!/^[“"‘']|\*[“"‘']/.test(body)) return null;
-  if (attribution.split(/\s+/).length > 18) return null;
+  // The tail must read as an attribution (person name with initials/particles/suffixes,
+  // or a short source) rather than a stray sentence.
+  if (!looksLikeAttributionAuthor(attribution)) return null;
   return { body, attribution };
 };
 
@@ -514,10 +517,8 @@ const looksLikeStandaloneCitation = (value: string): boolean => {
 
 const looksLikeAttributionLine = (value: string): boolean => {
   const clean = stripInlineFormatSyntax(value).replace(/\s+/g, ' ').trim();
-  if (!/^(?:——|--|—|–|-)\s*[\p{Lu}\p{Lo}]/u.test(clean)) return false;
-  const author = clean.replace(/^(?:——|--|—|–|-)\s*/u, '');
-  if (author.length > 140 || /[.!?]$/u.test(author)) return false;
-  return author.split(/\s+/).length <= 18;
+  if (!/^(?:——|--|—|–|-)\s*\S/u.test(clean)) return false;
+  return looksLikeAttributionAuthor(clean.replace(/^(?:——|--|—|–|-)\s*/u, ''));
 };
 
 const normalizeAttributionAuthor = (value: string): string =>
@@ -2186,9 +2187,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
   const looksLikeSignatureLine = (value: string): boolean => {
     const clean = stripInlineFormatSyntax(value).replace(/\s+/g, ' ').trim();
-    if (!clean || clean.length > 120 || /[.!?。！？]$/u.test(clean)) return false;
+    if (!clean || clean.length > 120) return false;
     if (/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/u.test(clean)) return true;
-    if (/^(?:[A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){1,3}|[A-Z][\p{L}'-]+,\s+[A-Z][\p{L}'-]+)$/u.test(clean)) return true;
+    // ≥2 tokens: a lone capitalised word is a heading fragment, not a signature.
+    if (/\s/.test(clean) && looksLikePersonName(clean)) return true;
     return /^(?:Los Angeles|New York|London|Paris|Berlin|Beijing|Shanghai|Tokyo|Hong Kong|Singapore|San Francisco|Washington(?:,\s*D\.C\.)?)$/u.test(clean);
   };
   const looksLikeNotesSectionHeading = (value: string): boolean => {

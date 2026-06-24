@@ -1,3 +1,5 @@
+import { looksLikePersonName, looksLikeAttributionAuthor } from './personName';
+
 const endsWithTerminalPunctuation = (value: string): boolean =>
   /[.!?。！？]["'”’)\]]?$/u.test(value.trim());
 
@@ -98,18 +100,20 @@ const stripDisplayStyleMarkersPreserveLinks = (value: string): string => {
 
 const looksLikeSignatureLine = (value: string): boolean => {
   const clean = stripDisplayStyleMarkers(value).replace(/\s+/g, ' ').trim();
-  if (!clean || clean.length > 120 || /[.!?。！？]$/u.test(clean)) return false;
+  if (!clean || clean.length > 120) return false;
   if (/^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/u.test(clean)) return true;
-  if (/^(?:[A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){1,3}|[A-Z][\p{L}'-]+,\s+[A-Z][\p{L}'-]+)$/u.test(clean)) return true;
+  // A signature is a multi-token person name (initials/particles/suffixes handled by the
+  // principle). Require ≥2 tokens: a lone capitalised word ("State") is a heading fragment,
+  // not a signature — only after an attribution dash is a mononym treated as a credit.
+  if (/\s/.test(clean) && looksLikePersonName(clean)) return true;
+  // …or a dateline place.
   return /^(?:Los Angeles|New York|London|Paris|Berlin|Beijing|Shanghai|Tokyo|Hong Kong|Singapore|San Francisco|Washington(?:,\s*D\.C\.)?)$/u.test(clean);
 };
 
 const looksLikeAttributionLine = (value: string): boolean => {
   const clean = stripDisplayStyleMarkers(value).replace(/\s+/g, ' ').trim();
-  if (!/^(?:——|--|—|–|-)\s*[A-Z]/u.test(clean)) return false;
-  const author = clean.replace(/^(?:——|--|—|–|-)\s*/u, '');
-  if (author.length > 140 || /[.!?]$/u.test(author)) return false;
-  return author.split(/\s+/).length <= 18;
+  if (!/^(?:——|--|—|–|-)\s*\S/u.test(clean)) return false;
+  return looksLikeAttributionAuthor(clean.replace(/^(?:——|--|—|–|-)\s*/u, ''));
 };
 
 const markCitationBody = (value: string): string => {
@@ -142,12 +146,18 @@ const splitAttributionTail = (value: string): string => {
   // always has), and a multi-line italic epigraph puts the closing emphasis before the
   // marker ("understand.”*1" / "understand.”*[1](#…)"). markCitationBody strips the
   // emphasis and re-glues the marker to the quote, so every ordering normalises the same.
-  const match = clean.match(/^(.{20,900}?[.!?。！？"”’][*_~]{0,2}(?:\d{1,3}|\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^.!?\n]{2,140})$/u);
+  // The author may carry initials ("ARTHUR C. CLARKE", "C. S. LEWIS"), so periods are
+  // allowed in the name; it is anchored to the end of the (quote-led) block, so this
+  // can't run into following prose. Excluding "." here previously dropped any attribution
+  // whose author has an initial, leaving the quote, credit, and next paragraph huddled.
+  const match = clean.match(/^(.{20,900}?[.!?。！？"”’][*_~]{0,2}(?:\d{1,3}|\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^!?\n]{2,140})$/u);
   if (!match) return value;
   const body = match[1].trim();
   const attribution = stripDisplayStyleMarkers(match[2]).trim();
   if (!/^[“"‘']|\*[“"‘']/.test(body)) return value;
-  if (attribution.split(/\s+/).length > 18) return value;
+  // Only split when the tail really is an attribution (a person name — initials/particles/
+  // suffixes included — or a short source), never a stray sentence.
+  if (!looksLikeAttributionAuthor(attribution)) return value;
   return `${markCitationBody(body)}\n\n—— ${attribution.replace(/^(?:——|--|—|–|-)\s*/u, '')}`;
 };
 

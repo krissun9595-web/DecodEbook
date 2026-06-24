@@ -10,6 +10,7 @@ import {
 } from '../utils/readerStructure.ts';
 import { splitIntoSentences } from '../utils/sentenceSplit.ts';
 import { rearrangeAndCleanText } from '../utils/textCleanup.ts';
+import { looksLikePersonName, looksLikeAttributionAuthor } from '../utils/personName.ts';
 import {
   isBibleReferenceAtEnd,
   isBibleReferenceMarkerCandidate,
@@ -772,6 +773,13 @@ const makeTopic = (index: number): string => [
     rearrangeAndCleanText('*“A long enough citation body that reads as a real quotation, ending here properly.”*[1](#pdfnote-1-1)\n—VITO TANZI\n\nWe believe that the next body paragraph begins with a capitalised word and must stay separate.'),
     '*“A long enough citation body that reads as a real quotation, ending here properly.”*[1](#pdfnote-1-1)\n\n—— VITO TANZI\n\nWe believe that the next body paragraph begins with a capitalised word and must stay separate.'
   );
+  // An author with an initial ("ARTHUR C. CLARKE") must still split: the period in the
+  // name must not defeat attribution detection (which then leaves the quote, credit, and
+  // following body paragraph huddled into one block).
+  assert.equal(
+    rearrangeAndCleanText('*“A quotation long enough to read as a real citation, ending properly.”*[1](#pdffn-p5-y10)\n—ARTHUR C. CLARKE\n\nTo speak of the coming death of politics begins the body here with enough words.'),
+    '*“A quotation long enough to read as a real citation, ending properly.”*[1](#pdffn-p5-y10)\n\n—— ARTHUR C. CLARKE\n\nTo speak of the coming death of politics begins the body here with enough words.'
+  );
   // A soft-wrapped PDF continuation line that merely begins with a structural keyword
   // ("book", "part", "section"…) followed by a lowercase prose word must NOT be treated
   // as a heading and split into its own paragraph — that shredded sentences across
@@ -991,6 +999,34 @@ const makeTopic = (index: number): string => [
   const inferred = findTopicHeadingForExtractedText(source, extracted);
 
   assert.equal(inferred, '11. Confidence');
+}
+
+// Person-name recognition principle: names with initials, particles, suffixes, multiple
+// authors, and ALL-CAPS epigraph form are recognised; prose and digit-bearing strings are
+// rejected. This is the universal rule the attribution checks route through, replacing the
+// per-site character-class patterns that dropped any author with a period (e.g. an initial).
+{
+  const names = [
+    'ARTHUR C. CLARKE', 'C. S. LEWIS', 'W. E. B. DU BOIS', 'Vincent van Gogh',
+    'Gabriel García Márquez', 'Martin Luther King Jr.', 'MARSHALL McLUHAN',
+    'DANNY HILLIS', 'VITO TANZI', 'James Dale Davidson', 'Friedrich von Hayek',
+    'Niccolò Machiavelli', 'Laozi', 'Sun Tzu and Carl von Clausewitz',
+  ];
+  for (const n of names) assert.ok(looksLikePersonName(n), `should be a person name: ${n}`);
+  const notNames = [
+    'the time will come when most of our present', 'However the argument continues here',
+    'To speak of the coming death of politics', 'Chapter 4', 'In the year 1964',
+    'We believe that the next paragraph begins',
+  ];
+  for (const s of notNames) assert.ok(!looksLikePersonName(s), `should not be a person name: ${s}`);
+
+  // Attribution source = a name, a "name, year/source" tail, or a short capitalised source.
+  for (const a of [...names, 'Marshall McLuhan, 1964', 'Marshall McLuhan, Understanding Media', 'The Economist', 'MATTHEW 10:26']) {
+    assert.ok(looksLikeAttributionAuthor(a), `should be an attribution author: ${a}`);
+  }
+  for (const s of ['To speak of the coming death of politics is bound to seem ridiculous.', 'and hope that politics will end']) {
+    assert.ok(!looksLikeAttributionAuthor(s), `should not be an attribution author: ${s}`);
+  }
 }
 
 console.log('readerStructure regression tests passed');
