@@ -5,4 +5,7 @@
 // v6: outline-based chapters (built from the PDF's own bookmarks, Y-anchored).
 // v7: real link annotations — external hyperlinks, and footnote markers anchored to their
 //     destination note entry (shared key) for exact bidirectional navigation.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v7-link-annotations';
+// v8: geometry-driven block structure — lines are classified as heading/body against the
+//     document body font, grouped into blocks, and soft-wrapped lines joined, so structure
+//     comes from the page layout instead of being re-guessed from flattened text.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v8-geometry-blocks';

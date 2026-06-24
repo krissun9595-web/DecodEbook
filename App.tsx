@@ -827,8 +827,14 @@ const App: React.FC = () => {
       // so a table-of-contents / cross-reference link (which also has a destination but no
       // numeric marker) never turns a destination heading into a spurious footnote.
       const emittedMarkerKeys = new Set<string>();
+      // A trailing footnote/cross-reference link ("…AGES.”[2](#…)") and any trailing
+      // emphasis sit after the sentence's terminal punctuation; strip them first so a
+      // sentence that ends with a footnote marker still counts as ending — otherwise a new
+      // (indented) paragraph after it is wrongly merged in.
       const endsWithTerminalPunctuation = (value: string): boolean =>
-        /[.!?。！？]["'”’)\]]?$/u.test(value.trim());
+        /[.!?。！？]["'”’)\]]?$/u.test(
+          value.trim().replace(/\s*\[[^\]]*\]\([^)]*\)\s*$/u, '').replace(/[*_~]+$/u, '').trim(),
+        );
       const looksLikeQuotedTermLine = (value: string): boolean => {
         const trimmed = value.trim();
         if (!/^[‘']/u.test(trimmed)) return false;
@@ -887,6 +893,16 @@ const App: React.FC = () => {
         const ranked = [...buckets.entries()].sort((a, b) => b[1].count - a[1].count || a[0] - b[0]);
         return ranked[0] ? ranked[0][1].valueTotal / ranked[0][1].count : 0;
       };
+
+      // Phase C: structure is decided from the page geometry, not guessed from the text
+      // downstream. Each page's classified lines are buffered, then — once the whole
+      // document's body font size is known (a chapter-start page is heading-heavy and would
+      // skew a per-page estimate) — grouped into blocks and emitted. INDENT_TOL is shared
+      // with the per-page index-indent logic.
+      const INDENT_TOL = 4;
+      type PdfLine = { y: number; x: number; text: string; h: number; bold: boolean };
+      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; lineGap: number; isListPage: boolean; indentTiers: number[] }[] = [];
+      const allLineHeights: number[] = [];
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
@@ -1056,7 +1072,13 @@ const App: React.FC = () => {
             });
             if (open) out += MARK[open];
             if (openLink) out += `](${openLink})`;
-            return { y: group.baseY, x: Math.min(...items.map(it => it.x)), text: out.replace(/\s+/g, ' ').trim() };
+            return {
+              y: group.baseY,
+              x: Math.min(...items.map(it => it.x)),
+              text: out.replace(/\s+/g, ' ').trim(),
+              h: lineBodyHeight,
+              bold: items.filter(it => it.bold).length > items.length / 2,
+            };
           })
           .filter(line => line.text)
           .sort((a, b) => b.y - a.y);
@@ -1095,7 +1117,6 @@ const App: React.FC = () => {
         // centred lines stay at level 0 and the levels are stable across index pages
         // (where only the first carries the heading). Body chapters strip these via the
         // prose cleanup's per-line trim; only the index keeps them.
-        const INDENT_TOL = 4;
         const endsWithPageRef = (value: string): boolean => /[\d](?:[–—-]\d+)?\s*$/u.test(value);
         const isListPage = pageLines.filter(line => endsWithPageRef(line.text)).length >= 6;
         const indentTiers: number[] = [];
@@ -1109,54 +1130,105 @@ const App: React.FC = () => {
           }
           indentTiers.push(...clusters.filter(c => c.count >= 2).map(c => c.x).sort((a, b) => a - b));
         }
-        const indentDepthFor = (x: number): number => {
-          const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
-          return tier >= 1 ? Math.min(tier, 3) : 0;
-        };
         // Retain this page's line geometry (baseline Y + text) when an outline bookmark
         // points at it, so chapter starts can be anchored to the exact heading line.
         if (outlinePages.has(pageNum)) {
           pageLineGeom.set(pageNum, pageLines.map(line => ({ y: line.y, text: line.text })));
         }
 
-        const formattedLines: string[] = [];
+        // Buffer the page; prose line heights feed the document-wide body-font estimate.
+        if (!isListPage) allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
+        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, lineGap, isListPage, indentTiers });
+      }
 
-        pageLines.forEach((line, index) => {
-          const previous = pageLines[index - 1];
-          if (previous) {
-            const verticalGap = previous.y - line.y;
-            const isIndentedBodyLine = line.x > bodyLeft + 8 && !startsDialogueLine(line.text);
-            const startsNewParagraph =
-              (lineGap > 0 && verticalGap > lineGap * 1.35) ||
-              (endsWithTerminalPunctuation(previous.text) && (
-                isIndentedBodyLine ||
-                startsParagraphTransitionLine(line.text)
-              ));
-            if (startsNewParagraph && formattedLines.length > 0 && formattedLines[formattedLines.length - 1] !== '') {
-              formattedLines.push('');
+      // Phase C: the document body font is the most common line height across prose pages;
+      // a line whose font is clearly larger is a heading/subtitle. With the baseline known,
+      // group each page's lines into blocks and join soft-wrapped lines, so the cleanup and
+      // reader classify whole paragraphs/headings instead of per-line fragments (what made
+      // a small-caps sentence tail look like a subtitle, split a wrapped quote into a new
+      // paragraph, and shattered a multi-line heading).
+      const bodyFont = mode(allLineHeights.map(h => Math.round(h))) || median(allLineHeights) || 0;
+      const isHeadingLine = (line: PdfLine): boolean => bodyFont > 0 && line.h >= bodyFont * 1.2;
+
+      for (const buf of pageBuffers) {
+        const { pageNum, lines, bodyLeft, lineGap, isListPage, indentTiers } = buf;
+        const indentDepthFor = (x: number): number => {
+          const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
+          return tier >= 1 ? Math.min(tier, 3) : 0;
+        };
+
+        // Index/contents: one indented entry per line (a list, not prose \u2014 never joined).
+        if (isListPage) {
+          const formattedLines: string[] = [];
+          lines.forEach((line, index) => {
+            const previous = lines[index - 1];
+            if (previous) {
+              const verticalGap = previous.y - line.y;
+              const isIndentedBodyLine = line.x > bodyLeft + 8 && !startsDialogueLine(line.text);
+              const startsNewParagraph =
+                (lineGap > 0 && verticalGap > lineGap * 1.35) ||
+                (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || startsParagraphTransitionLine(line.text)));
+              if (startsNewParagraph && formattedLines.length > 0 && formattedLines[formattedLines.length - 1] !== '') formattedLines.push('');
+            }
+            formattedLines.push('\u00a0'.repeat(4 * indentDepthFor(line.x)) + line.text);
+          });
+          for (let i = 0; i < formattedLines.length - 1; i++) {
+            if (/[A-Za-z]-$/.test(formattedLines[i]) && formattedLines[i + 1] && /^[a-z]/.test(formattedLines[i + 1])) {
+              formattedLines[i] = formattedLines[i] + formattedLines.splice(i + 1, 1)[0];
+              i--;
             }
           }
-          formattedLines.push('\u00a0'.repeat(4 * indentDepthFor(line.x)) + line.text);
-        });
+          const pageText = formattedLines.join('\n').trim();
+          if (pageText) pages.push(`[[PAGE ${pageNum}]]\n${pageText}`);
+          continue;
+        }
 
-        // Join a word hyphenated across a line break onto the next line without the
-        // inserted space, so "nation-\nstate" reads "nation-state". The hyphen is kept:
-        // most line-end hyphens in real books are genuine compounds (nation-state,
-        // cost-benefit), and dropping the hyphen would corrupt them.
-        for (let i = 0; i < formattedLines.length - 1; i++) {
-          if (/[A-Za-z]-$/.test(formattedLines[i]) && formattedLines[i + 1] && /^[a-z]/.test(formattedLines[i + 1])) {
-            formattedLines[i] = formattedLines[i] + formattedLines.splice(i + 1, 1)[0];
-            i--;
+        // Prose page: paragraph spacing comes from the BODY lines only (a chapter-start
+        // page's page-wide gap is skewed by large heading leading). Walk the lines,
+        // gathering a run of one kind, then join it into a single block.
+        const bodyLines = lines.filter(line => !isHeadingLine(line));
+        const bodyGaps = bodyLines.slice(1).map((line, index) => bodyLines[index].y - line.y).filter(gap => gap > 0 && gap < bodyFont * 3);
+        const bodyLineGap = median(bodyGaps) || lineGap;
+
+        const blocks: string[] = [];
+        let i = 0;
+        while (i < lines.length) {
+          const groupIsHeading = isHeadingLine(lines[i]);
+          const group: PdfLine[] = [lines[i]];
+          let j = i + 1;
+          while (j < lines.length && isHeadingLine(lines[j]) === groupIsHeading) {
+            const previous = lines[j - 1];
+            const current = lines[j];
+            const verticalGap = previous.y - current.y;
+            let endsBlock: boolean;
+            if (groupIsHeading) {
+              // Wrapped heading lines join; a gap larger than the heading's own leading
+              // separates two stacked headings (a chapter title above its subtitle).
+              endsBlock = verticalGap > Math.max(previous.h, current.h) * 1.35;
+            } else {
+              const isIndentedBodyLine = current.x > bodyLeft + 8 && !startsDialogueLine(current.text);
+              endsBlock =
+                (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||
+                (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || startsParagraphTransitionLine(current.text)));
+            }
+            if (endsBlock) break;
+            group.push(current);
+            j++;
           }
+          // Join the block into one line, keeping a word hyphenated across a line break.
+          let text = group[0].text;
+          for (let k = 1; k < group.length; k++) {
+            text = /[A-Za-z]-$/.test(text) && /^[a-z]/.test(group[k].text)
+              ? text + group[k].text
+              : `${text} ${group[k].text}`;
+          }
+          text = text.replace(/\s+/g, ' ').trim();
+          if (text) blocks.push(text);
+          i = j;
         }
 
-        const pageText = formattedLines
-          .join('\n')
-          .trim();
-
-        if (pageText) {
-          pages.push(`[[PAGE ${pageNum}]]\n${pageText}`);
-        }
+        const pageText = blocks.join('\n\n').trim();
+        if (pageText) pages.push(`[[PAGE ${pageNum}]]\n${pageText}`);
       }
 
       const fullText = pages.join('\n\n');

@@ -1,7 +1,13 @@
 import { looksLikePersonName, looksLikeAttributionAuthor } from './personName';
 
+// A trailing footnote/cross-reference link ("…AGES.”[2](#…)") and any trailing emphasis
+// sit after the sentence's terminal punctuation; strip them first so a footnote-terminated
+// sentence still counts as ending (otherwise the next paragraph merges in, and a sentence
+// tail in small caps slips past the subtitle guard).
 const endsWithTerminalPunctuation = (value: string): boolean =>
-  /[.!?。！？]["'”’)\]]?$/u.test(value.trim());
+  /[.!?。！？]["'”’)\]]?$/u.test(
+    value.trim().replace(/\s*\[[^\]]*\]\([^)]*\)\s*$/u, '').replace(/[*_~]+$/u, '').trim(),
+  );
 
 const looksLikeHeadingOrStructure = (value: string): boolean => {
   // Strip wrapping emphasis (an italic <h2>/<h3> extracts as "*Title*"), otherwise

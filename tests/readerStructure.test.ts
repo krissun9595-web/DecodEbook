@@ -1029,4 +1029,23 @@ const makeTopic = (index: number): string => [
   }
 }
 
+// A sentence that ends with a footnote-marker link still counts as ending, so the next
+// (capitalised) paragraph stays separate rather than being merged onto it, and the
+// footnote-terminated line is never mistaken for a subtitle. Regression for the recurring
+// "trailing link hides the terminal punctuation" failure.
+{
+  const out = rearrangeAndCleanText(
+    '[[PAGE 1]]\nA full body sentence that runs on for a while and ends in small caps at the MIDDLE AGES.”[2](#pdffn-p5-y10)\n\nWestern people consciously thought of themselves as modern only later in this separate paragraph.',
+  );
+  const paras = out.split(/\n{2,}/);
+  assert.ok(
+    paras.some(p => /MIDDLE AGES.”\[2\]/.test(p) && /MIDDLE AGES.”\[2\]\]?\(#pdffn-p5-y10\)\s*$/.test(p.trim())),
+    'footnote-terminated sentence is its own paragraph (next paragraph not merged in)',
+  );
+  assert.ok(
+    paras.some(p => /^Western people/.test(p.trim())),
+    'the following capitalised paragraph stays separate',
+  );
+}
+
 console.log('readerStructure regression tests passed');
