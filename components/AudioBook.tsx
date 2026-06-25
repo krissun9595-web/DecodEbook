@@ -881,7 +881,13 @@ const buildPageSentenceData = (pageText: string): {
   paragraphData: ParagraphData[];
   flatSentenceMap: SentenceMap[];
 } => {
-  const rawParagraphs = pageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  // Page markers ("[[PAGE n]]") are navigation metadata kept through cleanup/pagination
+  // (they carry cross-page sentence continuations) but must never display. Drop them here,
+  // at display-prep — after pagination is done — collapsing the surrounding spaces so an
+  // inline marker ("…update on [[PAGE 54]] 01/04/00") closes up cleanly. (Notes and index
+  // strip their own markers upstream; this covers the main reading body.)
+  const cleanedPageText = pageText.replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
+  const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
 
   const paragraphData: ParagraphData[] = [];
   const flatSentenceMap: SentenceMap[] = [];

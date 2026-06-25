@@ -900,7 +900,7 @@ const App: React.FC = () => {
       // skew a per-page estimate) — grouped into blocks and emitted. INDENT_TOL is shared
       // with the per-page index-indent logic.
       const INDENT_TOL = 4;
-      type PdfLine = { y: number; x: number; text: string; h: number; bold: boolean };
+      type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; lineGap: number; isListPage: boolean; indentTiers: number[] }[] = [];
       const allLineHeights: number[] = [];
 
@@ -1075,6 +1075,7 @@ const App: React.FC = () => {
             return {
               y: group.baseY,
               x: Math.min(...items.map(it => it.x)),
+              rightX: Math.max(...items.map(it => it.x + (it.w || 0))),
               text: out.replace(/\s+/g, ' ').trim(),
               h: lineBodyHeight,
               bold: items.filter(it => it.bold).length > items.length / 2,
@@ -1149,9 +1150,21 @@ const App: React.FC = () => {
       // paragraph, and shattered a multi-line heading).
       const bodyFont = mode(allLineHeights.map(h => Math.round(h))) || median(allLineHeights) || 0;
       const isHeadingLine = (line: PdfLine): boolean => bodyFont > 0 && line.h >= bodyFont * 1.2;
+      // A line "fills the measure" if its right edge reaches the page's text right margin
+      // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
+      // signal for a continuing paragraph, the one a text-only heuristic cannot see.
+      const fillsMeasure = (rightX: number, margin: number): boolean => margin > 0 && margin - rightX <= bodyFont * 2;
+
+      // Each page's blocks are buffered with the geometry the cross-page seam join needs,
+      // then assembled into one stream so a paragraph that runs off the bottom of one page
+      // and continues at the top of the next is rejoined from the layout, not guessed.
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string };
+      const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
       for (const buf of pageBuffers) {
         const { pageNum, lines, bodyLeft, lineGap, isListPage, indentTiers } = buf;
+        const proseLines = lines.filter(line => !isHeadingLine(line));
+        const rightMargin = proseLines.length ? Math.max(...proseLines.map(line => line.rightX)) : 0;
         const indentDepthFor = (x: number): number => {
           const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
           return tier >= 1 ? Math.min(tier, 3) : 0;
@@ -1179,7 +1192,8 @@ const App: React.FC = () => {
             }
           }
           const pageText = formattedLines.join('\n').trim();
-          if (pageText) pages.push(`[[PAGE ${pageNum}]]\n${pageText}`);
+          // A list page is never a seam-join candidate (its entries are their own lines).
+          pageEmit.push({ pageNum, blocks: pageText ? [{ text: pageText, role: 'list', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }] : [], rightMargin, bodyLeft });
           continue;
         }
 
@@ -1190,7 +1204,7 @@ const App: React.FC = () => {
         const bodyGaps = bodyLines.slice(1).map((line, index) => bodyLines[index].y - line.y).filter(gap => gap > 0 && gap < bodyFont * 3);
         const bodyLineGap = median(bodyGaps) || lineGap;
 
-        const blocks: string[] = [];
+        const blocks: EmitBlock[] = [];
         let i = 0;
         while (i < lines.length) {
           const groupIsHeading = isHeadingLine(lines[i]);
@@ -1229,12 +1243,56 @@ const App: React.FC = () => {
           // "**" that shows literally and breaks the notes "Chapter N" section detection.
           // Drop emphasis markers from heading blocks (footnote links are left intact).
           if (groupIsHeading) text = text.replace(/[*_~]/g, '').replace(/\s+/g, ' ').trim();
-          if (text) blocks.push(text);
+          if (text) {
+            const last = group[group.length - 1];
+            blocks.push({
+              text,
+              role: groupIsHeading ? 'heading' : 'body',
+              firstX: group[0].x,
+              firstRightX: group[0].rightX,
+              lastRightX: last.rightX,
+              lastText: last.text,
+            });
+          }
           i = j;
         }
 
-        const pageText = blocks.join('\n\n').trim();
-        if (pageText) pages.push(`[[PAGE ${pageNum}]]\n${pageText}`);
+        pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
+      }
+
+      // Geometry-driven cross-page join: a paragraph that runs off the bottom of one page
+      // continues at the top of the next when that page's last body line FILLS the right
+      // margin (it wrapped, it did not end) and lacks terminal punctuation, and the next
+      // page opens with a body block at the left margin (not indented = not a new paragraph)
+      // whose own first line also fills the measure (so a short running head is not taken
+      // for the continuation). When so, the two blocks are emitted as one paragraph with the
+      // page marker inline (stripped at display); otherwise the page starts a new block.
+      let prevBlock: EmitBlock | null = null;
+      let prevRightMargin = 0;
+      for (const { pageNum, blocks, rightMargin, bodyLeft } of pageEmit) {
+        if (blocks.length === 0) continue;
+        const marker = `[[PAGE ${pageNum}]]`;
+        const first = blocks[0];
+        const continues =
+          prevBlock !== null &&
+          pages.length > 0 &&
+          prevBlock.role === 'body' &&
+          fillsMeasure(prevBlock.lastRightX, prevRightMargin) &&
+          !endsWithTerminalPunctuation(prevBlock.lastText) &&
+          first.role === 'body' &&
+          first.firstX <= bodyLeft + 8 &&
+          fillsMeasure(first.firstRightX, rightMargin);
+        blocks.forEach((block, blockIndex) => {
+          if (blockIndex === 0 && continues) {
+            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${block.text}`;
+          } else if (blockIndex === 0) {
+            pages.push(`${marker}\n${block.text}`);
+          } else {
+            pages.push(block.text);
+          }
+        });
+        prevBlock = blocks[blocks.length - 1];
+        prevRightMargin = rightMargin;
       }
 
       const fullText = pages.join('\n\n');

@@ -11,4 +11,8 @@
 // v9: drop inline emphasis markers from heading blocks (a bold-only glyph among bold-italic
 //     words otherwise left a stray "**" that showed literally and broke notes-section
 //     detection).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v9-heading-emphasis';
+// v10: geometry-driven cross-page join — a paragraph that fills the right margin at the
+//      bottom of a page and continues at the top of the next is rejoined from the layout
+//      (line fills the measure + no terminal punctuation), instead of being guessed from
+//      text downstream.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v10-cross-page-join';

@@ -1076,4 +1076,15 @@ const makeTopic = (index: number): string => [
   assert.ok(/(^|\n)4\. Kevin Kelly/.test(out), 'note 4 still starts its own entry');
 }
 
+// A sentence split across a PDF page break, where the continuation begins with a date or
+// number after a preposition like "on"/"in", must merge — not be left as two paragraphs.
+// ("…to an update on" / [page break] / "01/04/00? Who knows?")
+{
+  const out = rearrangeAndCleanText(
+    '[[PAGE 53]]\nWhat happens when a backup utility copies a file originating on 07/04/99 to an update on\n\n[[PAGE 54]]\n01/04/00? Who knows?',
+  );
+  assert.equal(out.split(/\n{2,}/).length, 1, 'cross-page date continuation merges into one paragraph');
+  assert.ok(/update on\s+(?:\[\[PAGE\s+\d+\]\]\s+)?01\/04\/00\? Who knows\?/.test(out), 'the continued sentence is contiguous (page marker is stripped at display)');
+}
+
 console.log('readerStructure regression tests passed');

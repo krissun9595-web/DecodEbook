@@ -183,14 +183,18 @@ const markCitationBlocks = (paragraphs: string[]): string[] => paragraphs.map((p
   return markCitationBody(paragraph);
 });
 
+// Fallback continuation detector. For PDFs, processPdf now rejoins cross-page paragraphs
+// geometrically (a line that fills the right margin wrapped, so it continues) and emits
+// them already merged — so this text-only heuristic only handles the seams geometry can't
+// decide (e.g. a page-number footer between the prose) and EPUB, which has no page markers.
 const looksLikeContinuationAfterArtificialBreak = (previous: string, current: string): boolean => {
   const prev = previous.trim();
   // A PDF page boundary injects a "[[PAGE n]]" marker at the start of the next block, so
   // a sentence that runs across the page break ("…is rapidly" / "[[PAGE 15]] eroding.")
   // is split into two paragraphs and the marker blocks the continuation heuristics below.
   // Look past a leading page marker when deciding continuation; the marker stays in the
-  // merged text (it's load-bearing for pagination and stripped at render). EPUB has no
-  // page markers, so this never changes EPUB behaviour.
+  // merged text (it carries the cross-page continuation) and is stripped for display in
+  // buildPageSentenceData. EPUB has no page markers, so this never changes EPUB behaviour.
   const cur = current.trim().replace(/^\[\[PAGE\s+\d+\]\]\s*/iu, '');
   // The previous block may itself end with an attribution line — e.g. splitAttributionTail
   // returns "*quote*\n\n—— AUTHOR" as one block when a quote and its credit shared a
@@ -219,7 +223,7 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   const firstToken = cur.split(/\s+/)[0] || '';
 
   if (/^[a-z]/u.test(cur)) return true;
-  if (/^\d+(?:[.,]\d+)?\.?\b/u.test(cur) && /\b(?:at|was|were|is|are|be|been|being|of|to|from|by|with|and|or|plus|minus|equals?|stood at|amounted to|rose to|fell to)$/iu.test(prev)) return true;
+  if (/^\d+(?:[.,/]\d+)*\.?\b/u.test(cur) && /\b(?:at|on|in|was|were|is|are|be|been|being|of|to|from|by|with|and|or|plus|minus|equals?|until|since|after|before|around|between|circa|near|stood at|amounted to|rose to|fell to)$/iu.test(prev)) return true;
   if (/^(?:and|or|but|nor|for|yet|so|to|of|in|on|at|by|from|with|without|into|through|over|under|than|as|that|which|who|whom|whose)\b/iu.test(cur)) return true;
   if (/[,;:—–-]\s*$/u.test(prev)) return true;
   if (/;[^.!?。！？]*$/u.test(prev) && (/;/.test(cur) || /^[A-Z][\p{L}.'-]*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|V?I{0,3}))?;/u.test(cur))) return true;
