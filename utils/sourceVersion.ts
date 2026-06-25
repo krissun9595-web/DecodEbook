@@ -8,4 +8,7 @@
 // v8: geometry-driven block structure — lines are classified as heading/body against the
 //     document body font, grouped into blocks, and soft-wrapped lines joined, so structure
 //     comes from the page layout instead of being re-guessed from flattened text.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v8-geometry-blocks';
+// v9: drop inline emphasis markers from heading blocks (a bold-only glyph among bold-italic
+//     words otherwise left a stray "**" that showed literally and broke notes-section
+//     detection).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v9-heading-emphasis';

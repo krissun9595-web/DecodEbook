@@ -1223,6 +1223,12 @@ const App: React.FC = () => {
               : `${text} ${group[k].text}`;
           }
           text = text.replace(/\s+/g, ' ').trim();
+          // A heading is styled as a whole by the reader, so inline emphasis inside it is
+          // noise. It also actively harms: a bold-only glyph among bold-italic words (e.g.
+          // an upright bold chapter number, "Chapter **5.** *The Life…*") leaves a stray
+          // "**" that shows literally and breaks the notes "Chapter N" section detection.
+          // Drop emphasis markers from heading blocks (footnote links are left intact).
+          if (groupIsHeading) text = text.replace(/[*_~]/g, '').replace(/\s+/g, ' ').trim();
           if (text) blocks.push(text);
           i = j;
         }

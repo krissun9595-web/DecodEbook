@@ -274,6 +274,10 @@ const normalizeReaderText = (value: string): string => {
 
 export const normalizeNotesReaderText = (value: string): string => {
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // Page markers ("[[PAGE n]]") are navigation metadata, not note text. A note that spans
+  // a page break carries the next page's marker inline (e.g. "…p. 22. [[PAGE 537]]"), and
+  // otherwise the marker leaks to screen, so strip them before section/entry detection.
+  text = text.replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   // De-fragment a multi-line "Chapter N. Title" notes heading. PDF extraction emits each
   // visual line of such a heading as its own emphasis-wrapped paragraph ("*Chapter 4. …
   // Between*", "*…Decline of the…*", "*Nanny State*"); the trailing fragment lacks

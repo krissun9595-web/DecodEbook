@@ -1048,4 +1048,19 @@ const makeTopic = (index: number): string => [
   );
 }
 
+// A notes "Chapter N." sub-heading at the top of a page must be set off, not swallowed by
+// the last note of the previous page. Two things conspired: a "[[PAGE n]]" marker landing
+// between the note and the heading, and (fixed upstream in processPdf) a stray "**" on the
+// emphasised chapter number. Strip the page marker and the heading separates cleanly.
+{
+  const out = normalizeNotesReaderText(
+    '69. Ibid., p. 22.\n\n[[PAGE 537]]\n\nChapter 5. The Life and Death of the Nation-State: Democracy and Nationalism as Resource Strategies in the Age of Violence\n\n1. Quoted in Tilly, op. cit., p. 84.',
+  );
+  assert.ok(!/\[\[PAGE/.test(out), 'page marker stripped from notes text');
+  const blocks = out.split(/\n{2,}/).map(b => b.trim());
+  assert.ok(blocks.some(b => /^69\. Ibid\., p\. 22\.$/.test(b)), 'note 69 ends cleanly at p. 22.');
+  assert.ok(blocks.some(b => /^Chapter 5\. The Life and Death of the Nation-State:/.test(b)), 'Chapter 5 heading is its own block');
+  assert.ok(blocks.some(b => /^1\. Quoted in Tilly/.test(b)), "Chapter 5's first note starts fresh");
+}
+
 console.log('readerStructure regression tests passed');
