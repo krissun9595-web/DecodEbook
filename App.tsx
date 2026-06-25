@@ -938,10 +938,18 @@ const App: React.FC = () => {
             noteAnchorTargets.set(destPage, targets);
           } catch { /* unresolvable destination — skip */ }
         }
-        const coveringLink = (gx: number, gw: number, gy: number): { url?: string; noteKey?: string } | null => {
-          const cx = gx + (gw || 0) / 2;
-          for (const u of uriLinks) { const [x1, y1, x2, y2] = u.rect; if (cx >= x1 - 1 && cx <= x2 + 1 && gy >= y1 - 2 && gy <= y2 + 2) return { url: u.url }; }
-          for (const gl of gotoLinks) { const [x1, y1, x2, y2] = gl.rect; if (cx >= x1 - 1 && cx <= x2 + 1 && gy >= y1 - 2 && gy <= y2 + 2) return { noteKey: gl.key }; }
+        // A link annotation often covers only PART of a text item: pdf.js returns a whole
+        // line as one item, while the link rect wraps just a URL inside the sentence.
+        // Resolve the link per character (estimating each character's x by proportional
+        // width) and split the item at link boundaries, so only the covered characters — the
+        // URL — become the link, not the whole line. EPUB has no annotations, so this is
+        // PDF-only.
+        const links: { rect: number[]; url?: string; key?: string }[] = [
+          ...uriLinks.map(u => ({ rect: u.rect, url: u.url })),
+          ...gotoLinks.map(g => ({ rect: g.rect, key: g.key })),
+        ];
+        const linkAt = (px: number, py: number): { rect: number[]; url?: string; key?: string } | null => {
+          for (const l of links) { const [x1, y1, x2, y2] = l.rect; if (px >= x1 - 1 && px <= x2 + 1 && py >= y1 - 2 && py <= y2 + 2) return l; }
           return null;
         };
 
@@ -952,17 +960,34 @@ const App: React.FC = () => {
           const tr = item.transform || [];
           const emphasis = fontEmphasisFor(page, item.fontName, fontCache);
           const x = tr[4] || 0, y = tr[5] || 0, w = item.width || 0;
-          const link = coveringLink(x, w, y);
-          glyphs.push({
-            x, y,
-            h: Math.hypot(tr[0] || 0, tr[1] || 0) || item.height || 0,
-            w,
-            str: item.str,
-            italic: emphasis.italic,
-            bold: emphasis.bold,
-            linkUrl: link?.url,
-            noteKey: link?.noteKey,
-          });
+          const h = Math.hypot(tr[0] || 0, tr[1] || 0) || item.height || 0;
+          const str: string = item.str;
+          const n = str.length;
+          // Fast path: the item touches no link rect — emit it whole.
+          const overlaps = n > 0 && links.some(l => { const [x1, y1, x2, y2] = l.rect; return x < x2 + 1 && x + w > x1 - 1 && y >= y1 - 2 && y <= y2 + 2; });
+          if (!overlaps) {
+            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold });
+            continue;
+          }
+          let runStart = 0;
+          let runLink = linkAt(x + (w * 0.5) / n, y);
+          for (let i = 1; i <= n; i++) {
+            const charLink = i < n ? linkAt(x + (w * (i + 0.5)) / n, y) : null;
+            if (i === n || charLink !== runLink) {
+              glyphs.push({
+                x: x + (w * runStart) / n,
+                y, h,
+                w: (w * (i - runStart)) / n,
+                str: str.slice(runStart, i),
+                italic: emphasis.italic,
+                bold: emphasis.bold,
+                linkUrl: runLink?.url,
+                noteKey: runLink?.key,
+              });
+              runStart = i;
+              runLink = charLink;
+            }
+          }
         }
         if (glyphs.length === 0) continue;
 

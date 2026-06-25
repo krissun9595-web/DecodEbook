@@ -15,4 +15,7 @@
 //      bottom of a page and continues at the top of the next is rejoined from the layout
 //      (line fills the measure + no terminal punctuation), instead of being guessed from
 //      text downstream.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v10-cross-page-join';
+// v11: per-character link resolution — a link annotation that covers only part of a
+//      whole-line text item (a URL inside a sentence) now links just those characters,
+//      not the whole line.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v11-per-char-links';

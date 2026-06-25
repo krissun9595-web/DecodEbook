@@ -897,7 +897,7 @@ const buildPageSentenceData = (pageText: string): {
     // Leading non-breaking spaces encode index sub-entry indentation (the only
     // text that survives extraction without being collapsed). Capture the depth
     // as metadata and strip the markers so the entry text itself stays clean.
-    const indentMatch = rawPText.match(/^\\u00a0+/);
+    const indentMatch = rawPText.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? rawPText.slice(indentMatch![0].length) : rawPText;
     const lines = pText.split('\n').map(line => line.trim()).filter(Boolean);
