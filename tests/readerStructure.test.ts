@@ -1063,4 +1063,17 @@ const makeTopic = (index: number): string => [
   assert.ok(blocks.some(b => /^1\. Quoted in Tilly/.test(b)), "Chapter 5's first note starts fresh");
 }
 
+// A number that follows a citation-locator abbreviation ("chap. 13", "no. 5", "vol. 2") is
+// part of the citation, not a note marker. Misreading "chap. 13" as note 13 both split the
+// note at the chapter number and, being out of sequence, dropped the real next note (3).
+{
+  const out = normalizeNotesReaderText(
+    '2. Thomas Hobbes, Leviathan, chap. 13 of “The Natural Condition of Man as Concerning Their Felicity and Misery.” 3. Thomas Schelling, Arms and Influence (New Haven: Yale University Press, 1966). 4. Kevin Kelly, Out of Control.',
+  );
+  assert.ok(/chap\. 13 of/.test(out), '"chap. 13" stays intact (chapter number is not a note marker)');
+  assert.ok(!/chap\.\s*\n\s*13/.test(out), 'no break inserted before the chapter number');
+  assert.ok(/(^|\n)3\. Thomas Schelling/.test(out), 'note 3 is detected and starts its own entry');
+  assert.ok(/(^|\n)4\. Kevin Kelly/.test(out), 'note 4 still starts its own entry');
+}
+
 console.log('readerStructure regression tests passed');

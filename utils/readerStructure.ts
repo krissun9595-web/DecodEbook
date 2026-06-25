@@ -395,12 +395,17 @@ export const normalizeNotesReaderText = (value: string): string => {
     }
     return total;
   };
-  const followsBibliographicPageLabel = (start: number): boolean => {
-    // Strip emphasis markers so an italicized page label ("*op. cit., p.* 173",
-    // i.e. "p." inside the italic) is still recognized — otherwise the trailing "*"
-    // hides the "p." and the page number is misread as a note marker.
+  const followsCitationLabel = (start: number): boolean => {
+    // A bare number that directly follows a citation-locator abbreviation is part of the
+    // citation, not a note marker: a page ("p./pp. 84"), chapter ("chap. 13 of Leviathan"),
+    // number ("no. 5"), volume ("vol. 2"), part/book/section/figure/note/line, etc. Without
+    // this, "chap. 13" is misread as note 13 — which both splits the note at the chapter
+    // number and, being out of sequence, makes the real next note (3) be dropped. Only the
+    // same line counts (no newline), so a genuine next note after a note that happens to end
+    // in such an abbreviation is unaffected. Strip emphasis so an italicized label
+    // ("*op. cit., p.* 173") is still recognized.
     const before = text.slice(Math.max(0, start - 26), start).replace(/[*_~]/g, '');
-    return /(?:^|[\s(,;])p{1,2}\.\s*$/iu.test(before);
+    return /(?:^|[\s(,;])(?:pp?|chaps?|nos?|vols?|pts?|bks?|secs?|figs?|arts?|paras?|nn?|ll?)\.\s*$/iu.test(before);
   };
   const stripHeadingDisplayMarkers = (value: string): string =>
     value
@@ -443,7 +448,7 @@ export const normalizeNotesReaderText = (value: string): string => {
       Number.isFinite(candidate.number) &&
       candidate.number > 0 &&
       (candidate.isExplicitMarker ||
-        (!followsBibliographicPageLabel(candidate.start) && !followsRunningText(candidate.start)))
+        (!followsCitationLabel(candidate.start) && !followsRunningText(candidate.start)))
     );
   const sectionStarts = [...text.matchAll(/(^|\n{2,})\s*[*_~]*(?:#{1,6}\s*)?((?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\b[^\n*]{0,220})[*_~]*/giu)]
     .map(match => (match.index ?? 0) + match[1].length);
