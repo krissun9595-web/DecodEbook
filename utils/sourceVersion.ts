@@ -18,4 +18,6 @@
 // v11: per-character link resolution — a link annotation that covers only part of a
 //      whole-line text item (a URL inside a sentence) now links just those characters,
 //      not the whole line.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v11-per-char-links';
+// v12: index pages reflow their header/intro prose (the lines before the first entry)
+//      instead of listing it one fragment per line; the entries stay an indented list.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v12-index-intro-reflow';

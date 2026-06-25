@@ -1195,11 +1195,47 @@ const App: React.FC = () => {
           return tier >= 1 ? Math.min(tier, 3) : 0;
         };
 
-        // Index/contents: one indented entry per line (a list, not prose \u2014 never joined).
+        // Index/contents: the entries are an indented list, but the lines BEFORE the first
+        // entry (a "INDEX" heading and a prose intro note at the body margin) are not \u2014 they
+        // must be reflowed, not chopped one fragment per line with stray indents.
         if (isListPage) {
           const formattedLines: string[] = [];
-          lines.forEach((line, index) => {
-            const previous = lines[index - 1];
+          const endsWithPageRef = (value: string): boolean => /[\d](?:[\u2013\u2014-]\d+)?\s*$/u.test(value);
+          const refLines = lines.filter(line => endsWithPageRef(line.text));
+          const entryBaseLeft = refLines.length ? Math.min(...refLines.map(line => line.x)) : bodyLeft;
+          const firstEntryIdx = lines.findIndex(line => line.x >= entryBaseLeft - INDENT_TOL);
+          const introLines = firstEntryIdx > 0 ? lines.slice(0, firstEntryIdx) : [];
+          const entryLines = firstEntryIdx > 0 ? lines.slice(firstEntryIdx) : lines;
+
+          // Reflow the header/intro: keep a heading on its own line, join the note's wrapped
+          // lines into one paragraph. These sit at the body margin, so they carry no indent.
+          const introGap = median(introLines.slice(1).map((line, index) => introLines[index].y - line.y).filter(gap => gap > 0));
+          let ii = 0;
+          while (ii < introLines.length) {
+            const groupIsHeading = isHeadingLine(introLines[ii]);
+            const group: PdfLine[] = [introLines[ii]];
+            let jj = ii + 1;
+            while (jj < introLines.length && isHeadingLine(introLines[jj]) === groupIsHeading) {
+              const prev = introLines[jj - 1], cur = introLines[jj];
+              const verticalGap = prev.y - cur.y;
+              const endsBlock = groupIsHeading
+                ? verticalGap > Math.max(prev.h, cur.h) * 1.35
+                : (introGap > 0 && verticalGap > introGap * 1.35) || (endsWithTerminalPunctuation(prev.text) && cur.x > bodyLeft + 8);
+              if (endsBlock) break;
+              group.push(cur);
+              jj++;
+            }
+            let text = group[0].text;
+            for (let k = 1; k < group.length; k++) text = /[A-Za-z]-$/.test(text) && /^[a-z]/.test(group[k].text) ? text + group[k].text : `${text} ${group[k].text}`;
+            text = text.replace(/\s+/g, ' ').trim();
+            if (groupIsHeading) text = text.replace(/[*_~]/g, '').trim();
+            if (text) formattedLines.push(text);
+            ii = jj;
+          }
+
+          // The entries themselves: one indented entry per line.
+          entryLines.forEach((line, index) => {
+            const previous = entryLines[index - 1];
             if (previous) {
               const verticalGap = previous.y - line.y;
               const isIndentedBodyLine = line.x > bodyLeft + 8 && !startsDialogueLine(line.text);
