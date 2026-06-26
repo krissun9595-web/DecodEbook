@@ -1087,4 +1087,13 @@ const makeTopic = (index: number): string => [
   assert.ok(/update on\s+(?:\[\[PAGE\s+\d+\]\]\s+)?01\/04\/00\? Who knows\?/.test(out), 'the continued sentence is contiguous (page marker is stripped at display)');
 }
 
+// An italic attribution credit extracts with the dash inside the emphasis
+// ("*—Tom Stoppard,* Arcadia"). The leading dash must be stripped even though the line
+// starts with "*", so it doesn't sit under the "—— " prefix as a doubled dash.
+assert.equal(
+  rearrangeAndCleanText('*“A quotation long enough to read as a real citation, ending here properly.”*\n\n*—Tom Stoppard,* Arcadia')
+    .split(/\n{2,}/).pop(),
+  '—— Tom Stoppard, Arcadia',
+);
+
 console.log('readerStructure regression tests passed');

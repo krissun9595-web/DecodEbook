@@ -168,7 +168,10 @@ const splitAttributionTail = (value: string): string => {
 };
 
 const normalizeAttributionLine = (value: string): string => {
-  const body = value.replace(/\s+/g, ' ').trim().replace(/^(?:——|--|—|–|-)\s*/u, '');
+  // Strip a leading emphasis marker before the dash: an italic credit extracts as
+  // "*—Tom Stoppard,* Arcadia", so the dash isn't at the very start, and stripping only the
+  // dash would leave the original "—" to sit under the "—— " prefix ("—— —Tom Stoppard…").
+  const body = value.replace(/\s+/g, ' ').trim().replace(/^[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
   const linkedNote = body.match(/^(.*?)\s*(\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))\s*[*_~]*$/iu);
   if (linkedNote) {
     return `—— ${stripDisplayStyleMarkers(linkedNote[1])}${linkedNote[2]}`;
