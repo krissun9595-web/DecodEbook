@@ -517,6 +517,17 @@ console.log('sourceIndex regression tests passed');
   ]);
   assert.equal(sameCh.length, 2, 'two bookmarks on the same page collapse to one chapter');
   assert.equal(sameCh[1].title, 'Lesson 1', 'the first bookmark on the shared page wins');
+
+  // An image-only front-matter page (a title page/cover with no extractable text — only a
+  // page marker) is dropped, not surfaced as a chapter that errors with SOURCE_REQUIRED.
+  const frontMatter = ['[[PAGE 1]]', '[[PAGE 2]]', 'The real first chapter body begins here.', '', '[[PAGE 3]]', 'Second chapter body text here.'].join('\n');
+  const fmCh = buildChaptersFromOutline(frontMatter, [
+    { title: 'Title Page', page: 1, level: 0 },
+    { title: 'Chapter 1', page: 2, level: 0 },
+    { title: 'Chapter 2', page: 3, level: 0 },
+  ]);
+  assert.deepEqual(fmCh.map(c => c.title), ['Chapter 1', 'Chapter 2'], 'an image-only title page (no text) is not a chapter');
+  assert.ok(fmCh.every((c, i) => c.id === i + 1), 'survivors are renumbered from 1');
 }
 
 {

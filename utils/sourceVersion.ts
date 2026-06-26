@@ -23,4 +23,6 @@
 // v13: Roman-numeral chapter-end footnotes — body markers (I, II, …) are recognised
 //      (canonical-strict validated) and emitted, the note anchors are injected for Roman as
 //      well as numeric markers, and each footnote entry starts its own block.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v13-roman-footnotes';
+// v14: outline chapters whose page range has no extractable text (an image-only title page
+//      or cover) are dropped instead of becoming a chapter that errors on open.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v14-drop-empty-outline-chapters';

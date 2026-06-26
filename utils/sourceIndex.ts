@@ -909,7 +909,7 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
     monotonic.push(item);
   }
 
-  return monotonic.map((item, index) => ({
+  const chapters: Chapter[] = monotonic.map((item, index) => ({
     id: index + 1,
     title: item.title,
     sourceStart: item.start,
@@ -917,4 +917,13 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
     sourcePageStart: item.page,
     sourceMethod: 'outline' as const,
   }));
+
+  // Drop entries whose page range holds no extractable text — image-only front matter (a
+  // title page, cover, or art plate) would otherwise become a chapter that errors with
+  // SOURCE_REQUIRED when opened. Keep the originals if filtering would empty the list, and
+  // renumber the survivors.
+  const withText = chapters.filter(chapter =>
+    content.slice(chapter.sourceStart!, chapter.sourceEnd!).replace(PAGE_MARKER_RE, '').trim().length > 0
+  );
+  return (withText.length ? withText : chapters).map((chapter, index) => ({ ...chapter, id: index + 1 }));
 };
