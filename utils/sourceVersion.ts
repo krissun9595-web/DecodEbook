@@ -20,4 +20,7 @@
 //      not the whole line.
 // v12: index pages reflow their header/intro prose (the lines before the first entry)
 //      instead of listing it one fragment per line; the entries stay an indented list.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v12-index-intro-reflow';
+// v13: Roman-numeral chapter-end footnotes — body markers (I, II, …) are recognised
+//      (canonical-strict validated) and emitted, the note anchors are injected for Roman as
+//      well as numeric markers, and each footnote entry starts its own block.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v13-roman-footnotes';

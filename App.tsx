@@ -894,6 +894,26 @@ const App: React.FC = () => {
         return ranked[0] ? ranked[0][1].valueTotal / ranked[0][1].count : 0;
       };
 
+      // Footnote markers may be Roman numerals (I, II, …), not just digits — this book uses
+      // Roman, chapter-end footnotes alongside the numeric endnotes. Validate Roman with the
+      // canonical strict regex (one form per value) and bound the value (a marker is small,
+      // never "MIX"=1009), so a stray word made of i/v/x/l/c/d/m letters can't pass.
+      const ROMAN_MARKER_RE = /^m{0,3}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/i;
+      const romanValue = (s: string): number => {
+        const r: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+        let total = 0, prev = 0;
+        for (let k = s.length - 1; k >= 0; k--) { const v = r[s[k].toLowerCase()] || 0; total += v < prev ? -v : v; prev = Math.max(prev, v); }
+        return total;
+      };
+      // The marker label for a candidate run ("14" / "[14]" / "II" / "ii."), or '' if it
+      // isn't a valid 1–3 digit number or small Roman numeral.
+      const markerLabelOf = (raw: string): string => {
+        const bare = raw.replace(/^[[(\s]+/u, '').replace(/[\].)\s]+$/u, '');
+        if (/^\d{1,3}$/.test(bare)) return bare;
+        if (bare.length >= 1 && ROMAN_MARKER_RE.test(bare)) { const v = romanValue(bare); if (v >= 1 && v <= 40) return bare.toUpperCase(); }
+        return '';
+      };
+
       // Phase C: structure is decided from the page geometry, not guessed from the text
       // downstream. Each page's classified lines are buffered, then — once the whole
       // document's body font size is known (a chapter-start page is heading-heavy and would
@@ -1032,14 +1052,16 @@ const App: React.FC = () => {
               if (!key) { i++; continue; }
               let j = i, txt = '';
               while (j < items.length && items[j].noteKey === key) { txt += items[j].str.trim(); j++; }
-              const digits = txt.replace(/\D+/g, '');
-              // Only a forward link (destination on a later page) is a body footnote marker.
-              // A note's number often carries the PDF's own backward link (note → marker);
-              // leaving that as plain text lets the forward note-anchor be injected onto it,
-              // and the reader provides the back-navigation. Cross-references stay text too.
+              // Only a forward link (destination on a later page) is a body footnote marker
+              // — the chapter-end notes follow the body. A note's own number carries the
+              // PDF's backward link (note → marker); leaving that as plain text lets the
+              // forward note-anchor be injected onto it, and the reader provides the
+              // back-navigation. Cross-references stay text too. The label may be a number or
+              // a Roman numeral (this book's chapter-end footnotes are Roman).
               const destPage = Number(key.match(/^pdffn-p(\d+)-/)?.[1] || 0);
-              const markerLike = destPage > pageNum && digits.length >= 1 && digits.length <= 3 && /^[\[(]?\d{1,3}[.)\]]?$/.test(txt);
-              if (markerLike) { markerEmit[i] = { label: digits, key }; for (let k = i + 1; k < j; k++) skip[k] = true; }
+              const label = markerLabelOf(txt);
+              const markerLike = destPage > pageNum && label !== '';
+              if (markerLike) { markerEmit[i] = { label, key }; for (let k = i + 1; k < j; k++) skip[k] = true; }
               else { for (let k = i; k < j; k++) items[k].noteKey = undefined; }
               i = j;
             }
@@ -1124,8 +1146,8 @@ const App: React.FC = () => {
             }
             if (noteLine && !/^\s*\[/.test(noteLine.text)) {
               noteLine.text = noteLine.text.replace(
-                /^(\s*)(\d{1,3})[.)]\s*/,
-                (_m, sp, n) => `${sp}[${n}](#${target.key}) `
+                /^(\s*)([ivxlcdm]{1,4}|\d{1,3})([.)])\s*/iu,
+                (m, sp, marker, _p) => markerLabelOf(marker) ? `${sp}[${markerLabelOf(marker)}](#${target.key}) ` : m
               );
             }
           }
@@ -1179,6 +1201,16 @@ const App: React.FC = () => {
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.
       const fillsMeasure = (rightX: number, margin: number): boolean => margin > 0 && margin - rightX <= bodyFont * 2;
+      // A footnote entry starts a new block: it sits in the smaller footnote font and opens
+      // with a marker — already linked by the note-anchor injection ("[II](#…) Adam Smith…"),
+      // or a bare number/Roman ("II. …") for a footnote whose forward marker wasn't found.
+      // Without this, two chapter-end footnotes with a small gap join into one paragraph.
+      const startsFootnoteEntry = (line: PdfLine): boolean => {
+        if (bodyFont > 0 && line.h >= bodyFont * 0.92) return false;
+        if (/^\s*\[[^\]\n]+\]\(#[^)\n]*\)/.test(line.text)) return true;
+        const m = line.text.match(/^\s*([ivxlcdm]{1,4}|\d{1,3})[.)]\s/iu);
+        return Boolean(m && markerLabelOf(m[1]));
+      };
 
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
@@ -1283,6 +1315,7 @@ const App: React.FC = () => {
             } else {
               const isIndentedBodyLine = current.x > bodyLeft + 8 && !startsDialogueLine(current.text);
               endsBlock =
+                startsFootnoteEntry(current) ||
                 (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||
                 (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || startsParagraphTransitionLine(current.text)));
             }
