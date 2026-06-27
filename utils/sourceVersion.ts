@@ -25,4 +25,7 @@
 //      well as numeric markers, and each footnote entry starts its own block.
 // v14: outline chapters whose page range has no extractable text (an image-only title page
 //      or cover) are dropped instead of becoming a chapter that errors on open.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v14-drop-empty-outline-chapters';
+// v15: drop caps (oversized initials) attach to the line they open instead of clustering by
+//      baseline with the wrong line; a table of contents without page numbers lists one
+//      entry per line; a value-0 "marker" (a code-string subscript) is never a footnote.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v15-dropcaps-toc';
