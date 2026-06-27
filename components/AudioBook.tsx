@@ -216,6 +216,7 @@ interface ParagraphData {
     original: string[];
     translated: string[];
     indent?: number;
+    align?: 'right' | 'center';
 }
 
 const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
@@ -651,7 +652,17 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       } else if (options.internalNoteLinksAsFootnotes && hasBodyTextBeforeLink && isLikelyInternalNoteLink(label, match[2])) {
         segments.push({ text: label, format: 'footnote', href: match[2] });
       } else {
-        segments.push({ text: match[1], format: 'link', href: match[2] });
+        // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation
+        // rect covers the leading space ("…at [ https://…]"), keep that space as plain text
+        // so the preceding word isn't glued to the link ("athttps://…").
+        const parts = match[1].match(/^(\s*)([\s\S]*?)(\s*)$/);
+        if (parts && (parts[1] || parts[3])) {
+          if (parts[1]) segments.push({ text: parts[1], format: 'plain' });
+          segments.push({ text: parts[2], format: 'link', href: match[2] });
+          if (parts[3]) segments.push({ text: parts[3], format: 'plain' });
+        } else {
+          segments.push({ text: match[1], format: 'link', href: match[2] });
+        }
       }
     } else if (match[3]) {
       pushEmphasisContent(match[3], 'bold');
@@ -897,12 +908,18 @@ const buildPageSentenceData = (pageText: string): {
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
+    // A leading private-use sentinel (U+E011 right, U+E010 centre) tags a display block's
+    // alignment (a title page / "also by" list / dedication); capture it, then strip every
+    // sentinel so it never reaches the rendered text, TTS, or search.
+    const align: 'right' | 'center' | undefined =
+      /^[\uE010\uE011]/.test(rawPText) ? (rawPText[0] === '\uE011' ? 'right' : 'center') : undefined;
+    const alignStripped = rawPText.replace(/[\uE010\uE011]/g, '');
     // Leading non-breaking spaces encode index sub-entry indentation (the only
     // text that survives extraction without being collapsed). Capture the depth
     // as metadata and strip the markers so the entry text itself stays clean.
-    const indentMatch = rawPText.match(/^ +/);
+    const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
-    const pText = indent ? rawPText.slice(indentMatch![0].length) : rawPText;
+    const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
     const lines = pText.split('\n').map(line => line.trim()).filter(Boolean);
     const sentences: string[] = [];
 
@@ -931,7 +948,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent });
+    paragraphData.push({ original: sentences, translated: [], indent, align });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -3045,6 +3062,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const indexIndentStyle = isIndexChapter && para.indent
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
                     : undefined;
+                  // A display block (title page, "also by" list, dedication) keeps its
+                  // original right/centre alignment, captured upstream as para.align.
+                  const alignStyle = para.align ? { textAlign: para.align } : undefined;
 
                   return (
                     <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={indexIndentStyle}>
@@ -3055,7 +3075,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter ? 'justify-start' : 'justify-center'}`}>
                           <div
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
-                            style={paragraphStyle}
+                            style={{ ...paragraphStyle, ...alignStyle }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;

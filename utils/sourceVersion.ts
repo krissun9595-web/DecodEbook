@@ -29,4 +29,12 @@
 //      line — two consecutive lines that each fill less than half the measure don't reflow
 //      into a run-on paragraph (the layout-aware "line is too short to be a paragraph line"
 //      rule), instead of being joined as prose.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v15-data-line-blocks';
+// v16: a drop cap (oversized initial, h ≥ 2.2× body so a chapter-title cap letter is never
+//      mistaken for one; a trailing apostrophe allowed) attaches to the line it opens
+//      ("I'd like…", "In my 2005…") instead of clustering by baseline with the wrong line;
+//      a table of contents without page numbers lists one entry per line; a value-0 "marker"
+//      (a code-string subscript) is never a footnote; a right-aligned or centred display
+//      block (a title page / "also by" list / dedication — lines that share a right edge or
+//      centre while their left edges vary) keeps one item per line and its alignment (a
+//      private-use sentinel the reader strips), instead of reflowing into a paragraph.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v16-dropcap-contents-display';

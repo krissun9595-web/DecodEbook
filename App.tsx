@@ -909,7 +909,7 @@ const App: React.FC = () => {
       // isn't a valid 1–3 digit number or small Roman numeral.
       const markerLabelOf = (raw: string): string => {
         const bare = raw.replace(/^[[(\s]+/u, '').replace(/[\].)\s]+$/u, '');
-        if (/^\d{1,3}$/.test(bare)) return bare;
+        if (/^\d{1,3}$/.test(bare)) return Number(bare) >= 1 ? bare : ''; // footnotes are 1-indexed
         if (bare.length >= 1 && ROMAN_MARKER_RE.test(bare)) { const v = romanValue(bare); if (v >= 1 && v <= 40) return bare.toUpperCase(); }
         return '';
       };
@@ -974,7 +974,7 @@ const App: React.FC = () => {
           return null;
         };
 
-        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; linkUrl?: string; noteKey?: string };
+        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; linkUrl?: string; noteKey?: string; dropCap?: boolean };
         const glyphs: PdfGlyph[] = [];
         for (const item of textContent.items as any[]) {
           if (!('str' in item) || !item.str.trim()) continue;
@@ -1017,9 +1017,24 @@ const App: React.FC = () => {
         // joins its own line instead of becoming a detached digit on its own line.
         const bodyHeight = mode(glyphs.map(g => Math.round(g.h))) || median(glyphs.map(g => g.h));
         const lineTolerance = Math.max(2, bodyHeight * 0.5);
-        glyphs.sort((a, b) => b.y - a.y || a.x - b.x);
+        // A drop cap is a single oversized initial spanning several body lines; its baseline
+        // sits well below the line it begins, so baseline clustering would attach it to the
+        // wrong line ("In my…" → "n my…" + "Itheory…"). Hold these aside and, after the body
+        // lines are clustered, prepend each to the TOP line of its vertical span — the
+        // opening line, whose cap height the initial aligns with (the typographic definition
+        // of a dropped initial). Threshold 2.2× body: a real drop cap is ~3× body, while a
+        // chapter-title cap line is ~1.8× — so a single title letter (the "I" in "WHO AM I?")
+        // is never mistaken for one. Allow a trailing apostrophe: the cap extracts as "I'".
+        const isDropCap = (g: PdfGlyph): boolean => {
+          const s = g.str.trim();
+          return bodyHeight > 0 && g.h >= bodyHeight * 2.2 && [...s].length <= 2 && /^\p{L}/u.test(s);
+        };
+        const dropCaps = glyphs.filter(isDropCap);
+        dropCaps.forEach(cap => { cap.dropCap = true; });
+        const bodyGlyphs = glyphs.filter(g => !isDropCap(g));
+        bodyGlyphs.sort((a, b) => b.y - a.y || a.x - b.x);
         const groups: { baseY: number; baseH: number; items: PdfGlyph[] }[] = [];
-        for (const g of glyphs) {
+        for (const g of bodyGlyphs) {
           let best: { baseY: number; baseH: number; items: PdfGlyph[] } | null = null;
           let bestDist = Infinity;
           for (const group of groups) {
@@ -1030,6 +1045,19 @@ const App: React.FC = () => {
           best.items.push(g);
           // Anchor the line on its tallest glyph (the body baseline), not a superscript.
           if (g.h > best.baseH * 1.05) { best.baseY = g.y; best.baseH = g.h; }
+        }
+        for (const cap of dropCaps) {
+          // The opening line is the highest baseline within the initial's vertical span
+          // [baseline … baseline+height]; fall back to the nearest line.
+          let target: { baseY: number; baseH: number; items: PdfGlyph[] } | null = null;
+          for (const group of groups) {
+            if (group.baseY > cap.y - lineTolerance && group.baseY <= cap.y + cap.h && (!target || group.baseY > target.baseY)) target = group;
+          }
+          if (!target) {
+            let bestDist = Infinity;
+            for (const group of groups) { const d = Math.abs(group.baseY - cap.y); if (d < bestDist) { bestDist = d; target = group; } }
+          }
+          if (target) target.items.push(cap);
         }
 
         const MARK = { italic: '*', bold: '**' } as const;
@@ -1076,7 +1104,7 @@ const App: React.FC = () => {
               // No space when the horizontal gap to the previous glyph is tiny — rejoins
               // letter-spaced small caps ("C LIVE" -> "CLIVE") without merging real words
               // (body word-gaps are far larger than this threshold).
-              const glue = !!prev && prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold;
+              const glue = !!prev && (prev.dropCap || (prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold));
               const trimmed = it.str.trim();
 
               // Footnote / cross-reference marker backed by a real link annotation.
@@ -1093,7 +1121,7 @@ const App: React.FC = () => {
               // flattened superscript footnote marker. Emit the geometry-only #pdfnote key
               // (resolved by chapter scope downstream) for PDFs whose footnotes carry no
               // link annotations.
-              const isMarker = idx > 0 && /^\d{1,3}$/.test(trimmed) && it.h < lineBodyHeight * 0.84;
+              const isMarker = idx > 0 && /^\d{1,3}$/.test(trimmed) && Number(trimmed) >= 1 && it.h < lineBodyHeight * 0.84;
               if (isMarker) {
                 if (open) { out += MARK[open]; open = null; }
                 if (openLink) { out += `](${openLink})`; openLink = null; }
@@ -1243,6 +1271,21 @@ const App: React.FC = () => {
           return tier >= 1 ? Math.min(tier, 3) : 0;
         };
 
+        // A table of contents has no page references, so the index/list test (≥6 lines
+        // ending in a page number) misses it and its entries reflow into one run-on
+        // paragraph. Detect it by a "Contents" heading near the top and emit one entry per
+        // line (the entries are short titles, not prose).
+        const isContentsPage = lines.length >= 6 &&
+          lines.slice(0, 3).some(line => /^(?:contents|table of contents)$/iu.test(line.text.replace(/[*_~]/gu, '').trim()));
+        if (isContentsPage) {
+          const blocks = lines
+            .map(line => line.text.replace(/[*_~]/gu, '').replace(/\s+/gu, ' ').trim())
+            .filter(Boolean)
+            .map(text => ({ text, role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }));
+          pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
+          continue;
+        }
+
         // Index/contents: the entries are an indented list, but the lines BEFORE the first
         // entry (a "INDEX" heading and a prose intro note at the body margin) are not \u2014 they
         // must be reflowed, not chopped one fragment per line with stray indents.
@@ -1304,6 +1347,36 @@ const App: React.FC = () => {
           // A list page is never a seam-join candidate (its entries are their own lines).
           pageEmit.push({ pageNum, blocks: pageText ? [{ text: pageText, role: 'list', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }] : [], rightMargin, bodyLeft });
           continue;
+        }
+
+        // A right-aligned or centred display block (a title page, an "also by" list, a
+        // dedication, an epigraph) is not prose: its lines share a right edge (right-aligned)
+        // or a centre (centred) while their LEFT edges vary widely — the opposite of prose,
+        // whose lines share the left margin. Emit one item per line, tagged with its
+        // alignment via a private-use sentinel the reader strips, so the layout is preserved
+        // instead of reflowing into a run-on paragraph. (Left-aligned prose and justified
+        // prose both have near-constant left edges, so neither can trigger this.)
+        const dispLines = lines.filter(line => line.text.replace(/[*_~]/gu, '').trim());
+        if (dispLines.length >= 3) {
+          const span = (a: number[]): number => (a.length ? Math.max(...a) - Math.min(...a) : 0);
+          const tol = Math.max(6, bodyFont);
+          const leftVaries = span(dispLines.map(l => l.x)) > bodyFont * 2;
+          const rightSpan = span(dispLines.map(l => l.rightX));
+          const centreSpan = span(dispLines.map(l => (l.x + l.rightX) / 2));
+          const align: 'right' | 'center' | null =
+            leftVaries && rightSpan <= tol ? 'right'
+              : leftVaries && rightSpan > tol && centreSpan <= tol ? 'center'
+                : null;
+          if (align) {
+            const sentinel = align === 'right' ? '\uE011' : '\uE010'; // U+E011 right, U+E010 centre — stripped by the reader
+            pageEmit.push({
+              pageNum,
+              blocks: dispLines.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' })),
+              rightMargin,
+              bodyLeft,
+            });
+            continue;
+          }
         }
 
         // Prose page: paragraph spacing comes from the BODY lines only (a chapter-start
