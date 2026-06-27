@@ -1484,7 +1484,13 @@ const App: React.FC = () => {
         prevRightMargin = rightMargin;
       }
 
-      const fullText = pages.join('\n\n');
+      // Normalise internal-link markup HERE, so the outline offsets below are computed
+      // against the exact text that downstream (hydrateFileContext / the source cache) will
+      // store. Otherwise sanitizeInternalLinkMarkup runs later, trims whitespace inside link
+      // brackets, shifts every following character left, and the chapter offsets land a few
+      // characters into each heading ("ACKNOWLEDGMENTS" → "NOWLEDGMENTS"). Idempotent, so the
+      // later re-sanitisation is a no-op.
+      const fullText = sanitizeInternalLinkMarkup(pages.join('\n\n'));
       if (!fullText) throw new Error('No selectable text found in PDF.');
 
       // Anchor each outline entry to its exact heading offset: pick the line on the

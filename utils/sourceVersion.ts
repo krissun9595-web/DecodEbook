@@ -37,4 +37,9 @@
 //      block (a title page / "also by" list / dedication — lines that share a right edge or
 //      centre while their left edges vary) keeps one item per line and its alignment (a
 //      private-use sentinel the reader strips), instead of reflowing into a paragraph.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v16-dropcap-contents-display';
+// v17: internal-link markup is normalised in processPdf BEFORE the outline offsets are
+//      computed, so the chapter offsets match the stored (sanitised) content. Previously
+//      sanitizeInternalLinkMarkup ran later (hydrateFileContext / the source cache), trimmed
+//      whitespace inside link brackets, shifted every following character, and each chapter
+//      began a few characters into its heading ("ACKNOWLEDGMENTS" → "NOWLEDGMENTS").
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v17-link-markup-offsets';
