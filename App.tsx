@@ -1578,8 +1578,23 @@ const App: React.FC = () => {
                 fileContext: preparedContext,
                 uploadDate: Date.now()
             };
+            // Re-upload replaces any existing copy of the same book (matched by title) so a
+            // stale entry — chapters built by an older extraction engine — can't linger
+            // beside the fresh one. (structure.id is a random UUID per upload, so it can't
+            // match; title is the stable identity across re-uploads.) Purge the superseded
+            // copy's cache and cloud rows too, not just the in-memory list.
+            const sameBookTitle = (title?: string) => (title || '').trim().toLowerCase();
+            const newBookTitle = sameBookTitle(structure.title);
+            if (newBookTitle) {
+              library
+                .filter(item => sameBookTitle(item.book.title) === newBookTitle)
+                .forEach(superseded => {
+                  if (currentUser) deleteBookFromCloud(currentUser.id, superseded.book.id).catch(() => {});
+                  deleteFile(sourceCacheKey(superseded.book.id)).catch(() => {});
+                });
+            }
             await saveSourceToCache(newItem);
-            setLibrary(prev => [newItem, ...prev]);
+            setLibrary(prev => [newItem, ...prev.filter(item => !newBookTitle || sameBookTitle(item.book.title) !== newBookTitle)]);
             setActiveBookId(structure.id);
             if (structure.chapters.length > 0) {
               setActiveChapterPageTarget('first');
