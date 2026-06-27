@@ -278,6 +278,15 @@ export const normalizeNotesReaderText = (value: string): string => {
   // a page break carries the next page's marker inline (e.g. "…p. 22. [[PAGE 537]]"), and
   // otherwise the marker leaks to screen, so strip them before section/entry detection.
   text = text.replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  // Strip the publisher's back-link navigation ("BACK TO NOTE REFERENCE 1") that ends each
+  // note: it is an internal link from the note back to its body reference, but because the
+  // destination is an EARLIER page the link is dropped upstream, leaving the small-caps
+  // label as plain text that leaks after every note. Also handle a still-linked variant.
+  text = text
+    .replace(/[ \t]*\[?[ \t]*BACK[ \t]+TO[ \t]+(?:NOTE[ \t]+)?REFERENCE[ \t]+\d+[ \t]*\]?(?:[ \t]*\([^)\n]*\))?/gi, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n');
   // De-fragment a multi-line "Chapter N. Title" notes heading. PDF extraction emits each
   // visual line of such a heading as its own emphasis-wrapped paragraph ("*Chapter 4. …
   // Between*", "*…Decline of the…*", "*Nanny State*"); the trailing fragment lacks

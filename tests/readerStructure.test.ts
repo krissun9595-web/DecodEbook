@@ -143,6 +143,15 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // A publisher's "BACK TO NOTE REFERENCE N" back-link extracts as plain text and leaks
+  // after every note; strip it, without merging adjacent notes.
+  const notes = '1 Turing, "Computing Machinery." 435. BACK TO NOTE REFERENCE 1\n\n2 Dvashkevich, "Stanford Researcher." BACK TO NOTE REFERENCE 2';
+  const out = normalizeNotesReaderText(notes);
+  assert.ok(!/BACK TO NOTE REFERENCE/i.test(out), 'back-link navigation text is stripped from notes');
+  assert.ok(/435\.\s*\n\s*2 Dvashkevich/.test(out), 'note 1 and note 2 stay on separate lines');
+}
+
+{
   // A PDF multi-line "Chapter N. Title" notes heading extracts as several emphasis-
   // wrapped paragraphs; the trailing fragment has no terminal punctuation, so the
   // heading's first note ("1. …") was read as running text and swallowed — leaving it
