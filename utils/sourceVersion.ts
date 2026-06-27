@@ -25,4 +25,8 @@
 //      well as numeric markers, and each footnote entry starts its own block.
 // v14: outline chapters whose page range has no extractable text (an image-only title page
 //      or cover) are dropped instead of becoming a chapter that errors on open.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v14-drop-empty-outline-chapters';
+// v15: line-structured data (a catalog/CIP block, address, code list) is kept one entry per
+//      line — two consecutive lines that each fill less than half the measure don't reflow
+//      into a run-on paragraph (the layout-aware "line is too short to be a paragraph line"
+//      rule), instead of being joined as prose.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v15-data-line-blocks';

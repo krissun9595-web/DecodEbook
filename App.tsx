@@ -923,6 +923,7 @@ const App: React.FC = () => {
       type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; lineGap: number; isListPage: boolean; indentTiers: number[] }[] = [];
       const allLineHeights: number[] = [];
+      const allRightEdges: number[] = []; // body line right edges, for the document text right margin
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
@@ -1185,7 +1186,10 @@ const App: React.FC = () => {
         }
 
         // Buffer the page; prose line heights feed the document-wide body-font estimate.
-        if (!isListPage) allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
+        if (!isListPage) {
+          allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
+          allRightEdges.push(...pageLines.map(line => line.rightX).filter(Boolean));
+        }
         pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, lineGap, isListPage, indentTiers });
       }
 
@@ -1201,6 +1205,18 @@ const App: React.FC = () => {
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.
       const fillsMeasure = (rightX: number, margin: number): boolean => margin > 0 && margin - rightX <= bodyFont * 2;
+      // The document's text right margin: a high percentile of body line right edges, where
+      // full (justified) prose lines end. Used to spot line-structured data — a catalog/CIP
+      // block, an address, a short list — where consecutive lines occupy less than half the
+      // measure and so should stay one per line rather than reflow into a run-on paragraph.
+      // (pdfminer and layout-aware extractors classify such ragged/short lines as list lines,
+      // not paragraph lines, by exactly this line-fill signal.)
+      const sortedEdges = [...allRightEdges].sort((a, b) => a - b);
+      const bodyRightEdge = sortedEdges.length ? sortedEdges[Math.floor(sortedEdges.length * 0.9)] : 0;
+      const isShortDataLine = (line: PdfLine, bodyLeft: number): boolean => {
+        const measure = bodyRightEdge - bodyLeft;
+        return measure > 0 && (line.rightX - line.x) < measure * 0.5;
+      };
       // A footnote entry starts a new block: it sits in the smaller footnote font and opens
       // with a marker — already linked by the note-anchor injection ("[II](#…) Adam Smith…"),
       // or a bare number/Roman ("II. …") for a footnote whose forward marker wasn't found.
@@ -1314,7 +1330,13 @@ const App: React.FC = () => {
               endsBlock = verticalGap > Math.max(previous.h, current.h) * 1.35;
             } else {
               const isIndentedBodyLine = current.x > bodyLeft + 8 && !startsDialogueLine(current.text);
+              // Two consecutive lines that each occupy less than half the measure are
+              // line-structured data (a catalog/CIP block, address, code list), not flowing
+              // prose — keep them one per line. Prose has at most one short line per
+              // paragraph (the last), so this never splits a paragraph.
+              const bothShort = isShortDataLine(previous, bodyLeft) && isShortDataLine(current, bodyLeft);
               endsBlock =
+                bothShort ||
                 startsFootnoteEntry(current) ||
                 (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||
                 (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || startsParagraphTransitionLine(current.text)));

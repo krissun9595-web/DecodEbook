@@ -304,7 +304,10 @@ interface InlineParseOptions {
   romanMarkersAsReferences?: boolean;
 }
 
-const FOOTNOTE_MARKER_PATTERN = /([.!?。！？,;:][”"’")\]]?|[”"’")\]]|[\p{Ll}])(\d{1,3})(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
+// A bare footnote is a digit glued to the end of a word ("humanity27"). Require ≥3 letters
+// before it (a real word, not a code fragment) so a catalog code like "…—dc21" or "c0r" is
+// not mistaken for a marker; a footnote after sentence punctuation is matched as before.
+const FOOTNOTE_MARKER_PATTERN = /((?<!\d)[.!?。！？,;:][”"’")\]]?|[”"’")\]]|(?<=[\p{L}]{2})[\p{Ll}])(\d{1,3})(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
 
 const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')
