@@ -1567,25 +1567,30 @@ const App: React.FC = () => {
       // Render a link that is displayed AS its URL from the annotation's exact URL — the source
       // of truth pdf.js hands us — instead of rebuilding the visible string from glyphs. The
       // glyph display wraps across lines and pages, picks up justified spaces between pieces,
-      // and can drop a leading character; the annotation URL has none of that. (1) Collapse a
-      // run of adjacent link spans pointing to the same URL — a URL split across a line or page
-      // break, a "[[PAGE n]]" marker allowed between — into one. (2) Render any URL-displayed
-      // span as the clean URL. Custom-text links ("click here") and internal links (#anchor)
-      // are left untouched.
+      // and can drop a leading character; the annotation URL has none of that.
+      // (1) Collapse a run of adjacent link spans pointing to the same URL into one — a URL
+      //     split across a line, a BLOCK boundary, or a page break (only whitespace and an
+      //     optional "[[PAGE n]]" marker between them, so unrelated links can't be merged).
+      // (2) Render a span that is the WHOLE URL (only spurious internal spaces differ) as the
+      //     clean URL — NOT a fragment, which would otherwise be expanded to the full URL and
+      //     duplicate its continuation ("…/HAI_AI-" -> full URL, leaving "Index-Report.pdf").
+      // Custom-text links ("click here") and internal links (#anchor) are left untouched.
       const shownAsUrl = (label: string): boolean => /^["'(<]*\s*(?:https?:\/\/|www\.)/iu.test(label) || label.includes('://');
+      const sameUrl = (label: string, url: string): boolean =>
+        label.replace(/\s+/gu, '').toLowerCase() === url.replace(/\s+/gu, '').toLowerCase();
       let assembled = pages.join('\n\n');
       let prevAssembled: string;
       do {
         prevAssembled = assembled;
         assembled = assembled.replace(
-          /\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]+(\[\[PAGE \d+\]\][ \t]+)?\[([^\]\n]*)\]\(\2\)/gu,
+          /\[([^\]\n]*)\]\(([^)\n]+)\)\s+(\[\[PAGE \d+\]\]\s+)?\[([^\]\n]*)\]\(\2\)/gu,
           (m, l1: string, url: string, marker: string | undefined, l2: string) =>
             (shownAsUrl(l1) || shownAsUrl(l2)) ? `${marker || ''}[${url}](${url})` : m,
         );
       } while (assembled !== prevAssembled);
       assembled = assembled.replace(
         /\[([^\]\n]*)\]\(([^)\n]+)\)/gu,
-        (m, label: string, url: string) => (shownAsUrl(label) ? `[${url}](${url})` : m),
+        (m, label: string, url: string) => (sameUrl(label, url) ? `[${url}](${url})` : m),
       );
       const fullText = sanitizeInternalLinkMarkup(assembled);
       if (!fullText) throw new Error('No selectable text found in PDF.');

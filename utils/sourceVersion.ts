@@ -74,4 +74,10 @@
 //      glyphs are still located against the URL string so a continuation PAGE (whose glyphs
 //      don't re-state the scheme) is recognised and the citation after it ("…sense-engine;
 //      \"Frequently Asked\"…") is no longer swept into the link. Replaces the v22 merge/glue.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v23-url-from-annotation';
+// v24: fix a URL that wrapped into SEPARATE blocks rendering its tail twice (the full URL, then
+//      a leftover "Index-Report.pdf"). The v23 collapse only bridged spaces, so cross-block
+//      fragments weren't merged, and the v23 single-span clean then expanded the first fragment
+//      to the full URL while the second stayed. Now the collapse bridges a block/page break
+//      (whitespace + optional [[PAGE n]] marker), and the single-span clean fires only on a
+//      label that is the WHOLE URL (spurious internal spaces), never a fragment.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v24-url-crossblock';
