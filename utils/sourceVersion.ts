@@ -48,4 +48,8 @@
 //      flattened text — a table of contents now renders uniformly rather than letting the
 //      prose subtitle heuristic bold some entries. (Finishes the held "reader renders tagged
 //      blocks" stage, scoped to the list role.)
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v18-block-role-tags';
+// v19: a URL link keeps its annotation only on text genuinely part of the URL (a scheme/www
+//      fragment or a long contiguous slice), so pdf.js's loose bounding box no longer links
+//      the citation that precedes the URL on the same wrapped line ("CNBC, June 29, 2023,").
+//      Custom-text links (no scheme shown) are left untouched.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v19-url-link-membership';

@@ -973,6 +973,21 @@ const App: React.FC = () => {
           for (const l of links) { const [x1, y1, x2, y2] = l.rect; if (px >= x1 - 1 && px <= x2 + 1 && py >= y1 - 2 && py <= y2 + 2) return l; }
           return null;
         };
+        // pdf.js gives ONE loose bounding box per link, spanning every line the link wraps
+        // across — so on the line where a URL starts, the box also covers the citation before
+        // it ("CNBC, June 29, 2023, https://…"). Keep a URL link only on text that is genuinely
+        // part of the URL: a fragment carrying the scheme/www, or a long contiguous slice of
+        // the URL itself (≥8 chars, so a short word that merely coincides — "cnbc", "2023" —
+        // isn't linked). The geometric split still handles a URL embedded mid-sentence.
+        const belongsToUrl = (text: string, url: string): boolean => {
+          const t = text.trim().toLowerCase();
+          if (!t) return false;
+          if (/https?:\/\//u.test(t) || /\bwww\./u.test(t)) return true;
+          // Strip leading non-URL chars and a trailing run of sentence punctuation (the note's
+          // period after "…patients.html." — a '.' is otherwise a valid URL character).
+          const core = t.replace(/^[^\p{L}\p{N}/]+/u, '').replace(/[.,;:!?)\]"'»]+$/u, '');
+          return core.length >= 8 && url.toLowerCase().includes(core);
+        };
 
         type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; linkUrl?: string; noteKey?: string; dropCap?: boolean };
         const glyphs: PdfGlyph[] = [];
@@ -1009,6 +1024,17 @@ const App: React.FC = () => {
               runLink = charLink;
             }
           }
+        }
+        // Strip URL links the bounding box swallowed but that aren't part of the URL (the
+        // preceding citation, stray same-line words) — but ONLY when the link is displayed as
+        // the URL itself (some fragment carries a scheme). A custom-text link ("click here")
+        // isn't filtered. Internal go-to links (noteKey) are left to the marker pre-scan.
+        const urlShownAsUrl = new Set<string>();
+        for (const g of glyphs) {
+          if (g.linkUrl && (/https?:\/\//u.test(g.str) || /\bwww\./u.test(g.str))) urlShownAsUrl.add(g.linkUrl);
+        }
+        for (const g of glyphs) {
+          if (g.linkUrl && urlShownAsUrl.has(g.linkUrl) && !belongsToUrl(g.str, g.linkUrl)) g.linkUrl = undefined;
         }
         if (glyphs.length === 0) continue;
 
