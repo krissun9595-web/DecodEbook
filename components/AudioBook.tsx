@@ -3066,9 +3066,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   });
                   const showTranslationPlaceholder = isTranslating && !hasParagraphTranslation;
                   const showTranslationError = Boolean(translationError) && !hasParagraphTranslation;
-                  // Index sub-entries carry an indent depth (4 non-breaking spaces per
-                  // level, captured upstream); render it as left padding.
-                  const indexIndentStyle = isIndexChapter && para.indent
+                  // Index and table-of-contents entries carry an indent depth (4 non-breaking
+                  // spaces per level, captured upstream from the PDF x-position); render it as
+                  // left padding.
+                  const indexIndentStyle = (isIndexChapter || isListRole) && para.indent
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
                     : undefined;
                   // A display block (title page, "also by" list, dedication) keeps its

@@ -873,8 +873,11 @@ const App: React.FC = () => {
         try {
           if (page.commonObjs?.has?.(fontName)) {
             const realName = String(page.commonObjs.get(fontName)?.name || '').toLowerCase();
-            italic = /italic|oblique/.test(realName);
-            bold = /bold|black|heavy|semibold|demi/.test(realName);
+            // Match full weight/style words AND the abbreviated tokens many subset fonts use
+            // after a separator (e.g. "TradeGothicNextLTPro-BdCn" = Bold Condensed, "-It" =
+            // Italic). The separator prefix keeps "bd"/"it" from matching mid-word.
+            italic = /italic|oblique|[-_ ](?:it|ita|obl)/.test(realName);
+            bold = /bold|black|heavy|semibold|demi|[-_ ](?:bd|blk|hvy?|sb|smbd|xbd?|extrab)/.test(realName);
           }
         } catch { /* font flags unavailable — fall back to plain text */ }
         const style = { italic, bold };
@@ -1304,10 +1307,21 @@ const App: React.FC = () => {
         const isContentsPage = lines.length >= 6 &&
           lines.slice(0, 3).some(line => /^(?:contents|table of contents)$/iu.test(line.text.replace(/[*_~]/gu, '').trim()));
         if (isContentsPage) {
+          // The TOC has its own structure, already decided by the page geometry and font:
+          // KEEP each entry's emphasis (the bold chapter title) and encode its left-indent
+          // tier as leading non-breaking spaces (4 per level, like the index), so the reader
+          // reproduces the original bold + indentation instead of a flat uniform list.
+          const entryLefts = lines.filter(line => !isHeadingLine(line) && line.text.trim()).map(line => line.x).sort((a, b) => a - b);
+          const tiers: number[] = [];
+          for (const x of entryLefts) { if (!tiers.some(t => Math.abs(t - x) <= INDENT_TOL)) tiers.push(x); }
+          tiers.sort((a, b) => a - b);
+          const tierOf = (x: number): number => { const i = tiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL); return i >= 1 ? Math.min(i, 3) : 0; };
           const blocks = lines
-            .map(line => line.text.replace(/[*_~]/gu, '').replace(/\s+/gu, ' ').trim())
-            .filter(Boolean)
-            .map(text => ({ text, role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }));
+            .filter(line => line.text.replace(/[*_~]/gu, '').trim())
+            .map(line => ({
+              text: '\u00a0'.repeat(4 * tierOf(line.x)) + line.text.replace(/\s+/gu, ' ').trim(),
+              role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '',
+            }));
           pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
           continue;
         }

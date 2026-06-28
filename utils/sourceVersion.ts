@@ -52,4 +52,9 @@
 //      fragment or a long contiguous slice), so pdf.js's loose bounding box no longer links
 //      the citation that precedes the URL on the same wrapped line ("CNBC, June 29, 2023,").
 //      Custom-text links (no scheme shown) are left untouched.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v19-url-link-membership';
+// v20: font weight/style is detected from abbreviated subset-font names too ("…-BdCn" = Bold
+//      Condensed, "-It" = Italic), not just the full words — so bold/italic that these fonts
+//      hid is recovered book-wide. A table of contents keeps its own emphasis (the bold
+//      chapter title) and its x-indent tiers (front matter indented, chapters flush), matching
+//      the original instead of a flat uniform list.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v20-font-weight-abbrev-toc';
