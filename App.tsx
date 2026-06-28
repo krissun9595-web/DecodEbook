@@ -1026,17 +1026,25 @@ const App: React.FC = () => {
           if (arr) arr.push(g); else urlGlyphs.set(g.linkUrl, [g]);
         }
         const urlKeep = new Map<PdfGlyph, number>(); // leading chars of a glyph that spell its URL
-        const urlDisplayed = new Set<string>(); // URLs shown as the URL itself (no internal spaces)
         for (const [url, gs] of urlGlyphs) {
           const nurl = url.toLowerCase();
-          const schemeIdx = gs.findIndex(g => /https?:\/\//u.test(g.str.toLowerCase()) || /\bwww\./u.test(g.str.toLowerCase()));
-          if (schemeIdx < 0) continue; // custom-text link (no scheme shown) — leave untouched
-          urlDisplayed.add(url);
-          for (let i = 0; i < schemeIdx; i++) urlKeep.set(gs[i], 0); // citation before the URL
-          let pos = -1;
-          for (let i = schemeIdx; i < gs.length; i++) {
+          // Find where the displayed URL begins among these glyphs, and where that maps into the
+          // URL. Prefer a scheme/www glyph (the URL's start); otherwise the first glyph that
+          // spells a long (≥12-char) contiguous slice — so a URL that CONTINUED onto this page
+          // from the previous one (the scheme is on the prior page, not re-stated here) is still
+          // recognised, while a short citation word that merely coincides with the URL ("Sense"
+          // in "common-sense") is not chosen as the anchor.
+          let anchorIdx = -1, anchorPos = 0;
+          for (let i = 0; i < gs.length; i++) {
+            const lo = gs[i].str.toLowerCase().replace(/^[^a-z0-9]+/u, '').replace(/[.,;:!?)\]"'»]+$/u, '');
+            if (/^https?:\/\//u.test(lo) || /^www\./u.test(lo)) { anchorIdx = i; anchorPos = Math.max(0, nurl.indexOf(lo.slice(0, 10))); break; }
+            if (anchorIdx < 0 && lo.length >= 12) { const at = nurl.indexOf(lo); if (at >= 0) { anchorIdx = i; anchorPos = at; } }
+          }
+          if (anchorIdx < 0) continue; // custom-text link (display doesn't spell the URL) — leave untouched
+          for (let i = 0; i < anchorIdx; i++) urlKeep.set(gs[i], 0); // citation before the URL on this page
+          let pos = anchorPos;
+          for (let i = anchorIdx; i < gs.length; i++) {
             const lower = gs[i].str.toLowerCase();
-            if (pos < 0) { const at = nurl.indexOf(lower.slice(0, 10)); pos = at >= 0 ? at : 0; } // anchor the scheme glyph in the URL
             let m = 0;
             while (pos + m < nurl.length && m < lower.length && nurl[pos + m] === lower[m]) m++;
             urlKeep.set(gs[i], m);
@@ -1153,11 +1161,7 @@ const App: React.FC = () => {
               // No space when the horizontal gap to the previous glyph is tiny — rejoins
               // letter-spaced small caps ("C LIVE" -> "CLIVE") without merging real words
               // (body word-gaps are far larger than this threshold).
-              // Also glue two glyphs of the SAME displayed URL: a justified line stretches the
-              // gap between a URL's pieces ("…/doomsday-" "invention-") past the threshold, but
-              // a URL has no spaces, so a space there would split it ("…doomsday- invention-").
-              const sameDisplayedUrl = !!prev && !!it.linkUrl && prev.linkUrl === it.linkUrl && urlDisplayed.has(it.linkUrl);
-              const glue = !!prev && (prev.dropCap || sameDisplayedUrl || (prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold));
+              const glue = !!prev && (prev.dropCap || (prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold));
               const trimmed = it.str.trim();
 
               // Footnote / cross-reference marker backed by a real link annotation.
@@ -1490,16 +1494,6 @@ const App: React.FC = () => {
               : `${text} ${group[k].text}`;
           }
           text = text.replace(/\s+/g, ' ').trim();
-          // A URL that wraps across a line break becomes two link spans ("[…will-](u)" then
-          // "[win](u)") that the join split with a space — the trailing hyphen is hidden
-          // behind the "](u)" markup, so the hyphenation rule above can't see it. Merge
-          // adjacent spans pointing to the SAME URL into one continuous link (no space): a
-          // wrapped URL is one URL.
-          let prevText: string;
-          do {
-            prevText = text;
-            text = text.replace(/\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]+\[([^\]\n]*)\]\(\2\)/g, '[$1$3]($2)');
-          } while (text !== prevText);
           // A heading is styled as a whole by the reader, so inline emphasis inside it is
           // noise. It also actively harms: a bold-only glyph among bold-italic words (e.g.
           // an upright bold chapter number, "Chapter **5.** *The Life…*") leaves a stray
@@ -1570,7 +1564,30 @@ const App: React.FC = () => {
       // brackets, shifts every following character left, and the chapter offsets land a few
       // characters into each heading ("ACKNOWLEDGMENTS" → "NOWLEDGMENTS"). Idempotent, so the
       // later re-sanitisation is a no-op.
-      const fullText = sanitizeInternalLinkMarkup(pages.join('\n\n'));
+      // Render a link that is displayed AS its URL from the annotation's exact URL — the source
+      // of truth pdf.js hands us — instead of rebuilding the visible string from glyphs. The
+      // glyph display wraps across lines and pages, picks up justified spaces between pieces,
+      // and can drop a leading character; the annotation URL has none of that. (1) Collapse a
+      // run of adjacent link spans pointing to the same URL — a URL split across a line or page
+      // break, a "[[PAGE n]]" marker allowed between — into one. (2) Render any URL-displayed
+      // span as the clean URL. Custom-text links ("click here") and internal links (#anchor)
+      // are left untouched.
+      const shownAsUrl = (label: string): boolean => /^["'(<]*\s*(?:https?:\/\/|www\.)/iu.test(label) || label.includes('://');
+      let assembled = pages.join('\n\n');
+      let prevAssembled: string;
+      do {
+        prevAssembled = assembled;
+        assembled = assembled.replace(
+          /\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]+(\[\[PAGE \d+\]\][ \t]+)?\[([^\]\n]*)\]\(\2\)/gu,
+          (m, l1: string, url: string, marker: string | undefined, l2: string) =>
+            (shownAsUrl(l1) || shownAsUrl(l2)) ? `${marker || ''}[${url}](${url})` : m,
+        );
+      } while (assembled !== prevAssembled);
+      assembled = assembled.replace(
+        /\[([^\]\n]*)\]\(([^)\n]+)\)/gu,
+        (m, label: string, url: string) => (shownAsUrl(label) ? `[${url}](${url})` : m),
+      );
+      const fullText = sanitizeInternalLinkMarkup(assembled);
       if (!fullText) throw new Error('No selectable text found in PDF.');
 
       // Anchor each outline entry to its exact heading offset: pick the line on the

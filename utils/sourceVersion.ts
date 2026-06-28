@@ -67,4 +67,11 @@
 //      behind the "](url)" markup) — adjacent spans pointing to the same URL are merged with
 //      no space; (b) a JUSTIFIED line stretches the gap between a URL's pieces past the
 //      glue threshold — consecutive glyphs of the same displayed URL are glued.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v22-url-continuity';
+// v23: a link DISPLAYED as its URL is rendered from the annotation's exact URL (the string
+//      pdf.js reports), not rebuilt from the glyph run — which is where internal spaces, a
+//      dropped leading "https" character, and truncation came from. Adjacent spans of the same
+//      URL (a URL split across a line OR a page break) collapse into one clean link. The URL's
+//      glyphs are still located against the URL string so a continuation PAGE (whose glyphs
+//      don't re-state the scheme) is recognised and the citation after it ("…sense-engine;
+//      \"Frequently Asked\"…") is no longer swept into the link. Replaces the v22 merge/glue.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v23-url-from-annotation';
