@@ -217,7 +217,7 @@ interface ParagraphData {
     translated: string[];
     indent?: number;
     align?: 'right' | 'center';
-    role?: 'list' | 'heading';
+    role?: 'list' | 'heading' | 'hangingindent';
 }
 
 const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
@@ -913,13 +913,13 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[\uE010-\uE013]+/);
+    const ctrl = rawPText.match(/^\s*[\uE010-\uE014]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
-    const role: 'list' | 'heading' | undefined =
-      ctrlChars.includes('\uE013') ? 'heading' : ctrlChars.includes('\uE012') ? 'list' : undefined;
-    const alignStripped = rawPText.replace(/[\uE010-\uE013]/g, '');
+    const role: 'list' | 'heading' | 'hangingindent' | undefined =
+      ctrlChars.includes('\uE013') ? 'heading' : ctrlChars.includes('\uE012') ? 'list' : ctrlChars.includes('\uE014') ? 'hangingindent' : undefined;
+    const alignStripped = rawPText.replace(/[\uE010-\uE014]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -3055,7 +3055,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // contents, an "also by" list — renders uniformly (body weight, no
                   // first-line indent), instead of letting isPlainSubtitleParagraph bold some
                   // of its entries as if they were section subtitles.
-                  const isListRole = para.role === 'list';
+                  // A hanging-indent entry (a CIP/definition-list field) renders like a list
+                  // (body weight, left-aligned, no first-line indent) but with the whole entry
+                  // padded left and its FIRST line pulled back to the margin — so the field
+                  // label is flush and the wrapped value lines indent under it.
+                  const isHangingRole = para.role === 'hangingindent';
+                  const isListRole = para.role === 'list' || isHangingRole;
                   const paragraphStyle = isListRole ? noTextIndentStyle : plainParagraphStyleFor(para.original);
                   const paragraphTextClass = !isListRole && (isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
@@ -3069,7 +3074,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // Index and table-of-contents entries carry an indent depth (4 non-breaking
                   // spaces per level, captured upstream from the PDF x-position); render it as
                   // left padding.
-                  const indexIndentStyle = (isIndexChapter || isListRole) && para.indent
+                  const indexIndentStyle = isHangingRole
+                    ? { paddingLeft: '1.5em' }
+                    : (isIndexChapter || isListRole) && para.indent
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
                     : undefined;
                   // A display block (title page, "also by" list, dedication) keeps its
@@ -3082,7 +3089,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         const lineText = line.map(run => run.sentence).join(' ');
                         const spacingClass = isListRole ? '' : paragraphSpacingClassFor(lineText);
                         return (
-                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
+                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`} style={isHangingRole && lineIdx === 0 ? { marginLeft: '-1.5em' } : undefined}>
                           <div
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
                             style={{ ...paragraphStyle, ...alignStyle }}

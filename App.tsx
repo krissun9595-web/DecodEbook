@@ -1319,6 +1319,39 @@ const App: React.FC = () => {
         const measure = bodyRightEdge - bodyLeft;
         return measure > 0 && (line.rightX - line.x) < measure * 0.5;
       };
+      // A hanging-indent definition list (a CIP/cataloging block, glossary, reference entry):
+      // each entry's first line sits at the body margin and its wrapped lines indent to one
+      // consistent deeper tier. This is the OPPOSITE of first-line-indent prose (new paragraph =
+      // indented); here a new entry = OUTDENTED to the margin.
+      //
+      // The principled source for this would be the PDF's tagged structure tree, but this book is
+      // untagged (page.getStructTree() is null), so geometry is all pdf.js gives. The shape is
+      // PRIMARY and geometric: two consistent x-tiers, a deeper tier used only by lines that
+      // CONTINUE the entry above them. The blocks fed here are already isolated by the vertical-gap
+      // and font-size grouping above (which, e.g., separates a figure caption from the body that
+      // follows it). The one content check — the previous line didn't finish — is the BACKUP that
+      // resolves what geometry alone can't here: the CIP wraps at logical "|"/";" points well short
+      // of the justified margin, so fills-measure can't tell a wrap from a finished line.
+      const hangingIndentOf = (group: PdfLine[], bodyLeft: number, bodyFont: number): number | null => {
+        if (group.length < 3) return null;
+        const tol = 4;
+        const indented = group.filter(l => l.x > bodyLeft + tol);
+        const base = group.filter(l => l.x <= bodyLeft + tol);
+        if (base.length < 2 || indented.length < 1) return null;
+        const indentXs = indented.map(l => l.x);
+        if (Math.max(...indentXs) - Math.min(...indentXs) > tol * 2) return null; // one consistent tier only
+        const delta = Math.min(...indentXs) - bodyLeft;
+        if (delta < 6 || delta > bodyFont * 4) return null;
+        for (let k = 0; k < group.length; k++) {
+          if (group[k].x > bodyLeft + tol) {
+            const prev = group[k - 1];
+            // An indented line must CONTINUE the line above it: there must be a previous line (so
+            // it isn't a paragraph's first-line indent) and that line did not finish (backup check).
+            if (!prev || endsWithTerminalPunctuation(prev.text)) return null;
+          }
+        }
+        return delta;
+      };
       // A footnote entry starts a new block: it sits in the smaller footnote font and opens
       // with a marker — already linked by the note-anchor injection ("[II](#…) Adam Smith…"),
       // or a bare number/Roman ("II. …") for a footnote whose forward marker wasn't found.
@@ -1333,7 +1366,7 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list' | 'hangingindent'; firstX: number; firstRightX: number; lastRightX: number; lastText: string };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
       for (const buf of pageBuffers) {
@@ -1503,6 +1536,35 @@ const App: React.FC = () => {
             group.push(current);
             j++;
           }
+          // A hanging-indent definition list (CIP block, glossary): the splitter above merges its
+          // entries (each entry-start sits at the margin, not indented, so it reads as prose
+          // continuation). Re-split the merged group into one entry per outdented line — each a
+          // 'hangingindent' block the reader draws with its first line flush and wrapped lines
+          // indented, matching the source instead of reflowing into a run-on paragraph.
+          const hangingDelta = groupIsHeading ? null : hangingIndentOf(group, bodyLeft, bodyFont);
+          if (hangingDelta !== null) {
+            let entry: PdfLine[] = [];
+            const emitEntry = () => {
+              if (!entry.length) return;
+              let etext = entry[0].text;
+              for (let k = 1; k < entry.length; k++) {
+                etext = /[A-Za-z]-$/.test(etext) && /^[a-z]/.test(entry[k].text) ? etext + entry[k].text : `${etext} ${entry[k].text}`;
+              }
+              etext = etext.replace(/\s+/g, ' ').trim();
+              if (etext) {
+                const last = entry[entry.length - 1];
+                blocks.push({ text: etext, role: 'hangingindent', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text });
+              }
+              entry = [];
+            };
+            for (const line of group) {
+              if (line.x <= bodyLeft + 4 && entry.length) emitEntry();
+              entry.push(line);
+            }
+            emitEntry();
+            i = j;
+            continue;
+          }
           // Join the block into one line, keeping a word hyphenated across a line break.
           let text = group[0].text;
           for (let k = 1; k < group.length; k++) {
@@ -1562,7 +1624,7 @@ const App: React.FC = () => {
           // re-deriving structure from the flattened text with prose heuristics (which would,
           // e.g., bold some table-of-contents entries as if they were section subtitles). The
           // reader strips the sentinel; a 'body' continuation carries none.
-          const tag = block.role === 'list' ? '\uE012' : ''; // U+E012 = list role; reader strips it
+          const tag = block.role === 'list' ? '' : block.role === 'hangingindent' ? '' : ''; // U+E012 list, U+E014 hanging-indent; reader strips them
           if (blockIndex === 0 && continues) {
             pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${block.text}`;
           } else if (blockIndex === 0) {
