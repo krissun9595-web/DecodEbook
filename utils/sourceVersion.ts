@@ -42,4 +42,10 @@
 //      sanitizeInternalLinkMarkup ran later (hydrateFileContext / the source cache), trimmed
 //      whitespace inside link brackets, shifted every following character, and each chapter
 //      began a few characters into its heading ("ACKNOWLEDGMENTS" → "NOWLEDGMENTS").
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v17-link-markup-offsets';
+// v18: the geometry-decided block role travels to the reader as a private-use sentinel
+//      (U+E012 = list), captured into para.role and stripped at display, so the reader
+//      renders a tagged block by its role instead of re-deriving structure from the
+//      flattened text — a table of contents now renders uniformly rather than letting the
+//      prose subtitle heuristic bold some entries. (Finishes the held "reader renders tagged
+//      blocks" stage, scoped to the list role.)
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v18-block-role-tags';

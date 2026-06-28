@@ -1472,12 +1472,18 @@ const App: React.FC = () => {
           first.firstX <= bodyLeft + 8 &&
           fillsMeasure(first.firstRightX, rightMargin);
         blocks.forEach((block, blockIndex) => {
+          // Carry the geometry-decided block role to the reader as a private-use sentinel
+          // (U+E012 = list), so the reader renders tagged blocks per their role instead of
+          // re-deriving structure from the flattened text with prose heuristics (which would,
+          // e.g., bold some table-of-contents entries as if they were section subtitles). The
+          // reader strips the sentinel; a 'body' continuation carries none.
+          const tag = block.role === 'list' ? '\uE012' : ''; // U+E012 = list role; reader strips it
           if (blockIndex === 0 && continues) {
             pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${block.text}`;
           } else if (blockIndex === 0) {
-            pages.push(`${marker}\n${block.text}`);
+            pages.push(`${marker}\n${tag}${block.text}`);
           } else {
-            pages.push(block.text);
+            pages.push(`${tag}${block.text}`);
           }
         });
         prevBlock = blocks[blocks.length - 1];

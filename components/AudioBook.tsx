@@ -217,6 +217,7 @@ interface ParagraphData {
     translated: string[];
     indent?: number;
     align?: 'right' | 'center';
+    role?: 'list' | 'heading';
 }
 
 const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
@@ -908,15 +909,17 @@ const buildPageSentenceData = (pageText: string): {
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
-    // A leading private-use sentinel (U+E011 right, U+E010 centre) tags a display block's
-    // alignment (a title page / "also by" list / dedication); capture it, then strip every
-    // sentinel so it never reaches the rendered text, TTS, or search.
+    // Block-role / alignment sentinels carried from extraction (private-use chars):
+    // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
+    // sit just after a stripped page marker's whitespace, so allow leading space. Capture
+    // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
+    const ctrl = rawPText.match(/^\s*[\uE010-\uE013]+/);
+    const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | undefined =
-      /^[\uE010\uE011]/.test(rawPText) ? (rawPText[0] === '\uE011' ? 'right' : 'center') : undefined;
-    const alignStripped = rawPText.replace(/[\uE010\uE011]/g, '');
-    // Leading non-breaking spaces encode index sub-entry indentation (the only
-    // text that survives extraction without being collapsed). Capture the depth
-    // as metadata and strip the markers so the entry text itself stays clean.
+      ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
+    const role: 'list' | 'heading' | undefined =
+      ctrlChars.includes('\uE013') ? 'heading' : ctrlChars.includes('\uE012') ? 'list' : undefined;
+    const alignStripped = rawPText.replace(/[\uE010-\uE013]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -948,7 +951,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -3047,8 +3050,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
              <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
                   const lineRuns = paragraphLineRunsFor(pIdx, para.original);
-                  const paragraphStyle = plainParagraphStyleFor(para.original);
-                  const paragraphTextClass = isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original)
+                  // Trust the geometry-decided block role (carried from extraction as
+                  // para.role) BEFORE any prose heuristic: a 'list' block — a table of
+                  // contents, an "also by" list — renders uniformly (body weight, no
+                  // first-line indent), instead of letting isPlainSubtitleParagraph bold some
+                  // of its entries as if they were section subtitles.
+                  const isListRole = para.role === 'list';
+                  const paragraphStyle = isListRole ? noTextIndentStyle : plainParagraphStyleFor(para.original);
+                  const paragraphTextClass = !isListRole && (isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';
                   const hasParagraphTranslation = para.original.some((_, sIdx) => {
@@ -3070,9 +3079,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={indexIndentStyle}>
                       {lineRuns.map((line, lineIdx) => {
                         const lineText = line.map(run => run.sentence).join(' ');
-                        const spacingClass = paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : paragraphSpacingClassFor(lineText);
                         return (
-                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter ? 'justify-start' : 'justify-center'}`}>
+                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
                             style={{ ...paragraphStyle, ...alignStyle }}
