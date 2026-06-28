@@ -1012,6 +1012,23 @@ const App: React.FC = () => {
             }
           }
         }
+        // pdf.js can return the citation and the URL on a line as ONE text item ("Equipment
+        // Corporation, 1963), 10, http://s3data…"), and the loose box links the whole item — so
+        // the scheme ends up MID-glyph. Split such a glyph at the scheme so the URL
+        // reconstruction below can anchor on the scheme glyph and drop the citation before it.
+        const schemeSplit: PdfGlyph[] = [];
+        for (const g of glyphs) {
+          const at = g.linkUrl ? g.str.search(/https?:\/\/|www\./u) : -1;
+          if (at > 0) {
+            const n = g.str.length;
+            schemeSplit.push({ ...g, str: g.str.slice(0, at), w: (g.w * at) / n });
+            schemeSplit.push({ ...g, str: g.str.slice(at), x: g.x + (g.w * at) / n, w: (g.w * (n - at)) / n });
+          } else {
+            schemeSplit.push(g);
+          }
+        }
+        glyphs.length = 0;
+        glyphs.push(...schemeSplit);
         // pdf.js gives ONE loose bounding box per link, spanning every line it wraps across, so
         // the box also covers the citation before a URL ("CNBC, June 29, 2023, https://…") and
         // the next one after it. When the link is shown as the URL itself (a fragment carries a

@@ -80,4 +80,10 @@
 //      to the full URL while the second stayed. Now the collapse bridges a block/page break
 //      (whitespace + optional [[PAGE n]] marker), and the single-span clean fires only on a
 //      label that is the WHOLE URL (spurious internal spaces), never a fragment.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v24-url-crossblock';
+// v25: a URL whose scheme sits MID-item is recognised. pdf.js can return the citation and the
+//      URL as one text item ("Equipment Corporation, 1963), 10, http://s3data…"), which the
+//      loose link box links whole; the reconstruction anchored only on a scheme at a glyph's
+//      START, so it latched onto the URL's continuation line and dropped the scheme line as
+//      "citation". Now a linked glyph is split at a mid-item scheme so the URL is anchored and
+//      its leading citation dropped.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v25-url-miditem-scheme';
