@@ -1026,10 +1026,12 @@ const App: React.FC = () => {
           if (arr) arr.push(g); else urlGlyphs.set(g.linkUrl, [g]);
         }
         const urlKeep = new Map<PdfGlyph, number>(); // leading chars of a glyph that spell its URL
+        const urlDisplayed = new Set<string>(); // URLs shown as the URL itself (no internal spaces)
         for (const [url, gs] of urlGlyphs) {
           const nurl = url.toLowerCase();
           const schemeIdx = gs.findIndex(g => /https?:\/\//u.test(g.str.toLowerCase()) || /\bwww\./u.test(g.str.toLowerCase()));
           if (schemeIdx < 0) continue; // custom-text link (no scheme shown) — leave untouched
+          urlDisplayed.add(url);
           for (let i = 0; i < schemeIdx; i++) urlKeep.set(gs[i], 0); // citation before the URL
           let pos = -1;
           for (let i = schemeIdx; i < gs.length; i++) {
@@ -1151,7 +1153,11 @@ const App: React.FC = () => {
               // No space when the horizontal gap to the previous glyph is tiny — rejoins
               // letter-spaced small caps ("C LIVE" -> "CLIVE") without merging real words
               // (body word-gaps are far larger than this threshold).
-              const glue = !!prev && (prev.dropCap || (prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold));
+              // Also glue two glyphs of the SAME displayed URL: a justified line stretches the
+              // gap between a URL's pieces ("…/doomsday-" "invention-") past the threshold, but
+              // a URL has no spaces, so a space there would split it ("…doomsday- invention-").
+              const sameDisplayedUrl = !!prev && !!it.linkUrl && prev.linkUrl === it.linkUrl && urlDisplayed.has(it.linkUrl);
+              const glue = !!prev && (prev.dropCap || sameDisplayedUrl || (prev.w > 0 && (it.x - (prev.x + prev.w)) <= gapThreshold));
               const trimmed = it.str.trim();
 
               // Footnote / cross-reference marker backed by a real link annotation.
@@ -1484,6 +1490,16 @@ const App: React.FC = () => {
               : `${text} ${group[k].text}`;
           }
           text = text.replace(/\s+/g, ' ').trim();
+          // A URL that wraps across a line break becomes two link spans ("[…will-](u)" then
+          // "[win](u)") that the join split with a space — the trailing hyphen is hidden
+          // behind the "](u)" markup, so the hyphenation rule above can't see it. Merge
+          // adjacent spans pointing to the SAME URL into one continuous link (no space): a
+          // wrapped URL is one URL.
+          let prevText: string;
+          do {
+            prevText = text;
+            text = text.replace(/\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]+\[([^\]\n]*)\]\(\2\)/g, '[$1$3]($2)');
+          } while (text !== prevText);
           // A heading is styled as a whole by the reader, so inline emphasis inside it is
           // noise. It also actively harms: a bold-only glyph among bold-italic words (e.g.
           // an upright bold chapter number, "Chapter **5.** *The Life…*") leaves a stray

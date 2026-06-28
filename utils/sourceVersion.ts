@@ -61,4 +61,10 @@
 //      exactly the contiguous run that spells the URL (from its scheme), splitting a glyph
 //      where a short URL tail is glued to the next citation ("…will-" + "win" + "; Vincent…").
 //      Fixes both the citation being linked and the URL tail being dropped.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v21-url-spelling';
+// v22: a URL is kept as ONE continuous link, not broken by a space. (Not a length limit.)
+//      Two ways a URL could gain an internal space: (a) it WRAPS across a line, so it becomes
+//      two link spans the soft-wrap join split with a space (the trailing hyphen is hidden
+//      behind the "](url)" markup) — adjacent spans pointing to the same URL are merged with
+//      no space; (b) a JUSTIFIED line stretches the gap between a URL's pieces past the
+//      glue threshold — consecutive glyphs of the same displayed URL are glued.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v22-url-continuity';
