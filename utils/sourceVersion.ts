@@ -86,11 +86,4 @@
 //      START, so it latched onto the URL's continuation line and dropped the scheme line as
 //      "citation". Now a linked glyph is split at a mid-item scheme so the URL is anchored and
 //      its leading citation dropped.
-// v26: a hanging-indent definition list (a CIP/cataloging block, glossary, reference entry) is
-//      kept as one entry per field instead of reflowed into a run-on paragraph. The block
-//      splitter only knew first-line-indent prose (new paragraph = indented), but here a new
-//      entry is OUTDENTED to the margin and the indented lines are continuations — detected from
-//      geometry (an indented line only ever continues a non-terminated line). Each field becomes
-//      a 'hangingindent' block (U+E014) the reader draws with its first line flush and wrapped
-//      lines indented, matching the source.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v26-hanging-indent-list';
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v25-url-miditem-scheme';
