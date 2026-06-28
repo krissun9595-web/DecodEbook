@@ -976,22 +976,6 @@ const App: React.FC = () => {
           for (const l of links) { const [x1, y1, x2, y2] = l.rect; if (px >= x1 - 1 && px <= x2 + 1 && py >= y1 - 2 && py <= y2 + 2) return l; }
           return null;
         };
-        // pdf.js gives ONE loose bounding box per link, spanning every line the link wraps
-        // across — so on the line where a URL starts, the box also covers the citation before
-        // it ("CNBC, June 29, 2023, https://…"). Keep a URL link only on text that is genuinely
-        // part of the URL: a fragment carrying the scheme/www, or a long contiguous slice of
-        // the URL itself (≥8 chars, so a short word that merely coincides — "cnbc", "2023" —
-        // isn't linked). The geometric split still handles a URL embedded mid-sentence.
-        const belongsToUrl = (text: string, url: string): boolean => {
-          const t = text.trim().toLowerCase();
-          if (!t) return false;
-          if (/https?:\/\//u.test(t) || /\bwww\./u.test(t)) return true;
-          // Strip leading non-URL chars and a trailing run of sentence punctuation (the note's
-          // period after "…patients.html." — a '.' is otherwise a valid URL character).
-          const core = t.replace(/^[^\p{L}\p{N}/]+/u, '').replace(/[.,;:!?)\]"'»]+$/u, '');
-          return core.length >= 8 && url.toLowerCase().includes(core);
-        };
-
         type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; linkUrl?: string; noteKey?: string; dropCap?: boolean };
         const glyphs: PdfGlyph[] = [];
         for (const item of textContent.items as any[]) {
@@ -1028,16 +1012,50 @@ const App: React.FC = () => {
             }
           }
         }
-        // Strip URL links the bounding box swallowed but that aren't part of the URL (the
-        // preceding citation, stray same-line words) — but ONLY when the link is displayed as
-        // the URL itself (some fragment carries a scheme). A custom-text link ("click here")
-        // isn't filtered. Internal go-to links (noteKey) are left to the marker pre-scan.
-        const urlShownAsUrl = new Set<string>();
+        // pdf.js gives ONE loose bounding box per link, spanning every line it wraps across, so
+        // the box also covers the citation before a URL ("CNBC, June 29, 2023, https://…") and
+        // the next one after it. When the link is shown as the URL itself (a fragment carries a
+        // scheme/www), keep it ONLY on the contiguous run of glyphs that actually spell the URL:
+        // walk from the scheme glyph and match each fragment against the URL, so a short tail
+        // ("…will-win") is kept while the surrounding citations are dropped. Custom-text links
+        // ("click here") and internal go-to links (noteKey) are left untouched.
+        const urlGlyphs = new Map<string, PdfGlyph[]>();
         for (const g of glyphs) {
-          if (g.linkUrl && (/https?:\/\//u.test(g.str) || /\bwww\./u.test(g.str))) urlShownAsUrl.add(g.linkUrl);
+          if (!g.linkUrl) continue;
+          const arr = urlGlyphs.get(g.linkUrl);
+          if (arr) arr.push(g); else urlGlyphs.set(g.linkUrl, [g]);
         }
-        for (const g of glyphs) {
-          if (g.linkUrl && urlShownAsUrl.has(g.linkUrl) && !belongsToUrl(g.str, g.linkUrl)) g.linkUrl = undefined;
+        const urlKeep = new Map<PdfGlyph, number>(); // leading chars of a glyph that spell its URL
+        for (const [url, gs] of urlGlyphs) {
+          const nurl = url.toLowerCase();
+          const schemeIdx = gs.findIndex(g => /https?:\/\//u.test(g.str.toLowerCase()) || /\bwww\./u.test(g.str.toLowerCase()));
+          if (schemeIdx < 0) continue; // custom-text link (no scheme shown) — leave untouched
+          for (let i = 0; i < schemeIdx; i++) urlKeep.set(gs[i], 0); // citation before the URL
+          let pos = -1;
+          for (let i = schemeIdx; i < gs.length; i++) {
+            const lower = gs[i].str.toLowerCase();
+            if (pos < 0) { const at = nurl.indexOf(lower.slice(0, 10)); pos = at >= 0 ? at : 0; } // anchor the scheme glyph in the URL
+            let m = 0;
+            while (pos + m < nurl.length && m < lower.length && nurl[pos + m] === lower[m]) m++;
+            urlKeep.set(gs[i], m);
+            pos += m;
+          }
+        }
+        // Split a glyph whose text runs past the URL — a short URL tail glued to the next
+        // citation ("win; Vincent…") — into a linked head and an unlinked tail; drop glyphs
+        // the box covered that spell none of the URL (the preceding/next citation).
+        if (urlKeep.size) {
+          const rebuilt: PdfGlyph[] = [];
+          for (const g of glyphs) {
+            const keep = urlKeep.get(g);
+            if (keep === undefined || keep >= g.str.length) { rebuilt.push(g); continue; }
+            if (keep <= 0) { rebuilt.push({ ...g, linkUrl: undefined }); continue; }
+            const n = g.str.length;
+            rebuilt.push({ ...g, str: g.str.slice(0, keep), w: (g.w * keep) / n });
+            rebuilt.push({ ...g, str: g.str.slice(keep), x: g.x + (g.w * keep) / n, w: (g.w * (n - keep)) / n, linkUrl: undefined });
+          }
+          glyphs.length = 0;
+          glyphs.push(...rebuilt);
         }
         if (glyphs.length === 0) continue;
 

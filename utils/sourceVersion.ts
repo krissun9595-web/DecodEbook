@@ -57,4 +57,8 @@
 //      hid is recovered book-wide. A table of contents keeps its own emphasis (the bold
 //      chapter title) and its x-indent tiers (front matter indented, chapters flush), matching
 //      the original instead of a flat uniform list.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v20-font-weight-abbrev-toc';
+// v21: a URL link is reconstructed by spelling the URL across its glyphs — the link is kept on
+//      exactly the contiguous run that spells the URL (from its scheme), splitting a glyph
+//      where a short URL tail is glued to the next citation ("…will-" + "win" + "; Vincent…").
+//      Fixes both the citation being linked and the URL tail being dropped.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v21-url-spelling';
