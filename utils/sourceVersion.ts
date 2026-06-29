@@ -96,7 +96,12 @@
 //      entries. The intro/entry boundary now requires the first entry to END IN A PAGE
 //      REFERENCE (the intro never does); an x-only test treated the intro as entry one and chopped
 //      its wrapped sentence ("…reference on" / "your e-reader.") into separate lines.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v28-index-intro-pageref';
+// v29: a glyph whose font maps it to a Private-Use codepoint (a broken/missing ToUnicode map —
+//      a character pdf.js can't recover) is replaced with a visible "□" placeholder instead of
+//      being silently dropped, so a fetch omission is never invisible. Excludes U+E010–E014 (our
+//      own block-role sentinels). For this book it affects exactly one glyph (a decorative promo
+//      font's "h"); the 657 content pages have zero unmapped glyphs.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v29-unmapped-glyph-placeholder';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

@@ -1000,7 +1000,12 @@ const App: React.FC = () => {
           const emphasis = fontEmphasisFor(page, item.fontName, fontCache);
           const x = tr[4] || 0, y = tr[5] || 0, w = item.width || 0;
           const h = Math.hypot(tr[0] || 0, tr[1] || 0) || item.height || 0;
-          const str: string = item.str;
+          // A glyph whose font maps it to a Private-Use codepoint has a broken/missing ToUnicode
+          // map (e.g. a decorative subset font's "h" -> U+E4C7); pdf.js can't recover the real
+          // character. Make the loss VISIBLE with a placeholder instead of silently dropping it,
+          // so a fetch omission is never invisible. (Excludes U+E010–E014, our own block-role
+          // sentinels — those are added downstream, never present in raw pdf.js text.)
+          const str: string = item.str.replace(/[\uE000-\uE00F\uE015-\uF8FF]/g, '□');
           const n = str.length;
           // Fast path: the item touches no link rect — emit it whole.
           const overlaps = n > 0 && links.some(l => { const [x1, y1, x2, y2] = l.rect; return x < x2 + 1 && x + w > x1 - 1 && y >= y1 - 2 && y <= y2 + 2; });
