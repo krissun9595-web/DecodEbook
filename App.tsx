@@ -1399,7 +1399,12 @@ const App: React.FC = () => {
           const endsWithPageRef = (value: string): boolean => /[\d](?:[\u2013\u2014-]\d+)?\s*$/u.test(value);
           const refLines = lines.filter(line => endsWithPageRef(line.text));
           const entryBaseLeft = refLines.length ? Math.min(...refLines.map(line => line.x)) : bodyLeft;
-          const firstEntryIdx = lines.findIndex(line => line.x >= entryBaseLeft - INDENT_TOL);
+          // The first entry is the first line at the entry margin that also ENDS IN A PAGE
+          // REFERENCE. An x-only test fails when the intro prose shares the body margin with the
+          // entries (many indexes), treating the intro as entry one and chopping its wrapped
+          // sentence ("…reference on" / "your e-reader.") into separate lines. The intro never
+          // ends in a page number, so this cleanly separates the prose header from the entries.
+          const firstEntryIdx = lines.findIndex(line => line.x >= entryBaseLeft - INDENT_TOL && endsWithPageRef(line.text));
           const introLines = firstEntryIdx > 0 ? lines.slice(0, firstEntryIdx) : [];
           const entryLines = firstEntryIdx > 0 ? lines.slice(firstEntryIdx) : lines;
 

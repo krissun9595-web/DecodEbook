@@ -92,7 +92,11 @@
 //      reference. A real marker follows a word or sentence punctuation. (The matching reader-side
 //      guard — never inferring a marker from a digit inside a URL, e.g. "…59763136bdd7" — needs
 //      no re-extraction.)
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v27-exponent-not-footnote';
+// v28: an index page's intro prose is reflowed even when it shares the body margin with the
+//      entries. The intro/entry boundary now requires the first entry to END IN A PAGE
+//      REFERENCE (the intro never does); an x-only test treated the intro as entry one and chopped
+//      its wrapped sentence ("…reference on" / "your e-reader.") into separate lines.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v28-index-intro-pageref';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
