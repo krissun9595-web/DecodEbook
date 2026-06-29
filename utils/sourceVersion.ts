@@ -86,7 +86,13 @@
 //      START, so it latched onto the URL's continuation line and dropped the scheme line as
 //      "citation". Now a linked glyph is split at a mid-item scheme so the URL is anchored and
 //      its leading citation dropped.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v25-url-miditem-scheme';
+// (v26 = a hanging-indent definition-list detector; reverted — it misfired book-wide. See git.)
+// v27: a small-font number is NOT taken as a flattened footnote marker when the glyph right
+//      before it ends in a DIGIT — that's a math exponent ("10" + raised "20" = 10^20), not a
+//      reference. A real marker follows a word or sentence punctuation. (The matching reader-side
+//      guard — never inferring a marker from a digit inside a URL, e.g. "…59763136bdd7" — needs
+//      no re-extraction.)
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v27-exponent-not-footnote';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

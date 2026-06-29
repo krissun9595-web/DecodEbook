@@ -1211,7 +1211,11 @@ const App: React.FC = () => {
               // flattened superscript footnote marker. Emit the geometry-only #pdfnote key
               // (resolved by chapter scope downstream) for PDFs whose footnotes carry no
               // link annotations.
-              const isMarker = idx > 0 && /^\d{1,3}$/.test(trimmed) && Number(trimmed) >= 1 && it.h < lineBodyHeight * 0.84;
+              // A small-font number immediately after a DIGIT is a math exponent ("10" + raised
+              // "20" = 10^20), not a footnote marker — the preceding glyph ends in a digit with
+              // no separating punctuation. A real marker follows a word or sentence punctuation.
+              const prevEndsDigit = idx > 0 && /\d$/u.test(items[idx - 1].str.replace(/\s+$/u, ''));
+              const isMarker = idx > 0 && !prevEndsDigit && /^\d{1,3}$/.test(trimmed) && Number(trimmed) >= 1 && it.h < lineBodyHeight * 0.84;
               if (isMarker) {
                 if (open) { out += MARK[open]; open = null; }
                 if (openLink) { out += `](${openLink})`; openLink = null; }

@@ -681,6 +681,9 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
   return segments
     .flatMap(segment => {
       if (segment.format === 'footnote' || segment.format === 'referenceMarker' || segment.format === 'lineBreak') return [segment];
+      // A digit inside a link (a URL hash like "…59763136bdd7", or already-linked text) is part
+      // of that link, not a footnote marker — never split a marker out of a link segment.
+      if (segment.href) return [segment];
       if (options.inferBareFootnotes === false) return [segment];
       const split: InlineSegment[] = [];
       let localCursor = 0;
@@ -2800,7 +2803,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             return (
               <div key={`${currentTranslationIdentity}-structured-p-${idx}-line-${lineIdx}`} className={`w-full ${spacingClass} ${viewMode === 'split' ? 'flex items-start' : ''}`}>
                 <p
-                  className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-300 font-medium text-left m-0`}
+                  className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-300 font-medium text-left m-0 break-words min-w-0`}
                   style={structuredParagraphStyleFor(line)}
                 >
                   {renderOriginalRuns(runs)}
@@ -2846,7 +2849,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       <article key={`${currentTranslationIdentity}-topic-${block.number}-${index}`} className="space-y-3">
         <header className={`w-full ${viewMode === 'split' ? 'flex items-start' : 'space-y-1'}`}>
           <h4
-            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-100 font-bold text-left m-0`}
+            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-100 font-bold text-left m-0 break-words min-w-0`}
             style={viewMode === 'split' ? noTextIndentStyle : noIndentStyle}
           >
             {renderOriginalRuns(titleRuns, 'text-zinc-100')}
@@ -3084,7 +3087,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
-                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
+                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                             style={{ ...paragraphStyle, ...alignStyle }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }) => {
