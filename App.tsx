@@ -20,7 +20,7 @@ import { trackReferralClick, registerReferralSignup } from './services/referral'
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
 import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
-import { PDF_TEXT_EXTRACTION_VERSION } from './utils/sourceVersion';
+import { PDF_TEXT_EXTRACTION_VERSION, isStalePdfExtraction } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
 import type { User } from '@supabase/supabase-js';
@@ -100,6 +100,14 @@ const hydrateFileContext = (fileContext: FileContext): FileContext => {
 const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
   if (!item.fileContext.content) return item;
 
+  // (B) Stale extraction: drop the content so the book cleanly prompts a re-upload instead of
+  // rendering text this engine version can't interpret. This is the single gate that the render
+  // path lacked — it covers both the stored-content and source-cache paths, since the version
+  // stamp travels on fileContext regardless of where the text was loaded from.
+  if (isStalePdfExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
+    return { ...item, fileContext: { ...item.fileContext, content: undefined } };
+  }
+
   const fileContext = hydrateFileContext(item.fileContext);
   const readableChapters = item.book.chapters.filter(chapter =>
     isReadableChapterTitle(chapter.title) &&
@@ -161,6 +169,14 @@ const purgeSovereignIndividualDerivedCache = async (item: LibraryItem): Promise<
 
 const restoreLibrarySources = async (items: LibraryItem[]): Promise<LibraryItem[]> => {
   const restored = await Promise.all(items.map(async item => {
+    // (A) Stale PDF extraction: purge the cached text so a re-upload re-extracts cleanly. The
+    // source cache key is shared across engine versions (it uses SOURCE_CACHE_VERSION, not the
+    // extractor version), so after a rollback it would otherwise keep handing back the old text.
+    // hydrateLibraryItem then drops the stale content, surfacing the re-upload prompt (B).
+    if (isStalePdfExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
+      deleteFile(sourceCacheKey(item.book.id)).catch(() => undefined);
+      return hydrateLibraryItem(item);
+    }
     if (item.fileContext.content) return hydrateLibraryItem(item);
     try {
       const sourceVersions = [

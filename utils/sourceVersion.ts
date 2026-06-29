@@ -87,3 +87,13 @@
 //      "citation". Now a linked glyph is split at a mid-item scheme so the URL is anchored and
 //      its leading citation dropped.
 export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v25-url-miditem-scheme';
+
+// A PDF's stored text is stale when it was produced by a different extraction engine than this
+// build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
+// text, and the source cache key is shared across engine versions, so without this check a
+// rollback keeps serving (and rendering) text whose block structure / sentinels this build can't
+// interpret. EPUB/TXT carry no extractor version and are never stale by this rule.
+export const isStalePdfExtraction = (
+  sourceKind: string | undefined,
+  sourceExtractorVersion: string | undefined,
+): boolean => sourceKind === 'pdf' && sourceExtractorVersion !== PDF_TEXT_EXTRACTION_VERSION;
