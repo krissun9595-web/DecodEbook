@@ -1501,6 +1501,35 @@ const App: React.FC = () => {
         const bodyGaps = bodyLines.slice(1).map((line, index) => bodyLines[index].y - line.y).filter(gap => gap > 0 && gap < bodyFont * 3);
         const bodyLineGap = median(bodyGaps) || lineGap;
 
+        // A LABELED HANGING-INDENT list — a dialogue ("CASSANDRA: …" / "RAY: …"), a CIP/cataloging
+        // block ("Names: …" / "Title: …"), a glossary: each entry starts at the body margin and its
+        // wrapped lines indent to ONE consistent deeper tier. The splitter merges these (a new
+        // entry is OUTDENTED, not indented, so it reads as a prose continuation). Detect from the
+        // geometry, but require a discriminator prose lacks — most entry lines begin with a short
+        // "Label:" (a name/field + colon). v26 used the bare two-tier geometry alone and over-fired
+        // book-wide; the label requirement plus ≥3 entries keeps this to genuine labeled lists.
+        const labelStart = /^["'“]?[A-Z][^:]{0,24}:(?:\s|$)/u;
+        const detectLabeledHangingList = (group: PdfLine[]): boolean => {
+          if (group.length < 4) return false;
+          const tol = 4;
+          const margin = group.filter(l => l.x <= bodyLeft + tol);
+          const indented = group.filter(l => l.x > bodyLeft + tol);
+          if (margin.length < 3 || indented.length < 1) return false;
+          const indentXs = indented.map(l => l.x);
+          if (Math.max(...indentXs) - Math.min(...indentXs) > tol * 2) return false; // one consistent tier
+          const delta = Math.min(...indentXs) - bodyLeft;
+          if (delta < 6 || delta > bodyFont * 5) return false;
+          for (let k = 0; k < group.length; k++) {
+            if (group[k].x > bodyLeft + tol) {
+              const prev = group[k - 1];
+              // an indented line must CONTINUE the line above it (non-terminal), not start a paragraph
+              if (!prev || endsWithTerminalPunctuation(prev.text)) return false;
+            }
+          }
+          const labeled = margin.filter(l => labelStart.test(l.text.trim())).length;
+          return labeled >= 2 && labeled >= margin.length / 2;
+        };
+
         const blocks: EmitBlock[] = [];
         let i = 0;
         while (i < lines.length) {
@@ -1532,6 +1561,34 @@ const App: React.FC = () => {
             if (endsBlock) break;
             group.push(current);
             j++;
+          }
+          // A labeled hanging-indent list (dialogue, CIP, glossary): the splitter merged its
+          // entries (each entry-start sits at the margin, reading as a prose continuation).
+          // Re-split into ONE body paragraph per entry — a margin line plus its indented
+          // continuations — so speaker turns / fields don't run together. (Plain body blocks;
+          // no hanging-indent visual, to keep the change small and safe.)
+          if (!groupIsHeading && detectLabeledHangingList(group)) {
+            let entry: PdfLine[] = [];
+            const flushEntry = () => {
+              if (!entry.length) return;
+              let etext = entry[0].text;
+              for (let k = 1; k < entry.length; k++) {
+                etext = /[A-Za-z]-$/.test(etext) && /^[a-z]/.test(entry[k].text) ? etext + entry[k].text : `${etext} ${entry[k].text}`;
+              }
+              etext = etext.replace(/\s+/g, ' ').trim();
+              if (etext) {
+                const last = entry[entry.length - 1];
+                blocks.push({ text: etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text });
+              }
+              entry = [];
+            };
+            for (const line of group) {
+              if (line.x <= bodyLeft + 4 && entry.length) flushEntry();
+              entry.push(line);
+            }
+            flushEntry();
+            i = j;
+            continue;
           }
           // Join the block into one line, keeping a word hyphenated across a line break.
           let text = group[0].text;
