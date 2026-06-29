@@ -1327,7 +1327,8 @@ const App: React.FC = () => {
       // a small-caps sentence tail look like a subtitle, split a wrapped quote into a new
       // paragraph, and shattered a multi-line heading).
       const bodyFont = mode(allLineHeights.map(h => Math.round(h))) || median(allLineHeights) || 0;
-      const isHeadingLine = (line: PdfLine): boolean => bodyFont > 0 && line.h >= bodyFont * 1.2;
+      // (heading detection is per-page below — it compares to the LOCAL section font, not just this
+      // global one, so a header in a smaller-font section is recognised.)
       // A line "fills the measure" if its right edge reaches the page's text right margin
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.
@@ -1361,9 +1362,42 @@ const App: React.FC = () => {
       type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
-      for (const buf of pageBuffers) {
+      // Local section body font, smoothed over a WINDOW of pages. A single page with embedded
+      // small-font content (an algorithm listing, a data table, footnotes) must NOT be mistaken for
+      // a small-font SECTION: over ~17 pages the true section body dominates — a body page reads
+      // h15 (its occasional figures don't outvote the prose across the window), a notes page reads
+      // h11. Used so the heading bar can drop where a section genuinely runs smaller than the
+      // document body, without reacting to one noisy page.
+      // Estimate it as max(this page's own dominant height, the windowed dominant height). The two
+      // failure modes pull opposite ways: a single figure-heavy page reads too SMALL on its own (so
+      // the window — where section prose dominates — rescues it), while at a section boundary the
+      // window bleeds in the neighbouring section's smaller font (so the page's OWN font rescues it,
+      // e.g. an h15 index page abutting the h11 notes). Taking the larger of the two is the
+      // conservative estimate — it never lowers the heading bar below what the page itself shows.
+      const HEADING_WINDOW = 8;
+      const pageRoundedHeights = pageBuffers.map(b => b.lines.map(l => Math.round(l.h)));
+      const localBodyFontByIndex = pageBuffers.map((_, idx) => {
+        const win: number[] = [];
+        for (let k = Math.max(0, idx - HEADING_WINDOW); k <= Math.min(pageBuffers.length - 1, idx + HEADING_WINDOW); k++) {
+          win.push(...pageRoundedHeights[k]);
+        }
+        return Math.max(mode(pageRoundedHeights[idx]) || bodyFont, mode(win) || bodyFont);
+      });
+
+      for (const [bufIndex, buf] of pageBuffers.entries()) {
         const { pageNum, lines, bodyLeft, lineGap, isListPage, indentTiers } = buf;
-        const proseLines = lines.filter(line => !isHeadingLine(line));
+        // Heading detection, principled: a heading is text typographically LARGER than the body of
+        // its OWN section — alignment and wording are irrelevant. Comparing only to the GLOBAL
+        // document font misses a header that equals the document body size but lives in a
+        // smaller-font section (a chapter header, h15, inside the h11 notes). So the bar is the
+        // SMALLER of the global body font and the local (windowed) section font. Body chapter and
+        // section headings are already larger than the body and stay caught; this only adds the
+        // notes case. (pdf.js exposes no structure for these notes headers — getStructTree/
+        // getMarkInfo null, not in the outline or named destinations — so geometry is the only signal.)
+        const localFont = localBodyFontByIndex[bufIndex];
+        const headingFont = bodyFont > 0 ? Math.min(bodyFont, localFont) : localFont;
+        const isHeading = (line: PdfLine): boolean => headingFont > 0 && line.h >= headingFont * 1.2;
+        const proseLines = lines.filter(line => !isHeading(line));
         const rightMargin = proseLines.length ? Math.max(...proseLines.map(line => line.rightX)) : 0;
         const indentDepthFor = (x: number): number => {
           const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
@@ -1381,7 +1415,7 @@ const App: React.FC = () => {
           // KEEP each entry's emphasis (the bold chapter title) and encode its left-indent
           // tier as leading non-breaking spaces (4 per level, like the index), so the reader
           // reproduces the original bold + indentation instead of a flat uniform list.
-          const entryLefts = lines.filter(line => !isHeadingLine(line) && line.text.trim()).map(line => line.x).sort((a, b) => a - b);
+          const entryLefts = lines.filter(line => !isHeading(line) && line.text.trim()).map(line => line.x).sort((a, b) => a - b);
           const tiers: number[] = [];
           for (const x of entryLefts) { if (!tiers.some(t => Math.abs(t - x) <= INDENT_TOL)) tiers.push(x); }
           tiers.sort((a, b) => a - b);
@@ -1418,10 +1452,10 @@ const App: React.FC = () => {
           const introGap = median(introLines.slice(1).map((line, index) => introLines[index].y - line.y).filter(gap => gap > 0));
           let ii = 0;
           while (ii < introLines.length) {
-            const groupIsHeading = isHeadingLine(introLines[ii]);
+            const groupIsHeading = isHeading(introLines[ii]);
             const group: PdfLine[] = [introLines[ii]];
             let jj = ii + 1;
-            while (jj < introLines.length && isHeadingLine(introLines[jj]) === groupIsHeading) {
+            while (jj < introLines.length && isHeading(introLines[jj]) === groupIsHeading) {
               const prev = introLines[jj - 1], cur = introLines[jj];
               const verticalGap = prev.y - cur.y;
               const endsBlock = groupIsHeading
@@ -1497,7 +1531,7 @@ const App: React.FC = () => {
         // Prose page: paragraph spacing comes from the BODY lines only (a chapter-start
         // page's page-wide gap is skewed by large heading leading). Walk the lines,
         // gathering a run of one kind, then join it into a single block.
-        const bodyLines = lines.filter(line => !isHeadingLine(line));
+        const bodyLines = lines.filter(line => !isHeading(line));
         const bodyGaps = bodyLines.slice(1).map((line, index) => bodyLines[index].y - line.y).filter(gap => gap > 0 && gap < bodyFont * 3);
         const bodyLineGap = median(bodyGaps) || lineGap;
 
@@ -1533,10 +1567,10 @@ const App: React.FC = () => {
         const blocks: EmitBlock[] = [];
         let i = 0;
         while (i < lines.length) {
-          const groupIsHeading = isHeadingLine(lines[i]);
+          const groupIsHeading = isHeading(lines[i]);
           const group: PdfLine[] = [lines[i]];
           let j = i + 1;
-          while (j < lines.length && isHeadingLine(lines[j]) === groupIsHeading) {
+          while (j < lines.length && isHeading(lines[j]) === groupIsHeading) {
             const previous = lines[j - 1];
             const current = lines[j];
             const verticalGap = previous.y - current.y;
@@ -1649,7 +1683,7 @@ const App: React.FC = () => {
           // re-deriving structure from the flattened text with prose heuristics (which would,
           // e.g., bold some table-of-contents entries as if they were section subtitles). The
           // reader strips the sentinel; a 'body' continuation carries none.
-          const tag = block.role === 'list' ? '\uE012' : ''; // U+E012 = list role; reader strips it
+          const tag = block.role === 'list' ? '\uE012' : block.role === 'heading' ? '\uE013' : ''; // U+E012 list, U+E013 heading; reader strips them
           if (blockIndex === 0 && continues) {
             pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${block.text}`;
           } else if (blockIndex === 0) {
