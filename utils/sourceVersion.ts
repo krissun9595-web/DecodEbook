@@ -109,21 +109,7 @@
 //      a short "Label:". Emits plain body paragraphs (no hanging-indent visual). Replaces v26's
 //      bare two-tier detector, which over-fired book-wide; verified to fire only on the CIP and
 //      the Ch 8 dialogue across all 658 pages (the contents is handled separately).
-// v31: heading detection is local-context-aware, and the heading role travels to the reader.
-//      (a) A heading is text larger than the body of its OWN section, not just the global document
-//      font: the bar is min(global body font, the page's local font, smoothed over a window of
-//      pages so a figure/algorithm/footnote-heavy page isn't mistaken for a small-font section,
-//      and max'd with the page's own font so a section boundary doesn't bleed a neighbour's font).
-//      This recognises a chapter header sitting in a smaller-font section — a notes-section header
-//      "CHAPTER 7: PERIL" (h15) amid the h11 notes — which a global-font-only test missed, leaving
-//      it un-styled and blending into the surrounding note. pdf.js exposes NO structure for these
-//      (getStructTree/getMarkInfo null, not in the outline or named destinations), so geometry is
-//      the only signal. (b) The geometry-decided 'heading' block role is carried to the reader as a
-//      private-use sentinel (U+E013), the same way 'list' already is, so the reader styles a header
-//      by what the layout decided — not by a wording heuristic that misses short titles. Verified
-//      book-wide: the bar adds exactly the notes chapter headers + the appendix table row labels,
-//      and over-fires on no body/index page.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v31-local-heading-role';
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v30-labeled-hanging-list';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
