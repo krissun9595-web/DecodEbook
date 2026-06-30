@@ -1584,7 +1584,10 @@ const App: React.FC = () => {
               if (!prev || endsWithTerminalPunctuation(prev.text)) return false;
             }
           }
-          const labeled = margin.filter(l => labelStart.test(l.text.trim())).length;
+          // Strip emphasis markup before the label test: a BOLD speaker label extracts as
+          // "**CASSANDRA: …**" (the dialogue is set bold), and the leading "**" trips labelStart's
+          // first-character anchor, so every turn missed and the dialogue emitted as one block.
+          const labeled = margin.filter(l => labelStart.test(l.text.replace(/[*_~]/gu, '').trim())).length;
           return labeled >= 2 && labeled >= margin.length / 2;
         };
 

@@ -2270,6 +2270,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // "“Adult Literacy in America,” 227" would otherwise be treated as a quote).
     if (isIndexChapter) return '';
     if (isNotesChapter && looksLikeNotesSectionHeading(clean)) return 'mt-10 mb-3';
+    // Each chapter-end NOTE is one structured line, stacked at space-y-0 with no gap, so adjacent
+    // notes (80, 81, …) ran together. Give every note entry (a line opening with its number/roman +
+    // ".)" ) a small top margin so consecutive notes read as separate entries.
+    if (isNotesChapter && /^["'“]?\s*(?:\d{1,3}|[ivxlcdm]{1,4})[.)]\s/iu.test(clean)) return 'mt-3';
     // A section subtitle (e.g. "THE END OF NATIONS", "PROMETHEUS UNBOUND: ...") is
     // rendered bold but otherwise got no spacing, so it ran right into the
     // surrounding prose. Give it room above and a little below.

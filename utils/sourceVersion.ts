@@ -131,7 +131,14 @@
 //      notes header (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue
 //      (not large vs the h15 body) do not. Replaces v31's family-only rule + its !fills/!lowercase
 //      hacks. Verified book-wide: 0 callout/dialogue/sentence-like false positives.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v32-family-and-local-size-heading';
+// v33: the Ch 8 dialogue is segmented into one paragraph per turn again. The labeled-hanging-list
+//      detector's label test ran on the raw line text, but a speaker label is set BOLD, so the line
+//      is "**CASSANDRA: **So you anticipate…" — the leading "**" tripped the label regex's first-char
+//      anchor, so 0 turns matched and the dialogue emitted as one block. Strip emphasis markup before
+//      the label test (pdf.js DOES give the space after the colon — verified). (Companion reader-side
+//      fix, no re-extraction: consecutive chapter-end NOTES are separated by a blank line so adjacent
+//      notes like 80/81 no longer render as one merged block.)
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v33-dialogue-label-emphasis';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
