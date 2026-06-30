@@ -1623,8 +1623,14 @@ const App: React.FC = () => {
               // Two consecutive lines that each occupy less than half the measure are
               // line-structured data (a catalog/CIP block, address, code list), not flowing
               // prose — keep them one per line. Prose has at most one short line per
-              // paragraph (the last), so this never splits a paragraph.
-              const bothShort = isShortDataLine(previous, bodyLeft) && isShortDataLine(current, bodyLeft);
+              // paragraph (the last), so this never splits a paragraph. EXCLUDE a line that opens
+              // a labeled entry (a dialogue turn "RAY: Right.", a CIP field): a short labeled
+              // opener must not break the block here — it belongs to the labeled hanging list that
+              // detectLabeledHangingList re-splits, and breaking before it would fragment the
+              // dialogue into pieces too small to detect (a one-word turn beside a short wrapped
+              // continuation otherwise tripped bothShort and merged that run into one paragraph).
+              const bothShort = isShortDataLine(previous, bodyLeft) && isShortDataLine(current, bodyLeft)
+                && !labelStart.test(current.text.replace(/[*_~]/gu, '').trim());
               endsBlock =
                 bothShort ||
                 startsFootnoteEntry(current) ||

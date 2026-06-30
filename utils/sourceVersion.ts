@@ -149,7 +149,15 @@
 //      The label requirement is KEPT (pure geometry over-fires on first-line-indent prose — the v26
 //      regression). Verified: all Ch 8 dialogue pages (p371–376) segment per-turn; a body-wide sweep
 //      fires only on the dialogue (prose/callout/index excluded).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v34-hanging-list-min-x';
+// v35: a SHORT labeled entry opener (a one-word dialogue turn "RAY: Right.", a CIP field) no longer
+//      triggers the block-split's bothShort "line-structured data" break. A one-word turn sitting
+//      beside a short wrapped continuation tripped bothShort, fragmenting the dialogue into 3-line
+//      blocks that fell below detectLabeledHangingList's ≥4-line/≥3-entry thresholds, so that run
+//      merged into one paragraph (most turns split, the one-word ones huddled). Excluding labeled
+//      openers keeps each dialogue page ONE block, detected at the original safe thresholds.
+//      Verified: p371-376 each segment per turn (incl. the one-word turns); body-wide sweep fires
+//      only on the dialogue.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v35-short-labeled-opener';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
