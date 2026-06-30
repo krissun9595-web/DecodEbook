@@ -645,12 +645,18 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
     if (match[1]) {
       const label = cleanNoteMarkerLabel(match[1]);
       const hasBodyTextBeforeLink = value.slice(0, match.index).trim().length > 0;
+      // A body footnote marker can be SPLIT off into its own sentence when the annotated clause
+      // ends in "…!**[2]" (terminal punctuation + a closing bold right before the marker), leaving
+      // the marker alone with no text before it. Treat a marker that is alone (nothing before AND
+      // nothing after) as a footnote too — only a note-ENTRY number ("[II] Adam Smith…", text
+      // after, none before) should stay plain.
+      const hasTextAfterLink = value.slice(pattern.lastIndex).trim().length > 0;
       if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, match[2])) {
         const labelPunctuation = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
         const trailingPunctuation = labelPunctuation || (value[pattern.lastIndex] === '.' ? '.' : '');
         segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker', href: match[2] });
         if (!labelPunctuation && trailingPunctuation) pattern.lastIndex += 1;
-      } else if (options.internalNoteLinksAsFootnotes && hasBodyTextBeforeLink && isLikelyInternalNoteLink(label, match[2])) {
+      } else if (options.internalNoteLinksAsFootnotes && (hasBodyTextBeforeLink || !hasTextAfterLink) && isLikelyInternalNoteLink(label, match[2])) {
         segments.push({ text: label, format: 'footnote', href: match[2] });
       } else {
         // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation

@@ -952,7 +952,7 @@ const App: React.FC = () => {
       // skew a per-page estimate) — grouped into blocks and emitted. INDENT_TOL is shared
       // with the per-page index-indent logic.
       const INDENT_TOL = 4;
-      type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean; family: string };
+      type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; lineGap: number; isListPage: boolean; indentTiers: number[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
@@ -1269,6 +1269,7 @@ const App: React.FC = () => {
               h: lineBodyHeight,
               bold: items.filter(it => it.bold).length > items.length / 2,
               family: modeStr(items.map(it => it.family)),
+              localFont: 0, // set after the document body font is known (see the windowed pass)
             };
           })
           .filter(line => line.text)
@@ -1360,20 +1361,31 @@ const App: React.FC = () => {
       const headingFamily = contentsBuf
         ? modeStr(contentsBuf.lines.filter(l => l.family && l.family !== bodyFamily && l.text.replace(/[*_~\s]/gu, '').length > 3).map(l => l.family))
         : '';
-      const isHeadingLine = (line: PdfLine): boolean => {
-        // No distinct heading family identified → fall back to the size rule (old behaviour).
-        if (!headingFamily) return bodyFont > 0 && line.h >= bodyFont * 1.2;
-        if (line.family !== headingFamily) return false;
-        // Larger than the body → a title (any case). At BODY size the heading family is shared with
-        // stylised prose — Chapter 8's dialogue is typeset in the display font — so additionally
-        // require a short title: it must NOT fill the measure (the dialogue turns wrap full-width)
-        // AND must not read as running prose (no lowercase). This keeps the all-caps body-size
-        // notes/section headers and excludes the dialogue. (bodyRightEdge is defined just below; this
-        // closure only runs in the emit loop, after it is set.)
-        if (line.h > bodyFont) return true;
-        const bare = line.text.replace(/\[[^\]]*\]\([^)]*\)/gu, '');
-        return bodyRightEdge - line.rightX > bodyFont * 2 && !/[a-z]/u.test(bare);
-      };
+      // LOCAL section body font per line: the dominant line height of the page's section, smoothed
+      // over a window of pages and combined with the page's own font (max, so a figure/footnote-
+      // heavy page can't drag it below the section body, and a section boundary doesn't bleed a
+      // neighbour's smaller font). A heading is judged against the body of its OWN section — the
+      // notes header (h15) is large vs the h11 notes, while the callout/dialogue (h15) is NOT large
+      // vs the h15 body. Set on every line for isHeadingLine.
+      const HEADING_WINDOW = 8;
+      const pageHeights = pageBuffers.map(b => b.lines.map(l => Math.round(l.h)));
+      pageBuffers.forEach((buf, idx) => {
+        const win: number[] = [];
+        for (let k = Math.max(0, idx - HEADING_WINDOW); k <= Math.min(pageBuffers.length - 1, idx + HEADING_WINDOW); k++) win.push(...pageHeights[k]);
+        const lf = Math.max(mode(pageHeights[idx]) || bodyFont, mode(win) || bodyFont);
+        buf.lines.forEach(line => { line.localFont = lf; });
+      });
+      // Heading detection, principled: a heading is text set in the HEADING font FAMILY (a display
+      // family distinct from the body — read from the real font name via commonObjs, learned from
+      // the contents page) AND typographically LARGER than the body of its OWN section (the local
+      // font above). Family alone over-catches body content typeset in the display family — Chapter
+      // 8's dialogue, the "late-breaking news" callout, both at body size; local size alone over-
+      // catches body prose on a figure-heavy page (wrong family). TOGETHER: the size-15 notes header
+      // (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue (not large vs
+      // the h15 body) do not. (Falls back to the size rule when no contents page / no heading family.)
+      const isHeadingLine = (line: PdfLine): boolean => headingFamily
+        ? line.family === headingFamily && line.localFont > 0 && line.h >= line.localFont * 1.2
+        : (bodyFont > 0 && line.h >= bodyFont * 1.2);
       // A line "fills the measure" if its right edge reaches the page's text right margin
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.

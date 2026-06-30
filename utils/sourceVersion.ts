@@ -122,7 +122,16 @@
 //      U+E013 (as 'list' carries U+E012); the reader renders by it (bold, no indent). Falls back to
 //      the old size rule when there is no contents page / no distinct heading family. Replaces the
 //      reverted size-based v31 (which mis-bolded epigraph attributions — see git c5236b3 / 30a2765).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v31-font-family-heading';
+// v32: heading detection combines BOTH principled signals — a heading is in the heading font FAMILY
+//      (distinct display family, learned from the contents page) AND typographically LARGER than the
+//      body of its OWN section (a per-line LOCAL body font, windowed across pages and max'd with the
+//      page's own font). Family alone over-caught body content set in the display family (the Ch 8
+//      dialogue, the "late-breaking news" callout — both at body size); local size alone over-caught
+//      body prose on figure/footnote-heavy pages (wrong family). Together they cancel: the size-15
+//      notes header (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue
+//      (not large vs the h15 body) do not. Replaces v31's family-only rule + its !fills/!lowercase
+//      hacks. Verified book-wide: 0 callout/dialogue/sentence-like false positives.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v32-family-and-local-size-heading';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
