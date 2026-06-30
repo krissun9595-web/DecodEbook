@@ -383,11 +383,13 @@ export const normalizeNotesReaderText = (value: string): string => {
 
     return entries.reduce((result, entry, index) => {
       if (index === 0) return entry.text;
-      const previous = entries[index - 1];
-      const separator = entry.type === 'section' || previous.type === 'section'
-        ? '\n\n'
-        : '\n';
-      return `${result}${separator}${entry.text}`;
+      // Each note entry is its OWN paragraph. pdf.js has no explicit paragraph mark, so the
+      // extractor INFERS paragraphs from geometry (a wrapped line that fills the measure joins; a
+      // short line / new "N." marker / indent change is a hard break) and already separates the
+      // notes into blocks. Join entries with a HARD break ('\n\n') to PRESERVE that: a single '\n'
+      // is read by the reader's paragraph model as a soft-wrap and FLOWS adjacent notes into one
+      // block (notes 80 and 81 ran together).
+      return `${result}\n\n${entry.text}`;
     }, '');
   };
 

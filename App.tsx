@@ -1570,18 +1570,30 @@ const App: React.FC = () => {
         const detectLabeledHangingList = (group: PdfLine[]): boolean => {
           if (group.length < 4) return false;
           const tol = 4;
-          const margin = group.filter(l => l.x <= bodyLeft + tol);
-          const indented = group.filter(l => l.x > bodyLeft + tol);
+          // Anchor the entry margin on the group's OWN leftmost tier, not the page's most-frequent
+          // left (bodyLeft): in a hanging list the indented continuation lines can OUTNUMBER the
+          // entry lines (the Ch 8 dialogue has more wrapped continuations than speaker turns), so
+          // mostFrequentLeft picks the CONTINUATION tier and every line reads as "margin", breaking
+          // detection. The group's min x is the entry tier (the outdented label/turn start).
+          const groupLeft = Math.min(...group.map(l => l.x));
+          const margin = group.filter(l => l.x <= groupLeft + tol);
+          const indented = group.filter(l => l.x > groupLeft + tol);
           if (margin.length < 3 || indented.length < 1) return false;
           const indentXs = indented.map(l => l.x);
           if (Math.max(...indentXs) - Math.min(...indentXs) > tol * 2) return false; // one consistent tier
-          const delta = Math.min(...indentXs) - bodyLeft;
+          const delta = Math.min(...indentXs) - groupLeft;
           if (delta < 6 || delta > bodyFont * 5) return false;
           for (let k = 0; k < group.length; k++) {
-            if (group[k].x > bodyLeft + tol) {
+            if (group[k].x > groupLeft + tol) {
               const prev = group[k - 1];
-              // an indented line must CONTINUE the line above it (non-terminal), not start a paragraph
-              if (!prev || endsWithTerminalPunctuation(prev.text)) return false;
+              // An indented line must CONTINUE the line above it, not start a new first-line-indent
+              // paragraph. Reject ONLY when the line above is a MARGIN line that ENDED (terminal
+              // punctuation) — a genuine paragraph break that would make this a first-line indent.
+              // Two cases that ARE still continuations and must NOT bail (they made the detector
+              // miss whole dialogue pages): (a) a leading indented line with no prev — a turn that
+              // WRAPPED across the previous PAGE break; (b) an indented line after another indented
+              // line that ended a sentence mid-entry — a long turn whose wrap fell on a period.
+              if (prev && prev.x <= groupLeft + tol && endsWithTerminalPunctuation(prev.text)) return false;
             }
           }
           // Strip emphasis markup before the label test: a BOLD speaker label extracts as
@@ -1643,8 +1655,9 @@ const App: React.FC = () => {
               }
               entry = [];
             };
+            const groupLeft = Math.min(...group.map(l => l.x));
             for (const line of group) {
-              if (line.x <= bodyLeft + 4 && entry.length) flushEntry();
+              if (line.x <= groupLeft + 4 && entry.length) flushEntry();
               entry.push(line);
             }
             flushEntry();

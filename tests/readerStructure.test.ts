@@ -29,14 +29,14 @@ const makeTopic = (index: number): string => [
 {
   const text = '1 The first note ends here. 2 The second note should become reachable. 3 The third note should also be reachable.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(normalized.includes('here.\n2 The second note'), 'plain flattened note 2 should receive a note line break');
-  assert.ok(normalized.includes('reachable.\n3 The third note'), 'plain flattened note 3 should receive a note line break');
+  assert.ok(normalized.includes('here.\n\n2 The second note'), 'plain flattened note 2 should receive a note line break');
+  assert.ok(normalized.includes('reachable.\n\n3 The third note'), 'plain flattened note 3 should receive a note line break');
 }
 
 {
   const text = '[1](part0007_split_000.html#ch01en1). First linked note. [2](part0007_split_000.html#ch01en2). Second linked note.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(normalized.includes('note.\n[2](part0007_split_000.html#ch01en2). Second'), 'linked flattened note markers should receive a note line break');
+  assert.ok(normalized.includes('note.\n\n[2](part0007_split_000.html#ch01en2). Second'), 'linked flattened note markers should receive a note line break');
 }
 
 {
@@ -44,10 +44,10 @@ const makeTopic = (index: number): string => [
   // (e.g. "Ibid.12.", "op. cit.17.") must still start a new note line.
   const text = '11. Ibid.12. Durant, op. cit., p. 43. 13. Ramsay MacMullen, Corruption and the Decline of Rome (New Haven: Yale University Press, 1988), p. 192. 16. Lane, “Economic Consequences of Organized Violence,” op. cit.17. Ibid.18. Susan Ailing Gregg, Foragers and Farmers (Chicago: University of Chicago Press, 1988), p. 9.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(normalized.includes('Ibid.\n12. Durant'), 'note number glued after "Ibid." should start a new line');
-  assert.ok(normalized.includes('op. cit.\n17. Ibid.'), 'note number glued after "op. cit." should start a new line');
-  assert.ok(normalized.includes('Ibid.\n18. Susan'), 'note number glued after a second "Ibid." should start a new line');
-  assert.ok(normalized.includes('p. 192.\n16. Lane'), 'space-separated notes should remain on their own lines');
+  assert.ok(normalized.includes('Ibid.\n\n12. Durant'), 'note number glued after "Ibid." should start a new line');
+  assert.ok(normalized.includes('op. cit.\n\n17. Ibid.'), 'note number glued after "op. cit." should start a new line');
+  assert.ok(normalized.includes('Ibid.\n\n18. Susan'), 'note number glued after a second "Ibid." should start a new line');
+  assert.ok(normalized.includes('p. 192.\n\n16. Lane'), 'space-separated notes should remain on their own lines');
 }
 
 {
@@ -66,7 +66,7 @@ const makeTopic = (index: number): string => [
   // marker (which split the note and broke the following footnote's link).
   const text = '[32](x#ch11en32). Hirshleifer, *op. cit., p.* 173. [33](x#ch11en33). Tanzi, *op. cit.,* pp. 167, 170.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(/p\.\* 173\.\n\[33\]/.test(normalized), 'an italicized "p." page label must keep its page number, not start a new note at it');
+  assert.ok(/p\.\* 173\.\n\n\[33\]/.test(normalized), 'an italicized "p." page label must keep its page number, not start a new note at it');
   assert.ok(!/p\.\*\n173/.test(normalized), 'the page number must not be split onto its own line');
 }
 
@@ -119,7 +119,7 @@ const makeTopic = (index: number): string => [
   // and must not truncate the note.
   const text = '[27](x#en27). Quoted by West, *op. cit.,* p. 58; see also Williamson, *Journal of Economic Behaviour,* vol. 1, no. 1. [28](x#en28). Next note, op. cit., p. 5.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(/vol\. 1, no\. 1\.\n\[28\]/.test(normalized), '"no. 1" in a citation must stay inside its note');
+  assert.ok(/vol\. 1, no\. 1\.\n\n\[28\]/.test(normalized), '"no. 1" in a citation must stay inside its note');
   assert.ok(!/\nno\. 1\./.test(normalized), '"no. 1" must not become its own line');
 }
 
@@ -174,7 +174,7 @@ const makeTopic = (index: number): string => [
   // it was (the heading line is not stripped/merged and note 1 still follows).
   assert.equal(
     normalizeNotesReaderText('Chapter 4. The Last Days\n\n1. A note here about something important.\n\n2. Another note follows here.'),
-    'Chapter 4. The Last Days\n\n1. A note here about something important.\n2. Another note follows here.',
+    'Chapter 4. The Last Days\n\n1. A note here about something important.\n\n2. Another note follows here.',
     'a normal single-line heading must be left intact (no fragments to fold)',
   );
 }
@@ -185,10 +185,10 @@ const makeTopic = (index: number): string => [
   // emphasis marker must not cause the NEXT note marker to be treated as running text.
   const text = '[11](x.html#ch02en11). *Ibid.* [12](x.html#ch02en12). Durant, *op. cit.,* p. 43. [13](x.html#ch02en13). Ramsay MacMullen, *Corruption and the Decline of Rome* (New Haven: Yale University Press, 1988), p. 192. [16](x.html#ch02en16). Lane, “Economic Consequences of Organized Violence,” *op. cit.* [17](x.html#ch02en17). *Ibid.* [18](x.html#ch02en18). Susan Ailing Gregg, Foragers (Chicago, 1988), p. 9.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(normalized.includes('*Ibid.*\n[12]'), 'note after an italic-ending "*Ibid.*" should start a new line');
-  assert.ok(normalized.includes('*op. cit.*\n[17]'), 'note after an italic-ending "*op. cit.*" should start a new line');
-  assert.ok(normalized.includes('*Ibid.*\n[18]'), 'note after a second italic-ending "*Ibid.*" should start a new line');
-  assert.ok(normalized.includes('p. 192.\n[16]'), 'period-ending notes must still break normally');
+  assert.ok(normalized.includes('*Ibid.*\n\n[12]'), 'note after an italic-ending "*Ibid.*" should start a new line');
+  assert.ok(normalized.includes('*op. cit.*\n\n[17]'), 'note after an italic-ending "*op. cit.*" should start a new line');
+  assert.ok(normalized.includes('*Ibid.*\n\n[18]'), 'note after a second italic-ending "*Ibid.*" should start a new line');
+  assert.ok(normalized.includes('p. 192.\n\n[16]'), 'period-ending notes must still break normally');
 }
 
 {
@@ -197,8 +197,8 @@ const makeTopic = (index: number): string => [
   // term with a trailing comma ("*op. cit.,*" -> ",*") or a missing final period.
   const text = '[14](x.html#ch03en14). See Bois, *op. cit.,* [15](x.html#ch03en15). See Frances and Joseph Gies, *Cathedral, Forge, and Waterwheel* (New York: HarperCollins, 1994), p. 40. [25](x.html#ch03en25). *Ibid.,* p. 150 [26](x.html#ch03en26). Gies, *op. cit.,* p. 2.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(normalized.includes('*op. cit.,*\n[15]'), 'note after italic term + trailing comma must start a new line');
-  assert.ok(normalized.includes('p. 150\n[26]'), 'note after a missing-period entry must start a new line');
+  assert.ok(normalized.includes('*op. cit.,*\n\n[15]'), 'note after italic term + trailing comma must start a new line');
+  assert.ok(normalized.includes('p. 150\n\n[26]'), 'note after a missing-period entry must start a new line');
 }
 
 {
@@ -215,7 +215,7 @@ const makeTopic = (index: number): string => [
     'italic notes section heading should split before the first linked note'
   );
   assert.ok(
-    normalized.includes('p. 48.\n[2](part0007_split_001.html#ch01en2). Ericka'),
+    normalized.includes('p. 48.\n\n[2](part0007_split_001.html#ch01en2). Ericka'),
     'second linked note should still receive a note line break after first-note splitting'
   );
 }
@@ -279,7 +279,7 @@ const makeTopic = (index: number): string => [
   assert.ok(normalized.includes('p. 48.'), 'hard line break inside p. 48 should collapse to a space');
   assert.ok(normalized.includes('p. 424.'), 'hard line break inside p. 424 should collapse to a space');
   assert.ok(
-    normalized.includes('48.\n[2](part0023_split_001.html#ch01-en2)'),
+    normalized.includes('48.\n\n[2](part0023_split_001.html#ch01-en2)'),
     'single newline before linked note 2 should remain a note line break'
   );
 }
@@ -322,7 +322,7 @@ const makeTopic = (index: number): string => [
     'blank lines inside note 9 should collapse before 635'
   );
   assert.ok(
-    normalized.includes('period.\n10. The next note starts here.'),
+    normalized.includes('period.\n\n10. The next note starts here.'),
     'the next note marker should remain a note line break'
   );
 }
@@ -335,21 +335,21 @@ const makeTopic = (index: number): string => [
     'embedded chapter notes heading should become its own paragraph'
   );
   assert.ok(
-    normalized.includes('Nanny State\n\n1. Clarke, op. cit., p. 9.\n2. Martin van Creveld'),
+    normalized.includes('Nanny State\n\n1. Clarke, op. cit., p. 9.\n\n2. Martin van Creveld'),
     'chapter-scoped note numbering should restart after the notes heading with single-line note spacing'
   );
 }
 
 {
   const normalized = normalizeNotesReaderText('19. Ibid. 20. Ibid., p. 128.');
-  assert.equal(normalized, '19. Ibid.\n20. Ibid., p. 128.');
+  assert.equal(normalized, '19. Ibid.\n\n20. Ibid., p. 128.');
 }
 
 {
   const normalized = normalizeNotesReaderText('11.\u00a0Ibid.\u00a012.\u00a0Durant, op. cit., p. 43.');
   assert.equal(
     normalized,
-    '11. Ibid.\n12. Durant, op. cit., p. 43.',
+    '11. Ibid.\n\n12. Durant, op. cit., p. 43.',
     'non-breaking spaces between flattened notes should still become line breaks'
   );
 }
@@ -358,7 +358,7 @@ const makeTopic = (index: number): string => [
   const normalized = normalizeNotesReaderText('11.Ibid. 12.Durant, op. cit., p. 43.');
   assert.equal(
     normalized,
-    '11. Ibid.\n12. Durant, op. cit., p. 43.',
+    '11. Ibid.\n\n12. Durant, op. cit., p. 43.',
     'compact flattened notes without spaces after note numbers should still split'
   );
 }
@@ -366,14 +366,14 @@ const makeTopic = (index: number): string => [
 {
   const text = '[I](part0007_split_004.html#ch01-fn1). Local note. [II](part0007_split_004.html#ch01-fn2). Second local note.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(normalized.includes('note.\n[II](part0007_split_004.html#ch01-fn2). Second'), 'roman linked note markers should receive a note line break');
+  assert.ok(normalized.includes('note.\n\n[II](part0007_split_004.html#ch01-fn2). Second'), 'roman linked note markers should receive a note line break');
 }
 
 {
   const text = '[ I] (part0007_split_004.html#ch01-fn1). Local note. [ II] (part0007_split_010.html#ch01-fn2). Second local note.';
   const normalized = normalizeNotesReaderText(text);
   assert.ok(
-    normalized.includes('note.\n[ II] (part0007_split_010.html#ch01-fn2). Second'),
+    normalized.includes('note.\n\n[ II] (part0007_split_010.html#ch01-fn2). Second'),
     'spaced roman internal links should still be recognized as note boundaries'
   );
 }

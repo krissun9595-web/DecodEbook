@@ -138,7 +138,18 @@
 //      the label test (pdf.js DOES give the space after the colon — verified). (Companion reader-side
 //      fix, no re-extraction: consecutive chapter-end NOTES are separated by a blank line so adjacent
 //      notes like 80/81 no longer render as one merged block.)
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v33-dialogue-label-emphasis';
+// v34: the labeled hanging-list (dialogue/CIP) detector is anchored on the GROUP's own leftmost x,
+//      not the page's most-frequent left (bodyLeft) — which for a hanging-indent block lands on the
+//      CONTINUATION tier (the wrapped lines outnumber the entry openers), so every line read as
+//      "margin" and detection failed page-wide. Plus two continuation cases that were wrongly bailing
+//      detection: a leading indented line with NO prev (a turn that wrapped across the previous PAGE
+//      break) and an indented line whose prev is another INDENTED line that ended a sentence mid-entry
+//      (a long turn whose wrap fell on a period) are both still continuations — the terminal-punct
+//      guard now fires only when the line above is a MARGIN line that ended (a true first-line indent).
+//      The label requirement is KEPT (pure geometry over-fires on first-line-indent prose — the v26
+//      regression). Verified: all Ch 8 dialogue pages (p371–376) segment per-turn; a body-wide sweep
+//      fires only on the dialogue (prose/callout/index excluded).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v34-hanging-list-min-x';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
