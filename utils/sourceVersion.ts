@@ -109,7 +109,20 @@
 //      a short "Label:". Emits plain body paragraphs (no hanging-indent visual). Replaces v26's
 //      bare two-tier detector, which over-fired book-wide; verified to fire only on the CIP and
 //      the Ch 8 dialogue across all 658 pages (the contents is handled separately).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v30-labeled-hanging-list';
+// v31: headings are detected by FONT FAMILY, not size — the principled signal pdf.js actually
+//      provides (the real font name via commonObjs). A heading is text set in the typesetter's
+//      heading family (a display family distinct from the body family), LEARNED from the contents
+//      page (the document's own list of headings); the body family is the document's dominant one.
+//      This recognises a notes-section chapter header ("CHAPTER 7: PERIL") that equals body SIZE but
+//      uses the heading family, AND correctly excludes epigraphs/quotes/attributions/italic titles/
+//      figure captions (all non-heading families) — which a size rule could not (the header is
+//      body-size; an epigraph is smaller than body). pdf.js exposes no semantic structure here
+//      (getStructTree/getMarkInfo null; marked content is generic "Span"), so font family is the
+//      most-principled available signal. The 'heading' block role now travels to the reader as
+//      U+E013 (as 'list' carries U+E012); the reader renders by it (bold, no indent). Falls back to
+//      the old size rule when there is no contents page / no distinct heading family. Replaces the
+//      reverted size-based v31 (which mis-bolded epigraph attributions — see git c5236b3 / 30a2765).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v31-font-family-heading';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

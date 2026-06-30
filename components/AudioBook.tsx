@@ -3059,8 +3059,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // first-line indent), instead of letting isPlainSubtitleParagraph bold some
                   // of its entries as if they were section subtitles.
                   const isListRole = para.role === 'list';
-                  const paragraphStyle = isListRole ? noTextIndentStyle : plainParagraphStyleFor(para.original);
-                  const paragraphTextClass = !isListRole && (isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
+                  // Trust the geometry-decided heading role (carried from extraction as U+E013):
+                  // a block set in the heading font family renders as a heading (bold, no indent),
+                  // regardless of whether a prose wording heuristic recognises it — this is what
+                  // styles a notes-section header ("CHAPTER 7: PERIL") the wording rules miss. It is
+                  // safe to bold by role because the role is now assigned by FONT FAMILY, so it
+                  // covers only genuine headings — epigraphs, quotes, and attributions stay in the
+                  // body family and never carry it (the v31 over-bold regression came from a
+                  // size-based role that swept those in).
+                  const isHeadingRole = para.role === 'heading';
+                  const paragraphStyle = (isListRole || isHeadingRole) ? noTextIndentStyle : plainParagraphStyleFor(para.original);
+                  const paragraphTextClass = !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';
                   const hasParagraphTranslation = para.original.some((_, sIdx) => {

@@ -878,25 +878,38 @@ const App: React.FC = () => {
         values.forEach(v => { const c = (counts.get(v) || 0) + 1; counts.set(v, c); if (c > bestCount) { bestCount = c; best = v; } });
         return best;
       };
+      const modeStr = (values: string[]): string => {
+        const counts = new Map<string, number>();
+        let best = '', bestCount = -1;
+        values.forEach(v => { if (!v) return; const c = (counts.get(v) || 0) + 1; counts.set(v, c); if (c > bestCount) { bestCount = c; best = v; } });
+        return best;
+      };
       // Resolve a font subset to italic/bold from its real descriptor name. PDF text
       // extraction reports opaque subset names (e.g. "g_d0_f3"), but the loaded font
       // object exposes the real name ("EBGaramond-Italic") — the only reliable emphasis
       // signal. Requires getOperatorList() to have loaded the page's fonts first.
-      const fontEmphasisFor = (page: any, fontName: string, cache: Map<string, { italic: boolean; bold: boolean }>) => {
+      const fontEmphasisFor = (page: any, fontName: string, cache: Map<string, { italic: boolean; bold: boolean; family: string }>) => {
         const cached = cache.get(fontName);
         if (cached) return cached;
-        let italic = false, bold = false;
+        let italic = false, bold = false, family = '';
         try {
           if (page.commonObjs?.has?.(fontName)) {
-            const realName = String(page.commonObjs.get(fontName)?.name || '').toLowerCase();
+            const rawName = String(page.commonObjs.get(fontName)?.name || '');
+            const realName = rawName.toLowerCase();
             // Match full weight/style words AND the abbreviated tokens many subset fonts use
             // after a separator (e.g. "TradeGothicNextLTPro-BdCn" = Bold Condensed, "-It" =
             // Italic). The separator prefix keeps "bd"/"it" from matching mid-word.
             italic = /italic|oblique|[-_ ](?:it|ita|obl)/.test(realName);
             bold = /bold|black|heavy|semibold|demi|[-_ ](?:bd|blk|hvy?|sb|smbd|xbd?|extrab)/.test(realName);
+            // Font FAMILY: subset prefix ("ABCDEF+") stripped, weight/style suffix dropped. This is
+            // the typesetter's family choice — the principled signal for a heading: a heading is set
+            // in a display family DISTINCT from the body family (identified from the contents page
+            // below), which size cannot capture (a notes-section header equals body size; an
+            // epigraph is smaller than body).
+            family = rawName.replace(/^[A-Z]{6}\+/, '').split(/[-,]/)[0].trim();
           }
         } catch { /* font flags unavailable — fall back to plain text */ }
-        const style = { italic, bold };
+        const style = { italic, bold, family };
         cache.set(fontName, style);
         return style;
       };
@@ -939,7 +952,7 @@ const App: React.FC = () => {
       // skew a per-page estimate) — grouped into blocks and emitted. INDENT_TOL is shared
       // with the per-page index-indent logic.
       const INDENT_TOL = 4;
-      type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean };
+      type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean; family: string };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; lineGap: number; isListPage: boolean; indentTiers: number[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
@@ -953,7 +966,7 @@ const App: React.FC = () => {
           page.getTextContent(),
           page.getAnnotations().catch(() => [] as any[]),
         ]);
-        const fontCache = new Map<string, { italic: boolean; bold: boolean }>();
+        const fontCache = new Map<string, { italic: boolean; bold: boolean; family: string }>();
 
         // Link annotations on this page: external URLs (rendered as hyperlinks) and
         // internal go-to destinations (footnote/cross-reference markers). For each go-to
@@ -992,7 +1005,7 @@ const App: React.FC = () => {
           for (const l of links) { const [x1, y1, x2, y2] = l.rect; if (px >= x1 - 1 && px <= x2 + 1 && py >= y1 - 2 && py <= y2 + 2) return l; }
           return null;
         };
-        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; linkUrl?: string; noteKey?: string; dropCap?: boolean };
+        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean };
         const glyphs: PdfGlyph[] = [];
         for (const item of textContent.items as any[]) {
           if (!('str' in item) || !item.str.trim()) continue;
@@ -1010,7 +1023,7 @@ const App: React.FC = () => {
           // Fast path: the item touches no link rect — emit it whole.
           const overlaps = n > 0 && links.some(l => { const [x1, y1, x2, y2] = l.rect; return x < x2 + 1 && x + w > x1 - 1 && y >= y1 - 2 && y <= y2 + 2; });
           if (!overlaps) {
-            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold });
+            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold, family: emphasis.family });
             continue;
           }
           let runStart = 0;
@@ -1025,6 +1038,7 @@ const App: React.FC = () => {
                 str: str.slice(runStart, i),
                 italic: emphasis.italic,
                 bold: emphasis.bold,
+                family: emphasis.family,
                 linkUrl: runLink?.url,
                 noteKey: runLink?.key,
               });
@@ -1254,6 +1268,7 @@ const App: React.FC = () => {
               text: out.replace(/\s+/g, ' ').trim(),
               h: lineBodyHeight,
               bold: items.filter(it => it.bold).length > items.length / 2,
+              family: modeStr(items.map(it => it.family)),
             };
           })
           .filter(line => line.text)
@@ -1327,7 +1342,38 @@ const App: React.FC = () => {
       // a small-caps sentence tail look like a subtitle, split a wrapped quote into a new
       // paragraph, and shattered a multi-line heading).
       const bodyFont = mode(allLineHeights.map(h => Math.round(h))) || median(allLineHeights) || 0;
-      const isHeadingLine = (line: PdfLine): boolean => bodyFont > 0 && line.h >= bodyFont * 1.2;
+      // Heading detection, principled: a heading is text set in the typesetter's HEADING font FAMILY
+      // — a display family DISTINCT from the body family. pdf.js exposes the real font name
+      // (commonObjs), so we read the family directly; this beats size, which a heading does not
+      // reliably have (a notes-section chapter header equals body size; an epigraph/attribution is
+      // SMALLER than body yet a size rule would over-fire on a skewed local estimate). The heading
+      // family is LEARNED from the contents page — the document's own list of headings, every entry
+      // in that family — and the body family is the document's dominant family. Size cannot tell a
+      // size-15 notes header from size-15 body; the family can (TradeGothic vs the body serif), and
+      // it correctly EXCLUDES epigraphs/quotes/attributions/italic-titles/figure-captions, which all
+      // sit in non-heading families. (Falls back to the size rule when there is no contents page or
+      // no distinct heading family — e.g. headings that are merely bold body text — so a book
+      // without this typographic convention degrades to the old behaviour rather than breaking.)
+      const bodyFamily = modeStr(pageBuffers.flatMap(b => b.lines.map(l => l.family)));
+      const contentsBuf = pageBuffers.find(b => b.lines.length >= 6 &&
+        b.lines.slice(0, 3).some(l => /^(?:contents|table of contents)$/iu.test(l.text.replace(/[*_~]/gu, '').trim())));
+      const headingFamily = contentsBuf
+        ? modeStr(contentsBuf.lines.filter(l => l.family && l.family !== bodyFamily && l.text.replace(/[*_~\s]/gu, '').length > 3).map(l => l.family))
+        : '';
+      const isHeadingLine = (line: PdfLine): boolean => {
+        // No distinct heading family identified → fall back to the size rule (old behaviour).
+        if (!headingFamily) return bodyFont > 0 && line.h >= bodyFont * 1.2;
+        if (line.family !== headingFamily) return false;
+        // Larger than the body → a title (any case). At BODY size the heading family is shared with
+        // stylised prose — Chapter 8's dialogue is typeset in the display font — so additionally
+        // require a short title: it must NOT fill the measure (the dialogue turns wrap full-width)
+        // AND must not read as running prose (no lowercase). This keeps the all-caps body-size
+        // notes/section headers and excludes the dialogue. (bodyRightEdge is defined just below; this
+        // closure only runs in the emit loop, after it is set.)
+        if (line.h > bodyFont) return true;
+        const bare = line.text.replace(/\[[^\]]*\]\([^)]*\)/gu, '');
+        return bodyRightEdge - line.rightX > bodyFont * 2 && !/[a-z]/u.test(bare);
+      };
       // A line "fills the measure" if its right edge reaches the page's text right margin
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.
@@ -1649,7 +1695,7 @@ const App: React.FC = () => {
           // re-deriving structure from the flattened text with prose heuristics (which would,
           // e.g., bold some table-of-contents entries as if they were section subtitles). The
           // reader strips the sentinel; a 'body' continuation carries none.
-          const tag = block.role === 'list' ? '\uE012' : ''; // U+E012 = list role; reader strips it
+          const tag = block.role === 'list' ? '\uE012' : block.role === 'heading' ? '\uE013' : ''; // U+E012 list, U+E013 heading; reader strips them
           if (blockIndex === 0 && continues) {
             pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${block.text}`;
           } else if (blockIndex === 0) {
