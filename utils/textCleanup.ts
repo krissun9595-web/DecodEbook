@@ -9,10 +9,17 @@ const endsWithTerminalPunctuation = (value: string): boolean =>
     value.trim().replace(/\s*\[[^\]]*\]\([^)]*\)\s*$/u, '').replace(/[*_~]+$/u, '').trim(),
   );
 
+// Block-role / alignment sentinels (U+E010 centre, E011 right, E012 list, E013 heading) are
+// prepended to a block by the PDF extractor and stripped for display downstream. Strip them here
+// too so the first-character heading/subtitle tests below see the real text — otherwise a heading
+// that leads with the sentinel (e.g. "THE BIRTH OF AI") fails the `^[A-Z…]` anchor, the
+// heading guard never fires, and the heading is merged into the body paragraph that follows it.
+const stripBlockSentinels = (value: string): string => value.replace(/[-]/g, '');
+
 const looksLikeHeadingOrStructure = (value: string): boolean => {
   // Strip wrapping emphasis (an italic <h2>/<h3> extracts as "*Title*"), otherwise
   // the leading "*" hides the heading and it gets merged into the next paragraph.
-  const trimmed = value.trim().replace(/^[*_~]+\s*/u, '').replace(/\s*[*_~]+$/u, '').trim();
+  const trimmed = stripBlockSentinels(value).trim().replace(/^[*_~]+\s*/u, '').replace(/\s*[*_~]+$/u, '').trim();
   if (!trimmed) return false;
   const withoutHashes = trimmed.replace(/^#{1,6}\s*/, '');
   // A structural heading's designation is a number, roman numeral, or capitalised word
@@ -40,7 +47,7 @@ const looksLikeHeadingOrStructure = (value: string): boolean => {
 
 const looksLikeSubtitleLine = (value: string): boolean => {
   // Strip wrapping emphasis so an italic subtitle ("*Genius and Nemesis*") is detected.
-  const trimmed = value.trim().replace(/^[*_~]+\s*/u, '').replace(/\s*[*_~]+$/u, '').trim();
+  const trimmed = stripBlockSentinels(value).trim().replace(/^[*_~]+\s*/u, '').replace(/\s*[*_~]+$/u, '').trim();
   if (!trimmed || looksLikeHeadingOrStructure(trimmed)) return false;
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (trimmed.length > 90 || words.length > 12) return false;
