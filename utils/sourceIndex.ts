@@ -762,7 +762,16 @@ export const buildSourceIndexedChapters = (content: string, chapters: Chapter[])
       candidate.contentStart >= minIndex || candidate.headingStart >= minIndex
     );
 
-    const best = candidates.find(candidate => candidate.score >= MIN_ACCEPTED_CANDIDATE_SCORE) || null;
+    // Pick the HIGHEST-scoring acceptable candidate, not the first in array order. A distant
+    // title match (e.g. "Index" inside "The AI Index 2022" in a note ~170pp before the real
+    // Index) otherwise wins over the correct page anchor merely by appearing earlier in the
+    // list — swallowing every chapter between (here the entire Notes section, breaking all
+    // footnote navigation). Base scores already encode the kind preference (line 60 >
+    // normalized 25 > page 20) and page-proximity is weighted, so the truly-best wins.
+    const acceptable = candidates.filter(candidate => candidate.score >= MIN_ACCEPTED_CANDIDATE_SCORE);
+    const best = acceptable.length
+      ? acceptable.reduce((bestSoFar, candidate) => (candidate.score > bestSoFar.score ? candidate : bestSoFar))
+      : null;
     if (best) {
       resolved[idx] = best;
       minIndex = Math.max(best.headingEnd, best.contentStart + 1);

@@ -1202,6 +1202,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         chapter.id,
         'chapter-text',
         CHAPTER_TEXT_CACHE_VERSION,
+        // Tie the cached chapter text to the EXTRACTION version of the source it was derived from.
+        // Without this, bumping PDF_TEXT_EXTRACTION_VERSION (a better extractor) never invalidates
+        // the per-chapter cache — the reader keeps serving text extracted under an old version, so
+        // extraction fixes silently never reach the render. Re-extracting the source to a new
+        // version changes sourceExtractorVersion, which now changes this key and regenerates.
+        (fileContext as any).sourceExtractorVersion || 'noext',
         sourceFingerprint,
         chapterScopeFingerprint
       );
@@ -1248,6 +1254,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         cleanText = normalizeNotesReaderText(cleanText);
       }
 
+
       const paginatedReaderIsNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
       const paginatedReaderIsIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
       const paginatedPages = paginateReaderText(cleanText, PAGE_TARGET_SIZE, {
@@ -1281,6 +1288,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
 
   useEffect(() => { loadContent(); }, [chapter, fileContext, initialPageTarget]);
+
 
   const sourceFingerprint = fileContext.sourceHash || `legacy-${fileContext.content.length}`;
   const currentPageText = pages[currentPage]?.text || '';
@@ -3077,7 +3085,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // covers only genuine headings — epigraphs, quotes, and attributions stay in the
                   // body family and never carry it (the v31 over-bold regression came from a
                   // size-based role that swept those in).
-                  const isHeadingRole = para.role === 'heading';
+                  // A geometry-tagged 'heading' that is actually a long prose SENTENCE is a
+                  // mis-tag — e.g. a drop-cap body paragraph whose decorative initial sits in the
+                  // display/heading font family, so the extractor flags its first line as a heading
+                  // and the reader merges it into the paragraph. A real heading is short and does
+                  // not end in sentence punctuation; a long line ending in "." / "?" / "!" is prose,
+                  // so do not render it (bold, no-indent) as a heading.
+                  const headingRoleText = para.original.join(' ').replace(/\s+/g, ' ').trim();
+                  const isHeadingRole = para.role === 'heading'
+                    && !(headingRoleText.length > 90 && /[.!?。！？]["'”’)\]]?$/u.test(headingRoleText));
                   const paragraphStyle = (isListRole || isHeadingRole) ? noTextIndentStyle : plainParagraphStyleFor(para.original);
                   const paragraphTextClass = !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'

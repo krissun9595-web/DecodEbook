@@ -157,7 +157,15 @@
 //      openers keeps each dialogue page ONE block, detected at the original safe thresholds.
 //      Verified: p371-376 each segment per turn (incl. the one-word turns); body-wide sweep fires
 //      only on the dialogue.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v35-short-labeled-opener';
+// v36: chapter-offset resolver picks the HIGHEST-scoring heading candidate, not the first one
+//      above threshold. A distant title match ("Index" inside "The AI Index 2022" in an endnote,
+//      ~170 pages before the real Index) was winning over the correct page anchor purely by array
+//      order — so the "Index" chapter started mid-Notes and SWALLOWED ~170 pages of endnotes,
+//      leaving the Notes chapter with only ch1 notes 1-7. That broke footnote navigation book-wide
+//      (most notes unreachable -> SOURCE_REQUIRED; some resolved to the wrong chapter's same-numbered
+//      note). Now the page anchor (weighted by proximity) wins, so the Notes chapter spans its full
+//      range and note keys resolve. Verified: all 4 regression suites pass.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v36-chapter-offset-best-score';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
