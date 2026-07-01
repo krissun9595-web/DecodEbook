@@ -1068,7 +1068,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       pageStarts.push(combinedParts.join('\n\n').length);
       combinedParts.push(page.text);
     });
-    const combinedText = combinedParts.join('\n\n');
+    // Neutralise block-role/alignment sentinels (U+E010–E013) to spaces — SAME LENGTH so the
+    // pageStarts offsets above stay valid. The notes' per-chapter "CHAPTER N: …" headers carry the
+    // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
+    // without this the resolver finds ZERO chapter sections and every key-less footnote (a
+    // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {

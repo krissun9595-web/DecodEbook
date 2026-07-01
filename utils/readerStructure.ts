@@ -274,6 +274,13 @@ const normalizeReaderText = (value: string): string => {
 
 export const normalizeNotesReaderText = (value: string): string => {
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // Block-role/alignment sentinels (U+E010-E013) prefix a paragraph. The notes' per-chapter
+  // "CHAPTER N" section headers are now tagged headings (U+E013) by the notes-header detection,
+  // and that leading sentinel makes the section-start regex below AND the footnote resolver's
+  // chapter-scoping fail to recognise the header — so notes can't be grouped by chapter and
+  // key-less footnotes can't resolve (SOURCE_REQUIRED). Strip them before any detection; the
+  // headers still render bold via the reader's isNotesSectionHeadingParagraph wording rule.
+  text = text.replace(/[\uE010-\uE013]/g, '');
   // Page markers ("[[PAGE n]]") are navigation metadata, not note text. A note that spans
   // a page break carries the next page's marker inline (e.g. "…p. 22. [[PAGE 537]]"), and
   // otherwise the marker leaks to screen, so strip them before section/entry detection.
