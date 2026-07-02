@@ -165,7 +165,14 @@
 //      (most notes unreachable -> SOURCE_REQUIRED; some resolved to the wrong chapter's same-numbered
 //      note). Now the page anchor (weighted by proximity) wins, so the Notes chapter spans its full
 //      range and note keys resolve. Verified: all 4 regression suites pass.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v36-chapter-offset-best-score';
+// v37: a dialogue turn (or CIP field) that WRAPS ACROSS A PAGE BREAK is rejoined. The hanging-list
+//      re-splitter, run per page, emits the continuation lines at the top of the next page (they open
+//      at the indented tier, before any speaker opener) as their own paragraph — orphaned from the
+//      opener on the previous page. Such a leading indented entry is now flagged `carryover`, and the
+//      cross-page seam join reunites it with the previous page's last block even though a turn can
+//      break at a sentence boundary (the prev tail ends in terminal punctuation, which the normal
+//      join rule forbids). Fixes the Ch 8 seam ("…until the 2040s." / "That would dramatically…").
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v37-cross-page-turn-carryover';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

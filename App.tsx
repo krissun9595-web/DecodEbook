@@ -1416,7 +1416,7 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
       for (const buf of pageBuffers) {
@@ -1647,6 +1647,7 @@ const App: React.FC = () => {
           // continuations — so speaker turns / fields don't run together. (Plain body blocks;
           // no hanging-indent visual, to keep the change small and safe.)
           if (!groupIsHeading && detectLabeledHangingList(group)) {
+            const groupLeft = Math.min(...group.map(l => l.x));
             let entry: PdfLine[] = [];
             const flushEntry = () => {
               if (!entry.length) return;
@@ -1657,11 +1658,14 @@ const App: React.FC = () => {
               etext = etext.replace(/\s+/g, ' ').trim();
               if (etext) {
                 const last = entry[entry.length - 1];
-                blocks.push({ text: etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text });
+                // An entry that OPENS at the indented (continuation) tier — not the entry margin —
+                // is a turn/field whose start is on the PREVIOUS page: a hanging-list entry (dialogue
+                // turn, CIP field) that wrapped across the page break. Flag it so the cross-page join
+                // reunites it with its opener even though the previous page's tail ends a sentence.
+                blocks.push({ text: etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover: entry[0].x > groupLeft + 4 });
               }
               entry = [];
             };
-            const groupLeft = Math.min(...group.map(l => l.x));
             for (const line of group) {
               if (line.x <= groupLeft + 4 && entry.length) flushEntry();
               entry.push(line);
@@ -1718,11 +1722,18 @@ const App: React.FC = () => {
           prevBlock !== null &&
           pages.length > 0 &&
           prevBlock.role === 'body' &&
-          fillsMeasure(prevBlock.lastRightX, prevRightMargin) &&
-          !endsWithTerminalPunctuation(prevBlock.lastText) &&
           first.role === 'body' &&
-          first.firstX <= bodyLeft + 8 &&
-          fillsMeasure(first.firstRightX, rightMargin);
+          // A carryover — the top of this page is a hanging-list entry (dialogue turn / CIP field)
+          // whose opener is on the previous page — always continues the previous page's last block,
+          // even though a turn can span a page break AT a sentence boundary (so the prev tail ends
+          // with terminal punctuation and its last line may be short). Otherwise, ordinary prose:
+          // the prev line filled the measure and did not end a sentence, and this page opens at the
+          // margin with a filled line (so a short running head is not taken for the continuation).
+          (first.carryover ||
+            (fillsMeasure(prevBlock.lastRightX, prevRightMargin) &&
+              !endsWithTerminalPunctuation(prevBlock.lastText) &&
+              first.firstX <= bodyLeft + 8 &&
+              fillsMeasure(first.firstRightX, rightMargin)));
         blocks.forEach((block, blockIndex) => {
           // Carry the geometry-decided block role to the reader as a private-use sentinel
           // (U+E012 = list), so the reader renders tagged blocks per their role instead of
