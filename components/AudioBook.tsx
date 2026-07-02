@@ -3116,8 +3116,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
                     : undefined;
                   // A display block (title page, "also by" list, dedication) keeps its
-                  // original right/centre alignment, captured upstream as para.align.
-                  const alignStyle = para.align ? { textAlign: para.align } : undefined;
+                  // original right/centre alignment, captured upstream as para.align. A display
+                  // block's FIRST line can lose its alignment sentinel upstream (the chapter slice
+                  // begins just after it), leaving it left-aligned while the rest of the block
+                  // centres. If a short single-line body paragraph directly precedes an aligned
+                  // display paragraph, inherit that alignment so the block stays coherent (e.g. a
+                  // dedication's opening "To …" line above its centred epigraph).
+                  const neighborAlign = paragraphData[pIdx + 1]?.align;
+                  const isStrayDisplayLine = !para.role
+                    && para.original.length === 1
+                    && stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim().length <= 90;
+                  const effectiveAlign = para.align || (neighborAlign && isStrayDisplayLine ? neighborAlign : undefined);
+                  const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
 
                   return (
                     <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={indexIndentStyle}>
