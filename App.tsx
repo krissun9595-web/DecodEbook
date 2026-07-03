@@ -80,6 +80,23 @@ const sourceCacheKey = (bookId: string, version = SOURCE_CACHE_VERSION) =>
 const isSovereignIndividualTitle = (value?: string): boolean =>
   /sovereign\s+individual/iu.test(value || '');
 
+// A URL can legitimately contain parentheses (a cell.com PII link
+// "…/S0960-9822(06)02290-1.pdf"). Markdown's `[label](href)` — and every `[^)]+` href
+// parser in this codebase (the collapse below, the reader's inline renderer) — closes the
+// href at the first ")", so a bare paren truncates the link and spills the tail as text.
+// Percent-encode parens in the HREF position only (browsers decode %28/%29, so clicks still
+// resolve); the visible LABEL keeps literal parens. `showHref` reverses it for a label.
+// Internal anchors (#note/#pdfnote) never carry parens, so they're left untouched.
+const wireHref = (url: string): string => (url.startsWith('#') ? url : url.replace(/\(/g, '%28').replace(/\)/g, '%29'));
+// The human-readable form of a URL, for DISPLAY (the link label) and for matching against the
+// on-page glyphs — percent-escapes decoded back to their characters, so a URL whose annotation
+// encodes a character the page shows literally (an em-dash "%E2%80%94" → "—", or the parens above)
+// is displayed and RECONSTRUCTED against what the reader actually sees, not the escaped bytes.
+// Falls back to the raw URL if decoding fails or would introduce a markdown-breaking "]"/"["/newline.
+const showHref = (url: string): string => {
+  try { const decoded = decodeURIComponent(url); return /[[\]\n]/u.test(decoded) ? url : decoded; } catch { return url; }
+};
+
 const sanitizeInternalLinkMarkup = (content: string): string =>
   content.replace(/\[\s*([^\]\n]{1,120}?)\s*\]\s*\(([^)\n]+)\)/g, (match, rawLabel: string, rawHref: string) => {
     const label = rawLabel.replace(/\s+/g, ' ').trim();
@@ -1053,7 +1070,15 @@ const App: React.FC = () => {
         // reconstruction below can anchor on the scheme glyph and drop the citation before it.
         const schemeSplit: PdfGlyph[] = [];
         for (const g of glyphs) {
-          const at = g.linkUrl ? g.str.search(/https?:\/\/|www\./u) : -1;
+          let at = g.linkUrl ? g.str.search(/https?:\/\/|www\./u) : -1;
+          // A mailto:/tel: box often also catches the preceding label ("E-mail: TSG@…"); the DISPLAY
+          // is only the address/number, so split at it (case-insensitive) — urlKeep then anchors on
+          // the address and drops the label prefix ("l: " → back to plain "E-mail: ").
+          if (at < 0 && g.linkUrl && /^(?:mailto|tel):/iu.test(g.linkUrl)) {
+            const id = g.linkUrl.replace(/^(?:mailto|tel):/iu, '').split(/[?#]/u)[0];
+            const k = id ? g.str.toLowerCase().indexOf(id.toLowerCase()) : -1;
+            if (k > 0) at = k;
+          }
           if (at > 0) {
             const n = g.str.length;
             schemeSplit.push({ ...g, str: g.str.slice(0, at), w: (g.w * at) / n });
@@ -1079,7 +1104,9 @@ const App: React.FC = () => {
         }
         const urlKeep = new Map<PdfGlyph, number>(); // leading chars of a glyph that spell its URL
         for (const [url, gs] of urlGlyphs) {
-          const nurl = url.toLowerCase();
+          // Match against the DECODED URL so glyphs the page shows literally (an em-dash the
+          // annotation percent-encodes as %E2%80%94) are recognised instead of truncating the link.
+          const nurl = showHref(url).toLowerCase();
           // Find where the displayed URL begins among these glyphs, and where that maps into the
           // URL. Prefer a scheme/www glyph (the URL's start); otherwise the first glyph that
           // spells a long (≥12-char) contiguous slice — so a URL that CONTINUED onto this page
@@ -1090,7 +1117,15 @@ const App: React.FC = () => {
           for (let i = 0; i < gs.length; i++) {
             const lo = gs[i].str.toLowerCase().replace(/^[^a-z0-9]+/u, '').replace(/[.,;:!?)\]"'»]+$/u, '');
             if (/^https?:\/\//u.test(lo) || /^www\./u.test(lo)) { anchorIdx = i; anchorPos = Math.max(0, nurl.indexOf(lo.slice(0, 10))); break; }
-            if (anchorIdx < 0 && lo.length >= 12) { const at = nurl.indexOf(lo); if (at >= 0) { anchorIdx = i; anchorPos = at; } }
+            if (anchorIdx < 0 && lo.length >= 12) {
+              let at = nurl.indexOf(lo);
+              // A URL that CONTINUED from the previous page can arrive as ONE text item with a
+              // trailing citation glued on ("…data.pdf; Lawrence H. Officer,") — the whole glyph
+              // isn't in the URL, so anchor on the longest ≥12-char PREFIX the URL does contain
+              // and let the per-glyph walk below split off the citation tail.
+              if (at < 0) { for (let len = lo.length - 1; len >= 12; len--) { const p = nurl.indexOf(lo.slice(0, len)); if (p >= 0) { at = p; break; } } }
+              if (at >= 0) { anchorIdx = i; anchorPos = at; }
+            }
           }
           if (anchorIdx < 0) continue; // custom-text link (display doesn't spell the URL) — leave untouched
           for (let i = 0; i < anchorIdx; i++) urlKeep.set(gs[i], 0); // citation before the URL on this page
@@ -1250,7 +1285,7 @@ const App: React.FC = () => {
               const linkChanged = (it.linkUrl || null) !== openLink;
               if (linkChanged || style !== open) {
                 if (open) { out += MARK[open]; open = null; }
-                if (linkChanged && openLink) { out += `](${openLink})`; openLink = null; }
+                if (linkChanged && openLink) { out += `](${wireHref(openLink)})`; openLink = null; }
                 out += separator;
                 if (linkChanged && it.linkUrl) { out += '['; openLink = it.linkUrl; }
                 if (style) { out += MARK[style]; open = style; }
@@ -1260,7 +1295,7 @@ const App: React.FC = () => {
               out += it.str;
             });
             if (open) out += MARK[open];
-            if (openLink) out += `](${openLink})`;
+            if (openLink) out += `](${wireHref(openLink)})`;
             return {
               y: group.baseY,
               x: Math.min(...items.map(it => it.x)),
@@ -1771,21 +1806,26 @@ const App: React.FC = () => {
       //     duplicate its continuation ("…/HAI_AI-" -> full URL, leaving "Index-Report.pdf").
       // Custom-text links ("click here") and internal links (#anchor) are left untouched.
       const shownAsUrl = (label: string): boolean => /^["'(<]*\s*(?:https?:\/\/|www\.)/iu.test(label) || label.includes('://');
+      // Compare on the DECODED form so a literal-paren label matches its %28/%29-encoded href.
       const sameUrl = (label: string, url: string): boolean =>
-        label.replace(/\s+/gu, '').toLowerCase() === url.replace(/\s+/gu, '').toLowerCase();
+        showHref(label).replace(/\s+/gu, '').toLowerCase() === showHref(url).replace(/\s+/gu, '').toLowerCase();
       let assembled = pages.join('\n\n');
       let prevAssembled: string;
       do {
         prevAssembled = assembled;
         assembled = assembled.replace(
-          /\[([^\]\n]*)\]\(([^)\n]+)\)\s+(\[\[PAGE \d+\]\]\s+)?\[([^\]\n]*)\]\(\2\)/gu,
-          (m, l1: string, url: string, marker: string | undefined, l2: string) =>
-            (shownAsUrl(l1) || shownAsUrl(l2)) ? `${marker || ''}[${url}](${url})` : m,
+          // The continuation span can carry a leading block sentinel (e.g. the list marker
+          // U+E012 when the URL resumes on a page whose first line is tagged as a list item);
+          // tolerate and preserve it so the run still collapses across the page/block break.
+          /\[([^\]\n]*)\]\(([^)\n]+)\)\s+(\[\[PAGE \d+\]\]\s+)?([\uE010-\uE013]?)\[([^\]\n]*)\]\(\2\)/gu,
+          // Label decoded (literal parens shown), href kept encoded (survives markdown parsing).
+          (m, l1: string, url: string, marker: string | undefined, sentinel: string | undefined, l2: string) =>
+            (shownAsUrl(l1) || shownAsUrl(l2)) ? `${marker || ''}${sentinel || ''}[${showHref(url)}](${url})` : m,
         );
       } while (assembled !== prevAssembled);
       assembled = assembled.replace(
         /\[([^\]\n]*)\]\(([^)\n]+)\)/gu,
-        (m, label: string, url: string) => (sameUrl(label, url) ? `[${url}](${url})` : m),
+        (m, label: string, url: string) => (sameUrl(label, url) ? `[${showHref(url)}](${url})` : m),
       );
       const fullText = sanitizeInternalLinkMarkup(assembled);
       if (!fullText) throw new Error('No selectable text found in PDF.');

@@ -172,7 +172,38 @@
 //      cross-page seam join reunites it with the previous page's last block even though a turn can
 //      break at a sentence boundary (the prev tail ends in terminal punctuation, which the normal
 //      join rule forbids). Fixes the Ch 8 seam ("…until the 2040s." / "That would dramatically…").
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v37-cross-page-turn-carryover';
+// v38: a URL that WRAPS ACROSS A PAGE BREAK into a list-tagged block renders as ONE clean link.
+//      Two coupled gaps on the appendix chart-sources page (p380→p381): (a) the continuation line
+//      arrives as ONE text item with a trailing citation glued on ("…data.pdf; Lawrence H. Officer,")
+//      and the whole item is inside the loose link box, but the URL-keep anchor required the WHOLE
+//      glyph to be a URL substring, so it bailed and left the citation linked — now it anchors on the
+//      longest ≥12-char PREFIX the URL contains and the per-glyph walk splits the citation off as
+//      plain text; (b) that continuation block is tagged as a list item, so a U+E012 sentinel sits
+//      between the "[[PAGE n]]" marker and the span, which blocked the same-URL span collapse — the
+//      collapse now tolerates and preserves a leading block sentinel. Result: one clean
+//      [url](url), the "; Lawrence H. Officer," citation kept, page marker + list role preserved.
+//      Verified on the real p380/381 data + regressions (single-line, one-line wrap, different-URL
+//      non-merge, trailing-prose single span).
+// v39: a URL containing PARENTHESES (a cell.com PII link "…/S0960-9822(06)02290-1.pdf") renders as
+//      ONE clean link. Markdown "[label](href)" — and every "[^)]+" href parser here (the span
+//      collapse, the reader's inline renderer) — closes the href at the first ")", so a bare paren
+//      truncated the link and spilled the tail as literal text (the "…(06)02290-" linked, then a
+//      duplicated "02290-1.pdf) 1.pdf …" mess). Fix: percent-encode "(" / ")" in the HREF position
+//      only (browsers decode %28/%29, so clicks resolve), while the visible LABEL keeps literal
+//      parens; the span-collapse/clean emit a decoded label + encoded href, and sameUrl compares the
+//      decoded forms. No-op for paren-free URLs (zero regression). Verified on the real p404/p430
+//      cell.com links + regressions (non-paren wrap still collapses, plain single URL still cleans).
+// v40: two more URL-reconstruction cases. (a) A URL whose annotation PERCENT-ENCODES a character the
+//      page shows literally (a YouTube link "…W3ceg%E2%80%94uQKM" whose glyph is a literal em-dash
+//      "—") no longer truncates + duplicates its tail: the reconstruction now matches glyphs against
+//      the DECODED URL and the label is shown decoded ("…W3ceg—uQKM"), while the href keeps the
+//      escaped form so the click still resolves. (b) A mailto:/tel: link whose loose box also caught
+//      the preceding label ("E-mail: TSG@…", so the run began "l: TSG@TSGINC.com") no longer keeps
+//      the label in the link: schemeSplit now splits at the address for mailto/tel too, so urlKeep
+//      anchors on the address and drops the "l: " prefix back to plain text. Verified via the ported
+//      pipeline on all cases: single, wrap, parens (p404), mid-item scheme, em-dash (p443 YouTube),
+//      mailto (Sovereign Individual p527) — plus no regression on the earlier ones.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v40-url-decode-and-mailto';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
