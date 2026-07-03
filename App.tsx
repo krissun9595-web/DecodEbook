@@ -130,7 +130,18 @@ const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
     isReadableChapterTitle(chapter.title) &&
     isReadableChapterTitle(chapter.sourceHeading || chapter.title)
   );
-  const chapters = fileContext.isText
+  // Mirror the upload path (finalizeUpload): when the PDF carries a usable bookmark outline, build
+  // chapters from it — the page destinations are authoritative. Without this, a reload rebuilt
+  // chapters purely by heuristic title-matching (buildSourceIndexedChapters), which mis-scored the
+  // one-word "Index" chapter against an "index" string inside the endnotes (Stanford "AI Index"
+  // URLs, "…/index.html" links) — starting Index deep in the Notes and swallowing the endnotes. The
+  // outline survives the reload on fileContext.pdfOutline, so reload now agrees with fresh upload.
+  const useOutline =
+    fileContext.sourceKind === 'pdf' &&
+    isUsablePdfOutline(fileContext.content, fileContext.pdfOutline);
+  const chapters = useOutline
+    ? buildChaptersFromOutline(fileContext.content, fileContext.pdfOutline!)
+    : fileContext.isText
     ? splitDetectedBackMatter(
         fileContext.content,
         buildSourceIndexedChapters(
