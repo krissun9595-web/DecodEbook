@@ -500,6 +500,25 @@ const isLikelyInternalNoteLink = (text: string, href?: string): boolean =>
 const isLikelyInternalRomanReferenceLink = (text: string, href?: string): boolean =>
   Boolean(href && href.includes('#') && isInternalEbookHref(href) && isRomanNoteMarkerText(text));
 
+// A long URL shown as its own link text has no spaces, so it can't wrap: the browser jumps the
+// whole token to the next line and leaves a ragged blank gap on the line before it. Insert a <wbr>
+// (a zero-width break OPPORTUNITY — invisible, and not included when the text is copied) after each
+// run of URL delimiters (/ . - ? = & : _), so the URL wraps at natural points and fills the line.
+// Only applied to URL-looking text; a short custom label ("click here") is returned unchanged so it
+// never breaks. Purely visual — the copied/selected text and the href are untouched.
+const renderUrlWithBreaks = (value: string, keyBase: string): React.ReactNode => {
+  if (!/:\/\//.test(value) && !/^["'(<]*\s*www\./iu.test(value)) return value;
+  const parts = value.split(/([/.\-?=&:_]+)/u);
+  if (parts.length < 4) return value;
+  const nodes: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const chunk = (parts[i] || '') + (parts[i + 1] || '');
+    if (chunk) nodes.push(chunk);
+    if (parts[i + 1] && i + 2 < parts.length) nodes.push(<wbr key={`${keyBase}-wbr-${i}`} />);
+  }
+  return nodes;
+};
+
 const attributionTailFor = (value: string): { body: string; attribution: string } | null => {
   const clean = value.replace(/\s+/g, ' ').trim();
   const match = clean.match(/^(.{20,900}?[.!?。！？"”’](?:\d{1,3})?[*_~]{0,2})\s*(?:——|--|—|–|-)\s*([A-Z][^!?\n]{2,140})$/u);
@@ -2558,7 +2577,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           style={leafStyle}
           onClick={(event) => event.stopPropagation()}
         >
-          {text}
+          {renderUrlWithBreaks(text, key)}
         </a>
       );
     }
