@@ -2273,12 +2273,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
   const isNotesSectionHeadingParagraph = (sentences: string[]): boolean =>
     isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
-  const plainParagraphStyleFor = (sentences: string[]): React.CSSProperties => {
+  const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center'): React.CSSProperties => {
     const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
     // Index entries are list items, not prose — no first-line indent.
     if (isIndexChapter) return noTextIndentStyle;
     if (isNotesSectionHeadingParagraph(sentences)) return noTextIndentStyle;
-    if (isPlainSubtitleParagraph(sentences) || looksLikeAttributionLine(text) || looksLikeSignatureLine(text)) return noTextIndentStyle;
+    // PRIOR (geometry): a right/centre-aligned block — carried from extraction as an alignment
+    // sentinel, e.g. a right-aligned epigraph credit "—NORMAN COHN" — is set off, so no first-line
+    // indent. Authoritative typographic signal; runs BEFORE the text heuristics below.
+    if (align === 'right' || align === 'center') return noTextIndentStyle;
+    // BACKUP (text), for lines geometry did not set off. A note is always a citation (never a
+    // signature); and a citation that merely CONTAINS a date — recognisable by a URL or a quoted
+    // title — is not a dateline (note 54 vs 55). Gate the heuristics on both so they can't misfire.
+    const citationLike = /:\/\//u.test(text) || /["“][^"”\n]{3,}["”]/u.test(text);
+    if (!isNotesChapter && !citationLike && (isPlainSubtitleParagraph(sentences) || looksLikeAttributionLine(text) || looksLikeSignatureLine(text))) return noTextIndentStyle;
     return bodyParagraphStyle;
   };
   const structuredParagraphStyleFor = (paragraph: string): React.CSSProperties => {
@@ -3118,7 +3126,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const headingRoleText = para.original.join(' ').replace(/\s+/g, ' ').trim();
                   const isHeadingRole = para.role === 'heading'
                     && !(headingRoleText.length > 90 && /[.!?。！？]["'”’)\]]?$/u.test(headingRoleText));
-                  const paragraphStyle = (isListRole || isHeadingRole) ? noTextIndentStyle : plainParagraphStyleFor(para.original);
+                  const paragraphStyle = (isListRole || isHeadingRole) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align);
                   const paragraphTextClass = !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';

@@ -203,7 +203,17 @@
 //      anchors on the address and drops the "l: " prefix back to plain text. Verified via the ported
 //      pipeline on all cases: single, wrap, parens (p404), mid-item scheme, em-dash (p443 YouTube),
 //      mailto (Sovereign Individual p527) — plus no regression on the earlier ones.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v40-url-decode-and-mailto';
+// v41: a single right-aligned epigraph/quote CREDIT ("—NORMAN COHN", "—EMERSON, The Conduct of
+//      Life") is tagged right-aligned (U+E011) so the reader drops its first-line indent by GEOMETRY,
+//      not by a fragile date/name text guess. Gated on a leading em/en dash AND geometry (pushed well
+//      right of the body margin, reaching the right margin): right-alignment ALONE is overloaded here
+//      (this book right-aligns chapter titles), the attribution dash is not — verified across both
+//      test books it tags all 14 genuine attributions and none of the headings / index tails / wrapped
+//      quote lines. Companion reader change (no re-extraction): plainParagraphStyleFor takes the
+//      alignment as a PRIOR before the text heuristics, and the signature/attribution heuristic no
+//      longer fires on a citation (URL or quoted title present) — so a note that merely contains a
+//      date keeps its indent (note 54 vs 55).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v41-right-attribution-align';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

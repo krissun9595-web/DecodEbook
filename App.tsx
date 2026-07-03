@@ -1736,8 +1736,17 @@ const App: React.FC = () => {
           if (groupIsHeading) text = text.replace(/[*_~]/g, '').replace(/\s+/g, ' ').trim();
           if (text) {
             const last = group[group.length - 1];
+            // A set-off epigraph/quote CREDIT ("—NORMAN COHN", "—EMERSON, The Conduct of Life") is
+            // right-aligned display, not prose. Tag it right (U+E011) so the reader drops its
+            // first-line indent by GEOMETRY, not by a fragile date/name text guess. Gate on the
+            // leading em/en dash: right-alignment alone is overloaded here (this book right-aligns
+            // chapter titles), the attribution dash is not — so headings/index tails never match.
+            const groupMinX = Math.min(...group.map(l => l.x));
+            const groupMaxRight = Math.max(...group.map(l => l.rightX));
+            const isRightAttribution = !groupIsHeading && /^\s*[\u2014\u2013]/u.test(text)
+              && groupMinX > bodyLeft + bodyFont * 4 && groupMaxRight >= rightMargin - Math.max(6, bodyFont);
             blocks.push({
-              text,
+              text: isRightAttribution ? '\uE011' + text : text,
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,
