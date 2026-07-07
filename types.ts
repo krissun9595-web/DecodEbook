@@ -100,6 +100,7 @@ export interface FileContext {
   sourceKind?: 'pdf' | 'epub' | 'text';
   sourceExtractorVersion?: string;
   pdfOutline?: PdfOutlineItem[]; // PDF bookmarks (top-level), if the document has them
+  docTitle?: string; // the PDF's own metadata Title, preferred over an inferred one
 }
 
 export interface NotebookItem {

@@ -815,7 +815,22 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
   while (remaining.length > 0) {
     // The raw offset that holds ~targetSize of *visible* text. For normal chapters
     // (measureVisible off) this is just targetSize.
-    const limit = measureVisible ? visibleAwareLimit(remaining, targetSize) : targetSize;
+    // A two-column block (U+E014 left U+E015 right) renders as two side-by-side columns, so its
+    // RIGHT half adds no height; count only up to U+E015 (the left column) toward the page size, so
+    // a two-column block stays on the same page as the intro that precedes it instead of being
+    // pushed to the next page by its full character count.
+    const computeLimit = (value: string, target: number): number => {
+      const linkRe = /\[([^\]\n]*)\]\(([^)\n]+)\)/y;
+      let eff = 0, i = 0;
+      while (i < value.length) {
+        if (value[i] === '') { const be = value.indexOf('\n\n', i); i = be < 0 ? value.length : be; continue; }
+        if (measureVisible) { linkRe.lastIndex = i; const m = linkRe.exec(value); if (m) { eff += m[1].length; i = linkRe.lastIndex; if (eff >= target) return i; continue; } }
+        eff += 1; i += 1;
+        if (eff >= target) return i;
+      }
+      return value.length;
+    };
+    const limit = computeLimit(remaining, targetSize);
     if (remaining.length <= limit) {
       const pageText = remaining.trim();
       if (pageText) {

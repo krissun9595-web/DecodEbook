@@ -216,6 +216,10 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   if (
     !prev ||
     !cur ||
+    // A bullet-list item is a distinct paragraph — never merge it into the previous, even when the
+    // previous ends with a colon introducing the list ("…patterns:" + "• Prompt chaining…"). The
+    // bullet may be bold ("**•** …"), so skip a leading emphasis wrapper before the marker.
+    /^\s*(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(cur) ||
     endsWithTerminalPunctuation(prev) ||
     looksLikeAttributionLine(prev) ||
     looksLikeAttributionLine(prevLastLine) ||

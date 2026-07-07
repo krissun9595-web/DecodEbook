@@ -829,7 +829,7 @@ const App: React.FC = () => {
     }
   };
 
-  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[] }> => {
+  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string }> => {
     try {
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
@@ -841,18 +841,31 @@ const App: React.FC = () => {
       // which also separates multiple bookmarks that share one page. Failures are
       // non-fatal; unresolved entries are dropped and the caller falls back to heuristics.
       const outlineEntries: { title: string; page: number; y: number | null }[] = [];
+      // Every outline entry at EVERY level (chapters + nested section headings) with a resolved
+      // Y — the author's own heading structure, used below to tag headings the font-family rule
+      // misses (a nested section title set in the body font). Chapters still come from the
+      // top-level entries only (outlineEntries), so navigation is unchanged.
+      const outlineHeadingTargets: { title: string; page: number; y: number }[] = [];
       try {
         const rawOutline = await pdf.getOutline();
-        for (const item of rawOutline || []) {
-          try {
-            const dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
-            if (!dest || !dest[0]) continue;
-            const page = (await pdf.getPageIndex(dest[0])) + 1;
-            const y = typeof dest[3] === 'number' ? dest[3] : null;
-            const title = (item.title || '').replace(/\s+/g, ' ').trim();
-            if (page && title) outlineEntries.push({ title, page, y });
-          } catch { /* skip unresolvable entry */ }
-        }
+        const collectOutline = async (items: typeof rawOutline, depth: number): Promise<void> => {
+          for (const item of items || []) {
+            try {
+              const dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
+              if (dest && dest[0]) {
+                const page = (await pdf.getPageIndex(dest[0])) + 1;
+                const y = typeof dest[3] === 'number' ? dest[3] : null;
+                const title = (item.title || '').replace(/\s+/g, ' ').trim();
+                if (page && title) {
+                  if (depth === 0) outlineEntries.push({ title, page, y });
+                  if (y != null) outlineHeadingTargets.push({ title, page, y });
+                }
+              }
+            } catch { /* skip unresolvable entry */ }
+            if (item.items && item.items.length) await collectOutline(item.items, depth + 1);
+          }
+        };
+        await collectOutline(rawOutline || [], 0);
       } catch (e) {
         console.warn('PDF outline unavailable; will fall back to heuristic chapters', e);
       }
@@ -980,18 +993,53 @@ const App: React.FC = () => {
       // skew a per-page estimate) — grouped into blocks and emitted. INDENT_TOL is shared
       // with the per-page index-indent logic.
       const INDENT_TOL = 4;
-      type PdfLine = { y: number; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number };
-      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; lineGap: number; isListPage: boolean; indentTiers: number[] }[] = [];
+      // `y` is the reading-order coordinate (the two-column re-flow re-stamps it so the y-sort yields
+      // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
+      // by anything that reasons about physical geometry (the header/footer margin band).
+      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
+      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
 
+      // A genuinely TAGGED PDF carries its own structure: the getTextContent stream is wrapped in
+      // marked-content role tags (H1–H6 = heading, P = body, …), which is authoritative — so we can
+      // drive block roles from it instead of guessing from fonts. But detect it by COVERAGE, not the
+      // /MarkInfo /Marked flag: a PDF can carry a StructTreeRoot (a viewer then shows "Tagged: Yes")
+      // yet leave almost all text UNtagged — a stub tree, e.g. one book here has a StructTreeRoot but
+      // only ~89 P tags across 416 pages. Sample pages and measure the fraction of text sitting
+      // inside a block-level structural role; only take the tagged path when that is a clear majority
+      // — otherwise the geometry path is more consistent than a sprinkling of tags.
+      const STRUCT_ROLE = /^(?:H[1-6]?|P|LI|LBody|Caption|TD|TH|Title|Blockquote)$/u;
+      let taggedChars = 0, totalChars = 0;
+      const tagSampleN = Math.min(pdf.numPages, 12);
+      for (let s = 0; s < tagSampleN; s++) {
+        const samplePageNum = 1 + Math.floor((s + 0.5) * pdf.numPages / tagSampleN);
+        const sampleTc = await (await pdf.getPage(samplePageNum)).getTextContent({ includeMarkedContent: true }).catch(() => null);
+        if (!sampleTc) continue;
+        const roleStack: string[] = [];
+        for (const it of sampleTc.items as any[]) {
+          if (it.type === 'beginMarkedContent' || it.type === 'beginMarkedContentProps') { roleStack.push(it.tag || ''); continue; }
+          if (it.type === 'endMarkedContent') { roleStack.pop(); continue; }
+          if (!('str' in it) || !it.str.trim()) continue;
+          totalChars += it.str.length;
+          if (roleStack.some(t => STRUCT_ROLE.test(t))) taggedChars += it.str.length;
+        }
+      }
+      const isTaggedPdf = totalChars > 0 && taggedChars / totalChars >= 0.5;
+      // The PDF's own metadata Title — cleaner than inferring one from the first content line
+      // (which on a title-heavy page is a fragment). Used only if it looks like a real title.
+      const meta = await pdf.getMetadata().catch(() => null);
+      const metaTitleRaw = ((meta?.info as { Title?: string })?.Title || '').replace(/\s+/g, ' ').trim();
+      const metaTitle = metaTitleRaw.length >= 3 && !/\.(pdf|docx?|indd)$/i.test(metaTitleRaw) ? metaTitleRaw : undefined;
+
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
+        const pageHeight = page.getViewport({ scale: 1 }).height;
         // getOperatorList loads the page's fonts (so their real italic/bold names are
         // resolvable); getTextContent gives the glyph runs. Run both together.
-        const [, textContent, annotations] = await Promise.all([
+        const [opList, textContent, annotations] = await Promise.all([
           page.getOperatorList().catch(() => null),
-          page.getTextContent(),
+          page.getTextContent(isTaggedPdf ? { includeMarkedContent: true } : undefined),
           page.getAnnotations().catch(() => [] as any[]),
         ]);
         const fontCache = new Map<string, { italic: boolean; bold: boolean; family: string }>();
@@ -1025,18 +1073,80 @@ const App: React.FC = () => {
         // width) and split the item at link boundaries, so only the covered characters — the
         // URL — become the link, not the whole line. EPUB has no annotations, so this is
         // PDF-only.
-        const links: { rect: number[]; url?: string; key?: string }[] = [
+        type LinkAnn = { rect: number[]; url?: string; key?: string; text?: string };
+        const links: LinkAnn[] = [
           ...uriLinks.map(u => ({ rect: u.rect, url: u.url })),
           ...gotoLinks.map(g => ({ rect: g.rect, key: g.key })),
         ];
-        const linkAt = (px: number, py: number): { rect: number[]; url?: string; key?: string } | null => {
+        const linkAt = (px: number, py: number): LinkAnn | null => {
           for (const l of links) { const [x1, y1, x2, y2] = l.rect; if (px >= x1 - 1 && px <= x2 + 1 && py >= y1 - 2 && py <= y2 + 2) return l; }
           return null;
         };
-        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean };
+        // pdf.js returns a whole line as one text item, so mapping a link rect to characters by
+        // uniform width is a few characters fuzzy on short links ("OpenAI" grabbing "as "). The
+        // operator list has each glyph's TRUE x, so extract each link's exact text (the glyphs whose
+        // origin sits inside the rect) for precise matching below. Cheap: only when the page has links.
+        if (links.length && opList) {
+          try {
+            const OPS = pdfjsLib.OPS;
+            const mul = (m: number[], q: number[]): number[] => [m[0] * q[0] + m[2] * q[1], m[1] * q[0] + m[3] * q[1], m[0] * q[2] + m[2] * q[3], m[1] * q[2] + m[3] * q[3], m[0] * q[4] + m[2] * q[5] + m[4], m[1] * q[4] + m[3] * q[5] + m[5]];
+            const asMat = (a: any): number[] => (a.length === 6 ? a : a[0]);
+            const accG: { x: number; y: number; ch: string; fill: string }[] = [];
+            let ctm = [1, 0, 0, 1, 0, 0], tm = [1, 0, 0, 1, 0, 0], tlm = [1, 0, 0, 1, 0, 0], fsz = 0, wsp = 0, fill = '#000000';
+            const gstack: { ctm: number[]; fill: string }[] = [];
+            for (let i = 0; i < opList.fnArray.length; i++) {
+              const fn = opList.fnArray[i]; const a = opList.argsArray[i];
+              if (fn === OPS.save) gstack.push({ ctm: ctm.slice(), fill });
+              else if (fn === OPS.restore) { const s = gstack.pop(); if (s) { ctm = s.ctm; fill = s.fill; } }
+              else if (fn === OPS.transform) ctm = mul(ctm, a);
+              else if (fn === OPS.setFillRGBColor) fill = String(a[0]);
+              else if (fn === OPS.beginText) { tm = [1, 0, 0, 1, 0, 0]; tlm = tm.slice(); }
+              else if (fn === OPS.setFont) fsz = a[1];
+              else if (fn === OPS.setTextMatrix) { const m = asMat(a); tm = [m[0], m[1], m[2], m[3], m[4], m[5]]; tlm = tm.slice(); }
+              else if (fn === OPS.moveText) { tlm = mul(tlm, [1, 0, 0, 1, a[0], a[1]]); tm = tlm.slice(); }
+              else if (fn === OPS.setWordSpacing) wsp = a[0];
+              else if (fn === OPS.showText) {
+                for (const el of a[0]) {
+                  if (typeof el === 'number') { tm = mul(tm, [1, 0, 0, 1, -el / 1000 * fsz, 0]); continue; }
+                  const d = mul(ctm, tm);
+                  if (el.unicode && el.unicode !== '') accG.push({ x: d[4], y: d[5], ch: el.unicode, fill });
+                  let adv = (el.width || 0) / 1000 * fsz; if (el.isSpace) adv += wsp;
+                  tm = mul(tm, [1, 0, 0, 1, adv, 0]);
+                }
+              }
+            }
+            const isBlack = (c: string): boolean => c === '#000000' || c === '#000' || c === 'rgb(0,0,0)';
+            for (const L of links) {
+              const [x1, y1, x2, y2] = L.rect;
+              // Glyphs on this link's line — baseline within the rect (tight band keeps the line above/
+              // below out, which x-only matching wrongly grabbed) and inside the rect's x-span.
+              const near = accG.filter(g => g.y >= y1 - 3 && g.y <= y2 + 3 && g.x >= x1 - 2 && g.x <= x2 + 1);
+              // PREFER the link-coloured glyphs: a hyperlink is set in a distinct colour (dark red
+              // here), so this drops a black neighbouring word the rect marginally overlaps
+              // ("as OpenAI," → "OpenAI"). If nothing is coloured (a black link), use the tight-x span.
+              const coloured = near.filter(g => !isBlack(g.fill));
+              const chosen = coloured.length ? coloured : near.filter(g => g.x >= x1 - 1 && g.x < x2 - 1);
+              const t = chosen.map(g => g.ch).join('').replace(/^\s+|\s+$/gu, '');
+              if (t) L.text = t;
+            }
+          } catch { /* op-list parse failed — fall back to the uniform estimate below */ }
+        }
+        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean; mcRole?: string };
         const glyphs: PdfGlyph[] = [];
+        // Marked-content role stack (only populated for tagged PDFs). The structural role of a
+        // glyph is the innermost stack entry that is a block role, not an inline one — Span and
+        // Artifact wrap runs inside a paragraph and don't change what the block IS.
+        const mcStack: string[] = [];
+        const currentMcRole = (): string | undefined => { for (let k = mcStack.length - 1; k >= 0; k--) { const t = mcStack[k]; if (t && t !== 'Span' && t !== 'Artifact' && t !== 'NonStruct') return t; } return undefined; };
         for (const item of textContent.items as any[]) {
+          if (item.type === 'beginMarkedContent' || item.type === 'beginMarkedContentProps') { mcStack.push(item.tag || ''); continue; }
+          if (item.type === 'endMarkedContent') { mcStack.pop(); continue; }
           if (!('str' in item) || !item.str.trim()) continue;
+          // Tagged PDF: text inside an Artifact is pagination/running-head/footer/background, not
+          // content — drop it. (Untagged PDFs have an empty stack; their footers are removed by the
+          // geometry pass below.)
+          if (mcStack.includes('Artifact')) continue;
+          const mcRole = currentMcRole();
           const tr = item.transform || [];
           const emphasis = fontEmphasisFor(page, item.fontName, fontCache);
           const x = tr[4] || 0, y = tr[5] || 0, w = item.width || 0;
@@ -1051,14 +1161,58 @@ const App: React.FC = () => {
           // Fast path: the item touches no link rect — emit it whole.
           const overlaps = n > 0 && links.some(l => { const [x1, y1, x2, y2] = l.rect; return x < x2 + 1 && x + w > x1 - 1 && y >= y1 - 2 && y <= y2 + 2; });
           if (!overlaps) {
-            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold, family: emphasis.family });
+            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold, family: emphasis.family, mcRole });
             continue;
           }
+          // Resolve each character's link. PREFER the operator list's exact link text: find each
+          // overlapping link's text inside this item and mark exactly those characters — precise even
+          // for short links. Fall back to the uniform-width estimate + word-snap only if a link has no
+          // extracted text or it isn't found here.
+          const hitLinks = links.filter(L => { const [x1, y1, x2, y2] = L.rect; return x < x2 + 1 && x + w > x1 - 1 && y >= y1 - 2 && y <= y2 + 2; });
+          let linked: (LinkAnn | null)[] | null = null;
+          if (hitLinks.length && hitLinks.every(L => L.text)) {
+            const cl: (LinkAnn | null)[] = new Array(n).fill(null);
+            let allFound = true;
+            for (const L of hitLinks) {
+              const estCentre = ((L.rect[0] + L.rect[2]) / 2 - x) / (w / n); // rect centre → est. char index (to disambiguate repeats)
+              let bestIdx = -1, bestD = Infinity;
+              for (let from = 0; ;) { const idx = str.indexOf(L.text!, from); if (idx < 0) break; const c = idx + L.text!.length / 2; if (Math.abs(c - estCentre) < bestD) { bestD = Math.abs(c - estCentre); bestIdx = idx; } from = idx + 1; }
+              if (bestIdx < 0) { allFound = false; break; }
+              for (let k = bestIdx; k < bestIdx + L.text!.length; k++) cl[k] = L;
+            }
+            if (allFound) linked = cl;
+          }
+          if (!linked) {
+            const charLink: (LinkAnn | null)[] = [];
+            for (let i = 0; i < n; i++) charLink.push(linkAt(x + (w * (i + 0.5)) / n, y));
+            // word-boundary snap: the uniform estimate is a few chars fuzzy and a link covers whole
+            // words, so pull a boundary on leading punctuation (", Andy…") or inside a word to a space.
+            const snapEdge = (b: number, start: boolean): number => {
+              let best = b, bestD = 5;
+              for (let p = Math.max(0, b - 4); p <= Math.min(n, b + 4); p++) {
+                const isEdge = start
+                  ? (p === 0 || /\s/u.test(str[p - 1])) && p < n && !/\s/u.test(str[p])
+                  : (p === n || /\s/u.test(str[p])) && p > 0 && !/\s/u.test(str[p - 1]);
+                if (isEdge && Math.abs(p - b) < bestD) { bestD = Math.abs(p - b); best = p; }
+              }
+              return best;
+            };
+            const snapped: (LinkAnn | null)[] = charLink.slice();
+            for (let i = 0; i < n;) {
+              if (!charLink[i]) { i++; continue; }
+              let j = i; while (j < n && charLink[j] === charLink[i]) j++;
+              const a = snapEdge(i, true), b = snapEdge(j, false);
+              for (let k = i; k < j; k++) snapped[k] = null;
+              for (let k = a; k < b; k++) snapped[k] = charLink[i];
+              i = j;
+            }
+            linked = snapped;
+          }
           let runStart = 0;
-          let runLink = linkAt(x + (w * 0.5) / n, y);
+          let runLink = linked[0] || null;
           for (let i = 1; i <= n; i++) {
-            const charLink = i < n ? linkAt(x + (w * (i + 0.5)) / n, y) : null;
-            if (i === n || charLink !== runLink) {
+            const cl = i < n ? (linked[i] || null) : null;
+            if (i === n || cl !== runLink) {
               glyphs.push({
                 x: x + (w * runStart) / n,
                 y, h,
@@ -1069,12 +1223,29 @@ const App: React.FC = () => {
                 family: emphasis.family,
                 linkUrl: runLink?.url,
                 noteKey: runLink?.key,
+                mcRole,
               });
               runStart = i;
-              runLink = charLink;
+              runLink = cl;
             }
           }
         }
+        // De-duplicate list bullets: some PDF generators emit a list item's bullet BOTH as a
+        // standalone glyph AND at the start of the item's text run (a lone "•" and "• An AI agent…"
+        // at the same x/y), which doubles the bullet in the reflow ("•• …"). Drop the lone bullet
+        // when a run at the same spot already carries it; a genuine standalone bullet is kept.
+        const BULLET_RE = /^[•‣▪●◦⁃∙○■]$/u;
+        const nearGlyph = (a: PdfGlyph, b: PdfGlyph): boolean => Math.abs(a.x - b.x) < 6 && Math.abs(a.y - b.y) < 4;
+        const loneBullets = glyphs.filter(g => BULLET_RE.test(g.str.trim()));
+        const dropBullet = new Set<PdfGlyph>();
+        for (const g of loneBullets) {
+          if (dropBullet.has(g)) continue;
+          // A run at the same spot already carries the bullet ("• An AI agent…") → drop this lone one.
+          if (glyphs.some(h => h !== g && nearGlyph(h, g) && h.str.trim().length > 1 && BULLET_RE.test(h.str.trim().charAt(0)))) { dropBullet.add(g); continue; }
+          // Otherwise keep g and drop any OTHER lone bullets at the same spot (a doubled "• •").
+          for (const h of loneBullets) if (h !== g && !dropBullet.has(h) && nearGlyph(h, g)) dropBullet.add(h);
+        }
+        if (dropBullet.size) { const kept = glyphs.filter(g => !dropBullet.has(g)); glyphs.length = 0; glyphs.push(...kept); }
         // pdf.js can return the citation and the URL on a line as ONE text item ("Equipment
         // Corporation, 1963), 10, http://s3data…"), and the loose box links the whole item — so
         // the scheme ends up MID-glyph. Split such a glyph at the scheme so the URL
@@ -1186,34 +1357,165 @@ const App: React.FC = () => {
         };
         const dropCaps = glyphs.filter(isDropCap);
         dropCaps.forEach(cap => { cap.dropCap = true; });
-        const bodyGlyphs = glyphs.filter(g => !isDropCap(g));
-        bodyGlyphs.sort((a, b) => b.y - a.y || a.x - b.x);
-        const groups: { baseY: number; baseH: number; items: PdfGlyph[] }[] = [];
-        for (const g of bodyGlyphs) {
-          let best: { baseY: number; baseH: number; items: PdfGlyph[] } | null = null;
-          let bestDist = Infinity;
-          for (const group of groups) {
-            const dist = Math.abs(group.baseY - g.y);
-            if (dist <= lineTolerance && dist < bestDist) { bestDist = dist; best = group; }
-          }
-          if (!best) { best = { baseY: g.y, baseH: g.h, items: [] }; groups.push(best); }
-          best.items.push(g);
-          // Anchor the line on its tallest glyph (the body baseline), not a superscript.
-          if (g.h > best.baseH * 1.05) { best.baseY = g.y; best.baseH = g.h; }
-        }
-        for (const cap of dropCaps) {
-          // The opening line is the highest baseline within the initial's vertical span
-          // [baseline … baseline+height]; fall back to the nearest line.
-          let target: { baseY: number; baseH: number; items: PdfGlyph[] } | null = null;
-          for (const group of groups) {
-            if (group.baseY > cap.y - lineTolerance && group.baseY <= cap.y + cap.h && (!target || group.baseY > target.baseY)) target = group;
-          }
-          if (!target) {
+        type LineGroup = { baseY: number; baseH: number; items: PdfGlyph[]; col?: 0 | 1 };
+        const bodyGlyphs = glyphs.filter(g => !isDropCap(g)); // kept in pdf.js content-stream order
+        // Cluster a set of glyphs into baseline "lines": sort top→bottom, then join each glyph to the
+        // nearest existing line within tolerance (anchoring the line on its tallest glyph so a raised
+        // superscript doesn't pull the baseline up).
+        const clusterLines = (gs: PdfGlyph[]): LineGroup[] => {
+          const out: LineGroup[] = [];
+          for (const g of [...gs].sort((a, b) => b.y - a.y || a.x - b.x)) {
+            let best: LineGroup | null = null;
             let bestDist = Infinity;
-            for (const group of groups) { const d = Math.abs(group.baseY - cap.y); if (d < bestDist) { bestDist = d; target = group; } }
+            for (const group of out) {
+              const dist = Math.abs(group.baseY - g.y);
+              if (dist <= lineTolerance && dist < bestDist) { bestDist = dist; best = group; }
+            }
+            if (!best) { best = { baseY: g.y, baseH: g.h, items: [] }; out.push(best); }
+            best.items.push(g);
+            if (g.h > best.baseH * 1.05) { best.baseY = g.y; best.baseH = g.h; }
           }
-          if (target) target.items.push(cap);
+          return out;
+        };
+
+        // ── Two-column layout via pdf.js CONTENT-STREAM ORDER ─────────────────────────────
+        // pdf.js emits getTextContent items in content-stream order, which lays out each column top-
+        // to-bottom before starting the next. So within that order the baseline DECREASES down a
+        // column and JUMPS BACK UP when the next column begins — that jump is the column boundary,
+        // taken straight from the document (no gutter geometry, no density/numeric heuristics). Split
+        // bodyGlyphs at those jumps; a single-column page has none, so it stays one segment and
+        // behaves exactly as before. (Drop caps are already held aside, so an oversized initial drawn
+        // first can't fake a boundary.) For a multi-segment page, cluster each segment on its own and
+        // STACK them — later segments (the right column) re-stamped below earlier ones — so the y-sort
+        // downstream yields column reading order and the block assembler breaks between columns. Each
+        // line keeps its real page position in `pageY` (from its glyphs) for physical-geometry tests.
+        const columnJump = pageHeight * 0.15;
+        const segments: PdfGlyph[][] = [[]];
+        for (let i = 0; i < bodyGlyphs.length; i++) {
+          if (i > 0 && bodyGlyphs[i].y - bodyGlyphs[i - 1].y > columnJump) segments.push([]);
+          segments[segments.length - 1].push(bodyGlyphs[i]);
         }
+        // A content-stream jump-back means a NEW column OR just a stacked/centered page drawn out of
+        // order (a title page: title, then author, then publisher — same centre, different y). Only
+        // the first is columns. Require the segments to sit at horizontally SEPARATED x-centres (a
+        // left column vs a right column); a centred/stacked page has them all at one x, so it stays a
+        // single flow and is clustered exactly as before.
+        const medianOf = (arr: number[]): number => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+        const contentMinX = Math.min(...bodyGlyphs.map(g => g.x));
+        const contentMaxX = Math.max(...bodyGlyphs.map(g => g.x + (g.w || 0)));
+        const segCentres = segments.map(seg => medianOf(seg.map(g => g.x + (g.w || 0) / 2)));
+        const segYRange = segments.map(seg => seg.length ? [Math.min(...seg.map(g => g.y)), Math.max(...seg.map(g => g.y))] as [number, number] : [0, 0] as [number, number]);
+        // Real side-by-side columns OVERLAP vertically (a left column sits beside a right column in
+        // the same band) as well as at different x-centres. A segment merely drawn out of content
+        // order at a DIFFERENT vertical position — a spine/ISBN block emitted first at the page bottom
+        // — is NOT a column; the x-centre spread alone falsely flagged it, sending a colophon down the
+        // column path and merging its row-major credit table. Require an overlapping-y pair.
+        const colGap = (contentMaxX - contentMinX) * 0.25;
+        let isColumns = false;
+        for (let i = 0; i < segments.length && !isColumns; i++)
+          for (let j = i + 1; j < segments.length; j++)
+            if (segments[i].length && segments[j].length
+              && Math.max(segYRange[i][0], segYRange[j][0]) <= Math.min(segYRange[i][1], segYRange[j][1])
+              && Math.abs(segCentres[i] - segCentres[j]) > colGap) { isColumns = true; break; }
+        const groups: LineGroup[] = [];
+        if (isColumns) {
+          // Stack the segments strictly in CONTENT ORDER, each below the previous — the content
+          // stream IS the reading order, so segment 0 goes on top regardless of its real y (a spine
+          // block drawn first at the page bottom must still read first, not sort back among later
+          // columns). Each segment keeps its own internal spacing; a big gap separates the segments.
+          // Tag each LINE (not whole segment) as the LEFT column, RIGHT column, or full-width by its
+          // x-position — a full-width intro and the left column can share one content segment (no
+          // y-jump between them), so per-segment tagging would mislabel the column lines. A line is
+          // RIGHT if it sits right of the page mid-line; LEFT if it sits left of mid AND its real y
+          // overlaps some right-column line (so a genuine two-column band, not a full-width paragraph
+          // whose short last line merely ends left of mid); otherwise full-width.
+          const pageMid = (contentMinX + contentMaxX) / 2;
+          const segInfos = segments.map(seg => ({ seg, segGroups: clusterLines(seg) })).filter(s => s.segGroups.length);
+          const groupRealY = (g: LineGroup): number => Math.max(...g.items.map(it => it.y));
+          const groupMaxX = (g: LineGroup): number => Math.max(...g.items.map(it => it.x + (it.w || 0)));
+          const groupMinX = (g: LineGroup): number => Math.min(...g.items.map(it => it.x));
+          // Real-y bands occupied by RIGHT-column lines (min x right of mid).
+          const rightBands: [number, number][] = [];
+          for (const { segGroups } of segInfos) for (const g of segGroups) if (groupMinX(g) > pageMid) { const y = groupRealY(g); rightBands.push([y - g.baseH, y + g.baseH]); }
+          const inRightBand = (y: number): boolean => rightBands.some(([b, t]) => y >= b - 4 && y <= t + 4);
+          let cursor = pageHeight;
+          const SEG_GAP = Math.max(60, bodyHeight * 4);
+          for (const { segGroups } of segInfos) {
+            const segTop = Math.max(...segGroups.map(g => g.baseY));
+            const segBottom = Math.min(...segGroups.map(g => g.baseY));
+            for (const g of segGroups) {
+              g.baseY = cursor - (segTop - g.baseY);
+              g.col = groupMinX(g) > pageMid ? 1 : (groupMaxX(g) < pageMid && inRightBand(groupRealY(g))) ? 0 : undefined;
+              groups.push(g);
+            }
+            cursor -= (segTop - segBottom) + SEG_GAP;
+          }
+        } else {
+          const flowGroups = clusterLines(bodyGlyphs);
+          // ROW-MAJOR two-column table (a colophon: "Role: Name" credits in two side-by-side columns —
+          // each ROW holds a left cell AND a right cell at the SAME baseline, so the content-order
+          // detector above sees no column jump and the cells would merge into one line). Find the
+          // longest contiguous run of rows split by an ALIGNED vertical gutter, cut each such row at it
+          // into a left cell (col 0) and a right cell (col 1); the block assembler's column-change
+          // break keeps them apart and the emitter pairs each row into a side-by-side two-column unit.
+          const cx = (it: PdfGlyph): number => it.x + (it.w || 0) / 2;
+          const minCX = bodyGlyphs.length ? Math.min(...bodyGlyphs.map(g => g.x)) : 0;
+          const maxCX = bodyGlyphs.length ? Math.max(...bodyGlyphs.map(g => g.x + (g.w || 0))) : 0;
+          const gutterMin = Math.max(28, bodyHeight * 2.5);
+          const rowInfo = flowGroups.map(g => {
+            const its = [...g.items].sort((a, b) => a.x - b.x);
+            let gap = 0, at = 0;
+            for (let i = 1; i < its.length; i++) { const d = its[i].x - (its[i - 1].x + (its[i - 1].w || 0)); if (d > gap) { gap = d; at = (its[i].x + its[i - 1].x + (its[i - 1].w || 0)) / 2; } }
+            const hasGutter = gap > gutterMin && at > minCX + (maxCX - minCX) * 0.2 && at < maxCX - (maxCX - minCX) * 0.2;
+            return { its, at, hasGutter };
+          });
+          let runStart = -1, runLen = 0;
+          for (let i = 0; i < rowInfo.length;) {
+            if (!rowInfo[i].hasGutter) { i++; continue; }
+            let j = i; while (j < rowInfo.length && rowInfo[j].hasGutter) j++;
+            const centres = rowInfo.slice(i, j).map(r => r.at);
+            if (Math.max(...centres) - Math.min(...centres) <= bodyHeight * 3 && j - i > runLen) { runLen = j - i; runStart = i; }
+            i = j;
+          }
+          if (runLen >= 3) {
+            const cs = rowInfo.slice(runStart, runStart + runLen).map(r => r.at).sort((a, b) => a - b);
+            const gutterX = cs[cs.length >> 1];
+            flowGroups.forEach((g, idx) => {
+              if (idx >= runStart && idx < runStart + runLen) {
+                const l = rowInfo[idx].its.filter(it => cx(it) < gutterX), r = rowInfo[idx].its.filter(it => cx(it) >= gutterX);
+                if (l.length && r.length) { groups.push({ baseY: g.baseY + 0.1, baseH: g.baseH, items: l, col: 0 }, { baseY: g.baseY - 0.1, baseH: g.baseH, items: r, col: 1 }); return; }
+              }
+              groups.push(g);
+            });
+          } else {
+            groups.push(...flowGroups);
+          }
+          // A drop cap is an oversized initial spanning several body lines; attach each to the TOP
+          // line of its vertical span (the opening line it aligns with), falling back to the nearest.
+          // Single-flow pages only — multi-column pages carry no drop caps.
+          for (const cap of dropCaps) {
+            let target: LineGroup | null = null;
+            for (const group of groups) {
+              if (group.baseY > cap.y - lineTolerance && group.baseY <= cap.y + cap.h && (!target || group.baseY > target.baseY)) target = group;
+            }
+            if (!target) {
+              let bestDist = Infinity;
+              for (const group of groups) { const d = Math.abs(group.baseY - cap.y); if (d < bestDist) { bestDist = d; target = group; } }
+            }
+            if (target) target.items.push(cap);
+          }
+        }
+        try {
+          if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1' && segments.length >= 2) {
+            // eslint-disable-next-line no-console
+            console.log(`[PTRACE 2col] p${pageNum} segments=${segments.length} isColumns=${isColumns}`);
+            for (const g of groups.slice(0, 8)) {
+              // eslint-disable-next-line no-console
+              console.log(`    ${JSON.stringify(g.items.slice().sort((a, b) => a.x - b.x).map(it => it.str).join('').replace(/\s+/g, ' ').trim().slice(0, 52))}`);
+            }
+          }
+        } catch { /* ignore */ }
+
 
         const MARK = { italic: '*', bold: '**' } as const;
         const pageLines = groups
@@ -1309,6 +1611,8 @@ const App: React.FC = () => {
             if (openLink) out += `](${wireHref(openLink)})`;
             return {
               y: group.baseY,
+              pageY: Math.max(...items.map(it => it.y)), // real page position (reflow leaves item.y intact)
+              col: group.col, // 0 = left column, 1 = right column, undefined = full-width (for side-by-side render)
               x: Math.min(...items.map(it => it.x)),
               rightX: Math.max(...items.map(it => it.x + (it.w || 0))),
               text: out.replace(/\s+/g, ' ').trim(),
@@ -1316,6 +1620,7 @@ const App: React.FC = () => {
               bold: items.filter(it => it.bold).length > items.length / 2,
               family: modeStr(items.map(it => it.family)),
               localFont: 0, // set after the document body font is known (see the windowed pass)
+              mcRole: modeStr(items.map(it => it.mcRole || '')) || undefined, // tagged-PDF structural role
             };
           })
           .filter(line => line.text)
@@ -1344,6 +1649,16 @@ const App: React.FC = () => {
         }
 
         const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
+        // The paragraph margin — where wrapped continuation lines sit — is normally bodyLeft, but a
+        // page of rapid one-line dialogue turns makes the first-line INDENT the mode, hiding the true
+        // margin (so `x > bodyLeft+8` never fires and a turn that wraps to a full line merges into the
+        // previous turn). Take the LEFTMOST frequently-used left as the margin, so an indented turn
+        // still registers as a paragraph start. On ordinary pages this equals bodyLeft.
+        const leftFreq = new Map<number, number>();
+        for (const l of pageLines) leftFreq.set(Math.round(l.x), (leftFreq.get(Math.round(l.x)) || 0) + 1);
+        const leftMinCount = Math.max(2, pageLines.length * 0.1);
+        const frequentLefts = [...leftFreq].filter(([, c]) => c >= leftMinCount).map(([x]) => x);
+        const paraLeftMargin = frequentLefts.length ? Math.min(bodyLeft, ...frequentLefts) : bodyLeft;
         const lineGap = median(pageLines.slice(1).map((line, index) => pageLines[index].y - line.y).filter(gap => gap > 0));
 
         // Index/contents pages: encode each entry's left-indent depth as leading
@@ -1379,7 +1694,59 @@ const App: React.FC = () => {
           allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
           allRightEdges.push(...pageLines.map(line => line.rightX).filter(Boolean));
         }
-        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, lineGap, isListPage, indentTiers });
+        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers, pageHeight });
+      }
+
+      // Running head/footer removal (untagged PDFs; a tagged PDF already dropped its Artifact
+      // pagination above). A line in the extreme top/bottom margin band (≤8% of the page height
+      // from an edge) that is a bare page number, a "page-number | section" running foot, or whose
+      // digit-stripped signature recurs across ≥3 pages is pagination — not content — so drop it.
+      // The tight band excludes real headings (a chapter title sits well inside the page), and the
+      // page-number/shape/repeat gate excludes body prose that happens to sit near a margin.
+      if (!isTaggedPdf) {
+        const isPageNum = (t: string): boolean => /^\s*(?:\d{1,4}|[ivxlcdm]{1,7})\s*$/iu.test(t);
+        const footSig = (t: string): string => t.toLowerCase().replace(/\s+/g, '').replace(/[|·•—–-]+/g, '|').replace(/\d+|[ivxlcdm]{1,7}/giu, '#');
+        const runningFootShape = (t: string): boolean => { const parts = t.split(/\s*[|·•\t]\s*/u).filter(Boolean); return t.length <= 70 && parts.length === 2 && parts.some(isPageNum); };
+        // The line text carries emphasis/markup (a bold footer is "**xvi | Foreword**"); strip it
+        // before the page-number/shape tests or the markers break them.
+        const cleanFoot = (t: string): string => t.replace(/[*_~`]/gu, '').replace(/\s+/g, ' ').trim();
+        const sigCount = new Map<string, number>();
+        const marginLines: PdfLine[] = [];
+        for (const buf of pageBuffers) {
+          const band = buf.pageHeight * 0.08;
+          for (const line of buf.lines) {
+            if (buf.pageHeight > 0 && (line.pageY < band || line.pageY > buf.pageHeight - band)) {
+              marginLines.push(line);
+              const s = footSig(cleanFoot(line.text)); sigCount.set(s, (sigCount.get(s) || 0) + 1);
+            }
+          }
+        }
+        const drop = new Set<PdfLine>();
+        for (const line of marginLines) {
+          const ct = cleanFoot(line.text);
+          if (isPageNum(ct) || runningFootShape(ct) || (sigCount.get(footSig(ct)) || 0) >= 3) drop.add(line);
+        }
+        if (drop.size) for (const buf of pageBuffers) buf.lines = buf.lines.filter(l => !drop.has(l));
+        // Cover/barcode metadata (the ISBN and the printed price) is not reading content and, ending
+        // in digits, the reader would otherwise glue it onto the next paragraph. These patterns never
+        // occur in prose, so drop them book-wide.
+        const isCoverMetadata = (t: string): boolean => {
+          const s = t.replace(/[*_~`]/gu, '').trim();
+          return /^ISBN[\s:-]/i.test(s) || /^US\s*\$[\d,.]+\s*CAN\s*\$[\d,.]+$/i.test(s);
+        };
+        for (const buf of pageBuffers) buf.lines = buf.lines.filter(l => !isCoverMetadata(l.text));
+        try {
+          if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1') {
+            // eslint-disable-next-line no-console
+            console.log('[PTRACE foot] tagged=', isTaggedPdf, 'marginLines=', marginLines.length, 'dropped=', drop.size);
+            for (const buf of pageBuffers) for (const line of buf.lines) {
+              if (/foreword|preface|contents/iu.test(line.text) && line.y < buf.pageHeight * 0.12) {
+                // eslint-disable-next-line no-console
+                console.log(`  [SURVIVED] p${buf.pageNum} y=${line.y.toFixed(0)}/H${buf.pageHeight.toFixed(0)} shape=${runningFootShape(line.text)} :: ${JSON.stringify(line.text.slice(0, 44))}`);
+              }
+            }
+          }
+        } catch { /* ignore */ }
       }
 
       // Phase C: the document body font is the most common line height across prose pages;
@@ -1421,6 +1788,45 @@ const App: React.FC = () => {
         const lf = Math.max(mode(pageHeights[idx]) || bodyFont, mode(win) || bodyFont);
         buf.lines.forEach(line => { line.localFont = lf; });
       });
+      // Tag the heading lines the OUTLINE names (all levels) — the author's own structure catches
+      // section headings the font-family rule misses (a title set in the body font). Among the
+      // lines near an entry's destination Y on its page, mark the one whose text prefix-matches the
+      // title (either direction, normalised). The title gate is the safety: it rejects page-only
+      // bookmarks whose destination lands on non-heading text (a "Copyright" bookmark → the imprint
+      // line), so this can only ADD real headings, never mis-tag body.
+      if (outlineHeadingTargets.length) {
+        const linesByPage = new Map<number, PdfLine[]>();
+        for (const buf of pageBuffers) linesByPage.set(buf.pageNum, buf.lines);
+        const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/gu, '');
+        for (const target of outlineHeadingTargets) {
+          const lines = linesByPage.get(target.page);
+          const titleN = norm(target.title);
+          if (!lines || titleN.length < 4) continue;
+          let best: PdfLine | null = null, bestDy = Infinity;
+          for (const line of lines) {
+            const dy = Math.abs(line.y - target.y);
+            if (dy > 50 || dy >= bestDy) continue;
+            const lineN = norm(line.text);
+            if (lineN.length < 4) continue;
+            const short = lineN.length < titleN.length ? lineN : titleN;
+            const long = lineN.length < titleN.length ? titleN : lineN;
+            if (long.startsWith(short.slice(0, 22))) { bestDy = dy; best = line; }
+          }
+          if (best) best.outlineHeading = true;
+        }
+      }
+      try {
+        if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1') {
+          const flagged = pageBuffers.flatMap(b => b.lines).filter(l => l.outlineHeading);
+          // eslint-disable-next-line no-console
+          console.log('[PTRACE] targets=', outlineHeadingTargets.length, 'flagged=', flagged.length, 'flaggedSample=', JSON.stringify(flagged.slice(0, 6).map(l => l.text.slice(0, 28))));
+          for (const t of outlineHeadingTargets.filter(t => /introduction|also by|about the author/i.test(t.title)).slice(0, 3)) {
+            const lns = pageBuffers.find(b => b.pageNum === t.page)?.lines || [];
+            // eslint-disable-next-line no-console
+            console.log(`[PTRACE] "${t.title.slice(0, 22)}" p${t.page} y=${t.y.toFixed(0)} pageLines=${lns.length} near=`, JSON.stringify(lns.filter(l => Math.abs(l.y - t.y) <= 60).map(l => `dy${(l.y - t.y).toFixed(0)}:${l.text.slice(0, 22)}`)));
+          }
+        }
+      } catch { /* ignore */ }
       // Heading detection, principled: a heading is text set in the HEADING font FAMILY (a display
       // family distinct from the body — read from the real font name via commonObjs, learned from
       // the contents page) AND typographically LARGER than the body of its OWN section (the local
@@ -1429,9 +1835,13 @@ const App: React.FC = () => {
       // catches body prose on a figure-heavy page (wrong family). TOGETHER: the size-15 notes header
       // (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue (not large vs
       // the h15 body) do not. (Falls back to the size rule when no contents page / no heading family.)
-      const isHeadingLine = (line: PdfLine): boolean => headingFamily
-        ? line.family === headingFamily && line.localFont > 0 && line.h >= line.localFont * 1.2
-        : (bodyFont > 0 && line.h >= bodyFont * 1.2);
+      const isHeadingLine = (line: PdfLine): boolean =>
+        // Tagged PDF: the marked-content role is authoritative — H1–H6 is a heading, anything else
+        // (P, Caption, …) is NOT, regardless of font. Only fall to geometry/outline when untagged.
+        line.mcRole ? /^H[1-6]?$/u.test(line.mcRole)
+          : line.outlineHeading === true || (headingFamily
+            ? line.family === headingFamily && line.localFont > 0 && line.h >= line.localFont * 1.2
+            : (bodyFont > 0 && line.h >= bodyFont * 1.2));
       // A line "fills the measure" if its right edge reaches the page's text right margin
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.
@@ -1462,11 +1872,11 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1 };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
       for (const buf of pageBuffers) {
-        const { pageNum, lines, bodyLeft, lineGap, isListPage, indentTiers } = buf;
+        const { pageNum, lines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers } = buf;
         const proseLines = lines.filter(line => !isHeadingLine(line));
         const rightMargin = proseLines.length ? Math.max(...proseLines.map(line => line.rightX)) : 0;
         const indentDepthFor = (x: number): number => {
@@ -1588,12 +1998,41 @@ const App: React.FC = () => {
                 : null;
           if (align) {
             const sentinel = align === 'right' ? '\uE011' : '\uE010'; // U+E011 right, U+E010 centre — stripped by the reader
-            pageEmit.push({
-              pageNum,
-              blocks: dispLines.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' })),
-              rightMargin,
-              bodyLeft,
-            });
+            // A right-aligned block can be WRAPPED PROSE (a "Praise for…" page: multi-line quotes each
+            // set flush-right) rather than a line-list. Emitting one item per line then shatters every
+            // quote/attribution into separate lines and — since a long right-aligned line starts near
+            // the left — reads as chaotic mixed alignment. If the lines are long (fill most of the
+            // measure), JOIN the wrapped lines into paragraphs (breaking on a larger vertical gap) so
+            // each quote and its attribution is one right-aligned paragraph. (Centre stays one-per-line
+            // — title pages are genuine line-lists.)
+            const measure = Math.max(...dispLines.map(l => l.rightX)) - Math.min(...dispLines.map(l => l.x));
+            const proseLike = align === 'right' && measure > 0 && (median(dispLines.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
+            let outBlocks: EmitBlock[];
+            if (proseLike) {
+              const gaps = dispLines.slice(1).map((l, i) => dispLines[i].y - l.y).filter(g => g > 0 && g < bodyFont * 4);
+              const medGap = median(gaps) || bodyFont;
+              // Break a paragraph on a larger vertical gap OR before a line that opens with an em/en
+              // dash — the reliable "attribution/credit" marker — so a quote and its "—Name, title"
+              // become separate right-aligned paragraphs (the credit gap is only slightly wider than
+              // the line gap, so the dash carries the split).
+              const opensCredit = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[—–]/u.test(t); // skip a leading italic/bold marker: an italic credit is "*—Name*"
+              const groups: PdfLine[][] = [];
+              let cur: PdfLine[] = [];
+              for (let i = 0; i < dispLines.length; i++) {
+                const gap = i > 0 ? dispLines[i - 1].y - dispLines[i].y : 0;
+                if (i > 0 && cur.length && (gap > medGap * 1.4 || opensCredit(dispLines[i].text))) { groups.push(cur); cur = []; }
+                cur.push(dispLines[i]);
+              }
+              if (cur.length) groups.push(cur);
+              outBlocks = groups.map(g => {
+                let t = g[0].text;
+                for (let k = 1; k < g.length; k++) t = /[A-Za-z]-$/.test(t) && /^[a-z]/.test(g[k].text) ? t + g[k].text : `${t} ${g[k].text}`;
+                return { text: sentinel + t.replace(/\s+/gu, ' ').trim(), role: 'body' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' };
+              });
+            } else {
+              outBlocks = dispLines.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }));
+            }
+            pageEmit.push({ pageNum, blocks: outBlocks, rightMargin, bodyLeft });
             continue;
           }
         }
@@ -1649,6 +2088,12 @@ const App: React.FC = () => {
           return labeled >= 2 && labeled >= margin.length / 2;
         };
 
+        // A bullet-list item ("• Prompt chaining …") starts a new paragraph — otherwise the items
+        // (and their wrapped descriptions) reflow into one run-on block. The lone-bullet de-dup
+        // upstream guarantees a single leading bullet per item.
+        // A bullet is often BOLD, so the line arrives wrapped as "**•** …"; skip a leading emphasis
+        // wrapper (and the bullet may glue to the word, "•Understand") before matching the marker.
+        const startsBulletLine = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(t);
         const blocks: EmitBlock[] = [];
         let i = 0;
         while (i < lines.length) {
@@ -1659,13 +2104,32 @@ const App: React.FC = () => {
             const previous = lines[j - 1];
             const current = lines[j];
             const verticalGap = previous.y - current.y;
+            // Two lines FAR APART on the physical page never belong to one block, whatever their
+            // reading-order y says. This is what separates a left column's last line from the right
+            // column's first (the reflow stacks them adjacent in reading order but they sit a full
+            // page apart), and keeps spine/edge text from gluing onto a column line it happens to
+            // reflow next to. `pageY` is the real position; on single-column pages pageY==y so this
+            // only ever fires on a genuine large gap, which already broke the block anyway.
+            const physicallyFar = Math.abs(previous.pageY - current.pageY) > Math.max(previous.h, current.h) * 3;
             let endsBlock: boolean;
-            if (groupIsHeading) {
+            if (current.col !== undefined && previous.col !== undefined && current.col !== previous.col) {
+              // A block never spans two columns — the left cell and the right cell of a row-major table
+              // sit on the same baseline, so a column change is the boundary (physicallyFar can't see it).
+              endsBlock = true;
+            } else if (physicallyFar) {
+              endsBlock = true;
+            } else if (groupIsHeading) {
               // Wrapped heading lines join; a gap larger than the heading's own leading
               // separates two stacked headings (a chapter title above its subtitle).
               endsBlock = verticalGap > Math.max(previous.h, current.h) * 1.35;
             } else {
-              const isIndentedBodyLine = current.x > bodyLeft + 8 && !startsDialogueLine(current.text);
+              // An indented line after a completed sentence starts a new paragraph — INCLUDING a
+              // dialogue turn (a new "…" quote set at the first-line indent). Dialogue was excluded
+              // here, which merged consecutive quoted turns whenever one wrapped to a full line (short
+              // turns broke via bothShort, long ones didn't). Measured against paraLeftMargin so the
+              // indent is detected even when short turns make the indent the modal left. A wrapped
+              // continuation sits at the margin, not the indent, so it is never caught.
+              const isIndentedBodyLine = current.x > paraLeftMargin + 8;
               // Two consecutive lines that each occupy less than half the measure are
               // line-structured data (a catalog/CIP block, address, code list), not flowing
               // prose — keep them one per line. Prose has at most one short line per
@@ -1680,6 +2144,7 @@ const App: React.FC = () => {
               endsBlock =
                 bothShort ||
                 startsFootnoteEntry(current) ||
+                startsBulletLine(current.text) ||
                 (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||
                 (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || startsParagraphTransitionLine(current.text)));
             }
@@ -1752,12 +2217,23 @@ const App: React.FC = () => {
               firstRightX: group[0].rightX,
               lastRightX: last.rightX,
               lastText: last.text,
+              col: group.find(l => l.col !== undefined)?.col,
             });
           }
           i = j;
         }
 
         pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
+        try {
+          if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1' && lines.some(l => /Prompt chaining|Understand the concept/.test(l.text))) {
+            // eslint-disable-next-line no-console
+            console.log(`[PTRACE blocks] p${pageNum}: ${blocks.length} blocks`);
+            for (const b of blocks) console.log(`  col=${b.col} role=${b.role} :: ${JSON.stringify(b.text.slice(0, 68))}`);
+            // eslint-disable-next-line no-console
+            console.log('[PTRACE lines] (heading? bullet? :: text)');
+            for (const l of lines) console.log(`  H=${isHeadingLine(l)} B=${startsBulletLine(l.text)} y=${l.y.toFixed(0)} :: ${JSON.stringify(l.text.slice(0, 44))}`);
+          }
+        } catch { /* ignore */ }
       }
 
       // Geometry-driven cross-page join: a paragraph that runs off the bottom of one page
@@ -1789,19 +2265,44 @@ const App: React.FC = () => {
               !endsWithTerminalPunctuation(prevBlock.lastText) &&
               first.firstX <= bodyLeft + 8 &&
               fillsMeasure(first.firstRightX, rightMargin)));
-        blocks.forEach((block, blockIndex) => {
-          // Carry the geometry-decided block role to the reader as a private-use sentinel
-          // (U+E012 = list), so the reader renders tagged blocks per their role instead of
-          // re-deriving structure from the flattened text with prose heuristics (which would,
-          // e.g., bold some table-of-contents entries as if they were section subtitles). The
-          // reader strips the sentinel; a 'body' continuation carries none.
-          const tag = block.role === 'list' ? '\uE012' : block.role === 'heading' ? '\uE013' : ''; // U+E012 list, U+E013 heading; reader strips them
-          if (blockIndex === 0 && continues) {
-            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${block.text}`;
-          } else if (blockIndex === 0) {
-            pages.push(`${marker}\n${tag}${block.text}`);
+        // Carry each block's geometry-decided role to the reader as a private-use sentinel
+        // (U+E012 list, U+E013 heading; the reader strips them). A run of LEFT-column (col 0) blocks
+        // immediately followed by RIGHT-column (col 1) blocks is a side-by-side TWO-COLUMN region:
+        // encode it as U+E014 <left \u00B6s joined by U+E016> U+E015 <right \u00B6s> so the reader can lay the
+        // two columns out next to each other (stacking on narrow screens). Everything else is normal.
+        const enc = (b: EmitBlock): string => (b.role === 'list' ? '\uE012' : b.role === 'heading' ? '\uE013' : '') + b.text;
+        type EmitUnit = { two: true; left: EmitBlock[]; right: EmitBlock[] } | { two: false; block: EmitBlock };
+        const units: EmitUnit[] = [];
+        for (let bi = 0; bi < blocks.length;) {
+          if (blocks[bi].col === 0) {
+            const left: EmitBlock[] = []; while (bi < blocks.length && blocks[bi].col === 0) left.push(blocks[bi++]);
+            const right: EmitBlock[] = []; while (bi < blocks.length && blocks[bi].col === 1) right.push(blocks[bi++]);
+            if (right.length) units.push({ two: true, left, right });
+            else for (const b of left) units.push({ two: false, block: b });
           } else {
-            pages.push(`${tag}${block.text}`);
+            units.push({ two: false, block: blocks[bi++] });
+          }
+        }
+        try {
+          if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1' && blocks.some(b => b.col !== undefined)) {
+            const two = units.filter(u => !('block' in u)).length;
+            // eslint-disable-next-line no-console
+            console.log(`[PTRACE emit-2col] p${pageNum} blocksWithCol=${blocks.filter(b => b.col !== undefined).length} twoColUnits=${two}`);
+          }
+        } catch { /* ignore */ }
+        units.forEach((unit, unitIndex) => {
+          if (!('block' in unit)) {
+            const text = '\uE014' + unit.left.map(enc).join('\uE016') + '\uE015' + unit.right.map(enc).join('\uE016');
+            pages.push(unitIndex === 0 ? `${marker}\n${text}` : text);
+            return;
+          }
+          const text = enc(unit.block);
+          if (unitIndex === 0 && continues) {
+            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${unit.block.text}`;
+          } else if (unitIndex === 0) {
+            pages.push(`${marker}\n${text}`);
+          } else {
+            pages.push(text);
           }
         });
         prevBlock = blocks[blocks.length - 1];
@@ -1870,16 +2371,22 @@ const App: React.FC = () => {
                 (best, line) => (line.y <= entry.y! + 2 && (!best || line.y > best.y)) ? line : best,
                 null,
               ) || geom[0]);
-          if (heading.text && heading.text.length >= 3) {
+          // pageLineGeom captured the RAW line text, which carries emphasis markers (a bold heading is
+          // stored as "**Title**"), but the assembled content STRIPS emphasis from heading blocks — so
+          // an exact match failed for EVERY bold heading, all offsets fell back to the page-start
+          // marker, and same-page bookmarks collapsed into one chapter (a section and its first topics
+          // sharing a page merged). Match on the marker-stripped heading text.
+          const needle = heading.text.replace(/[*_`~]/gu, '').trim();
+          if (needle.length >= 3) {
             const nextBlock = fullText.indexOf('[[PAGE ', blockStart + 1);
-            const within = fullText.indexOf(heading.text, blockStart);
+            const within = fullText.indexOf(needle, blockStart);
             if (within >= 0 && (nextBlock < 0 || within < nextBlock)) offset = within;
           }
         }
         return { title: entry.title, page: entry.page, level: 0, offset };
       });
 
-      return { content: fullText, outline };
+      return { content: fullText, outline, title: metaTitle };
     } catch (e) {
       console.error('PDF processing error', e);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
@@ -1914,6 +2421,10 @@ const App: React.FC = () => {
         try {
             const preparedContext = hydrateFileContext(context);
             const structure = await analyzeBookStructure(preparedContext);
+            // Prefer the PDF's own metadata Title over the one inferred from the first content
+            // line. Set on `structure` so the display title AND the re-upload dedup (which matches
+            // by structure.title) stay consistent.
+            if (context.docTitle) structure.title = context.docTitle;
             // Phase A (PDF only): when the PDF carries a usable outline (bookmarks), build
             // chapters directly from it — the page destinations are authoritative, so no
             // heuristic title-to-offset scoring is needed. Any PDF without a usable outline,
@@ -1993,7 +2504,7 @@ const App: React.FC = () => {
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
        try {
-         const { content: textContent, outline: pdfOutline } = await processPdf(file);
+         const { content: textContent, outline: pdfOutline, title: docTitle } = await processPdf(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -2001,6 +2512,7 @@ const App: React.FC = () => {
             sourceKind: 'pdf',
             sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION,
             pdfOutline,
+            docTitle,
          });
        } catch (err: any) {
          setError(err.message || "Failed to process PDF.");

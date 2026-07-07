@@ -213,7 +213,139 @@
 //      alignment as a PRIOR before the text heuristics, and the signature/attribution heuristic no
 //      longer fires on a citation (URL or quoted title present) — so a note that merely contains a
 //      date keeps its indent (note 54 vs 55).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v41-right-attribution-align';
+// v42: headings are tagged from the PDF OUTLINE (bookmarks), not just font geometry. The outline
+//      loop now RECURSES (it was top-level only, silently dropping nested section headings — 45 of
+//      them in the Kurzweil book), and every entry, resolved to its destination Y, tags the matching
+//      line on that page as a heading (isHeadingLine ORs it, so the author's structure precedes the
+//      font-family rule). A normalized prefix title-gate (either direction) is the safety — it tags
+//      real headings the font rule missed ("INTRODUCTION", "WHAT DOES IT MEAN TO REINVENT
+//      INTELLIGENCE?", section titles) while rejecting page-only bookmarks whose destination lands on
+//      non-heading text (a "Copyright" bookmark → the imprint line). Chapters are unchanged (still
+//      built from top-level entries). Flat-outline books (no nested bookmarks) keep the font rule.
+// v43: (a) a TAGGED PDF's own structure now drives extraction — getMarkInfo gates a marked-content
+//      pass where H1–H6 = heading / P = body (authoritative over font geometry), and text inside an
+//      Artifact (pagination) is dropped. (b) Running heads/footers on UNTAGGED PDFs are removed by
+//      geometry: a line in the extreme top/bottom margin band (≤8% of page height) that is a bare
+//      page number, a "page-number | section" running foot, or a signature recurring on ≥3 pages is
+//      pagination, not content. The tight band excludes real headings; the pattern/repeat gate
+//      excludes body. Verified: strips all of Agentic Mesh's "xx|Preface"/page-number footers,
+//      inert on Kurzweil/Sovereign (no false removals). Also: book title now prefers the PDF's
+//      metadata Title over the inferred first line.
+// v44: two refinements to v43. (a) The running-head/footer test now strips emphasis markup first —
+//      a BOLD footer arrives as "**xvi | Foreword**", and the "**" broke the page-number/shape match
+//      so short-section bold footers survived; stripping "*_~`" fixes it. (b) Duplicate list bullets
+//      are removed: some generators emit a bullet BOTH as a lone glyph and at the start of the item
+//      run ("•" + "• An AI agent…" at the same x/y), doubling it in the reflow; the lone one is
+//      dropped when a run at the same spot already carries it. Verified on Agentic Mesh.
+// v45: bullet-list fixes extended. The lone-bullet de-dup now also collapses a DOUBLED lone bullet
+//      ("• •" — two standalone bullet glyphs at one spot, the item text carrying none), keeping one;
+//      and a line that starts with a bullet now begins a new paragraph, so list items (and their
+//      wrapped descriptions) no longer reflow into one run-on block. Verified on Agentic Mesh p40.
+// v46: two-column (gutter) re-flow. A page region laid out in two columns has a vertical gutter no
+//      text crosses; baseline clustering otherwise merges a left-column line with the right-column
+//      line at its baseline into one garbled line. Detect a genuine gutter (an empty mid-page band
+//      that ≥5 dense lines share, with real word text on both sides — gated hard against tables,
+//      indexes-of-numbers, TOCs and coincidences via a density ≥0.7 and right-column non-numeric
+//      test) and re-flow: read the whole left column top→bottom, then the right. Verified to fire on
+//      the Agentic Mesh back cover / credits / two-column index and on ZERO Kurzweil/Sovereign pages.
+// v47: fix a v46 regression — the two-column re-flow re-stamps a line's `y` to a reading-order
+//      coordinate (right column pushed below left), which fed the header/footer margin-band test
+//      bogus positions (759 "margin" lines vs ~390), so two-column index/back-cover content drifted
+//      into the band and risked being dropped as pagination. Lines now carry a real `pageY` (the
+//      untouched glyph position) that the margin-band test uses, while `y` stays the reading order.
+// v48: lower the two-column density gate 0.7 → 0.6. A genuine but cross-reference-heavy index page
+//      scored 0.65 and was left garbled; 0.6 admits it while the numericness gate still rejects the
+//      one look-alike near that range (a data table at 0.63 but 0.84 numeric). Verified: still ZERO
+//      Kurzweil/Sovereign pages; all 9 Agentic Mesh index pages + back cover + credits now re-flow.
+// v49: replace the geometry two-column detector with pdf.js's own signal — content-stream ORDER.
+//      getTextContent emits each column top-to-bottom before the next, so a jump BACK UP the page in
+//      that order is the column boundary. bodyGlyphs are split into segments at those jumps and each
+//      segment clustered + stacked in reading order. Principled (from the document, not a gutter
+//      heuristic), and gate-free: it catches all 11 Agentic Mesh two-column pages (back cover,
+//      credits, 9 index pages) with ZERO false positives on Kurzweil/Sovereign; single-column pages
+//      have no jump so they stay one segment and extract exactly as before.
+// v50: a BOLD bullet arrives as "**•** …", so the block assembler's startsBulletLine (which looked
+//      for a bullet at the very start of the line) never fired and consecutive bullet items merged
+//      into one block. Skip a leading emphasis wrapper before the bullet marker (same fix mirrored in
+//      the reader's paragraph-merge guard). Verified end-to-end through the real reader pipeline.
+// v51: gate the content-order column split — a content-stream jump-back also happens on a
+//      stacked/centred page drawn out of order (a TITLE page: title, author, publisher all centred),
+//      which was being segmented and reordered, scrambling it. Only treat segments as columns when
+//      their x-centres are horizontally SEPARATED (> 25% of content width); a centred page keeps one
+//      x-centre and stays a single flow. Verified: title p5 → single; index/back cover → columns.
+// v52: fix the segment stacking order. Segments were re-stamped by SUBTRACTING a cumulative offset,
+//      which preserved each segment's real y — so a spine block drawn first at the page bottom sorted
+//      back among later columns ("DATA" landing mid-bullets). Now each segment is stacked strictly in
+//      content order (segment 0 on top) regardless of real y, keeping its internal spacing. Verified:
+//      back-cover spine groups at top, bullets stay contiguous, index unchanged.
+// v53: block assembler now refuses to merge two lines that are FAR APART on the physical page
+//      (by real pageY), whatever their reading-order y. This cleanly separates a left column's tail
+//      from the right column's head (the reflow stacks them adjacent though they sit a page apart)
+//      and stops spine/edge metadata gluing onto a column line it reflows next to (the ISBN that was
+//      fusing onto bullet 5, real y 68 vs 166). Single-column pages: pageY==y, so only real gaps fire.
+// v54: drop cover/barcode metadata (ISBN line, printed price "US $.. CAN $..") — non-content that,
+//      ending in digits, the reader was gluing onto the next paragraph. Whole-line patterns that
+//      never occur in prose (a sentence mentioning "US $5 billion" is not dropped).
+// v55: SIDE-BY-SIDE two columns. Two-column regions are now tagged (each block gets a col: left/right
+//      by its x-position) and emitted as a structured block — U+E014 <left ¶s joined by U+E016> U+E015
+//      <right ¶s> — that the reader lays out as two columns next to each other (stacking on narrow
+//      screens) instead of flattening left-then-right into one flow.
+// v56: fix column tagging — a full-width intro and the left column can share ONE content segment
+//      (no y-jump between them), so tagging whole segments left the bullets full-width and nothing
+//      paired with the right column (twoColUnits=0). Now each LINE is tagged left/right by its own
+//      x-position, gated on its real-y overlapping a right-column line — so the left column pairs
+//      with the right while the full-width intro stays full-width.
+// v57: snap hyperlink boundaries to word edges. pdf.js returns a whole line as one text item, so a
+//      link that wraps only part of it is resolved per character by a uniform-width x estimate — a
+//      few characters fuzzy, so the link grabbed a leading punctuation (", Andy…") and a trailing
+//      partial word ("…stated t"). Each linked run is now pulled to the nearest space, since a link
+//      always covers whole words. URLs (no internal spaces) are unaffected.
+// v58: EXACT hyperlink boundaries from the operator list. pdf.js hands back a whole line as one text
+//      item, so mapping a link rect to characters by uniform width was a few chars fuzzy on short
+//      links (two adjacent links "OpenAI"/"Anthropic" merging with "as "/","). The operator list has
+//      each glyph's true x (validated against the rects), so each link's exact text is extracted and
+//      matched inside the item. Falls back to the estimate+word-snap if the op-list can't be parsed.
+// v59: use glyph COLOUR to delimit a link's exact text. A hyperlink is set in a distinct colour
+//      (dark red here); matching link glyphs by rect position alone still grabbed a black neighbour
+//      word ("as OpenAI,") because the rect's y-tolerance caught the adjacent line. Taking the
+//      link-coloured glyphs inside the rect (falling back to a tight-x span for black links) gives the
+//      exact text — "OpenAI"/"Anthropic" separate and clean. Verified against the real pages.
+// v60: right-aligned PROSE (a "Praise for…" page of flush-right multi-line quotes) is now joined into
+//      paragraphs instead of emitted one-per-line. One-per-line shattered each quote/attribution into
+//      separate lines that — because a long right-aligned line starts near the left — read as chaotic
+//      mixed left/right alignment, and split a two-line "—Name, title" credit across paragraphs. Prose
+//      is detected by long lines (median width > 55% of the measure); paragraphs break on a wider gap
+//      or a leading em/en dash (the credit marker). Centre display blocks stay one-per-line (titles).
+// v61: the right-aligned-prose credit split must see through a leading italic marker. An italic
+//      attribution ("—Simon Torrance, CEO, AI Risk" set in MinionPro-Italic) is emitted as
+//      "*—Simon…*", so the em/en-dash credit test — which looked at the first character — missed it
+//      and the credit stayed glued to the end of its quote. The test now skips a leading */_/~/` .
+// v62: ROW-MAJOR two-column tables (a colophon: "Role: Name" credits in two side-by-side columns,
+//      each row holding a left cell AND a right cell on the same baseline). The content-order column
+//      detector only catches column-MAJOR layouts (whole left column, then whole right), so these
+//      merged into one line per row ("Acquisitions Editor: Aaron Black Indexer: Judith McConville").
+//      Now the longest contiguous run of rows split by an aligned vertical gutter is cut at it into
+//      left (col 0) / right (col 1) cells; a block never spans columns, so each row pairs into a
+//      side-by-side two-column unit. Non-table content on the page is untouched.
+// v63: the content-order column detector required a y-OVERLAP between the differently-centred
+//      segments. A spine/ISBN block emitted first at the page bottom is a separate segment at a
+//      different x-centre but a DIFFERENT vertical position — x-centre spread alone falsely flagged
+//      the colophon as two-column, sending it down the column path (which merged its row-major credit
+//      table) and skipping the v62 row-major splitter. Real side-by-side columns overlap vertically.
+// v64: dialogue turns no longer merge. A page of rapid one-line quoted turns makes the first-line
+//      INDENT the modal left, so bodyLeft became the indent (not the margin) and the `x > bodyLeft+8`
+//      paragraph-start test never fired — a turn that wrapped to a full line merged into the previous
+//      turn (short turns escaped via the bothShort rule, long ones didn't). Fixed with paraLeftMargin
+//      (the leftmost frequent left = the true margin) and by no longer excluding dialogue lines from
+//      the indent break; a wrapped continuation sits at the margin, so it is never split.
+// v65: outline chapter offsets resolve for BOLD headings again. The heading offset is located by
+//      searching the assembled content for the bookmark's heading line, but pageLineGeom captured the
+//      RAW line text (with emphasis markers, "**Title**") while the content strips emphasis from
+//      heading blocks — so indexOf failed for every bold heading, ALL offsets fell back to the
+//      page-start marker, and same-page bookmarks collapsed (a section + its first topics on one page
+//      merged; a topic sharing a page with a prior topic's tail started before it). Match the stripped
+//      heading text. Only affects books whose headings are bold (e.g. Transurfing's 78 topics).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v65-heading-offset-strip-emphasis';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

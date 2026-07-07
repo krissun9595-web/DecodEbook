@@ -906,9 +906,15 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
       title: item.title.replace(/\s+/g, ' ').trim(),
       page: item.page,
       start: item.offset ?? offsetForPage(content, item.page),
+      resolved: item.offset != null,
     }))
-    .filter((item): item is { title: string; page: number; start: number } => Boolean(item.title) && item.start != null)
+    .filter((item): item is { title: string; page: number; start: number; resolved: boolean } => Boolean(item.title) && item.start != null)
     .sort((a, b) => a.start - b.start);
+  try {
+    if (typeof window !== 'undefined' && (window as { localStorage?: Storage }).localStorage?.getItem('__ptrace') === '1')
+      // eslint-disable-next-line no-console
+      console.log('[PTRACE chapters]', resolved.slice(0, 10).map(r => `${JSON.stringify(r.title.slice(0, 20))} p${r.page}@${r.start}${r.resolved ? '' : '·FALLBACK'}`).join(' | '));
+  } catch { /* ignore */ }
 
   // Collapse entries that still resolve to the same (or earlier) offset — e.g. same-page
   // bookmarks whose heading text couldn't be located; keep the first.

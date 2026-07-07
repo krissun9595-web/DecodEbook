@@ -72,7 +72,7 @@ const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const PAGE_TARGET_SIZE = 1600;
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v28-italic-heading-detection';
+const CHAPTER_TEXT_CACHE_VERSION = 'v31-side-by-side-columns';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v17-source-segment-translation';
 
@@ -218,7 +218,14 @@ interface ParagraphData {
     indent?: number;
     align?: 'right' | 'center';
     role?: 'list' | 'heading';
+    // A side-by-side two-column region (from a two-column PDF page): each column an array of
+    // paragraphs, each paragraph its sentences with a global index (so the sentences translate and
+    // highlight like any other). Rendered as side-by-side columns; in split view the translated
+    // columns render in the right half.
+    columns?: { left: ColumnPara[]; right: ColumnPara[] };
 }
+
+interface ColumnPara { sentences: { text: string; gi: number }[] }
 
 const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
   indigo: 'text-[#00f3ff] drop-shadow-[0_0_2px_rgba(0,243,255,0.8)]',
@@ -227,6 +234,18 @@ const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
   amber: 'text-amber-400 drop-shadow-[0_0_2px_rgba(251,191,36,0.8)]',
   violet: 'text-violet-400 drop-shadow-[0_0_2px_rgba(167,139,250,0.8)]',
   pink: 'text-[#ff4fd8] drop-shadow-[0_0_2px_rgba(255,79,216,0.8)]',
+};
+
+// Hyperlinks render in the app's selected accent colour (not the PDF's original link colour), so a
+// link is unmistakable and easy to match against the coloured link in the source. Static strings so
+// Tailwind keeps the classes.
+const LINK_STYLES: Record<ThemeColor, string> = {
+  indigo: 'text-[#00f3ff] underline decoration-[#00f3ff]/70 underline-offset-4 hover:text-white',
+  emerald: 'text-emerald-400 underline decoration-emerald-400/70 underline-offset-4 hover:text-white',
+  rose: 'text-[#ff003c] underline decoration-[#ff003c]/70 underline-offset-4 hover:text-white',
+  amber: 'text-amber-400 underline decoration-amber-400/70 underline-offset-4 hover:text-white',
+  violet: 'text-violet-400 underline decoration-violet-400/70 underline-offset-4 hover:text-white',
+  pink: 'text-[#ff4fd8] underline decoration-[#ff4fd8]/70 underline-offset-4 hover:text-white',
 };
 
 const HIGHLIGHT_TEXT_COLORS: Record<ThemeColor, string> = {
@@ -931,12 +950,34 @@ const buildPageSentenceData = (pageText: string): {
   // strip their own markers upstream; this covers the main reading body.)
   const cleanedPageText = pageText.replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
   const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  try {
+    if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1' && /(Understand the concept of agentic mesh|With the rise of autonomous agents)/.test(cleanedPageText)) {
+      // eslint-disable-next-line no-console
+      console.log(`[PTRACE reader] a back-cover reader page: ${rawParagraphs.length} paragraphs in render order:`);
+      // eslint-disable-next-line no-console
+      rawParagraphs.forEach((p, i) => console.log(`  [${i}]${p.includes('') ? ' <TWO-COLUMN>' : ''} ${JSON.stringify(p.replace(/[-]/gu, '|').replace(/\s+/g, ' ').trim().slice(0, 80))}`));
+    }
+  } catch { /* ignore */ }
 
   const paragraphData: ParagraphData[] = [];
   const flatSentenceMap: SentenceMap[] = [];
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
+    // A side-by-side two-column region, encoded by the extractor as U+E014 <left ¶s joined by U+E016>
+    // U+E015 <right ¶s>. Split it into the two columns' paragraphs (stripping the role sentinels and
+    // any page marker) and hand it to the renderer as a `columns` paragraph.
+    if (rawPText.includes('\uE014')) {
+      const [leftRaw, rightRaw = ''] = rawPText.replace(/\uE014/gu, '').split('\uE015');
+      const toCol = (s: string): ColumnPara[] => s.split('\uE016')
+        .map(p => p.replace(/[\uE010-\uE016]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .map(pText => ({ sentences: splitIntoSentences(pText).map(sent => { const gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: gi, globalIndex: gi, text: stripInlineFormatSyntax(sent) }); return { text: sent, gi }; }) }));
+      const left = toCol(leftRaw), right = toCol(rightRaw);
+      paragraphData.push({ original: [], translated: [], columns: { left, right } });
+      try { if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1') console.log(`[PTRACE cols] two-column: leftParas=${left.length} rightParas=${right.length}`); } catch { /* ignore */ }
+      return;
+    }
     // Block-role / alignment sentinels carried from extraction (private-use chars):
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
@@ -2327,6 +2368,40 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (looksLikeSignatureLine(clean)) return 'mt-1';
     return '';
   };
+  // Stage-2 blast-radius audit (read-only, gated by localStorage.__audit). For every paragraph in
+  // the book it reads the geometry tag (role/align sentinel) and the text heuristics, then tallies
+  // the DISAGREEMENTS — where a heuristic decides structure with no corroborating tag (the risk
+  // cases Stage 2 would change) and where a tag exists that the heuristics miss. Throwaway.
+  useEffect(() => {
+    let on = false;
+    try { on = typeof window !== 'undefined' && window.localStorage?.getItem('__audit') === '1'; } catch { on = false; }
+    if (!on) return;
+    const paras = (fileContext.content || '').split(/\n{2,}/);
+    const cat: Record<string, number> = {};
+    const sample: Record<string, string[]> = {};
+    const bump = (k: string, t: string) => { cat[k] = (cat[k] || 0) + 1; const s = (sample[k] = sample[k] || []); if (s.length < 5) s.push(t.slice(0, 52)); };
+    for (const raw of paras) {
+      const ctrl = raw.match(/^\s*[-]+/u)?.[0] || '';
+      const role = ctrl.includes('') ? 'heading' : ctrl.includes('') ? 'list' : '';
+      const align = ctrl.includes('') ? 'right' : ctrl.includes('') ? 'center' : '';
+      const text = raw.replace(/[-]/g, '').replace(/\[\[PAGE \d+\]\]/g, '').replace(/\s+/g, ' ').trim();
+      if (text.length < 2) continue;
+      const sub = isPlainSubtitleParagraph([text]);
+      const sig = looksLikeSignatureLine(text);
+      const attr = looksLikeAttributionLine(text);
+      const noteHd = looksLikeNotesSectionHeading(text);
+      if (role) bump(`TAG role=${role}`, text);
+      if (align) bump(`TAG align=${align}`, text);
+      if ((sub || noteHd) && !role) bump('HEUR heading/subtitle, NO role tag (bolded by text only)', text);
+      if (sig && !align && !role) bump('HEUR signature, NO align/role tag', text);
+      if (attr && !align) bump('HEUR attribution, NO align tag', text);
+      if (role === 'heading' && !sub && !noteHd) bump('TAG heading but text-heuristics MISS it', text);
+    }
+    // eslint-disable-next-line no-console
+    console.log('[AUDIT] extractor=', (fileContext as { sourceExtractorVersion?: string }).sourceExtractorVersion, 'paras=', paras.length, 'counts:', JSON.stringify(cat, null, 0));
+    // eslint-disable-next-line no-console
+    Object.keys(sample).forEach(k => console.log('[AUDIT sample]', k, '::', JSON.stringify(sample[k])));
+  }, [fileContext]);
   const paragraphLineRunsFor = (pIdx: number, sentences: string[]): ParagraphLineRun[][] => {
     const lines: ParagraphLineRun[][] = [[]];
     sentences.forEach((sentence, sIdx) => {
@@ -2408,7 +2483,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       case 'strike':
         return 'line-through decoration-[#ff003c]/70 text-zinc-500';
       case 'link':
-        return 'text-[#00f3ff] underline decoration-[#00f3ff]/70 underline-offset-4 hover:text-white';
+        return LINK_STYLES[settings.highlightColor];
       case 'attribution':
       case 'attributionFootnote':
         return 'block mt-0.5 mb-4 leading-tight text-right text-zinc-500 italic text-[0.82em]';
@@ -3102,6 +3177,42 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-[#050505] relative flex flex-col hud-border text-left">
              <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
+                  // A side-by-side two-column region. Original columns render side by side; in split
+                  // view the TRANSLATED columns render in the right half (original-L | original-R ||
+                  // translated-L | translated-R). Sentences carry a global index so they highlight
+                  // and translate like any other.
+                  if (para.columns) {
+                    const colClass = `${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 font-medium break-words min-w-0`;
+                    const renderCol = (col: ColumnPara[], translated: boolean) => (
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {col.map((cp, i) => (
+                          <div key={i} className={colClass}>
+                            {cp.sentences.map(({ text, gi }) => {
+                              const active = autoScroll && gi === activeSentenceIndex;
+                              if (translated) return <span key={gi} className={`px-[2px] ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : ''}`}>{translationByIndex.get(gi) || ''}{' '}</span>;
+                              return (
+                                <span key={gi} id={`original-sent-${gi}`} data-sentence-index={gi} onClick={(e) => handleSentenceClick(gi, e)} className={`transition-all duration-300 px-[2px] ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}>{renderInkableText(text, gi, active)}{' '}</span>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                    const twoCols = (translated: boolean) => (
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-5">{renderCol(para.columns!.left, translated)}{renderCol(para.columns!.right, translated)}</div>
+                    );
+                    if (viewMode === 'split') {
+                      return (
+                        <div key={`cols-${pIdx}`} className="w-full flex items-start my-2">
+                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20 min-w-0">{twoCols(false)}</div>
+                          <div className="w-1/2 pl-2 md:pl-6 min-w-0">{twoCols(true)}</div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={`cols-${pIdx}`} className="w-full max-w-3xl mx-auto my-2">{twoCols(false)}</div>
+                    );
+                  }
                   const lineRuns = paragraphLineRunsFor(pIdx, para.original);
                   // Trust the geometry-decided block role (carried from extraction as
                   // para.role) BEFORE any prose heuristic: a 'list' block — a table of
