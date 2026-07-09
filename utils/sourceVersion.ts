@@ -345,7 +345,14 @@
 //      page-start marker, and same-page bookmarks collapsed (a section + its first topics on one page
 //      merged; a topic sharing a page with a prior topic's tail started before it). Match the stripped
 //      heading text. Only affects books whose headings are bold (e.g. Transurfing's 78 topics).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v65-heading-offset-strip-emphasis';
+// v66: extract embedded raster figures. Each meaningful image XObject (icons/rules filtered by size)
+//      is re-encoded to a size-capped JPEG and cached (fileType 'figure-image', bookId+id); a
+//      [[FIG id]] marker is injected into the content at the figure's Y so it sits in the reading
+//      flow. Markers are stripped from all text consumers (reader display/TTS/LLM/analysis); the
+//      reader render arrives in Phase 5. Manifest (rect/aspect, no bytes) rides on FileContext.
+// v67: figure size = its real fraction of the page's text column (colFrac in the manifest), so a
+//      figure reads proportionally to the surrounding text instead of off a fixed nominal width.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v78-link-merge';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

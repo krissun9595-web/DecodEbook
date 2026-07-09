@@ -65,7 +65,7 @@ const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const stripPageMarkers = (value: string): string =>
-  value.replace(/\[\[PAGE\s+\d+\]\]\s*/g, '');
+  value.replace(/\[\[PAGE\s+\d+\]\]\s*/g, '').replace(/\[\[FIG\s+[^\]]+\]\]\s*/g, '');
 
 const cleanHeadingLine = (value: string): string =>
   stripPageMarkers(value)
@@ -910,11 +910,6 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
     }))
     .filter((item): item is { title: string; page: number; start: number; resolved: boolean } => Boolean(item.title) && item.start != null)
     .sort((a, b) => a.start - b.start);
-  try {
-    if (typeof window !== 'undefined' && (window as { localStorage?: Storage }).localStorage?.getItem('__ptrace') === '1')
-      // eslint-disable-next-line no-console
-      console.log('[PTRACE chapters]', resolved.slice(0, 10).map(r => `${JSON.stringify(r.title.slice(0, 20))} p${r.page}@${r.start}${r.resolved ? '' : '·FALLBACK'}`).join(' | '));
-  } catch { /* ignore */ }
 
   // Collapse entries that still resolve to the same (or earlier) offset — e.g. same-page
   // bookmarks whose heading text couldn't be located; keep the first.
@@ -940,5 +935,9 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
   const withText = chapters.filter(chapter =>
     content.slice(chapter.sourceStart!, chapter.sourceEnd!).replace(PAGE_MARKER_RE, '').trim().length > 0
   );
-  return (withText.length ? withText : chapters).map((chapter, index) => ({ ...chapter, id: index + 1 }));
+  const survivors = (withText.length ? withText : chapters).map((chapter, index) => ({ ...chapter, id: index + 1 }));
+  // The first chapter owns the document start — pull its offset to 0 so leading content (a cover
+  // [[FIG]] marker, the [[PAGE 1]] marker) isn't orphaned before the resolved heading offset.
+  if (survivors.length) survivors[0] = { ...survivors[0], sourceStart: 0 };
+  return survivors;
 };

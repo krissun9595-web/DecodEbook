@@ -33,6 +33,8 @@ const NON_READING_CHAPTER_RE =
 const cleanStructureLine = (value: string): string =>
   value
     .replace(PAGE_MARKER_RE, '')
+    .replace(/\[\[FIG\s+[^\]]+\]\]\s*/g, '')
+    .trim()
     .replace(/\s+/g, ' ')
     .trim();
 

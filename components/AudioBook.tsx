@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2 } from 'lucide-react';
-import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget } from '../types';
-import { extractChapterText, generateSpeech, translateSentences } from '../services/gemini';
+import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFigure } from '../types';
+import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
@@ -223,6 +223,10 @@ interface ParagraphData {
     // highlight like any other). Rendered as side-by-side columns; in split view the translated
     // columns render in the right half.
     columns?: { left: ColumnPara[]; right: ColumnPara[] };
+    // An extracted PDF figure: the image bytes live in the file cache (fileType 'figure-image',
+    // key bookId + id). Rendered as an inline image; carries no sentences (invisible to TTS/
+    // translation/highlighting).
+    figure?: { id: string };
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -950,20 +954,19 @@ const buildPageSentenceData = (pageText: string): {
   // strip their own markers upstream; this covers the main reading body.)
   const cleanedPageText = pageText.replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
   const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-  try {
-    if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1' && /(Understand the concept of agentic mesh|With the rise of autonomous agents)/.test(cleanedPageText)) {
-      // eslint-disable-next-line no-console
-      console.log(`[PTRACE reader] a back-cover reader page: ${rawParagraphs.length} paragraphs in render order:`);
-      // eslint-disable-next-line no-console
-      rawParagraphs.forEach((p, i) => console.log(`  [${i}]${p.includes('') ? ' <TWO-COLUMN>' : ''} ${JSON.stringify(p.replace(/[-]/gu, '|').replace(/\s+/g, ' ').trim().slice(0, 80))}`));
-    }
-  } catch { /* ignore */ }
 
   const paragraphData: ParagraphData[] = [];
   const flatSentenceMap: SentenceMap[] = [];
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
+    // An extracted figure marker "[[FIG id]]" — its own paragraph. No sentences (so it's invisible to
+    // TTS/translation/highlighting); the renderer swaps it for the cached image.
+    const figMatch = rawPText.trim().match(/^\[\[FIG\s+([^\]]+)\]\]$/i);
+    if (figMatch) {
+      paragraphData.push({ original: [], translated: [], figure: { id: figMatch[1].trim() } });
+      return;
+    }
     // A side-by-side two-column region, encoded by the extractor as U+E014 <left ¶s joined by U+E016>
     // U+E015 <right ¶s>. Split it into the two columns' paragraphs (stripping the role sentinels and
     // any page marker) and hand it to the renderer as a `columns` paragraph.
@@ -975,7 +978,6 @@ const buildPageSentenceData = (pageText: string): {
         .map(pText => ({ sentences: splitIntoSentences(pText).map(sent => { const gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: gi, globalIndex: gi, text: stripInlineFormatSyntax(sent) }); return { text: sent, gi }; }) }));
       const left = toCol(leftRaw), right = toCol(rightRaw);
       paragraphData.push({ original: [], translated: [], columns: { left, right } });
-      try { if (typeof window !== 'undefined' && window.localStorage?.getItem('__ptrace') === '1') console.log(`[PTRACE cols] two-column: leftParas=${left.length} rightParas=${right.length}`); } catch { /* ignore */ }
       return;
     }
     // Block-role / alignment sentinels carried from extraction (private-use chars):
@@ -1024,6 +1026,237 @@ const buildPageSentenceData = (pageText: string): {
   });
 
   return { paragraphData, flatSentenceMap };
+};
+
+const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve((r.result as string).split(',')[1] || '');
+  r.onerror = reject;
+  r.readAsDataURL(blob);
+});
+
+// Safety net: strip any internal translation placeholder ([[DBNAME_0]], [[DBSEG_0007]]) the model
+// mangled and left behind, so a raw token never renders — covers already-cached bad translations too.
+const stripLeakedTokens = (s: string): string => s.replace(/\[\[\s*DB(?:NAME|SEG)[^\]]*\]\]/gi, '').replace(/[ \t]{2,}/g, ' ').trim();
+
+// Paint the translated labels over a copy of the figure: cover each label's box with its local
+// background colour, then draw the translation fitted to the box. Rough but layout-preserving —
+// good for diagram labels on solid backgrounds. Returns the composited JPEG.
+const overlayTranslations = async (blob: Blob, labels: { box: [number, number, number, number]; translated: string }[]): Promise<Blob> => {
+  const bmp = await createImageBitmap(blob);
+  const c = new OffscreenCanvas(bmp.width, bmp.height);
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(bmp, 0, 0);
+  // Gemini returns boxes on a 0..1000 scale (its native convention), or occasionally 0..1 fractions —
+  // map either to image pixels. (Treating them as fractions drew every label off-canvas.)
+  const maxV = Math.max(1, ...labels.flatMap(l => l.box.map(v => Math.abs(v || 0))));
+  const div = maxV <= 1.5 ? 1 : 1000; // 0..1 fractions vs Gemini's native 0..1000
+  for (const l of labels) {
+    // Gemini native detection: box = [ymin, xmin, ymax, xmax] (top, left, bottom, right).
+    const ymin = (l.box[0] || 0) / div, xmin = (l.box[1] || 0) / div, ymax = (l.box[2] || 0) / div, xmax = (l.box[3] || 0) / div;
+    let px = xmin * bmp.width, py = ymin * bmp.height;
+    let pw = Math.max(2, (xmax - xmin) * bmp.width), ph = Math.max(2, (ymax - ymin) * bmp.height);
+    px = Math.max(0, Math.min(bmp.width - 2, px)); py = Math.max(0, Math.min(bmp.height - 2, py));
+    pw = Math.min(bmp.width - px, pw); ph = Math.min(bmp.height - py, ph);
+    // Robust background: MEDIAN colour of a ring of points just OUTSIDE the box, so one stray sample
+    // landing on a line/glyph doesn't give a wrong patch colour (that was the "wrong background" bug).
+    const ring: [number, number][] = [[px + pw / 2, py - 4], [px + pw / 2, py + ph + 4], [px - 4, py + ph / 2], [px + pw + 4, py + ph / 2], [px - 4, py - 4], [px + pw + 4, py + ph + 4]];
+    const rs: number[] = [], gs: number[] = [], bs: number[] = [];
+    for (const [rx, ry] of ring) { const cx = Math.max(0, Math.min(bmp.width - 1, Math.round(rx))), cy = Math.max(0, Math.min(bmp.height - 1, Math.round(ry))); const d = ctx.getImageData(cx, cy, 1, 1).data; rs.push(d[0]); gs.push(d[1]); bs.push(d[2]); }
+    const med = (a: number[]) => a.sort((x, y) => x - y)[a.length >> 1];
+    const br = med(rs), bgc = med(gs), bb = med(bs);
+    const lum = 0.299 * br + 0.587 * bgc + 0.114 * bb;
+    const pad = Math.max(2, ph * 0.18);
+    ctx.fillStyle = `rgb(${br},${bgc},${bb})`;
+    ctx.fillRect(px - pad, py - pad, pw + 2 * pad, ph + 2 * pad);
+    // Fit the translation to the box (width AND height), vertically centred, contrasting colour.
+    ctx.fillStyle = lum > 145 ? '#111111' : '#f2f2f2';
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    let fs = Math.min(ph * 0.74, 40); ctx.font = `600 ${fs}px sans-serif`;
+    while (fs > 7 && ctx.measureText(l.translated).width > pw) { fs -= 0.5; ctx.font = `600 ${fs}px sans-serif`; }
+    ctx.fillText(l.translated, px + 1, py + ph / 2);
+  }
+  return await c.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+};
+
+// Trim uniform background margins the image model sometimes bakes around a redrawn figure, so it fills
+// the frame and matches the original's size. Corner colour = background; crop the empty border rows/cols.
+const trimBorders = async (blob: Blob): Promise<Blob> => {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const w = bmp.width, h = bmp.height;
+    const c = new OffscreenCanvas(w, h); const ctx = c.getContext('2d'); if (!ctx) return blob;
+    ctx.drawImage(bmp, 0, 0);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const bg = [data[0], data[1], data[2]];
+    const isBg = (x: number, y: number) => { const i = (y * w + x) * 4; return Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) < 36; };
+    const rowBg = (y: number) => { for (let x = 0; x < w; x++) if (!isBg(x, y)) return false; return true; };
+    const colBg = (x: number) => { for (let y = 0; y < h; y++) if (!isBg(x, y)) return false; return true; };
+    let top = 0, bottom = h - 1, left = 0, right = w - 1;
+    while (top < bottom && rowBg(top)) top++;
+    while (bottom > top && rowBg(bottom)) bottom--;
+    while (left < right && colBg(left)) left++;
+    while (right > left && colBg(right)) right--;
+    const cw = right - left + 1, ch = bottom - top + 1;
+    if (cw >= w - 2 && ch >= h - 2) return blob;      // no border to trim
+    if (cw < w * 0.4 || ch < h * 0.4) return blob;    // suspicious over-crop — keep original
+    const oc = new OffscreenCanvas(cw, ch); const octx = oc.getContext('2d'); if (!octx) return blob;
+    octx.drawImage(bmp, left, top, cw, ch, 0, 0, cw, ch);
+    return await oc.convertToBlob({ type: 'image/png', quality: 0.95 });
+  } catch { return blob; }
+};
+
+// An extracted PDF figure rendered inline. Loads the cached blob ('figure-image'), reserves its
+// aspect-ratio box so text doesn't jump on load, and offers Copy / Add to mem_log / Translate figure
+// via a right-click / double-click / long-press menu. In split view it renders in both halves; the
+// right half shows the translated figure (on demand). Carries no text — invisible to TTS/translation.
+const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure; split: boolean; targetLang: string }> = ({ figId, bookId, meta, split, targetLang }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [tr, setTr] = useState<{ state: 'idle' | 'rendering' | 'done' | 'fail'; url?: string }>({ state: 'idle' });
+  const blobRef = useRef<Blob | null>(null);
+  const pressTimer = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let alive = true; let obj: string | null = null;
+    (async () => {
+      try {
+        const rec = await getFile(buildCacheKey(bookId, 0, 'figure-image', figId));
+        if (!alive) return;
+        if (rec?.blob) { blobRef.current = rec.blob; obj = URL.createObjectURL(rec.blob); setUrl(obj); setState('ready'); }
+        else setState('missing');
+      } catch { if (alive) setState('missing'); }
+    })();
+    return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
+  }, [figId, bookId]);
+  useEffect(() => () => { if (tr.url) URL.revokeObjectURL(tr.url); }, [tr.url]);
+  // Restore a previously-generated translation (redraw preferred, else overlay) on mount, so it
+  // persists across page changes instead of reverting to the original until you click again.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      for (const seg of ['rdv4', 'trv3']) {
+        try {
+          const rec = await getFile(buildCacheKey(bookId, 0, 'figure-image', figId, seg, targetLang));
+          if (rec?.blob) { if (!alive) return; setTr({ state: 'done', url: URL.createObjectURL(rec.blob) }); return; }
+        } catch { /* ignore */ }
+      }
+    })();
+    return () => { alive = false; };
+  }, [figId, bookId, targetLang]);
+
+  const aspect = meta && meta.wPx && meta.hPx ? meta.wPx / meta.hPx : 4 / 3;
+  // Size the figure by its real fraction of the page's text column (from extraction), so it reads
+  // proportionally to the surrounding text. Falls back to a nominal column width for older manifests.
+  const widthPct = meta?.colFrac ? Math.max(40, Math.min(100, Math.round(meta.colFrac * 100)))
+    : meta?.wPts ? Math.max(40, Math.min(100, Math.round((meta.wPts / 380) * 100)))
+    : 100;
+  const openMenu = (x: number, y: number) => setMenu({ x, y });
+  const copyImage = async () => { setMenu(null); const b = blobRef.current; if (!b) return; try { await navigator.clipboard.write([new ClipboardItem({ [b.type]: b })]); } catch { /* clipboard image unsupported */ } };
+  const saveToLog = async () => { setMenu(null); const b = blobRef.current; if (!b) return; try { await saveFile(buildCacheKey(bookId, 0, 'notebook-figure', figId), b, { filename: `${figId}.jpg`, mimeType: b.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'notebook-figure' }); } catch { /* ignore */ } };
+  // Clicking a translate action again while it's rendering cancels the in-flight model call (aborts
+  // the request so no further tokens are spent) and reverts to the original.
+  const stopRender = () => { setMenu(null); abortRef.current?.abort(); abortRef.current = null; setTr({ state: 'idle' }); };
+  const translateFigure = async () => {
+    setMenu(null);
+    const b = blobRef.current;
+    if (!b || tr.state === 'rendering') return;
+    const ctrl = new AbortController(); abortRef.current = ctrl;
+    setTr({ state: 'rendering' });
+    try {
+      const key = buildCacheKey(bookId, 0, 'figure-image', figId, 'trv3', targetLang);
+      const cached = await getFile(key);
+      let out = cached?.blob || null;
+      if (!out) {
+        const b64 = await blobToBase64(b);
+        const labels = await translateFigureText(b64, b.type, targetLang, ctrl.signal);
+        if (ctrl.signal.aborted) return;
+        out = labels.length ? await overlayTranslations(b, labels) : b;
+        if (labels.length) await saveFile(key, out, { filename: `${figId}-${targetLang}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'figure-image' }).catch(() => {});
+      }
+      if (ctrl.signal.aborted) return;
+      setTr({ state: 'done', url: URL.createObjectURL(out) });
+    } catch { if (ctrl.signal.aborted) return; setTr({ state: 'fail' }); }
+  };
+  const redrawFigure = async () => {
+    setMenu(null);
+    const b = blobRef.current;
+    if (!b || tr.state === 'rendering') return;
+    const ctrl = new AbortController(); abortRef.current = ctrl;
+    setTr({ state: 'rendering' });
+    try {
+      const key = buildCacheKey(bookId, 0, 'figure-image', figId, 'rdv4', targetLang);
+      const cached = await getFile(key);
+      let out = cached?.blob || null;
+      if (!out) {
+        // Measure the original figure's exact pixels so the model is constrained to the same shape.
+        let ow = meta?.wPx, oh = meta?.hPx;
+        try { const bmp = await createImageBitmap(b); ow = bmp.width; oh = bmp.height; } catch { /* fall back to manifest */ }
+        const dataUrl = await redrawFigureTranslated(await blobToBase64(b), b.type, targetLang, ctrl.signal, ow, oh);
+        if (ctrl.signal.aborted) return;
+        if (!dataUrl) { setTr({ state: 'fail' }); return; }
+        out = await trimBorders(await (await fetch(dataUrl)).blob()); // trim any margin the model baked in
+        await saveFile(key, out, { filename: `${figId}-${targetLang}-redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'figure-image' }).catch(() => {});
+      }
+      if (ctrl.signal.aborted) return;
+      setTr({ state: 'done', url: URL.createObjectURL(out) });
+    } catch { if (ctrl.signal.aborted) return; setTr({ state: 'fail' }); }
+  };
+
+  // `natural`: size the box to the image's OWN aspect (used for a translated/redrawn image, whose
+  // dimensions differ from the original) instead of forcing the original's aspect-ratio box, which
+  // would letterbox it and make it look smaller.
+  const imageBox = (src: string | null, loading: boolean, note: string, natural = false) => (
+    <div
+      className="relative w-full overflow-hidden rounded-sm border border-zinc-800/60 bg-[#0a0a0c] select-none"
+      style={natural && src ? undefined : { aspectRatio: String(aspect) }}
+      onContextMenu={e => { e.preventDefault(); openMenu(e.clientX, e.clientY); }}
+      onDoubleClick={e => openMenu(e.clientX, e.clientY)}
+      onTouchStart={e => { const t = e.touches[0]; pressTimer.current = window.setTimeout(() => openMenu(t.clientX, t.clientY), 500); }}
+      onTouchEnd={() => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } }}
+    >
+      {src
+        ? <img src={src} alt={`Figure ${figId}`} draggable={false} className={`w-full ${natural ? 'h-auto block' : 'h-full'} object-contain`} />
+        : <div className={`w-full h-full flex items-center justify-center text-[11px] text-zinc-600 font-mono ${loading ? 'animate-pulse' : ''}`}>{note}</div>}
+    </div>
+  );
+
+  const box = imageBox(state === 'ready' ? url : null, state === 'loading', state === 'loading' ? 'loading figure…' : 'figure unavailable');
+  const trPane = tr.state === 'rendering' ? imageBox(null, true, 'rendering…')
+    : tr.state === 'done' && tr.url ? imageBox(tr.url, false, '', true)
+    : box;
+
+  return (
+    <div className="w-full my-4">
+      {split
+        // Split view: each half mirrors the text pane's padding (pr-6 / pl-6) and sizes the figure at
+        // its book proportion, centred — so it matches the text measure instead of filling the half.
+        ? <div className="w-full flex items-start">
+            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div>
+            <div className="w-1/2 min-w-0 pl-2 md:pl-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}</div></div>
+          </div>
+        // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
+        // centred within at its book proportion.
+        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div></div>}
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
+          <div className="fixed z-50 min-w-[160px] rounded-sm border border-zinc-700 bg-[#0f0f12] shadow-2xl py-1 text-xs text-zinc-200 font-mono" style={{ left: Math.min(menu.x, window.innerWidth - 170), top: Math.min(menu.y, window.innerHeight - 110) }}>
+            <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={copyImage}>Copy image</button>
+            <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={saveToLog}>Add to mem_log</button>
+            {split && tr.state === 'rendering'
+              ? <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-amber-400" onClick={stopRender}>Stop rendering</button>
+              : split && <>
+                  <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={redrawFigure}>Translate figure (redraw)</button>
+                  <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-zinc-400" onClick={translateFigure}>Overlay only (rough)</button>
+                </>}
+          </div>
+        </>
+      )}
+    </div>
+  );
 };
 
 export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, initialPageTarget = 'first', onChapterChange }) => {
@@ -1576,12 +1809,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
 
       if (cachedTranslations) {
+        cachedTranslations = cachedTranslations.map(stripLeakedTokens);
         translationMemoryCache.set(transCacheKey, cachedTranslations);
         return [...cachedTranslations];
       }
 
       const generatedTranslations = normalizeTranslationArray(
-        await translateSentences(allSentences, settings.targetLanguage),
+        (await translateSentences(allSentences, settings.targetLanguage)).map(stripLeakedTokens),
         allSentences.length,
         true
       );
@@ -2368,40 +2602,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (looksLikeSignatureLine(clean)) return 'mt-1';
     return '';
   };
-  // Stage-2 blast-radius audit (read-only, gated by localStorage.__audit). For every paragraph in
-  // the book it reads the geometry tag (role/align sentinel) and the text heuristics, then tallies
-  // the DISAGREEMENTS — where a heuristic decides structure with no corroborating tag (the risk
-  // cases Stage 2 would change) and where a tag exists that the heuristics miss. Throwaway.
-  useEffect(() => {
-    let on = false;
-    try { on = typeof window !== 'undefined' && window.localStorage?.getItem('__audit') === '1'; } catch { on = false; }
-    if (!on) return;
-    const paras = (fileContext.content || '').split(/\n{2,}/);
-    const cat: Record<string, number> = {};
-    const sample: Record<string, string[]> = {};
-    const bump = (k: string, t: string) => { cat[k] = (cat[k] || 0) + 1; const s = (sample[k] = sample[k] || []); if (s.length < 5) s.push(t.slice(0, 52)); };
-    for (const raw of paras) {
-      const ctrl = raw.match(/^\s*[-]+/u)?.[0] || '';
-      const role = ctrl.includes('') ? 'heading' : ctrl.includes('') ? 'list' : '';
-      const align = ctrl.includes('') ? 'right' : ctrl.includes('') ? 'center' : '';
-      const text = raw.replace(/[-]/g, '').replace(/\[\[PAGE \d+\]\]/g, '').replace(/\s+/g, ' ').trim();
-      if (text.length < 2) continue;
-      const sub = isPlainSubtitleParagraph([text]);
-      const sig = looksLikeSignatureLine(text);
-      const attr = looksLikeAttributionLine(text);
-      const noteHd = looksLikeNotesSectionHeading(text);
-      if (role) bump(`TAG role=${role}`, text);
-      if (align) bump(`TAG align=${align}`, text);
-      if ((sub || noteHd) && !role) bump('HEUR heading/subtitle, NO role tag (bolded by text only)', text);
-      if (sig && !align && !role) bump('HEUR signature, NO align/role tag', text);
-      if (attr && !align) bump('HEUR attribution, NO align tag', text);
-      if (role === 'heading' && !sub && !noteHd) bump('TAG heading but text-heuristics MISS it', text);
-    }
-    // eslint-disable-next-line no-console
-    console.log('[AUDIT] extractor=', (fileContext as { sourceExtractorVersion?: string }).sourceExtractorVersion, 'paras=', paras.length, 'counts:', JSON.stringify(cat, null, 0));
-    // eslint-disable-next-line no-console
-    Object.keys(sample).forEach(k => console.log('[AUDIT sample]', k, '::', JSON.stringify(sample[k])));
-  }, [fileContext]);
   const paragraphLineRunsFor = (pIdx: number, sentences: string[]): ParagraphLineRun[][] => {
     const lines: ParagraphLineRun[][] = [[]];
     sentences.forEach((sentence, sIdx) => {
@@ -3177,6 +3377,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-[#050505] relative flex flex-col hud-border text-left">
              <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
+                  // An extracted PDF figure — inline image loaded from the cache.
+                  if (para.figure) {
+                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} />;
+                  }
                   // A side-by-side two-column region. Original columns render side by side; in split
                   // view the TRANSLATED columns render in the right half (original-L | original-R ||
                   // translated-L | translated-R). Sentences carry a global index so they highlight

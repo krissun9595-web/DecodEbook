@@ -231,6 +231,105 @@ const getStructureFilePart = (file: FileContext): Part => {
   return { text: buildStructureAnalysisText(file.content) };
 };
 
+// On-demand figure translation: read the text baked INTO a figure image (diagram labels, captions)
+// and translate each, returning normalized bounding boxes so the reader can overlay the translations.
+export const translateFigureText = async (
+  imageBase64: string,
+  mimeType: string,
+  targetLanguage: string,
+  signal?: AbortSignal,
+): Promise<{ box: [number, number, number, number]; original: string; translated: string }[]> => {
+  try {
+    return await withRetry(async () => {
+      const ai = await getAi();
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            { inlineData: { mimeType, data: imageBase64 } },
+            { text: `This image is a figure/diagram from a book. Find EVERY piece of text rendered inside it (node/box labels, axis labels, captions drawn on the image) and translate each into ${targetLanguage}. Return {"labels": [...]} where each label is {"box":[ymin,xmin,ymax,xmax] as INTEGERS 0–1000 normalized to the image height/width (ymin,xmin = top-left; ymax,xmax = bottom-right — the TIGHT rectangle around exactly that text run), "original": the source text, "translated": the ${targetLanguage} text}. Give one label per distinct text run; make each box tight. Keep acronyms and untranslatable proper nouns as-is. Return {"labels": []} if the image has no text.` },
+          ],
+        },
+        config: {
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
+          abortSignal: signal,
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              labels: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    box: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                    original: { type: Type.STRING },
+                    translated: { type: Type.STRING },
+                  },
+                  required: ['box', 'translated'],
+                },
+              },
+            },
+            required: ['labels'],
+          },
+        },
+      });
+      trackUsage('translateFigureText', extractTokens(response), 'gemini-3-flash-preview');
+      const raw = response.text;
+      if (!raw) return [];
+      const data = safeJsonParse<{ labels?: any[] }>(raw);
+      const arr = Array.isArray(data?.labels) ? data.labels : [];
+      return arr
+        .filter(d => Array.isArray(d.box) && d.box.length === 4 && typeof d.translated === 'string' && d.translated.trim())
+        .map(d => ({ box: d.box.map(Number) as [number, number, number, number], original: String(d.original ?? ''), translated: String(d.translated) }));
+    }, 3, 2000, signal);
+  } catch {
+    return [];
+  }
+};
+
+// On-demand FULL redraw: hand the figure to the image model and ask it to reproduce the diagram
+// identically but with all text translated. Returns a data URL, or null on failure/no image.
+// Image models emit only a fixed set of aspect ratios; pick the one closest to the figure's real shape.
+const IMG_RATIOS: [string, number][] = [['1:1', 1], ['2:3', 2 / 3], ['3:2', 3 / 2], ['3:4', 3 / 4], ['4:3', 4 / 3], ['4:5', 4 / 5], ['5:4', 5 / 4], ['9:16', 9 / 16], ['16:9', 16 / 9], ['21:9', 21 / 9]];
+const closestRatio = (w: number, h: number): string => {
+  const r = w / h;
+  return IMG_RATIOS.reduce((best, cur) => Math.abs(cur[1] - r) < Math.abs(best[1] - r) ? cur : best)[0];
+};
+
+export const redrawFigureTranslated = async (
+  imageBase64: string,
+  mimeType: string,
+  targetLanguage: string,
+  signal?: AbortSignal,
+  width?: number,
+  height?: number,
+): Promise<string | null> => {
+  const ratio = width && height ? closestRatio(width, height) : undefined;
+  try {
+    return await withRetry(async () => {
+      const ai = await getAi();
+      const response = await ai.models.generateContent({
+        model: _imageModel,
+        contents: {
+          parts: [
+            { inlineData: { mimeType, data: imageBase64 } },
+            { text: `You are editing this existing diagram image. Output an image with the EXACT SAME pixel dimensions${width && height ? ` (${width}×${height} pixels)` : ''}, aspect ratio, and framing as the input, with the diagram filling the whole frame edge-to-edge just like the input (no added margin, padding, border, or background bars). Translate ONLY the text into ${targetLanguage}. CRITICAL: keep every box, rectangle, circle, arrow, connector, line, icon, colour, and their SIZES and POSITIONS pixel-for-pixel identical to the input. Do NOT resize, shrink, enlarge, re-space, move, or re-layout any box or element to fit the translated text — even when the translation is shorter or longer than the original, the box stays the exact same size and place; fit the translated text inside the original box, shrinking the font if needed. Only the text characters change; the geometry is frozen. Keep acronyms and untranslatable proper nouns as-is. Output only the edited image.` },
+          ],
+        },
+        config: { abortSignal: signal, ...(ratio ? { imageConfig: { aspectRatio: ratio } } : {}) } as any,
+      });
+      trackUsage('redrawFigureTranslated', extractTokens(response), _imageModel);
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      }
+      return null;
+    }, 3, 2000, signal);
+  } catch {
+    return null;
+  }
+};
+
 export const analyzeBookStructure = async (file: FileContext): Promise<BookStructure> => {
   try {
     return await withRetry(async () => {
@@ -427,10 +526,16 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
   };
 
   const restoreProtectedNames = (text: string, names: string[]): string => {
-    return names.reduce((result, name, index) => {
-      const tokenPattern = new RegExp(`\\[\\[${NAME_TOKEN_PREFIX}_${index}\\]\\]`, 'g');
-      return result.replace(tokenPattern, name);
-    }, text);
+    // The model sometimes mangles a placeholder (drops the underscore → "[[DBNAME0]]", adds spaces,
+    // or changes case), so match tolerantly by the captured index rather than an exact token string.
+    let result = text.replace(
+      new RegExp(`\\[\\[\\s*${NAME_TOKEN_PREFIX}[_\\s]*(\\d+)\\s*\\]\\]`, 'gi'),
+      (_m, idx) => { const name = names[Number(idx)]; return name !== undefined ? name : ''; },
+    );
+    // Final safety net: strip any DBNAME placeholder mangled beyond an index match, so a raw token
+    // never renders literally in the reader.
+    result = result.replace(new RegExp(`\\[\\[\\s*${NAME_TOKEN_PREFIX}[^\\]]*\\]\\]`, 'gi'), '');
+    return result;
   };
 
   const buildSegmentId = (absoluteIndex: number): string => `${SEGMENT_ID_PREFIX}_${absoluteIndex.toString().padStart(4, '0')}`;

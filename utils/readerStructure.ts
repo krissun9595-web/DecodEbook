@@ -823,6 +823,9 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
       const linkRe = /\[([^\]\n]*)\]\(([^)\n]+)\)/y;
       let eff = 0, i = 0;
       while (i < value.length) {
+        // A figure marker renders as a tall image with ~no text — count a virtual length so a page
+        // budgets for its height (else a full page of text plus a figure overflows the viewport).
+        if (value.startsWith('[[FIG', i)) { const fe = value.indexOf(']]', i); i = fe < 0 ? value.length : fe + 2; eff += 500; if (eff >= target) return i; continue; }
         if (value[i] === '') { const be = value.indexOf('\n\n', i); i = be < 0 ? value.length : be; continue; }
         if (measureVisible) { linkRe.lastIndex = i; const m = linkRe.exec(value); if (m) { eff += m[1].length; i = linkRe.lastIndex; if (eff >= target) return i; continue; } }
         eff += 1; i += 1;
@@ -841,7 +844,17 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     let splitIdx = limit;
     const paragraphBreak = remaining.lastIndexOf('\n\n', limit);
     const lineBreak = preferLineBreaks ? remaining.lastIndexOf('\n', limit) : -1;
-    if (paragraphBreak > limit * 0.7) {
+    // The paragraph the limit falls inside starts at paragraphBreak. If it fits on a page by itself,
+    // push it WHOLE to the next page (break before it) instead of splitting it mid-sentence — a mid-
+    // paragraph page break reads as a spurious new paragraph. Only split a paragraph mid-way when it
+    // alone exceeds a page. (The 0.7 branch already keeps this from wasting much space; the fits-check
+    // extends it down to half a page so a normal-length paragraph is kept intact.)
+    let splitParaFits = false;
+    if (paragraphBreak > 0) {
+      const nextBreak = remaining.indexOf('\n\n', paragraphBreak + 2);
+      splitParaFits = ((nextBreak < 0 ? remaining.length : nextBreak) - (paragraphBreak + 2)) <= targetSize;
+    }
+    if (paragraphBreak > limit * 0.7 || (paragraphBreak > limit * 0.5 && splitParaFits)) {
       splitIdx = paragraphBreak;
     } else if (lineBreak > limit * 0.5) {
       // List items (notes, index entries) are their own lines — break between them

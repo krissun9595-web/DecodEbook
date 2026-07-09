@@ -20,6 +20,7 @@ const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; c
   'video': { icon: <Film size={14} />, label: 'CINE_RENDER', color: 'text-rose-400' },
   'concept-image': { icon: <ImageIcon size={14} />, label: 'VISUAL_CORE', color: 'text-amber-400' },
   'sticky-note': { icon: <StickyNote size={14} />, label: 'MEM_LOG', color: 'text-green-400' },
+  'notebook-figure': { icon: <ImageIcon size={14} />, label: 'FIGURE', color: 'text-green-300' },
   'mind-map-pdf': { icon: <Map size={14} />, label: 'MAP_PDF', color: 'text-sky-400' },
   'mind-map-docx': { icon: <FileDown size={14} />, label: 'MAP_DOCX', color: 'text-blue-400' },
   'mind-map-xmind': { icon: <Map size={14} />, label: 'MAP_XMIND', color: 'text-teal-400' },
@@ -73,7 +74,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
 
-  const NOTEBOOK_TYPES = ['sticky-note', 'mind-map-pdf', 'mind-map-docx', 'mind-map-xmind'];
+  const NOTEBOOK_TYPES = ['sticky-note', 'notebook-figure', 'mind-map-pdf', 'mind-map-docx', 'mind-map-xmind'];
   const filteredFiles = filterType === 'all'
     ? files
     : filterType === 'notebook'

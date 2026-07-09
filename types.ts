@@ -92,6 +92,20 @@ export interface VideoState {
   progressMessage: string;
 }
 
+// A figure (raster image) extracted from a PDF page. The image bytes live in the file cache
+// (fileType 'figure-image', keyed by bookId + id); this is the lightweight manifest carried on the
+// FileContext. The reader locates the figure in the flow by the [[FIG id]] marker in `content`.
+export interface PdfFigure {
+  id: string;            // stable id, e.g. "p42n1"
+  page: number;          // 1-based source page
+  wPts: number;          // placed size on the page, in PDF points (for column-proportion sizing)
+  hPts: number;
+  wPx: number;           // intrinsic pixel size of the stored (capped) image (aspect + max sharpness)
+  hPx: number;
+  mimeType: string;      // 'image/jpeg' | 'image/png'
+  colFrac?: number;      // figure width as a fraction of its page's text-column width (for sizing)
+}
+
 export interface FileContext {
   content: string; // Base64 string for PDF, or raw text string for text files
   mimeType: string;
@@ -101,6 +115,7 @@ export interface FileContext {
   sourceExtractorVersion?: string;
   pdfOutline?: PdfOutlineItem[]; // PDF bookmarks (top-level), if the document has them
   docTitle?: string; // the PDF's own metadata Title, preferred over an inferred one
+  pdfFigures?: PdfFigure[]; // figures extracted from the PDF; bytes cached separately
 }
 
 export interface NotebookItem {
@@ -165,7 +180,7 @@ export interface LibraryItem {
   uploadDate: number;
 }
 
-export type CachedFileType = 'source-file' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation';
+export type CachedFileType = 'source-file' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation' | 'figure-image' | 'notebook-figure';
 
 export interface CachedFileMetadata {
   key: string;
