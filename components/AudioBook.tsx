@@ -74,7 +74,7 @@ const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
 const CHAPTER_TEXT_CACHE_VERSION = 'v31-side-by-side-columns';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
-const TRANSLATION_CACHE_VERSION = 'v17-source-segment-translation';
+const TRANSLATION_CACHE_VERSION = 'v18-dbname-restore';
 
 // Module-level store for in-flight audio generation.
 // Survives component unmount/remount so generation isn't lost on tab switch.
