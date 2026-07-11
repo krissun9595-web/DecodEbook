@@ -24,6 +24,10 @@ export interface ReaderPage {
   text: string;
   blocks: ReaderBlock[];
   label?: string;
+  // True when this page begins in the MIDDLE of a paragraph — pagination had to split a paragraph
+  // that alone exceeds a page, so its first paragraph is a continuation and must render flush (no
+  // first-line indent) rather than as a new paragraph.
+  continuesParagraph?: boolean;
 }
 
 interface TopicHeading {
@@ -812,6 +816,7 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     return -1;
   };
 
+  let continuesParagraph = false; // does the CURRENT page start mid-paragraph (prev split was not a boundary)?
   while (remaining.length > 0) {
     // The raw offset that holds ~targetSize of *visible* text. For normal chapters
     // (measureVisible off) this is just targetSize.
@@ -837,11 +842,15 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     if (remaining.length <= limit) {
       const pageText = remaining.trim();
       if (pageText) {
-        pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }] });
+        pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }], continuesParagraph });
       }
       break;
     }
     let splitIdx = limit;
+    // Track whether we break at a real boundary (a blank-line paragraph break, or a line break
+    // between list items) vs. MID-paragraph (a sentence/space split of an oversized paragraph). Only
+    // the latter makes the next page a continuation.
+    let brokeAtBoundary = false;
     const paragraphBreak = remaining.lastIndexOf('\n\n', limit);
     const lineBreak = preferLineBreaks ? remaining.lastIndexOf('\n', limit) : -1;
     // The paragraph the limit falls inside starts at paragraphBreak. If it fits on a page by itself,
@@ -854,12 +863,20 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
       const nextBreak = remaining.indexOf('\n\n', paragraphBreak + 2);
       splitParaFits = ((nextBreak < 0 ? remaining.length : nextBreak) - (paragraphBreak + 2)) <= targetSize;
     }
-    if (paragraphBreak > limit * 0.7 || (paragraphBreak > limit * 0.5 && splitParaFits)) {
+    // A FIGURE before this paragraph on the page already fills the page (it counts as ~500 virtual
+    // chars toward the limit, which also pushes `limit` far to the right — so the char-based
+    // paragraphBreak/limit ratio below reads far too small and the keep-whole branch mis-fires,
+    // splitting the paragraph mid-sentence). When a figure precedes a paragraph that fits on a page,
+    // break BEFORE it: the figure keeps the current page full and the paragraph stays whole on the next.
+    const figureBeforeParagraph = paragraphBreak > 0 && remaining.slice(0, paragraphBreak).includes('[[FIG');
+    if (paragraphBreak > limit * 0.7 || (paragraphBreak > limit * 0.5 && splitParaFits) || (figureBeforeParagraph && splitParaFits)) {
       splitIdx = paragraphBreak;
+      brokeAtBoundary = true; // a blank-line paragraph boundary
     } else if (lineBreak > limit * 0.5) {
       // List items (notes, index entries) are their own lines — break between them
       // rather than mid-item.
       splitIdx = lineBreak;
+      brokeAtBoundary = true; // between list items — a clean item boundary
     } else {
       const sentenceBreak = findSafeSentenceBreak(remaining, limit);
       if (sentenceBreak > limit * 0.5) splitIdx = sentenceBreak + 1;
@@ -871,11 +888,13 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
           if (spaceBreak > 0) splitIdx = spaceBreak;
         }
       }
+      // brokeAtBoundary stays false — this split is inside a paragraph.
     }
     const pageText = remaining.substring(0, splitIdx).trim();
     if (pageText) {
-      pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }] });
+      pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }], continuesParagraph });
     }
+    continuesParagraph = !brokeAtBoundary; // the NEXT page continues the paragraph iff we split inside one
     remaining = remaining.substring(splitIdx).trim();
   }
   return pages;

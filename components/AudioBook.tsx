@@ -329,10 +329,14 @@ interface InlineParseOptions {
   romanMarkersAsReferences?: boolean;
 }
 
-// A bare footnote is a digit glued to the end of a word ("humanity27"). Require ≥3 letters
-// before it (a real word, not a code fragment) so a catalog code like "…—dc21" or "c0r" is
-// not mistaken for a marker; a footnote after sentence punctuation is matched as before.
-const FOOTNOTE_MARKER_PATTERN = /((?<!\d)[.!?。！？,;:][”"’")\]]?|[”"’")\]]|(?<=[\p{L}]{2})[\p{Ll}])(\d{1,3})(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
+// A flattened footnote marker is a small digit that PDF flattening dropped inline. We only
+// recover it after strong, low-ambiguity signals: sentence punctuation or a closing quote
+// ("…end.27", "…word.”27"). We deliberately do NOT treat a digit glued to a plain word
+// ("Zip2", "Model3", "COVID19") as a footnote — that content-only guess has no PDF backing
+// and misfires on product names and identifiers. Real markers backed by a link annotation
+// are emitted by the extractor as explicit "[N](#pdffn…)" / "[N](#pdfnote…)" links and are
+// handled by the link parser above, not here.
+const FOOTNOTE_MARKER_PATTERN = /((?<!\d)[.!?。！？,;:][”"’")\]]?|[”"’")\]])(\d{1,3})(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
 
 const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')
@@ -420,8 +424,11 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const cleanNoteMarkerLabel = (value: string): string =>
   value.replace(/^\[|\]$/g, '').replace(/[.)]+$/g, '').trim();
 
+// A numbered note marker: a bare 1–3 digit number, OR the literal "fn"-prefixed form some
+// books print for page-bottom / chapter-end footnotes ("fn3"). Both render as the footnote
+// marker with their ORIGINAL text preserved — "fn3" shows as "fn3", not a synthesized "3".
 const isNumericNoteMarkerText = (value: string): boolean =>
-  /^\d{1,3}[.)]?$/u.test(cleanNoteMarkerLabel(value));
+  /^(?:fn\s*)?\d{1,3}[.)]?$/iu.test(cleanNoteMarkerLabel(value));
 
 const isRomanNoteMarkerText = (value: string): boolean =>
   /^[ivxlcdm]{1,8}[.)]?$/iu.test(cleanNoteMarkerLabel(value));
@@ -953,13 +960,30 @@ const buildPageSentenceData = (pageText: string): {
   // inline marker ("…update on [[PAGE 54]] 01/04/00") closes up cleanly. (Notes and index
   // strip their own markers upstream; this covers the main reading body.)
   const cleanedPageText = pageText.replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
-  const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0)
+    // A figure marker can arrive GLUED to its caption ("[[FIG p14n1]] To maximize comparability…").
+    // Split it into two paragraphs — the marker (→ figure) and the caption (→ text) — so every
+    // rawParagraph still maps to exactly ONE rendered paragraph, keeping sentence/translation/highlight
+    // indexing aligned (pushing two paragraphs from one iteration would shift everything after it).
+    .flatMap(p => {
+      const m = p.trimStart().match(/^(\[\[FIG\s+[^\]]+\]\])\s*([\s\S]+)$/i);
+      return m && m[2].trim() ? [m[1], m[2]] : [p];
+    });
 
   const paragraphData: ParagraphData[] = [];
   const flatSentenceMap: SentenceMap[] = [];
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
+    // Safety net: strip any figure marker still sitting INSIDE a text paragraph, so an internal marker
+    // never surfaces to the reader as literal text. A LEADING marker glued to its caption is already
+    // split into its own paragraph upstream (splitFigureMarkerParagraphs), preserving the 1
+    // rawParagraph : 1 paragraph mapping the sentence/translation indexing relies on; this only catches
+    // a stray mid-paragraph one. (Don't touch a paragraph that IS just the marker — handled next.)
+    if (!/^\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
+      rawPText = rawPText.replace(/\[\[FIG\s+[^\]]+\]\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (!rawPText) return;
+    }
     // An extracted figure marker "[[FIG id]]" — its own paragraph. No sentences (so it's invisible to
     // TTS/translation/highlighting); the renderer swaps it for the cached image.
     const figMatch = rawPText.trim().match(/^\[\[FIG\s+([^\]]+)\]\]$/i);
@@ -2479,7 +2503,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       },
     };
 
-    const localPageIndex = isNotesChapter ? pageIndexForNoteTarget(noteTarget, pages) : -1;
+    // Resolve the note IN THIS CHAPTER first — not only when we're already in a Notes chapter.
+    // Page-bottom / chapter-end footnotes (this book's "fn3 …") live in the same chapter as their
+    // marker, anchored with the marker's key, so the keyed lookup finds them here. Only a note that
+    // ISN'T in this chapter (a numbered ENDNOTE, whose keyed lookup returns -1) falls through to the
+    // separate Notes chapter. This is what makes "fn5" jump to the note at the chapter's end instead
+    // of routing to Notes and failing with SOURCE_REQUIRED.
+    const localPageIndex = pageIndexForNoteTarget(noteTarget, pages);
     if (localPageIndex >= 0) {
       setPendingNavigationTarget(noteTarget);
       setNavigationSentenceIndex(-1);
@@ -3441,7 +3471,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const headingRoleText = para.original.join(' ').replace(/\s+/g, ' ').trim();
                   const isHeadingRole = para.role === 'heading'
                     && !(headingRoleText.length > 90 && /[.!?。！？]["'”’)\]]?$/u.test(headingRoleText));
-                  const paragraphStyle = (isListRole || isHeadingRole) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align);
+                  // The first paragraph of a page that pagination split MID-paragraph is a continuation
+                  // of the previous page's last paragraph — render it flush (no first-line indent) so it
+                  // doesn't read as a spurious new paragraph.
+                  const isParagraphContinuation = pIdx === 0 && !!currentReaderPage?.continuesParagraph;
+                  const paragraphStyle = (isListRole || isHeadingRole || isParagraphContinuation) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align);
                   const paragraphTextClass = !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';

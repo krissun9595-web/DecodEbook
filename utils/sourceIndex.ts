@@ -881,6 +881,75 @@ const offsetForPage = (content: string, page: number): number | null => {
   return null;
 };
 
+// Normalise a heading/title for tolerant comparison: drop a leading chapter number,
+// emphasis markers, unify apostrophe/dash variants, collapse whitespace, uppercase.
+// "2 Africa" and "**AFRICA**" both → "AFRICA"; "4 Elon’s First Start-Up" → "ELON'S FIRST START-UP".
+const normalizeHeadingText = (s: string): string =>
+  s.replace(/[*_`~]/gu, '')
+    .replace(/^\s*\d+[.)\s]+/u, '')
+    .replace(/[’‘`]/gu, "'")
+    .replace(/[‐‑–—]/gu, '-')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toUpperCase();
+
+// Does a destination-derived heading correspond to this outline entry's title? Used to
+// decide whether a bookmark's page destination is trustworthy (Agentic Mesh: yes) or
+// broken and in need of title re-anchoring (z-library Elon Musk: /Fit dests pointing at
+// the wrong pages, so the heading found there is a DIFFERENT chapter).
+export const headingMatchesTitle = (headingText: string, title: string): boolean => {
+  const h = normalizeHeadingText(headingText);
+  const t = normalizeHeadingText(title);
+  if (h.length < 3 || t.length < 3) return false;
+  return h === t || h.includes(t) || t.includes(h);
+};
+
+// Locate a chapter heading in the extracted content by its TITLE, independent of the
+// (possibly broken) bookmark destination. Tolerant to a leading chapter number, emphasis
+// markers, apostrophe/dash variants, and a title that WRAPS across lines at the opener
+// (e.g. "THE UNIFIED FIELD THEORY OF\nELON MUSK"). Disambiguates a real chapter opener
+// (followed by prose) from a table-of-contents line (followed by another short heading)
+// by requiring lowercase prose to follow the match. Returns the heading's offset, or
+// undefined when no prose-backed heading is found.
+export const findHeadingOffsetByTitle = (content: string, title: string, fromOffset = 0): number | undefined => {
+  const t = normalizeHeadingText(title);
+  if (t.length < 3) return undefined;
+  const parts = t.split(/[^A-Z0-9]+/u).filter(Boolean).map(escapeRegex);
+  if (!parts.length) return undefined;
+  // The extractor wraps headings with PUA formatting sentinels (U+E000–F8FF, e.g. the centered/
+  // heading marker U+E013 that sits DIRECTLY before the title text) and indents TOC entries with
+  // NBSP (U+00A0) — so the char immediately before/after a heading is often NOT a plain newline.
+  // Tolerate those in the boundaries: `pre` absorbs leading spaces/NBSP, an optional chapter
+  // number, and any emphasis/NBSP/sentinel run; `gap` between words also allows line-wraps and
+  // sentinels; `post` allows trailing junk before the line end.
+  const junk = "*_~`\\u00A0\\uE000-\\uF8FF";
+  const gap = `[\\s'’‘\\-‐‑–—.,()${junk}]+`;
+  const pre = `[ \\t\\u00A0]*(?:\\d+[.)]?[ \\t\\u00A0]*)?[${junk}]*`;
+  const post = `[ \\t${junk}]*`;
+  let pat: RegExp;
+  try {
+    pat = new RegExp(`(^|\\n)(${pre}${parts.join(gap)}${post})(?=\\n|$)`, 'giu');
+  } catch {
+    return undefined;
+  }
+  pat.lastIndex = Math.max(0, fromOffset);
+  let m: RegExpExecArray | null;
+  while ((m = pat.exec(content)) !== null) {
+    const headStart = m.index + m[1].length; // offset of the heading (after the leading \n; may include a sentinel)
+    // A real chapter opener flows into body prose almost immediately (after a short small-caps
+    // lead-in at most). A table-of-contents line is followed by a long run of OTHER uppercase
+    // titles before any prose — so requiring the first lowercase letter to appear within ~50
+    // chars, plus a healthy lowercase count, rejects the TOC occurrence and keeps the opener.
+    const after = content.slice(m.index + m[0].length, m.index + m[0].length + 400)
+      .replace(PAGE_MARKER_RE, '').replace(/[\u00A0\uE000-\uF8FF]/gu, ' ');
+    const firstLower = after.search(/[a-z]/);
+    const lowercaseRun = (after.match(/[a-z]/g) || []).length;
+    if (firstLower >= 0 && firstLower <= 50 && lowercaseRun >= 40) return headStart;
+    if (pat.lastIndex === m.index) pat.lastIndex++; // guard against a zero-width match looping
+  }
+  return undefined;
+};
+
 // True when a PDF outline has enough resolvable, real content entries to be worth using
 // in place of heuristic chapter resolution. Guards against trivial outlines (e.g. a lone
 // "Cover" bookmark) and outlines whose pages don't map to extracted text.

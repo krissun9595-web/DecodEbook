@@ -19,7 +19,7 @@ import { startSession, trackEvent, trackBookAction, trackNavigation, trackGenera
 import { trackReferralClick, registerReferralSignup } from './services/referral';
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
-import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
+import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, findHeadingOffsetByTitle, headingMatchesTitle, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION, isStalePdfExtraction } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
@@ -1025,12 +1025,18 @@ const App: React.FC = () => {
         for (let k = s.length - 1; k >= 0; k--) { const v = r[s[k].toLowerCase()] || 0; total += v < prev ? -v : v; prev = Math.max(prev, v); }
         return total;
       };
-      // The marker label for a candidate run ("14" / "[14]" / "II" / "ii."), or '' if it
-      // isn't a valid 1–3 digit number or small Roman numeral.
+      // The marker label for a candidate run ("14" / "[14]" / "II" / "ii." / "fn3"), or '' if
+      // it isn't a valid 1–3 digit number or small Roman numeral. A leading "fn" prefix is the
+      // literal marker text some PDFs use for page-bottom / chapter-end footnotes (this z-library
+      // book links "fn3" body markers to "fn3 …" entries via go-to annotations). We VALIDATE by
+      // stripping the prefix (so "fnabc"/"fn0" are rejected) but PRESERVE it in the returned label —
+      // the reader should show the marker the book actually printed ("fn3"), not a synthesized "3".
       const markerLabelOf = (raw: string): string => {
-        const bare = raw.replace(/^[[(\s]+/u, '').replace(/[\].)\s]+$/u, '');
-        if (/^\d{1,3}$/.test(bare)) return Number(bare) >= 1 ? bare : ''; // footnotes are 1-indexed
-        if (bare.length >= 1 && ROMAN_MARKER_RE.test(bare)) { const v = romanValue(bare); if (v >= 1 && v <= 40) return bare.toUpperCase(); }
+        const trimmed = raw.replace(/^[[(\s]+/u, '').replace(/[\].)\s]+$/u, '');
+        const fnPrefix = /^fn\s*/iu.exec(trimmed)?.[0] ? 'fn' : '';
+        const bare = trimmed.replace(/^fn\s*/iu, '');
+        if (/^\d{1,3}$/.test(bare)) return Number(bare) >= 1 ? `${fnPrefix}${bare}` : ''; // footnotes are 1-indexed
+        if (bare.length >= 1 && ROMAN_MARKER_RE.test(bare)) { const v = romanValue(bare); if (v >= 1 && v <= 40) return `${fnPrefix}${bare.toUpperCase()}`; }
         return '';
       };
 
@@ -1402,29 +1408,39 @@ const App: React.FC = () => {
           // from the previous one (the scheme is on the prior page, not re-stated here) is still
           // recognised, while a short citation word that merely coincides with the URL ("Sense"
           // in "common-sense") is not chosen as the anchor.
-          let anchorIdx = -1, anchorPos = 0;
+          let anchorIdx = -1;
           for (let i = 0; i < gs.length; i++) {
             const lo = gs[i].str.toLowerCase().replace(/^[^a-z0-9]+/u, '').replace(/[.,;:!?)\]"'»]+$/u, '');
-            if (/^https?:\/\//u.test(lo) || /^www\./u.test(lo)) { anchorIdx = i; anchorPos = Math.max(0, nurl.indexOf(lo.slice(0, 10))); break; }
+            if (/^https?:\/\//u.test(lo) || /^www\./u.test(lo)) { anchorIdx = i; break; }
             if (anchorIdx < 0 && lo.length >= 12) {
+              // A URL that CONTINUED from the previous page arrives without a scheme; anchor on the
+              // first ≥12-char glyph the URL contains (a prefix, if a trailing citation is glued on).
               let at = nurl.indexOf(lo);
-              // A URL that CONTINUED from the previous page can arrive as ONE text item with a
-              // trailing citation glued on ("…data.pdf; Lawrence H. Officer,") — the whole glyph
-              // isn't in the URL, so anchor on the longest ≥12-char PREFIX the URL does contain
-              // and let the per-glyph walk below split off the citation tail.
-              if (at < 0) { for (let len = lo.length - 1; len >= 12; len--) { const p = nurl.indexOf(lo.slice(0, len)); if (p >= 0) { at = p; break; } } }
-              if (at >= 0) { anchorIdx = i; anchorPos = at; }
+              if (at < 0) { for (let len = lo.length - 1; len >= 12; len--) { if (nurl.indexOf(lo.slice(0, len)) >= 0) { at = 0; break; } } }
+              if (at >= 0) { anchorIdx = i; }
             }
           }
           if (anchorIdx < 0) continue; // custom-text link (display doesn't spell the URL) — leave untouched
           for (let i = 0; i < anchorIdx; i++) urlKeep.set(gs[i], 0); // citation before the URL on this page
-          let pos = anchorPos;
+          // Keep the URL by WHITESPACE, not by char-matching the annotation URL. The annotation URL
+          // is frequently malformed (a doubled "http://http//…" scheme) or percent-encoded
+          // differently from what the page prints ("%2C" vs a literal comma) — char-matching then
+          // truncated the highlighted link at the first divergence ("http://", or up to "%2C"). A URL
+          // contains no spaces, so the displayed link is the contiguous non-space run from the scheme;
+          // it ends at the first whitespace (the citation/sentence that the loose link box also covers).
+          let ended = false;
           for (let i = anchorIdx; i < gs.length; i++) {
-            const lower = gs[i].str.toLowerCase();
-            let m = 0;
-            while (pos + m < nurl.length && m < lower.length && nurl[pos + m] === lower[m]) m++;
-            urlKeep.set(gs[i], m);
-            pos += m;
+            if (ended) { urlKeep.set(gs[i], 0); continue; }
+            const s = gs[i].str;
+            const wsAt = s.search(/\s/u);
+            let keep = wsAt < 0 ? s.length : wsAt;
+            // Trim trailing sentence punctuation from the glyph that ENDS the URL run — a period,
+            // comma, or semicolon glued after the address ("…rocket-man.", "…html.") is the
+            // surrounding sentence, not the URL. Only these three, which effectively never end a URL;
+            // query/fragment/path chars (? & = # / - _ ~ and parens) are left intact.
+            if (wsAt >= 0 || i === gs.length - 1) { while (keep > 0 && /[.,;]/u.test(s[keep - 1])) keep--; }
+            urlKeep.set(gs[i], keep);
+            if (wsAt >= 0) ended = true;
           }
         }
         // Split a glyph whose text runs past the URL — a short URL tail glued to the next
@@ -1776,9 +1792,13 @@ const App: React.FC = () => {
               if (line.y <= target.y + 2 && (!noteLine || line.y > noteLine.y)) noteLine = line;
             }
             if (noteLine && !/^\s*\[/.test(noteLine.text)) {
+              // Turn the note entry's leading marker into the linked "[N](#key)". Two forms:
+              // a bare number/Roman followed by "."/")" ("3.", "iv)"), or an "fn"-prefixed label
+              // whose separator is just a space ("fn3 The journey…") — the latter is how this
+              // book labels its chapter-end footnote entries.
               noteLine.text = noteLine.text.replace(
-                /^(\s*)([ivxlcdm]{1,4}|\d{1,3})([.)])\s*/iu,
-                (m, sp, marker, _p) => markerLabelOf(marker) ? `${sp}[${markerLabelOf(marker)}](#${target.key}) ` : m
+                /^(\s*)(fn\s*(?:[ivxlcdm]{1,4}|\d{1,3})|(?:[ivxlcdm]{1,4}|\d{1,3})[.)])\s*/iu,
+                (m, sp, marker) => markerLabelOf(marker) ? `${sp}[${markerLabelOf(marker)}](#${target.key}) ` : m
               );
             }
           }
@@ -2476,8 +2496,28 @@ const App: React.FC = () => {
       // multiple bookmarks on one page and starts chapters at the heading rather than the
       // page top. When the heading can't be located (corrupt/short text), `offset` is left
       // undefined and the chapter falls back to the page-start marker downstream.
-      const outline: PdfOutlineItem[] = outlineEntries.map(entry => {
-        let offset: number | undefined;
+      // The start of the next FIGURE CLUSTER after `from` — a run of figures close together, i.e.
+      // a photo-plate section. A lone figure inside prose (a chapter illustration) is not a
+      // cluster, so this only fires on genuine plate sections. Returns undefined if none.
+      const findFigureClusterStart = (from: number): number | undefined => {
+        let idx = fullText.indexOf('[[FIG ', from);
+        while (idx >= 0) {
+          const next = fullText.indexOf('[[FIG ', idx + 6);
+          if (next >= 0 && next - idx < 1500) return idx; // two figures within ~1.5k chars = a plate run
+          idx = next;
+        }
+        return undefined;
+      };
+
+      // Pass 1: resolve each entry by its bookmark destination (trusted only when the heading there
+      // matches the title) or, for broken bookmarks, by searching the content for the title itself.
+      let lastResolvedOffset = 0; // outline entries are in reading order; re-anchor searches forward from here
+      const prelim = outlineEntries.map(entry => {
+        // (1) Destination-based resolution: find the heading on the bookmark's destination
+        // page and locate it in the content. Reliable when the PDF carries proper /XYZ
+        // destinations (e.g. Agentic Mesh) — separates same-page bookmarks by Y.
+        let destOffset: number | undefined;
+        let destHeadingText = '';
         const geom = pageLineGeom.get(entry.page);
         const blockStart = fullText.indexOf(`[[PAGE ${entry.page}]]`);
         if (geom && geom.length && blockStart >= 0) {
@@ -2499,13 +2539,58 @@ const App: React.FC = () => {
           if (needle.length >= 3) {
             const nextBlock = fullText.indexOf('[[PAGE ', blockStart + 1);
             const within = fullText.indexOf(needle, blockStart);
-            if (within >= 0 && (nextBlock < 0 || within < nextBlock)) offset = within;
+            if (within >= 0 && (nextBlock < 0 || within < nextBlock)) { destOffset = within; destHeadingText = needle; }
           }
         }
-        return { title: entry.title, page: entry.page, level: 0, offset };
+        // (2) Title re-anchoring: trust the destination ONLY when the heading it points at actually
+        // matches THIS entry's title. Broken bookmarks (z-library PDFs use /Fit destinations with no
+        // Y, pointing at the wrong pages) resolve to a different chapter's heading — detect that
+        // mismatch and locate the real opener by searching the content for the title itself, forward
+        // from the previous entry (outline order is reliable even when the destinations are not).
+        let offset: number | undefined;
+        if (destOffset != null && headingMatchesTitle(destHeadingText, entry.title)) {
+          offset = destOffset;
+        } else {
+          offset = findHeadingOffsetByTitle(fullText, entry.title, lastResolvedOffset);
+          // Only a FORWARD match (from the previous entry) is accepted — outline entries are in
+          // reading order, so a title that only appears BEFORE the previous entry is a Contents/TOC
+          // false match (the TOC lists every title once, and the tail entries are immediately followed
+          // by front-matter prose that fools the prose gate). E.g. "Copyright" appears only in the TOC
+          // here; refusing the backward match leaves it unresolved (dropped) rather than pinned to the
+          // top of the book. No destOffset fallback either: a mismatched destination is an unreliable
+          // /Fit pointer. Truly unresolved entries are handled in pass 2 (image-only plate sections).
+        }
+        if (offset != null) lastResolvedOffset = Math.max(lastResolvedOffset, offset);
+        return { entry, offset };
       });
 
-      return { content: fullText, outline, title: metaTitle, figures: allFigures };
+      // Pass 2: an entry still unresolved has no findable title and a broken destination. If it is an
+      // image-only plate section, anchor it — in reading order — to the figure cluster that falls in
+      // its GAP between the nearest resolved neighbours (so "Picture Section" lands with the plates
+      // before Appendix 1, while front matter like "Title Page"/"Dedication", whose gap holds no
+      // figures, stays unresolved and is dropped). Bounding to the gap is what keeps an unanchorable
+      // front-matter entry from greedily grabbing the one plate cluster 600k chars away.
+      const outline: PdfOutlineItem[] = prelim.map((item, i) => {
+        let offset = item.offset;
+        if (offset == null) {
+          let prevOff = 0;
+          for (let j = 0; j < i; j++) { const o = prelim[j].offset; if (o != null && o > prevOff) prevOff = o; }
+          let nextOff = fullText.length;
+          for (let j = i + 1; j < prelim.length; j++) { const o = prelim[j].offset; if (o != null && o > prevOff && o < nextOff) nextOff = o; }
+          const cluster = findFigureClusterStart(prevOff + 1);
+          if (cluster != null && cluster < nextOff) offset = cluster;
+        }
+        return { title: item.entry.title, page: item.entry.page, level: 0, offset };
+      });
+
+      // Drop entries the two passes could not place. Their offset is intentionally undefined —
+      // an unanchorable section with a broken bookmark (Title Page/Dedication → Chapter 1's page,
+      // Copyright → a page inside Chapter 4). buildChaptersFromOutline would otherwise resurrect
+      // them via `offset ?? offsetForPage(page)`, dropping the entry onto its WRONG bookmark page
+      // and splitting a real chapter. Removing them here means every surviving entry carries a real
+      // resolved offset, so that page fallback never fires.
+      const resolvedOutline = outline.filter(o => o.offset != null);
+      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures };
     } catch (e) {
       console.error('PDF processing error', e);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');

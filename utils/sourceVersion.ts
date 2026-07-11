@@ -352,7 +352,29 @@
 //      reader render arrives in Phase 5. Manifest (rect/aspect, no bytes) rides on FileContext.
 // v67: figure size = its real fraction of the page's text column (colFrac in the manifest), so a
 //      figure reads proportionally to the surrounding text instead of off a fixed nominal width.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v78-link-merge';
+// v79: re-anchor PDF outline chapters by title when the bookmark destination is broken
+//      (z-library PDFs use /Fit destinations with no Y, pointing at the wrong pages, so
+//      same-page bookmarks collapsed and chapters resolved to the wrong content). Trust
+//      the destination only when its heading matches the entry title; else locate the real
+//      opener by searching the content for the title (prose-backed, wrap-tolerant).
+// v80: recognise "fn"-prefixed footnote markers (markerLabelOf strips a leading "fn"; the note-
+//      anchor injection matches an "fn3 …" entry) so link-backed page-bottom/chapter-end footnotes
+//      navigate like numbered ones; drop unanchorable outline entries (title unfindable + destination
+//      heading mismatch, e.g. an image-only "Picture Section") instead of splitting a real chapter.
+// v81: keep the literal "fn" prefix on footnote markers (honest label "fn3", not "3"); anchor an
+//      unanchorable image-only outline entry (e.g. "Picture Section") to its real plate figures in
+//      reading order instead of dropping it or trusting the broken bookmark destination.
+// v84: highlight a URL link by its contiguous displayed token (whitespace-delimited), not by
+//      char-matching the annotation URL — the annotation URL is often malformed (doubled
+//      "http://http//") or encoded differently ("%2C" vs a literal comma), which truncated the link.
+// v85: drop outline entries the resolver couldn't place (undefined offset) instead of letting
+//      buildChaptersFromOutline resurrect them via `offset ?? offsetForPage(page)` — a broken
+//      bookmark page (Copyright→inside Ch4, Title Page/Dedication→Ch1's page) otherwise splits a
+//      real chapter.
+// v86: trim trailing sentence punctuation (. , ;) from the URL token (root-cause URL fix in v84 —
+//      link a URL by its whitespace-delimited displayed token, never by char-matching the arbitrarily
+//      encoded annotation URL).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v86-url-token-trim';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
