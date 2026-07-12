@@ -335,6 +335,28 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                 ))}
                 </div>
             </div>
+
+             {/* Text Alignment */}
+             <div className="space-y-2">
+                 <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase">
+                    <AlignJustify size={14} />
+                    <span>Alignment</span>
+                 </div>
+                <div className="flex bg-zinc-900 p-1 rounded-sm border border-zinc-800">
+                {(['auto', 'justify', 'left'] as const).map((al) => (
+                    <button
+                    key={al}
+                    onClick={() => onUpdate({ ...settings, textAlign: al })}
+                    title={al === 'auto' ? 'Mirror the source (justify + hyphenation when the book is justified)' : al === 'justify' ? 'Justify with hyphenation' : 'Left-aligned (ragged right)'}
+                    className={`flex-1 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                        (settings.textAlign ?? 'auto') === al ? 'bg-zinc-800 text-[#00f3ff] shadow' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    >
+                    {al}
+                    </button>
+                ))}
+                </div>
+            </div>
           </div>
         </div>
 

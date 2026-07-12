@@ -976,8 +976,9 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
       page: item.page,
       start: item.offset ?? offsetForPage(content, item.page),
       resolved: item.offset != null,
+      level: item.level || 0,
     }))
-    .filter((item): item is { title: string; page: number; start: number; resolved: boolean } => Boolean(item.title) && item.start != null)
+    .filter((item): item is { title: string; page: number; start: number; resolved: boolean; level: number } => Boolean(item.title) && item.start != null)
     .sort((a, b) => a.start - b.start);
 
   // Collapse entries that still resolve to the same (or earlier) offset — e.g. same-page
@@ -995,6 +996,7 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
     sourceEnd: monotonic[index + 1]?.start ?? content.length,
     sourcePageStart: item.page,
     sourceMethod: 'outline' as const,
+    level: item.level,
   }));
 
   // Drop entries whose page range holds no extractable text — image-only front matter (a
@@ -1005,6 +1007,16 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
     content.slice(chapter.sourceStart!, chapter.sourceEnd!).replace(PAGE_MARKER_RE, '').trim().length > 0
   );
   const survivors = (withText.length ? withText : chapters).map((chapter, index) => ({ ...chapter, id: index + 1 }));
+  // Link each nested chapter (level > 0) to its Part — the nearest preceding entry at a shallower
+  // level. Done after the final id renumber so parentId references stable ids. A flat book (every
+  // level 0) gets no parents. The reading sequence is untouched; parentId only drives the TOC tree.
+  for (let i = 0; i < survivors.length; i++) {
+    const lvl = survivors[i].level ?? 0;
+    if (lvl <= 0) continue;
+    for (let j = i - 1; j >= 0; j--) {
+      if ((survivors[j].level ?? 0) < lvl) { survivors[i] = { ...survivors[i], parentId: survivors[j].id }; break; }
+    }
+  }
   // The first chapter owns the document start — pull its offset to 0 so leading content (a cover
   // [[FIG]] marker, the [[PAGE 1]] marker) isn't orphaned before the resolved heading offset.
   if (survivors.length) survivors[0] = { ...survivors[0], sourceStart: 0 };

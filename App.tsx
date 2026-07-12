@@ -23,6 +23,7 @@ import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash
 import { PDF_TEXT_EXTRACTION_VERSION, isStalePdfExtraction } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
+import { computePageTargetSize } from './utils/readerStructure';
 import type { User } from '@supabase/supabase-js';
 
 const lazyRetry = <T,>(factory: () => Promise<T>): Promise<T> =>
@@ -251,6 +252,8 @@ const App: React.FC = () => {
 
   const [activeChapterId, setActiveChapterId] = useState<number | null>(null);
   const [activeChapterPageTarget, setActiveChapterPageTarget] = useState<ReaderPageTarget>('first');
+  // Parts collapsed in the nested TOC (by chapter id). Default expanded.
+  const [collapsedParts, setCollapsedParts] = useState<Set<number>>(new Set());
   const activeChapter = activeBook?.chapters.find(c => c.id === activeChapterId) || null;
 
   // --- Full-text search (sidebar) ---------------------------------------------
@@ -296,10 +299,16 @@ const App: React.FC = () => {
     setIsIndexing(true);
     const handle = setTimeout(() => {
       try {
-        let index = searchIndexCache.current.get(activeBook.id);
+        // Key the search index on the page target size too: the reader paginates with the responsive
+        // computePageTargetSize, so the index must use the SAME size or its "PG.NN" won't match the
+        // reader's page number. A different viewport/text-size makes a fresh index rather than reusing
+        // a stale one built at another size.
+        const pageTargetSize = computePageTargetSize(settings.textSize, settings.lineHeight);
+        const indexKey = `${activeBook.id}:${pageTargetSize}`;
+        let index = searchIndexCache.current.get(indexKey);
         if (!index) {
-          index = buildBookPageIndex(activeFileContext.content, activeBook.chapters);
-          searchIndexCache.current.set(activeBook.id, index);
+          index = buildBookPageIndex(activeFileContext.content, activeBook.chapters, pageTargetSize);
+          searchIndexCache.current.set(indexKey, index);
         }
         if (cancelled) return;
         setSearchResults(searchBookIndex(index, query));
@@ -336,6 +345,7 @@ const App: React.FC = () => {
     textSize: 'base',
     lineHeight: 'normal',
     letterSpacing: 'normal',
+    textAlign: 'auto',
     font: 'Inter',
     llmModel: 'gemini-3-flash-preview',
     ttsModel: 'gemini-3.1-flash-tts-preview',
@@ -830,7 +840,7 @@ const App: React.FC = () => {
   };
 
   type ExtractedFigure = { id: string; page: number; wPts: number; hPts: number; wPx: number; hPx: number; mimeType: string; colFrac?: number; blob: Blob };
-  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string; figures: ExtractedFigure[] }> => {
+  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string; figures: ExtractedFigure[]; justified?: boolean }> => {
     try {
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
@@ -843,7 +853,18 @@ const App: React.FC = () => {
       // figure's Y so the reader drops it into the reading flow.
       const allFigures: ExtractedFigure[] = [];
       const figuresByPage = new Map<number, { id: string; yTop: number }[]>();
-      const FIG_MIN_PT = 90;      // ignore anything smaller than this on either side (icons/rules)
+      // Right-edge of every substantial body line, gathered across pages: a JUSTIFIED source fills to
+      // one right margin on nearly every line (only paragraph-final lines fall short), while a
+      // ragged-left source scatters. Used at the end to set fileContext.sourceJustified so the reader
+      // can mirror the source alignment.
+      const lineRightEdges: number[] = [];
+      // A real figure occupies a meaningful AREA and isn't a thin line. The old "both sides ≥ 90pt"
+      // rule wrongly dropped WIDE-BUT-SHORT diagrams (e.g. Agentic Mesh "Figure 14-1" 288×81pt — a
+      // horizontal fleet diagram): 81 < 90 on the short side. Gate on area (≥ the old 90×90 bar, but
+      // shape-independent) plus a short-side floor that still excludes rules/underlines (a few pt
+      // tall) and tiny icons. This is a strict superset of the old gate, so no figure is lost.
+      const FIG_MIN_AREA = 8100;  // ≈ 90×90pt — the "meaningful size" bar, independent of aspect ratio
+      const FIG_MIN_SIDE = 20;    // a figure is > ~20pt on its short side; a rule/underline is thinner
       const FIG_MAX_EDGE = 1400;  // cap the stored image's long edge (crisp zoom, sane storage)
       const mulMat = (m: number[], n: number[]): number[] => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
       const getImageObj = (pg: any, name: string): Promise<any> => new Promise(resolve => {
@@ -887,16 +908,32 @@ const App: React.FC = () => {
       // heading line (by page + Y) while the per-page glyph geometry is still in scope —
       // which also separates multiple bookmarks that share one page. Failures are
       // non-fatal; unresolved entries are dropped and the caller falls back to heuristics.
-      const outlineEntries: { title: string; page: number; y: number | null }[] = [];
+      const outlineEntries: { title: string; page: number; y: number | null; level: number }[] = [];
       // Every outline entry at EVERY level (chapters + nested section headings) with a resolved
       // Y — the author's own heading structure, used below to tag headings the font-family rule
-      // misses (a nested section title set in the body font). Chapters still come from the
-      // top-level entries only (outlineEntries), so navigation is unchanged.
+      // misses (a nested section title set in the body font).
       const outlineHeadingTargets: { title: string; page: number; y: number }[] = [];
       try {
         const rawOutline = await pdf.getOutline();
-        const collectOutline = async (items: typeof rawOutline, depth: number): Promise<void> => {
+        // A top-level entry is a CONTAINER when its children are the real reading units — either it
+        // is itself a Part/Section/Book/Volume divider, or a majority of its direct children read as
+        // chapters ("Chapter 1", "1. …"). This promotes a Part's chapters into the chapter list while
+        // leaving a content entry's sub-sections out (a Preface's "What This Book Isn't" is not a
+        // chapter). A flat book (no containers) is unchanged — only depth 0 becomes chapters.
+        const isChapterTitle = (t: string): boolean => /^(chapter|chap\.?|lecture|lesson)\b/iu.test(t) || /^\d{1,3}[.:)]\s/u.test(t);
+        const isDividerTitle = (t: string): boolean => /^(part|section|book|volume|unit)\b/iu.test(t);
+        const looksLikeContainer = (item: any): boolean => {
+          const kids = (item?.items || []) as any[];
+          if (!kids.length) return false;
+          const titles = kids.map(k => (k.title || '').replace(/\s+/g, ' ').trim());
+          const chapterLike = titles.filter(isChapterTitle).length;
+          return isDividerTitle((item.title || '').trim()) || chapterLike >= Math.max(2, Math.ceil(titles.length / 2));
+        };
+        // A chapter (reading unit) is any top-level entry, plus the direct children of a container
+        // (one level of promotion — a chapter's own sub-sections stay heading targets, not chapters).
+        const collectOutline = async (items: typeof rawOutline, depth: number, parentIsContainer: boolean): Promise<void> => {
           for (const item of items || []) {
+            const isContainer = depth === 0 && looksLikeContainer(item);
             try {
               const dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
               if (dest && dest[0]) {
@@ -904,15 +941,16 @@ const App: React.FC = () => {
                 const y = typeof dest[3] === 'number' ? dest[3] : null;
                 const title = (item.title || '').replace(/\s+/g, ' ').trim();
                 if (page && title) {
-                  if (depth === 0) outlineEntries.push({ title, page, y });
+                  const isChapter = depth === 0 || (depth === 1 && parentIsContainer);
+                  if (isChapter) outlineEntries.push({ title, page, y, level: depth });
                   if (y != null) outlineHeadingTargets.push({ title, page, y });
                 }
               }
             } catch { /* skip unresolvable entry */ }
-            if (item.items && item.items.length) await collectOutline(item.items, depth + 1);
+            if (item.items && item.items.length) await collectOutline(item.items, depth + 1, isContainer);
           }
         };
-        await collectOutline(rawOutline || [], 0);
+        await collectOutline(rawOutline || [], 0, false);
       } catch (e) {
         console.warn('PDF outline unavailable; will fall back to heuristic chapters', e);
       }
@@ -1139,7 +1177,7 @@ const App: React.FC = () => {
               else if (fn === OPS.transform) ctm = mulMat(ctm, a);
               else if (fn === OPS.paintImageXObject || fn === OPS.paintImageXObjectRepeat) {
                 const wPts = Math.abs(ctm[0]), hPts = Math.abs(ctm[3]);
-                if (wPts < FIG_MIN_PT || hPts < FIG_MIN_PT) continue; // icon / rule / logo
+                if (wPts * hPts < FIG_MIN_AREA || Math.min(wPts, hPts) < FIG_MIN_SIDE) continue; // rule / underline / tiny icon
                 const yTop = Math.max(ctm[5], ctm[5] + ctm[3]);
                 const img = await getImageObj(page, a[0]);
                 const enc = img ? await encodeFigure(img) : null;
@@ -1700,6 +1738,26 @@ const App: React.FC = () => {
               const label = markerLabelOf(txt);
               const markerLike = destPage > pageNum && label !== '';
               if (markerLike) { markerEmit[i] = { label, key }; for (let k = i + 1; k < j; k++) skip[k] = true; }
+              else if (label === '' && destPage > 0) {
+                // A go-to link whose text is PROSE (not a bare footnote number/Roman) is a
+                // CROSS-REFERENCE — "(… see Appendix 2 .)". Keep it navigable as a ONE-WAY jump to
+                // the destination page (resolved to the target chapter at read time) instead of
+                // dropping the annotation and leaving inert text. Reuse the external-link span
+                // mechanism (an internal "#pdfref-p{n}" href, so the marker-run logic never fires).
+                for (let k = i; k < j; k++) { items[k].linkUrl = `#pdfref-p${destPage}`; items[k].noteKey = undefined; }
+              }
+              else if (destPage > 0 && destPage < pageNum && label !== '' && (() => {
+                // A BACKWARD numeric go-to link sitting MID-LINE after an index term or another page
+                // number ("Africa, 388" / "213, 215") is an INDEX page reference — make it the same
+                // one-way #pdfref link the ranges ("236–37") already become, so every index page
+                // number is consistently clickable. A note BACK-link (a note's own leading number)
+                // leads its line, so it fails the mid-line test and stays plain text for anchoring.
+                let p = i - 1;
+                while (p >= 0 && !items[p].str.trim()) p--;
+                return p >= 0 && /[\p{L}\d,]$/u.test(items[p].str.replace(/\s+$/u, ''));
+              })()) {
+                for (let k = i; k < j; k++) { items[k].linkUrl = `#pdfref-p${destPage}`; items[k].noteKey = undefined; }
+              }
               else { for (let k = i; k < j; k++) items[k].noteKey = undefined; }
               i = j;
             }
@@ -1734,11 +1792,24 @@ const App: React.FC = () => {
               // "20" = 10^20), not a footnote marker — the preceding glyph ends in a digit with
               // no separating punctuation. A real marker follows a word or sentence punctuation.
               const prevEndsDigit = idx > 0 && /\d$/u.test(items[idx - 1].str.replace(/\s+$/u, ''));
-              const isMarker = idx > 0 && !prevEndsDigit && /^\d{1,3}$/.test(trimmed) && Number(trimmed) >= 1 && it.h < lineBodyHeight * 0.84;
+              const small = it.h < lineBodyHeight * 0.84;
+              const numMarker = !prevEndsDigit && /^\d{1,3}$/.test(trimmed) && Number(trimmed) >= 1;
+              // A small-font ROMAN numeral (I, II, iv…) not at line start, attached to a WORD, is a
+              // geometry-only footnote marker too — some books (The Sovereign Individual) use Roman
+              // chapter-end footnotes with no link annotation ("nomenklaturas,ᴵ"). Require the previous
+              // glyph to end in a letter (optionally a comma/period) so a stray small "I"/"V"/"X" that
+              // is not a reference isn't caught, and bound the value like the annotation path (≤ 40).
+              // UPPERCASE only: footnote markers are uppercase Roman (I, II, …), while a lowercase
+              // superscript roman is almost always a MATH INDEX ("layerⁱ", "Nⁱ neurons in layer i") —
+              // catching those would break the formula and invent bogus footnotes.
+              const prevEndsWord = idx > 0 && /\p{L}[.,;:!?’”")\]]?$/u.test(items[idx - 1].str.replace(/\s+$/u, ''));
+              const romMarker = prevEndsWord && /^[IVXLCDM]{1,4}$/.test(trimmed) && ROMAN_MARKER_RE.test(trimmed) && romanValue(trimmed) >= 1 && romanValue(trimmed) <= 40;
+              const isMarker = idx > 0 && small && (numMarker || romMarker);
               if (isMarker) {
                 if (open) { out += MARK[open]; open = null; }
                 if (openLink) { out += `](${openLink})`; openLink = null; }
-                out += `[${trimmed}](#pdfnote-${pageNum}-${trimmed})`;
+                const label = romMarker ? trimmed.toUpperCase() : trimmed;
+                out += `[${label}](#pdfnote-${pageNum}-${label})`;
                 return;
               }
 
@@ -1805,6 +1876,14 @@ const App: React.FC = () => {
         }
 
         const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
+        // Record each substantial full-width body line's right edge for the justified/ragged decision.
+        // Skip short lines and sentinel-tagged lines (headings/centred/right/columns) — they don't
+        // reach the body margin even in justified text and would skew the ragged verdict.
+        for (const line of pageLines) {
+          if (line.rightX > 0 && line.text.replace(/[-*_`~]/gu, '').trim().length > 45 && !/[-]/u.test(line.text)) {
+            lineRightEdges.push(line.rightX);
+          }
+        }
         // The paragraph margin — where wrapped continuation lines sit — is normally bodyLeft, but a
         // page of rapid one-line dialogue turns makes the first-line INDENT the mode, hiding the true
         // margin (so `x > bodyLeft+8` never fires and a turn that wraps to a full line merges into the
@@ -1826,7 +1905,9 @@ const App: React.FC = () => {
         // centred lines stay at level 0 and the levels are stable across index pages
         // (where only the first carries the heading). Body chapters strip these via the
         // prose cleanup's per-line trim; only the index keeps them.
-        const endsWithPageRef = (value: string): boolean => /[\d](?:[–—-]\d+)?\s*$/u.test(value);
+        // A trailing page number may now be a "[213](#pdfref-p274)" link, so unwrap a trailing link
+        // to its label before testing — otherwise the line ends in ")" and index detection misses it.
+        const endsWithPageRef = (value: string): boolean => /[\d](?:[–—-]\d+)?\s*$/u.test(value.replace(/\[([^\]\n]+)\]\([^)\n]*\)\s*$/u, '$1'));
         const isListPage = pageLines.filter(line => endsWithPageRef(line.text)).length >= 6;
         const indentTiers: number[] = [];
         if (isListPage) {
@@ -2047,7 +2128,7 @@ const App: React.FC = () => {
         // must be reflowed, not chopped one fragment per line with stray indents.
         if (isListPage) {
           const formattedLines: string[] = [];
-          const endsWithPageRef = (value: string): boolean => /[\d](?:[\u2013\u2014-]\d+)?\s*$/u.test(value);
+          const endsWithPageRef = (value: string): boolean => /[\d](?:[\u2013\u2014-]\d+)?\s*$/u.test(value.replace(/\[([^\]\n]+)\]\([^)\n]*\)\s*$/u, '$1'));
           const refLines = lines.filter(line => endsWithPageRef(line.text));
           const entryBaseLeft = refLines.length ? Math.min(...refLines.map(line => line.x)) : bodyLeft;
           // The first entry is the first line at the entry margin that also ENDS IN A PAGE
@@ -2487,8 +2568,26 @@ const App: React.FC = () => {
         /\[([^\]\n]*)\]\(([^)\n]+)\)/gu,
         (m, label: string, url: string) => (sameUrl(label, url) ? `[${showHref(url)}](${url})` : m),
       );
-      const fullText = sanitizeInternalLinkMarkup(assembled);
+      let fullText = sanitizeInternalLinkMarkup(assembled);
       if (!fullText) throw new Error('No selectable text found in PDF.');
+
+      // Re-attach a paragraph-LEADING footnote marker to the previous sentence. When a superscript
+      // marker wraps to the start of the next line, extraction can leave it alone at a paragraph
+      // start ("…created.\n\n[58](#pdffn-p443-y) Likewise…"), where the reader can't tell it from a
+      // note-ENTRY label and renders it inert (unclickable). Move only a FORWARD marker — its dest
+      // page is LATER than the marker's own page, so it's a genuine body reference — never a note
+      // entry, whose injected link points at its own page (dest == current page). Done before the
+      // outline offsets are computed, so no offset drifts. (Runs on the last "[[PAGE n]]" before the
+      // marker to read the marker's page.)
+      fullText = fullText.replace(
+        /([.!?…”"’)])\n\n(\[(?:fn\s*)?[\divxlcdm]{1,4}\]\(#pdffn-p(\d+)-y[^)\n]*\))(\s+)/giu,
+        (m, punct: string, link: string, destStr: string, _sp: string, offset: number, str: string) => {
+          const before = str.slice(0, offset);
+          const pages = before.match(/\[\[PAGE (\d+)\]\]/g);
+          const markerPage = pages ? Number(pages[pages.length - 1].match(/\d+/)![0]) : 0;
+          return Number(destStr) > markerPage ? `${punct}${link}\n\n` : m;
+        },
+      );
 
       // Anchor each outline entry to its exact heading offset: pick the line on the
       // destination page whose baseline Y is closest to the bookmark's Y, then locate that
@@ -2580,7 +2679,7 @@ const App: React.FC = () => {
           const cluster = findFigureClusterStart(prevOff + 1);
           if (cluster != null && cluster < nextOff) offset = cluster;
         }
-        return { title: item.entry.title, page: item.entry.page, level: 0, offset };
+        return { title: item.entry.title, page: item.entry.page, level: item.entry.level, offset };
       });
 
       // Drop entries the two passes could not place. Their offset is intentionally undefined —
@@ -2590,7 +2689,49 @@ const App: React.FC = () => {
       // and splitting a real chapter. Removing them here means every surviving entry carries a real
       // resolved offset, so that page fallback never fires.
       const resolvedOutline = outline.filter(o => o.offset != null);
-      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures };
+
+      // Caption-based missing-figure check (best-effort, never throws). Every "Figure N" / "Table N"
+      // caption should have a captured [[FIG]] image on its page; a page with more such captions than
+      // figures means the figure gate dropped an image (e.g. a pure-vector diagram the raster path
+      // can't see, or a size just under the gate). Log it so missing figures surface during testing
+      // instead of by eye. A mid-sentence reference ("…as shown in Figure 3-1.") is inside a prose
+      // block, so the line-start anchor keeps it from counting as a caption.
+      try {
+        const pageMarks: { page: number; at: number }[] = [];
+        for (const m of fullText.matchAll(/\[\[PAGE (\d+)\]\]/g)) pageMarks.push({ page: Number(m[1]), at: m.index ?? 0 });
+        const capRe = /(?:^|\n)[ \t]*[-]?\*{0,2}(?:Figure|Table|Fig\.)\s+\d+(?:[-–.]\d+)?\s*[.:]/giu;
+        const missing: string[] = [];
+        for (let i = 0; i < pageMarks.length; i++) {
+          const slice = fullText.slice(pageMarks[i].at, pageMarks[i + 1]?.at ?? fullText.length);
+          const caps: string[] = [];
+          for (const cm of slice.matchAll(capRe)) {
+            const at = cm.index ?? 0;
+            const lineEnd = slice.indexOf('\n', at + 1);
+            const line = slice.slice(at, lineEnd < 0 ? undefined : lineEnd).replace(/[-*]/g, '').replace(/\s+/g, ' ').trim();
+            // A real caption is a SHORT standalone line; a prose sentence that merely BEGINS "Figure
+            // N." (a forward reference at a block start) is a long block line — skip it so it isn't
+            // miscounted as a caption without an image.
+            if (line.length <= 160) caps.push(line.slice(0, 60));
+          }
+          const figCount = (slice.match(/\[\[FIG /g) || []).length;
+          if (caps.length > figCount) missing.push(`p${pageMarks[i].page}: ${caps.length} caption(s) [${caps.join(' | ')}] vs ${figCount} image(s)`);
+        }
+        if (missing.length) console.warn(`[DecodEbook figure-check] ${missing.length} page(s) have a figure/table caption with no captured image:\n${missing.join('\n')}`);
+      } catch { /* diagnostic only — never block extraction */ }
+
+      // Justified vs ragged: with the body-line right edges gathered across pages, take the right
+      // margin as the median of the top 40% of edges (the full-line target), then measure how many
+      // lines reach it (within 6pt). Justified books fill it on ~85–98% of lines; a ragged-left book
+      // (e.g. Elon Musk) on ~40%. Threshold 0.7. Too few samples → leave undefined (reader falls back).
+      let sourceJustified: boolean | undefined;
+      if (lineRightEdges.length >= 30) {
+        const sorted = [...lineRightEdges].sort((a, b) => a - b);
+        const top = sorted.slice(Math.floor(sorted.length * 0.6));
+        const margin = top[Math.floor(top.length / 2)];
+        const filled = sorted.filter(e => e >= margin - 6).length;
+        sourceJustified = filled / sorted.length > 0.7;
+      }
+      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified };
     } catch (e) {
       console.error('PDF processing error', e);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
@@ -2723,7 +2864,7 @@ const App: React.FC = () => {
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
        try {
-         const { content: textContent, outline: pdfOutline, title: docTitle, figures } = await processPdf(file);
+         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified } = await processPdf(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -2732,6 +2873,7 @@ const App: React.FC = () => {
             sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION,
             pdfOutline,
             docTitle,
+            sourceJustified: justified,
          }, figures);
        } catch (err: any) {
          setError(err.message || "Failed to process PDF.");
@@ -3151,29 +3293,55 @@ const App: React.FC = () => {
                 )}
                 {/* Chapter list (TOC) */}
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2">
-                {activeBook?.chapters.map((chapter, idx) => {
-                    const isBookmarked = activeBook.bookmarks?.includes(chapter.id);
+                {(() => {
+                  const chaptersArr = activeBook?.chapters ?? [];
+                  // A Part is any chapter that other chapters point at as parent; a hierarchical book
+                  // has at least one nested (level > 0) chapter. Flat books hit neither and render
+                  // exactly as before (numbered, no indent, no chevrons).
+                  const parentIds = new Set(chaptersArr.filter(c => c.parentId != null).map(c => c.parentId as number));
+                  const hasHierarchy = chaptersArr.some(c => (c.level ?? 0) > 0);
+                  return chaptersArr.map((chapter, idx) => {
+                    const isBookmarked = activeBook?.bookmarks?.includes(chapter.id);
+                    // Hide a nested chapter whose Part is collapsed.
+                    if (chapter.parentId != null && collapsedParts.has(chapter.parentId)) return null;
+                    const level = chapter.level ?? 0;
+                    const isPart = parentIds.has(chapter.id);
+                    const collapsed = collapsedParts.has(chapter.id);
                     return (
                         <div key={chapter.id} ref={activeChapterId === chapter.id ? activeChapterItemRef : undefined} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
                             <button
                                 title={chapter.title}
                                 onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterPageTarget('first'); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
-                                className={`flex-1 text-left flex items-center gap-3 border-l-2 py-1 transition-all min-w-0 pr-2 ${
-                                    activeChapterId === chapter.id 
-                                    ? 'border-[#00f3ff]' 
+                                className={`flex-1 text-left flex items-center gap-2 border-l-2 py-1 transition-all min-w-0 pr-2 ${level > 0 ? 'pl-5' : ''} ${
+                                    activeChapterId === chapter.id
+                                    ? 'border-[#00f3ff]'
                                     : 'border-transparent'
                                 }`}
                             >
-                                <span className={`text-[9px] font-mono w-6 text-right shrink-0 ${activeChapterId === chapter.id ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>
-                                    {String(idx + 1).padStart(2, '0')}
-                                </span>
+                                {isPart ? (
+                                    <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => { e.stopPropagation(); setCollapsedParts(prev => { const n = new Set(prev); if (n.has(chapter.id)) n.delete(chapter.id); else n.add(chapter.id); return n; }); }}
+                                        className="shrink-0 p-0.5 text-zinc-600 hover:text-[#00f3ff] cursor-pointer"
+                                        title={collapsed ? 'Expand' : 'Collapse'}
+                                    >
+                                        <ChevronRight size={12} className={`transition-transform ${collapsed ? '' : 'rotate-90'}`} />
+                                    </span>
+                                ) : hasHierarchy ? (
+                                    <span className="w-3 shrink-0" />
+                                ) : (
+                                    <span className={`text-[9px] font-mono w-6 text-right shrink-0 ${activeChapterId === chapter.id ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>
+                                        {String(idx + 1).padStart(2, '0')}
+                                    </span>
+                                )}
                                 <div className="min-w-0 flex-1 text-left">
-                                    <p className={`font-medium truncate font-tech uppercase tracking-tight text-xs ${activeChapterId === chapter.id ? 'text-white' : 'text-zinc-500'}`}>
+                                    <p className={`font-medium truncate font-tech uppercase tracking-tight text-xs ${activeChapterId === chapter.id ? 'text-white' : (isPart ? 'text-zinc-300' : 'text-zinc-500')}`}>
                                         {chapter.title}
                                     </p>
                                 </div>
                             </button>
-                            <button 
+                            <button
                                 onClick={(e) => { e.stopPropagation(); toggleBookmark(chapter.id); }}
                                 className={`p-1.5 transition-colors shrink-0 ${isBookmarked ? 'text-amber-400' : 'text-zinc-800 hover:text-zinc-500'}`}
                                 title={isBookmarked ? "Remove Bookmark" : "Add Bookmark"}
@@ -3182,7 +3350,8 @@ const App: React.FC = () => {
                             </button>
                         </div>
                     );
-                })}
+                  });
+                })()}
                 </div>
              </div>
           )}

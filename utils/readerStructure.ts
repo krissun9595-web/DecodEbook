@@ -869,7 +869,14 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     // splitting the paragraph mid-sentence). When a figure precedes a paragraph that fits on a page,
     // break BEFORE it: the figure keeps the current page full and the paragraph stays whole on the next.
     const figureBeforeParagraph = paragraphBreak > 0 && remaining.slice(0, paragraphBreak).includes('[[FIG');
-    if (paragraphBreak > limit * 0.7 || (paragraphBreak > limit * 0.5 && splitParaFits) || (figureBeforeParagraph && splitParaFits)) {
+    // Keep every completed paragraph WHOLE: break at the last paragraph boundary whenever it leaves the
+    // page at least ~40% full. This lower floor (vs the old 0.7 / 0.5+fits heuristic) means a normal
+    // paragraph is never split mid-line — it moves whole to the next page, at the cost of some bottom
+    // whitespace. Below the floor a very large paragraph starts early on the page; splitting it mid-way
+    // avoids a mostly-blank page. A paragraph that alone exceeds a page (no earlier boundary at all)
+    // also splits mid-way — but as the FIRST paragraph of its page, never a partial line after others.
+    const keepWholeFloor = limit * 0.4;
+    if (paragraphBreak > keepWholeFloor || (figureBeforeParagraph && splitParaFits)) {
       splitIdx = paragraphBreak;
       brokeAtBoundary = true; // a blank-line paragraph boundary
     } else if (lineBreak > limit * 0.5) {
@@ -906,4 +913,21 @@ export const paginateReaderText = (
   options: Omit<ReaderPaginationOptions, 'targetSize'> = {}
 ): ReaderPage[] => {
   return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize, options.measureVisibleLength, options.preferLineBreaks);
+};
+
+// Baseline char budget per page, calibrated for ~700px of readable height at 'base'/'normal'.
+export const DEFAULT_PAGE_TARGET_SIZE = 1600;
+
+// Chars-per-page scaled to the actual viewport and the reader's text/line-height settings, so a tall
+// desktop page holds more text (fewer paragraph splits, less bottom whitespace, and a long paragraph
+// can fit whole) while a short phone page holds less. Larger text / looser leading ⇒ fewer chars.
+// SHARED by the reader AND the search index so their page numbers agree — both must paginate with the
+// same size or "PG.NN" in search won't match the reader's page.
+export const computePageTargetSize = (textSize: string, lineHeight: string): number => {
+  if (typeof window === 'undefined') return DEFAULT_PAGE_TARGET_SIZE;
+  const readable = Math.max(360, window.innerHeight - 170); // minus header + reader controls chrome
+  const sizeFactor: Record<string, number> = { sm: 1.22, base: 1, lg: 0.82, xl: 0.66 };
+  const lineFactor: Record<string, number> = { tight: 1.12, normal: 1, relaxed: 0.9, loose: 0.82 };
+  const scaled = (readable / 700) * DEFAULT_PAGE_TARGET_SIZE * (sizeFactor[textSize] ?? 1) * (lineFactor[lineHeight] ?? 1);
+  return Math.round(Math.min(4200, Math.max(1100, scaled)));
 };

@@ -87,7 +87,7 @@ export interface SearchHit {
 }
 
 // Paginate one chapter exactly like the reader does, returning visible page text.
-const indexChapterPages = (content: string, chapter: Chapter, allChapters: Chapter[]): IndexedPage[] => {
+const indexChapterPages = (content: string, chapter: Chapter, allChapters: Chapter[], pageTargetSize: number): IndexedPage[] => {
   const rawText = extractChapterFromSource(content, chapter, allChapters);
   if (!rawText) return [];
 
@@ -99,7 +99,7 @@ const indexChapterPages = (content: string, chapter: Chapter, allChapters: Chapt
   const isNotesSource = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
   if (isNotesSource) cleanText = normalizeNotesReaderText(cleanText);
 
-  const pages = paginateReaderText(cleanText, PAGE_TARGET_SIZE, {
+  const pages = paginateReaderText(cleanText, pageTargetSize, {
     topicsPerPage: 10,
     leadingHeading: leadingTopicHeadingFor(chapter, content, cleanText),
     measureVisibleLength: isIndexSource,
@@ -114,12 +114,12 @@ const indexChapterPages = (content: string, chapter: Chapter, allChapters: Chapt
 
 // Build a search index for the whole book. Synchronous and offline (extraction is
 // local), so it is safe to memoise/cache per book and reuse across queries.
-export const buildBookPageIndex = (content: string | undefined, chapters: Chapter[]): ChapterPageIndex[] => {
+export const buildBookPageIndex = (content: string | undefined, chapters: Chapter[], pageTargetSize: number = PAGE_TARGET_SIZE): ChapterPageIndex[] => {
   if (!content || chapters.length === 0) return [];
   return chapters.map((chapter, idx) => {
     let pages: IndexedPage[] = [];
     try {
-      pages = indexChapterPages(content, chapter, chapters);
+      pages = indexChapterPages(content, chapter, chapters, pageTargetSize);
     } catch {
       pages = [];
     }

@@ -12,6 +12,18 @@ import { playPronunciationAudio, prefetchPronunciation } from '../services/pronu
 import { shareFile } from '../utils/share';
 import { titleCase } from '../utils/filename';
 import { trackNotebook } from '../utils/analytics';
+import { inkLineStyle } from '../utils/inkLine';
+
+// Raw ink-line colours (match the reader's INK_LINE_COLORS) so the notebook's inked underline uses
+// the SAME full/curvy/dotted style + colour as the reader instead of a hardcoded solid line.
+const INK_LINE_COLORS: Record<AppSettings['highlightColor'], string> = {
+  indigo: '#00f3ff',
+  emerald: '#34d399',
+  rose: '#ff003c',
+  amber: '#fbbf24',
+  violet: '#a78bfa',
+  pink: '#ff4fd8',
+};
 
 interface Props {
   items: NotebookItem[];
@@ -26,15 +38,6 @@ interface Props {
 }
 
 type FilterType = 'all' | 'word' | 'phrase' | 'sentence';
-
-const INK_TEXT_STYLES: Record<AppSettings['highlightColor'], string> = {
-  indigo: 'decoration-[#00f3ff]',
-  emerald: 'decoration-emerald-400',
-  rose: 'decoration-[#ff003c]',
-  amber: 'decoration-amber-400',
-  violet: 'decoration-violet-400',
-  pink: 'decoration-[#ff4fd8]',
-};
 
 const INK_BADGE_STYLES: Record<AppSettings['highlightColor'], string> = {
   indigo: 'bg-[#00f3ff]/10 border-[#00f3ff]/30 text-[#00f3ff]',
@@ -1102,7 +1105,6 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
                        {filteredItems.map((item, idx) => {
                            const typeColor = item.type === 'phrase' ? 'text-[#ff003c]' : item.type === 'word' ? 'text-cyan-400' : 'text-[#00f3ff]';
-                           const inkTextClass = INK_TEXT_STYLES[settings.highlightColor] || INK_TEXT_STYLES.indigo;
                            const inkBadgeClass = INK_BADGE_STYLES[settings.highlightColor] || INK_BADGE_STYLES.indigo;
                            return (
                            <div key={item.id} className="bg-[#0a0a0c] border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${idx * 0.05}s` }}>
@@ -1115,7 +1117,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                <div className="flex items-start gap-4">
                                    <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-[#00f3ff]" /> : item.type === 'phrase' ? <Zap size={16} className="text-[#ff003c]" /> : <Type size={16} className="text-cyan-400" />}</div>
                                    <div className="flex-1 min-w-0 space-y-3">
-                                       <div><p className={`text-white text-base font-medium leading-relaxed font-serif break-words ${item.inked ? `underline ${inkTextClass} decoration-1 underline-offset-4` : ''}`}>{item.text}</p>
+                                       <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words" style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</p>
                                            <div className="flex items-center gap-3 mt-2 flex-wrap">
                                                <span className={`text-[9px] font-mono uppercase tracking-wide bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 ${typeColor}`}>{item.type}</span>
                                                {item.inked && <span className={`text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded border ${inkBadgeClass}`}>INKED</span>}

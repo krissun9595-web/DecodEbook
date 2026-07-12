@@ -16,6 +16,7 @@ import {
   findTopicHeadingBeforeOffset,
   normalizeNotesReaderText,
   paginateReaderText,
+  computePageTargetSize,
   type ReaderBlock,
   type ReaderPage,
   type ReaderTopicBlock,
@@ -69,7 +70,6 @@ const LANGUAGES = [
 ];
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
-const PAGE_TARGET_SIZE = 1600;
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
 const CHAPTER_TEXT_CACHE_VERSION = 'v31-side-by-side-columns';
@@ -395,8 +395,8 @@ const stripInternalFootnoteLinks = (value: string): string =>
     // ". " — otherwise the translation keeps the leading period, which splits into its own
     // sentence and the inherited reference marker latches onto it, rendering ".¹" with the
     // period before the numeral instead of after it.
-    .replace(/^([ \t ]*)\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)[.)]?[ \t ]*/iu, '$1')
-    .replace(/\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)/giu, '');
+    .replace(/^([ \t ]*)\[\s*(?:fn\s*)?[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)[.)]?[ \t ]*/iu, '$1')
+    .replace(/\[\s*(?:fn\s*)?[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)/giu, '');
 
 // Drop orphan emphasis markers (e.g. a lone "*" left by a blockquote's tangled
 // emphasis) before stripping footnote markers, otherwise a stray "*" between the
@@ -482,8 +482,19 @@ const noteMarkerSourceFor = (marker: string): string => {
 const linkedNoteMarkerSourceFor = (marker: string): string =>
   `(?:\\[${noteMarkerSourceFor(marker)}\\]\\([^)]+\\)|${noteMarkerSourceFor(marker)})`;
 
-const noteStartPatternFor = (marker: string): RegExp =>
-  new RegExp(`(?:^|\\n)\\s*${linkedNoteMarkerSourceFor(marker)}(?:[.)])?(?:\\s+|$)`, 'iu');
+const noteStartPatternFor = (marker: string): RegExp => {
+  const esc = escapeRegExp(marker);
+  // A note ENTRY begins with the marker as a LABEL: a linked "[I](#…)", a bracketed "[I]", an explicit
+  // "no./note I", or the bare marker with a trailing separator. For a ROMAN-numeral marker the trailing
+  // separator on the BARE form is REQUIRED ("I." not "I ") — otherwise the note-page lookup matches a
+  // sentence that simply begins with the pronoun/word "I" (or "V"/"X"…), so a chapter-end Roman note
+  // never resolves uniquely and its bidirectional link/back navigation fails. Numeric markers can't
+  // collide with a word, so they keep the lenient optional separator.
+  const isRoman = /^[ivxlcdm]+$/i.test(cleanNoteMarkerLabel(marker));
+  const bare = isRoman ? `${esc}[.)]` : `${esc}[.)]?`;
+  const label = `(?:\\[\\s*${esc}[.)]?\\s*\\](?:\\s*\\([^)\\n]*\\))?|(?:no\\.?|note)\\s*${esc}[.)]?|${bare})`;
+  return new RegExp(`(?:^|\\n)\\s*${label}(?:[.)])?(?:\\s+|$)`, 'iu');
+};
 
 const parseLeadingNoteMarker = (
   value: string,
@@ -639,8 +650,19 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       { text: `—— ${attribution.attribution}`, format: 'attribution' },
     ];
   }
-  if (looksLikeStandaloneCitation(value) && !/^\*.*\*$/.test(value.trim())) {
-    return parseInlineFormatting(`*${stripOrphanDisplayMarkers(stripInlineMarkupSyntax(value))}*`, options);
+  if (looksLikeStandaloneCitation(value)) {
+    // Split off a trailing footnote/reference link BEFORE wrapping the quote in emphasis. Wrapping
+    // the whole value would run the link through stripInlineMarkupSyntax, collapsing "[1](#pdffn…)"
+    // to a bare "1" and destroying the note href (the reader then infers a hrefless footnote and the
+    // note can't be resolved). Wrap only the quote body and re-append the link so it parses as a
+    // footnote WITH its href. Skip when the body is already emphasised — this is also what prevents
+    // infinite recursion, since the re-appended link keeps the value from ending in "*".
+    const trimmed = value.trim();
+    const trail = trimmed.match(/(\[[^\]\n]+\]\([^)\n]+\))\s*$/u);
+    const body = trail ? trimmed.slice(0, trail.index).trim() : trimmed;
+    if (!/^\*[\s\S]*\*$/u.test(body)) {
+      return parseInlineFormatting(`*${stripOrphanDisplayMarkers(stripInlineMarkupSyntax(body))}*${trail ? trail[1] : ''}`, options);
+    }
   }
   const attributionLine = attributionLineSegmentsFor(value, options);
   if (attributionLine) return attributionLine;
@@ -660,10 +682,10 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       if (linkMatch.index > last) segments.push({ text: inner.slice(last, linkMatch.index), format });
       const label = cleanNoteMarkerLabel(linkMatch[1]);
       const hasBodyBefore = inner.slice(0, linkMatch.index).trim().length > 0;
-      if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, linkMatch[2])) {
-        segments.push({ text: label, format: 'referenceMarker', href: linkMatch[2] });
-      } else if (options.internalNoteLinksAsFootnotes && hasBodyBefore && isLikelyInternalNoteLink(label, linkMatch[2])) {
+      if (options.internalNoteLinksAsFootnotes && hasBodyBefore && (isLikelyInternalNoteLink(label, linkMatch[2]) || isLikelyInternalRomanReferenceLink(label, linkMatch[2]))) {
         segments.push({ text: label, format: 'footnote', href: linkMatch[2] });
+      } else if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, linkMatch[2])) {
+        segments.push({ text: label, format: 'referenceMarker', href: linkMatch[2] });
       } else {
         segments.push({ text: linkMatch[1], format: 'link', href: linkMatch[2] });
       }
@@ -700,13 +722,20 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       // nothing after) as a footnote too — only a note-ENTRY number ("[II] Adam Smith…", text
       // after, none before) should stay plain.
       const hasTextAfterLink = value.slice(pattern.lastIndex).trim().length > 0;
-      if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, match[2])) {
+      const isBodyNoteMarker = hasBodyTextBeforeLink || !hasTextAfterLink;
+      if (
+        options.internalNoteLinksAsFootnotes && isBodyNoteMarker &&
+        (isLikelyInternalNoteLink(label, match[2]) || isLikelyInternalRomanReferenceLink(label, match[2]))
+      ) {
+        // A note marker embedded in body prose — numeric OR Roman ("nomenklaturas,ᴵ") — navigates
+        // to its note and back, exactly like a numbered footnote. Only a LEADING Roman label (a
+        // note ENTRY, text after but none before) stays a non-interactive reference marker below.
+        segments.push({ text: label, format: 'footnote', href: match[2] });
+      } else if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, match[2])) {
         const labelPunctuation = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
         const trailingPunctuation = labelPunctuation || (value[pattern.lastIndex] === '.' ? '.' : '');
         segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker', href: match[2] });
         if (!labelPunctuation && trailingPunctuation) pattern.lastIndex += 1;
-      } else if (options.internalNoteLinksAsFootnotes && (hasBodyTextBeforeLink || !hasTextAfterLink) && isLikelyInternalNoteLink(label, match[2])) {
-        segments.push({ text: label, format: 'footnote', href: match[2] });
       } else {
         // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation
         // rect covers the leading space ("…at [ https://…]"), keep that space as plain text
@@ -1285,6 +1314,9 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
 
 export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, initialPageTarget = 'first', onChapterChange }) => {
   const [pages, setPages] = useState<ReaderPage[]>([]);
+  // The current chapter's cleaned source text, kept so we can RE-paginate on a text-size / viewport
+  // change without re-fetching, preserving the reading position.
+  const cleanTextRef = useRef<string>('');
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
   const [translationState, setTranslationState] = useState<{ identity: string; byIndex: Record<number, string> }>({ identity: '', byIndex: {} });
@@ -1489,11 +1521,32 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     return uniqueMatches.length === 1 ? uniqueMatches[0] : -1;
   };
 
+  // Resolve a SOURCE page (1-based PDF page) to the reader page that displays it. The reader pages
+  // drop the "[[PAGE n]]" markers, so match by content: take the readable words right after the
+  // "[[PAGE n]]" marker in the full source and find the reader page whose text contains them.
+  // Returns -1 when the page can't be located (caller falls back to the chapter start).
+  const wordsOnly = (s: string): string =>
+    s.replace(/[-]/gu, ' ').replace(/\[\[[^\]]*\]\]/gu, ' ').replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
+  const pageIndexForSourcePage = (srcPage: number, readerPages: ReaderPage[]): number => {
+    const content = fileContext.content || '';
+    const token = `[[PAGE ${srcPage}]]`;
+    const at = content.indexOf(token);
+    if (at < 0) return -1;
+    const anchor = wordsOnly(content.slice(at + token.length, at + token.length + 400)).split(' ').slice(0, 6).join(' ');
+    if (anchor.length < 8) return -1;
+    return readerPages.findIndex(p => wordsOnly(p.text).includes(anchor));
+  };
+
   const pageIndexForTarget = (target: ReaderPageTarget, readerPages: ReaderPage[]): number => {
     if (target === 'last') return Math.max(0, readerPages.length - 1);
     if (target === 'first') return 0;
     if (target.type === 'page') {
       return Math.min(Math.max(0, target.pageIndex), Math.max(0, readerPages.length - 1));
+    }
+    if (target.type === 'source-page') {
+      const idx = pageIndexForSourcePage(target.page, readerPages);
+      return idx >= 0 ? idx : 0;
     }
     const foundIndex = pageIndexForNoteTarget(target, readerPages);
     return foundIndex >= 0 ? foundIndex : 0;
@@ -1502,6 +1555,66 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   useEffect(() => {
     return () => { if (audioSrc) URL.revokeObjectURL(audioSrc); };
   }, [audioSrc]);
+
+  // Paginate the current chapter's cleaned text with the reader's live page size (viewport + text/
+  // line settings). Shared by the initial load and re-pagination so both stay identical.
+  const paginateChapterText = (cleanText: string): ReaderPage[] => {
+    const isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
+    const isIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
+    return paginateReaderText(cleanText, computePageTargetSize(settings.textSize, settings.lineHeight), {
+      topicsPerPage: 10,
+      leadingHeading: leadingTopicHeadingFor(chapter, fileContext.content, cleanText),
+      measureVisibleLength: isIndex, // index is link-dense; size by visible text so pages fill
+      preferLineBreaks: isNotes || isIndex, // notes/index are item-per-line lists
+    });
+  };
+
+  // Re-paginate the current chapter when the page size changes (text-size / line-height / viewport),
+  // preserving the reading position: anchor on the first words of the current page, then land on the
+  // new page that contains them. Kept in a ref so the resize listener always calls the latest closure
+  // without re-subscribing every render.
+  const repaginateRef = useRef<() => void>(() => {});
+  repaginateRef.current = () => {
+    const cleanText = cleanTextRef.current;
+    if (!cleanText || pages.length === 0) return;
+    const anchor = wordsOnly(pages[currentPage]?.text || '').split(' ').slice(0, 8).join(' ');
+    const newPages = paginateChapterText(cleanText);
+    if (newPages.length === 0) return;
+    let newIdx = 0;
+    if (anchor.length >= 8) {
+      const found = newPages.findIndex(p => wordsOnly(p.text).includes(anchor));
+      if (found >= 0) newIdx = found;
+    }
+    setPages(newPages);
+    setPendingNavigationTarget(null);
+    setNavigationSentenceIndex(-1);
+    setCurrentPage(Math.min(newIdx, newPages.length - 1));
+  };
+
+  // Text-size / line-height change → re-paginate (skip first mount; loadContent handles that).
+  useEffect(() => {
+    if (cleanTextRef.current) repaginateRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.textSize, settings.lineHeight]);
+
+  // Viewport resize (debounced) → re-paginate, so the reader's page count tracks the screen and stays
+  // in step with the search index (which paginates with the same live page size). Only react to a
+  // SIGNIFICANT height change (orientation, desktop resize) — mobile address-bar show/hide nudges the
+  // height by tens of pixels while scrolling, which shouldn't re-flow the page.
+  const lastViewportHeightRef = useRef<number>(typeof window !== 'undefined' ? window.innerHeight : 0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (Math.abs(window.innerHeight - lastViewportHeightRef.current) < 120) return;
+        lastViewportHeightRef.current = window.innerHeight;
+        repaginateRef.current();
+      }, 250);
+    };
+    window.addEventListener('resize', onResize);
+    return () => { clearTimeout(timer); window.removeEventListener('resize', onResize); };
+  }, []);
 
   const loadContent = async () => {
     setIsLoadingText(true);
@@ -1577,17 +1690,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
 
 
-      const paginatedReaderIsNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
-      const paginatedReaderIsIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
-      const paginatedPages = paginateReaderText(cleanText, PAGE_TARGET_SIZE, {
-        topicsPerPage: 10,
-        leadingHeading: leadingTopicHeadingFor(chapter, fileContext.content, cleanText),
-        // The index is link-dense; size its pages by visible text so they fill up.
-        measureVisibleLength: paginatedReaderIsIndex,
-        // Notes and index are item-per-line lists — break pages between items, not
-        // mid-item (which would split a note inside "op. cit." or after "V.H.").
-        preferLineBreaks: paginatedReaderIsNotes || paginatedReaderIsIndex,
-      });
+      cleanTextRef.current = cleanText;
+      const paginatedPages = paginateChapterText(cleanText);
       setPages(paginatedPages);
       if (typeof initialPageTarget === 'object' && initialPageTarget.type === 'note') {
         const notePageIndex = pageIndexForNoteTarget(initialPageTarget, paginatedPages);
@@ -2505,16 +2609,34 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     // Resolve the note IN THIS CHAPTER first — not only when we're already in a Notes chapter.
     // Page-bottom / chapter-end footnotes (this book's "fn3 …") live in the same chapter as their
-    // marker, anchored with the marker's key, so the keyed lookup finds them here. Only a note that
-    // ISN'T in this chapter (a numbered ENDNOTE, whose keyed lookup returns -1) falls through to the
-    // separate Notes chapter. This is what makes "fn5" jump to the note at the chapter's end instead
-    // of routing to Notes and failing with SOURCE_REQUIRED.
-    const localPageIndex = pageIndexForNoteTarget(noteTarget, pages);
-    if (localPageIndex >= 0) {
-      setPendingNavigationTarget(noteTarget);
-      setNavigationSentenceIndex(-1);
-      setCurrentPage(localPageIndex);
-      return;
+    // marker, anchored with the marker's key, so the keyed lookup finds them here.
+    //
+    // BUT a KEYED footnote whose destination page lies OUTSIDE this chapter is a numbered ENDNOTE:
+    // its note is in the separate Notes chapter. Scanning THIS chapter for it is not just useless —
+    // pageIndexForNoteTarget's pattern fallback (noteStartPatternFor) would match an unrelated
+    // numbered LIST item in the body ("1. There were rising returns…"), sending the reader to the
+    // wrong place. Detect that by mapping the key's dest page to a content OFFSET (via the reliable
+    // "[[PAGE n]]" markers) and testing it against THIS chapter's re-anchored offset range — offsets,
+    // not the raw bookmark page numbers, which are broken in z-library PDFs. Keyless markers (Roman /
+    // geometry in-chapter footnotes) have no dest page and still resolve locally, where their pattern
+    // can't collide with a numeric list.
+    // noteKey is the NORMALISED href (noteKeyFromHref strips non-alphanumerics), so "#pdffn-p537-y620"
+    // arrives as "pdffnp537y620" — match that form, not the hyphenated raw href.
+    const keyDestPage = Number(noteTarget.noteKey?.match(/^pdffn-?p(\d+)/u)?.[1]) || 0;
+    let keyedEndnote = false;
+    if (keyDestPage > 0 && chapter.sourceStart != null && chapter.sourceEnd != null) {
+      const destOff = (fileContext.content || '').indexOf(`[[PAGE ${keyDestPage}]]`);
+      if (destOff >= 0) keyedEndnote = destOff < chapter.sourceStart || destOff >= chapter.sourceEnd;
+    }
+
+    if (!keyedEndnote) {
+      const localPageIndex = pageIndexForNoteTarget(noteTarget, pages);
+      if (localPageIndex >= 0) {
+        setPendingNavigationTarget(noteTarget);
+        setNavigationSentenceIndex(-1);
+        setCurrentPage(localPageIndex);
+        return;
+      }
     }
 
     const notesChapter = findNotesChapter();
@@ -2541,6 +2663,66 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     }
     if (!onChapterChange) return;
     onChapterChange(activeNoteTarget.returnTarget.chapterId, pageTarget);
+  };
+
+  // A cross-reference ("… see Appendix 2 .") is a ONE-WAY jump to the chapter that contains the
+  // link's destination page — no return marker, unlike a footnote. Resolve the destination page to
+  // a content offset via the reliable "[[PAGE n]]" markers (kept through cleanup as navigation
+  // metadata), then find the chapter whose source range spans that offset. This never trusts the
+  // broken bookmark page numbers — it uses the page markers extraction actually emitted plus the
+  // corrected chapter offsets.
+  const handleCrossReferenceNavigation = (
+    destPage: number,
+    event: React.MouseEvent<HTMLElement>
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onChapterChange) return;
+    const content = fileContext.content || '';
+    let pageStart = content.indexOf(`[[PAGE ${destPage}]]`);
+    if (pageStart < 0) {
+      const re = /\[\[PAGE\s+(\d+)\]\]/g;
+      let m: RegExpExecArray | null;
+      let best = -1;
+      while ((m = re.exec(content)) !== null) {
+        const p = Number(m[1]);
+        if (p <= destPage && p > best) { best = p; pageStart = m.index; }
+      }
+    }
+    if (pageStart < 0) return;
+    // The destination page's offset span (up to the next page marker). A cross-reference points at
+    // a chapter's START, and the chapter HEADING sits just after the "[[PAGE n]]" marker on that
+    // page — so "the chapter whose source offset lands ON this page" is the target. (Using the raw
+    // page offset instead resolves to the PREVIOUS chapter, because the page marker precedes the
+    // heading — the off-by-one seen with Appendix 2 → Appendix 1.)
+    const nextRel = content.slice(pageStart + 1).search(/\[\[PAGE\s+\d+\]\]/);
+    const pageEnd = nextRel < 0 ? content.length : pageStart + 1 + nextRel;
+    const startsOnPage = allChapters
+      .filter(c => c.sourceStart != null && c.sourceStart >= pageStart && c.sourceStart < pageEnd)
+      .sort((a, b) => (a.sourceStart ?? 0) - (b.sourceStart ?? 0))[0];
+    // Fallback for a reference into the MIDDLE of a chapter (no chapter starts on that page): the
+    // chapter whose range spans the page offset.
+    const containing = allChapters.find(
+      c => c.sourceStart != null && pageStart >= c.sourceStart && (c.sourceEnd == null || pageStart < c.sourceEnd)
+    );
+    const target = startsOnPage ?? containing ?? [...allChapters]
+      .filter(c => c.sourceStart != null && c.sourceStart <= pageStart)
+      .sort((a, b) => (b.sourceStart ?? 0) - (a.sourceStart ?? 0))[0];
+    if (!target) return;
+    if (target.id === chapter.id) {
+      // Same chapter — scroll to the destination page within the current pages (a figure/table
+      // referenced from its own chapter) rather than no-op.
+      const idx = pageIndexForSourcePage(destPage, pages);
+      if (idx >= 0 && idx !== currentPage) {
+        setPendingNavigationTarget(null);
+        setNavigationSentenceIndex(-1);
+        setCurrentPage(idx);
+      }
+      return;
+    }
+    // Cross-chapter — land on the destination page inside the target chapter (page-precise for a
+    // figure/table deep in the chapter; equals the chapter start for an Appendix/Chapter ref).
+    onChapterChange(target.id, { type: 'source-page', page: destPage });
   };
 
   const readerTextClass = `${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`;
@@ -2866,6 +3048,23 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               {stripInlineFormatSyntax(text)}
             </button>
           </sup>
+        );
+      }
+      const crossRefPage = href.match(/^#pdfref-p(\d+)$/iu);
+      if (crossRefPage) {
+        const destPage = Number(crossRefPage[1]);
+        return (
+          <button
+            key={key}
+            type="button"
+            className={`${className} cursor-pointer hover:text-white focus:outline-none focus:text-white`}
+            style={leafStyle}
+            title="Go to referenced section"
+            draggable={false}
+            onClick={(event) => handleCrossReferenceNavigation(destPage, event)}
+          >
+            {text}
+          </button>
         );
       }
       if (isInternalEbookHref(href)) {
@@ -3504,6 +3703,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     && stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim().length <= 90;
                   const effectiveAlign = para.align || (neighborAlign && isStrayDisplayLine ? neighborAlign : undefined);
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
+                  // Body-text alignment. 'auto' mirrors the source (justify + hyphenation when the PDF
+                  // is justified, else the default left); 'justify'/'left' force it. Never applied to a
+                  // heading, list, index, or an explicitly aligned display block.
+                  const alignPref = settings.textAlign ?? 'auto';
+                  const justifyBody = !isListRole && !isHeadingRole && !isIndexChapter && !effectiveAlign
+                    && !isNotesSectionHeadingParagraph(para.original)
+                    && (alignPref === 'justify' || (alignPref === 'auto' && fileContext.sourceJustified === true));
+                  const justifyStyle: React.CSSProperties = justifyBody
+                    ? ({ textAlign: 'justify', hyphens: 'auto', WebkitHyphens: 'auto', overflowWrap: 'break-word' } as React.CSSProperties)
+                    : (alignPref === 'left' && !effectiveAlign ? { textAlign: 'left' } : {});
 
                   return (
                     <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={indexIndentStyle}>
@@ -3513,8 +3722,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
+                            lang={justifyBody ? 'en' : undefined}
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...alignStyle }}
+                            style={{ ...paragraphStyle, ...alignStyle, ...justifyStyle }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;

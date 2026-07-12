@@ -12,6 +12,12 @@ export interface Chapter {
   sourcePageStart?: number;
   sourcePageEnd?: number;
   sourceMethod?: 'heading' | 'page' | 'hybrid' | 'outline';
+  // Hierarchy for multi-level tables of contents (e.g. a Part → Chapter book). The reading
+  // sequence stays a flat, ordered list (navigation/pagination/translation are unchanged); these
+  // fields drive only the nested TOC rendering. level 0 = a top-level entry (front/back matter or a
+  // Part divider); level 1 = a Chapter nested under a Part. parentId points at the enclosing Part.
+  level?: number;
+  parentId?: number;
 }
 
 // A PDF's built-in outline (bookmarks) entry, resolved to a 1-based page number.
@@ -31,6 +37,13 @@ export type ReaderPageTarget =
       type: 'page';
       pageIndex: number;
       sentenceIndex?: number;
+    }
+  | {
+      // Jump to the reader page that shows a given SOURCE page (1-based PDF page). Used by a
+      // cross-reference to a figure/table so it lands on the figure's page inside the target
+      // chapter, not just the chapter start. Resolved by anchoring on the text after "[[PAGE n]]".
+      type: 'source-page';
+      page: number;
     }
   | {
       type: 'note';
@@ -116,6 +129,9 @@ export interface FileContext {
   pdfOutline?: PdfOutlineItem[]; // PDF bookmarks (top-level), if the document has them
   docTitle?: string; // the PDF's own metadata Title, preferred over an inferred one
   pdfFigures?: PdfFigure[]; // figures extracted from the PDF; bytes cached separately
+  sourceJustified?: boolean; // true when the source PDF sets its body text justified (fills the
+  //                            right margin); the reader mirrors it (justify + hyphenation) under
+  //                            the 'auto' alignment setting, so a ragged-left source stays ragged.
 }
 
 export interface NotebookItem {
@@ -165,6 +181,9 @@ export interface AppSettings {
   textSize: 'sm' | 'base' | 'lg' | 'xl';
   lineHeight: 'tight' | 'normal' | 'relaxed' | 'loose';
   letterSpacing: 'tighter' | 'normal' | 'wide' | 'wider';
+  // Body text alignment. 'auto' mirrors the source PDF (justify + hyphenation when the source is
+  // justified, else left); 'justify'/'left' force it. Defaults to 'auto'.
+  textAlign?: 'auto' | 'justify' | 'left';
   font: string;
   llmModel: string;
   ttsModel: string;

@@ -10,12 +10,13 @@ const encodeMimeType = (fileContext: FileContext): string => {
   const parts = [fileContext.mimeType || 'text/plain'];
   if (fileContext.sourceKind) parts.push(`sourceKind=${fileContext.sourceKind}`);
   if (fileContext.sourceExtractorVersion) parts.push(`sourceExtractorVersion=${fileContext.sourceExtractorVersion}`);
+  if (fileContext.sourceJustified != null) parts.push(`sourceJustified=${fileContext.sourceJustified ? 1 : 0}`);
   return parts.join(';');
 };
 
-const decodeMimeType = (value: string): Pick<FileContext, 'mimeType' | 'sourceKind' | 'sourceExtractorVersion'> => {
+const decodeMimeType = (value: string): Pick<FileContext, 'mimeType' | 'sourceKind' | 'sourceExtractorVersion' | 'sourceJustified'> => {
   const [base, ...params] = (value || 'text/plain').split(';').map(part => part.trim()).filter(Boolean);
-  const decoded: Pick<FileContext, 'mimeType' | 'sourceKind' | 'sourceExtractorVersion'> = {
+  const decoded: Pick<FileContext, 'mimeType' | 'sourceKind' | 'sourceExtractorVersion' | 'sourceJustified'> = {
     mimeType: base || 'text/plain',
   };
   params.forEach(param => {
@@ -27,6 +28,9 @@ const decodeMimeType = (value: string): Pick<FileContext, 'mimeType' | 'sourceKi
     if (key === 'sourceExtractorVersion' && decodedValue) {
       decoded.sourceExtractorVersion = decodedValue;
     }
+    if (key === 'sourceJustified' && (decodedValue === '0' || decodedValue === '1')) {
+      decoded.sourceJustified = decodedValue === '1';
+    }
   });
   return decoded;
 };
@@ -35,6 +39,7 @@ const mergeFileContextMetadata = (contentOwner: FileContext, metadataOwner: File
   ...contentOwner,
   sourceKind: contentOwner.sourceKind || metadataOwner.sourceKind,
   sourceExtractorVersion: contentOwner.sourceExtractorVersion || metadataOwner.sourceExtractorVersion,
+  sourceJustified: contentOwner.sourceJustified ?? metadataOwner.sourceJustified,
 });
 
 // --- Books ---

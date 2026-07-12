@@ -374,7 +374,30 @@
 // v86: trim trailing sentence punctuation (. , ;) from the URL token (root-cause URL fix in v84 —
 //      link a URL by its whitespace-delimited displayed token, never by char-matching the arbitrarily
 //      encoded annotation URL).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v86-url-token-trim';
+// v87: emit geometry-only superscript ROMAN footnote markers (e.g. "I", "II" in The Sovereign
+//      Individual) as clickable #pdfnote links, like the digit heuristic already did. UPPERCASE only,
+//      value 1–40, previous glyph ends a word — so a lowercase superscript roman (a MATH INDEX like
+//      "layerⁱ" / "Nⁱ neurons in layer i" in Kurzweil) is NOT mistaken for a footnote.
+// v88: capture a multi-level outline hierarchy — promote a Part/Section divider's chapter children
+//      into the chapter list (a Part → Chapter book like Agentic Mesh) and record each entry's level
+//      in pdfOutline, so both the Part and its Chapters are navigable reading units and the TOC can
+//      render nested. Flat outlines are unchanged (every entry stays level 0).
+// v89: figure gate by AREA + short-side floor instead of "both sides ≥ 90pt" — the old rule dropped
+//      wide-but-short diagrams (Agentic Mesh "Figure 14-1" 288×81pt, Kurzweil cellular-automaton
+//      strips). Strict superset of the old gate, so no previously-shown figure is lost.
+// v90: index page-number references — make SINGLE page numbers clickable like ranges. A backward
+//      numeric go-to link sitting mid-line after an index term ("Africa, 388") is an index page ref,
+//      not a note back-link (those lead their line) → emit as a #pdfref cross-ref. endsWithPageRef
+//      unwraps a trailing "[213](#pdfref-p274)" link so index detection still fires.
+// v91: re-attach a paragraph-LEADING forward footnote marker to the previous sentence. A superscript
+//      that wraps to the next line ("…created.\n\n[58](#pdffn-p443-y) Likewise…") was left inert
+//      because the reader reads a leading marker as a note-entry label. Move only forward markers
+//      (dest page > marker's page); note entries (dest == own page) stay put.
+// v92: detect whether the source PDF sets its body text JUSTIFIED (nearly every body line reaches
+//      one right margin) vs ragged-left, and store it (sourceJustified). Under the reader's 'auto'
+//      alignment setting this mirrors the source — justify + hyphenation for justified books, left
+//      for ragged ones (e.g. Elon Musk) — with a Settings override [Auto | Justify | Left].
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v92-justify-detect';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
