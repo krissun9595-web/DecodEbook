@@ -104,7 +104,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
       <div className="bg-[#0a0a0c] border border-zinc-800 rounded-lg w-full max-w-md p-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors"><X size={18} /></button>
+        <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors"><X size={18} /></button>
 
         <div className="flex items-center gap-2 mb-6">
           <Shield size={18} className="text-[#00f3ff]" />
@@ -373,7 +373,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
                   className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono"
                   onKeyDown={e => e.key === 'Enter' && handleAuth()}
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
                   {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>

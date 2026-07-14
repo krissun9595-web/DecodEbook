@@ -9,6 +9,7 @@ import {
   useAnimationFrame,
 } from 'motion/react';
 import './ScrollVelocity.css';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 type VelocityMapping = {
   input: number[];
@@ -75,6 +76,7 @@ function VelocityText({
   scrollerStyle,
 }: VelocityTextProps) {
   const baseX = useMotionValue(0);
+  const reducedMotion = usePrefersReducedMotion();
   const scrollOptions = scrollContainerRef ? { container: scrollContainerRef } : {};
   const { scrollY } = useScroll(scrollOptions);
   const scrollVelocity = useVelocity(scrollY);
@@ -96,6 +98,8 @@ function VelocityText({
 
   const directionFactor = useRef(1);
   useAnimationFrame((_time, delta) => {
+    // Reduced motion: hold the marquee still.
+    if (reducedMotion) return;
     let moveBy = directionFactor.current * baseVelocity * (delta / 1000);
 
     if (velocityFactor.get() < 0) {

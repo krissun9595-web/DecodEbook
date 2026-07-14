@@ -233,15 +233,17 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                         </div>
 
                         {/* Overlay Navigation Buttons */}
-                        <button 
-                            onClick={handlePrev} 
+                        <button
+                            aria-label="Previous concept"
+                            onClick={handlePrev}
                             className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-zinc-800 bg-black/60 backdrop-blur-sm text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff] flex items-center justify-center transition-all z-40 shadow-[0_0_20px_rgba(0,0,0,0.5)] group/btn hover:scale-110"
                         >
                             <ChevronLeft size={24} className="group-hover/btn:-translate-x-0.5 transition-transform" />
                         </button>
 
-                        <button 
-                            onClick={handleNext} 
+                        <button
+                            aria-label="Next concept"
+                            onClick={handleNext}
                             className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-zinc-800 bg-black/60 backdrop-blur-sm text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff] flex items-center justify-center transition-all z-40 shadow-[0_0_20px_rgba(0,0,0,0.5)] group/btn hover:scale-110"
                         >
                             <ChevronRight size={24} className="group-hover/btn:translate-x-0.5 transition-transform" />

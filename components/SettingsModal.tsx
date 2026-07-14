@@ -109,7 +109,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
         
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">System_Config</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
+          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors">
             <X size={24} />
           </button>
         </div>

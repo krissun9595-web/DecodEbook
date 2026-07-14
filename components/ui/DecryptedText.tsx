@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo, useCallback, type HTMLAttributes } from 'react';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { motion } from 'motion/react';
 
 const styles = {
@@ -54,6 +55,7 @@ export default function DecryptedText({
   const [hasAnimated, setHasAnimated] = useState(false);
   const [isDecrypted, setIsDecrypted] = useState(animateOn !== 'click');
   const [direction, setDirection] = useState<'forward' | 'reverse'>('forward');
+  const reducedMotion = usePrefersReducedMotion();
 
   const containerRef = useRef<HTMLSpanElement | null>(null);
   const orderRef = useRef<number[]>([]);
@@ -243,13 +245,13 @@ export default function DecryptedText({
   };
 
   const triggerHoverDecrypt = useCallback(() => {
-    if (isAnimating) return;
+    if (isAnimating || reducedMotion) return;
     setRevealedIndices(new Set());
     setIsDecrypted(false);
     setDisplayText(text);
     setDirection('forward');
     setIsAnimating(true);
-  }, [isAnimating, text]);
+  }, [isAnimating, text, reducedMotion]);
 
   const resetToPlainText = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -262,6 +264,7 @@ export default function DecryptedText({
 
   useEffect(() => {
     if (animateOn !== 'view' && animateOn !== 'inViewHover') return;
+    if (reducedMotion) return; // reduced motion: no scramble-on-view, text stays plain
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (entry.isIntersecting && !hasAnimated) {
@@ -275,18 +278,19 @@ export default function DecryptedText({
     return () => {
       if (currentRef) observer.unobserve(currentRef);
     };
-  }, [animateOn, hasAnimated, triggerDecrypt]);
+  }, [animateOn, hasAnimated, triggerDecrypt, reducedMotion]);
 
   useEffect(() => {
-    if (animateOn === 'click') {
+    if (animateOn === 'click' && !reducedMotion) {
       encryptInstantly();
     } else {
+      // Non-click, or reduced motion: show the final plain text (no initial scramble).
       setDisplayText(text);
       setIsDecrypted(true);
     }
     setRevealedIndices(new Set());
     setDirection('forward');
-  }, [animateOn, encryptInstantly, text]);
+  }, [animateOn, encryptInstantly, text, reducedMotion]);
 
   const animateProps =
     animateOn === 'hover' || animateOn === 'inViewHover'

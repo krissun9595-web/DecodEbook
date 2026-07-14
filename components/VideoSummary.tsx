@@ -337,23 +337,23 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                     </div>
 
                     <div className="flex items-center justify-center gap-2 md:gap-6 shrink-0">
-                        <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={16} /></button>
-                        <button onClick={togglePlay} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                        <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={16} /></button>
+                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
                             {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={16} /></button>
+                        <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={16} /></button>
                     </div>
 
                     <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                         <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                        <button onClick={toggleMute} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                        <button aria-label={isMuted ? "Unmute" : "Mute"} onClick={toggleMute} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
                             {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>
-                        <a href={videoUrl || '#'} download={`video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                        <a aria-label="Download video" href={videoUrl || '#'} download={`video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
                             <Download size={16} />
                         </a>
                         <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0" title="Share"><Share2 size={16} /></button>
-                        <button onClick={toggleFullScreen} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
+                        <button aria-label={isFullScreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullScreen} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
                             {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                         </button>
                     </div>

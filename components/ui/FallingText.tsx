@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, type CSSProperties } from 'react';
 import Matter from 'matter-js';
 import './FallingText.css';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 interface FallingTextProps {
   className?: string;
@@ -38,8 +39,11 @@ export default function FallingText({
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const [effectStarted, setEffectStarted] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    // Reduced motion: never drop the letters — the static highlighted text stays.
+    if (reducedMotion) return;
     if (trigger === 'auto') {
       if (startDelayMs <= 0) {
         setEffectStarted(true);
@@ -63,7 +67,7 @@ export default function FallingText({
       observer.observe(containerRef.current);
       return () => observer.disconnect();
     }
-  }, [startDelayMs, trigger]);
+  }, [startDelayMs, trigger, reducedMotion]);
 
   useEffect(() => {
     if (!effectStarted || !containerRef.current || !textRef.current || !canvasContainerRef.current) return;

@@ -3140,6 +3140,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#020202] bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
+      <a href="#main-content" className="skip-to-content">Skip to content</a>
       <GlobalContextLayer onAddToNotebook={handleAddToNotebook} activeLanguage={settings.targetLanguage} />
       <AIAssistant
         fileContext={activeFileContext}
@@ -3396,11 +3397,11 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
+      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
         <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
           <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
             <div className="flex items-center gap-2 md:gap-4 min-w-0">
-              <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
+              <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
                 {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
               <div className="h-4 w-[1px] bg-zinc-800 shrink-0"></div>
@@ -3430,6 +3431,7 @@ const App: React.FC = () => {
               ].map((tab) => (
                 <button
                   key={tab.id}
+                  aria-label={tab.label}
                   onClick={() => { switchTab(tab.id as Tab); }}
                   className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
                     activeTab === tab.id

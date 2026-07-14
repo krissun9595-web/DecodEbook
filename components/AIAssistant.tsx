@@ -441,6 +441,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         onClick={(e) => { e.stopPropagation(); handleSend(); }}
                         disabled={isLoading || !input.trim() || isRecording}
                         onMouseDown={(e) => e.stopPropagation()}
+                        aria-label="Send message"
                         className="p-2 bg-[#00f3ff]/10 border border-[#00f3ff] text-[#00f3ff] rounded-sm hover:bg-[#00f3ff] hover:text-black disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                     >
                         <Send size={16} />

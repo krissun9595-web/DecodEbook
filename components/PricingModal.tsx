@@ -179,7 +179,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">My_Account</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
+          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
         </div>
 
         <div className="overflow-y-auto max-h-[70vh] custom-scrollbar">
@@ -333,6 +333,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         </div>
                         <button
                           onClick={() => { navigator.clipboard.writeText(getShareUrl(refCode)); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                          aria-label="Copy referral link"
                           className="shrink-0 p-1.5 border border-zinc-800 rounded-sm text-zinc-500 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
                         >
                           {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
@@ -532,7 +533,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <div className="flex items-center gap-2 bg-[#0a0a0c] border border-zinc-800 rounded-sm px-3 py-2.5">
                       <KeyIcon size={14} className="text-zinc-600 shrink-0" />
                       <input id="acct-auth-password" name="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} placeholder="password" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
                         {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>

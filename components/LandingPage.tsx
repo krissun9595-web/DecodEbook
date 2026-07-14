@@ -186,7 +186,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           </div>
         </div>
 
-        <button onClick={() => document.getElementById('section-problem')?.scrollIntoView({ behavior: 'smooth' })} className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-[#00f3ff] transition-colors animate-bounce">
+        <button aria-label="Scroll down" onClick={() => document.getElementById('section-problem')?.scrollIntoView({ behavior: 'smooth' })} className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-[#00f3ff] transition-colors animate-bounce">
           <ChevronDown size={20} />
         </button>
       </section>

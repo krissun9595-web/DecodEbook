@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'motion/react';
 import './TrueFocus.css';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 interface TrueFocusProps {
   sentence?: string;
@@ -31,15 +32,17 @@ export default function TrueFocus({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wordRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const [focusRect, setFocusRect] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    if (manualMode) return;
+    // Reduced motion: don't auto-cycle the focus/blur; settle on the first word.
+    if (manualMode || reducedMotion) return;
     const interval = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % words.length);
     }, (animationDuration + pauseBetweenAnimations) * 1000);
 
     return () => clearInterval(interval);
-  }, [animationDuration, manualMode, pauseBetweenAnimations, words.length]);
+  }, [animationDuration, manualMode, pauseBetweenAnimations, words.length, reducedMotion]);
 
   useEffect(() => {
     if (currentIndex == null || currentIndex < 0) return;
