@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -3191,9 +3191,6 @@ const App: React.FC = () => {
                     <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[#00f3ff]"></div>
                     <h1 className="font-bold text-xs text-white truncate leading-tight mb-1 font-tech uppercase tracking-wide">{activeBook.title}</h1>
                     <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
-                    <div className="mt-2 text-[9px] text-[#00f3ff] font-mono flex items-center gap-1">
-                        <Activity size={10} /> SYS.ACTIVE
-                    </div>
                 </div>
             )}
         </div>
@@ -3401,12 +3398,12 @@ const App: React.FC = () => {
 
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
         <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
-          <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
-            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+          <div className="h-10 md:h-11 flex items-center justify-between px-2.5 md:px-3.5">
+            <div className="flex items-center gap-2 md:gap-3 min-w-0">
               <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
-                {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+                {isSidebarOpen ? <X size={16} /> : <Menu size={16} />}
               </button>
-              <div className="h-4 w-[1px] bg-zinc-800 shrink-0"></div>
+              <div className="h-3.5 w-[1px] bg-zinc-800 shrink-0"></div>
               {activeChapterId ? (
                   <div className="flex items-center gap-1.5 md:gap-2 min-w-0">
                       <span className="text-[8px] md:text-[9px] font-mono text-zinc-600 bg-zinc-900 border border-zinc-800 px-1 md:px-1.5 py-0.5 shrink-0">
@@ -3435,13 +3432,13 @@ const App: React.FC = () => {
                   key={tab.id}
                   aria-label={tab.label}
                   onClick={() => { switchTab(tab.id as Tab); }}
-                  className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
+                  className={`flex items-center justify-center gap-1.5 w-[104px] py-1 transition-all text-[8px] font-bold uppercase tracking-wider font-tech ${
                     activeTab === tab.id
                       ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'
                       : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900'
                   }`}
                 >
-                  <tab.icon size={12} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
+                  <tab.icon size={11} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
                   <span className="hidden xl:inline">{tab.label}</span>
                 </button>
               ))}
@@ -3460,13 +3457,13 @@ const App: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => { switchTab(tab.id as Tab); }}
-                className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all ${
+                className={`flex flex-col items-center justify-center flex-1 min-w-[48px] py-1 gap-0.5 transition-all ${
                   activeTab === tab.id
                     ? 'text-[#00f3ff] bg-[#00f3ff]/10 border-b-2 border-[#00f3ff]'
                     : 'text-zinc-600 border-b-2 border-transparent'
                 }`}
               >
-                <tab.icon size={14} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
+                <tab.icon size={13} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
                 <span className="text-[7px] font-bold font-tech tracking-wide">{tab.label}</span>
               </button>
             ))}
