@@ -648,7 +648,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 overflow-hidden text-left">
-       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2">
+       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
                  <Mic2 size={16} className="text-[#00f3ff]" />
@@ -673,7 +673,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
           </div>
        </div>
 
-       <div className="flex-1 flex flex-col gap-4 overflow-hidden w-full">
+       <div className="flex-1 flex flex-col gap-2 overflow-hidden w-full">
            <div className={`bg-[#0a0a0c] border border-zinc-800 rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isPlayerMinimized ? 'h-auto' : 'h-[277px]'}`}>
                {!isPlayerMinimized && (
                    <div className="flex-1 bg-[#010102] w-full flex items-center justify-center overflow-hidden relative group border-b border-zinc-900">

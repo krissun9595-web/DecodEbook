@@ -154,7 +154,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   return (
     <div className="h-full flex flex-col animate-fade-in font-sans text-left overflow-hidden">
       {/* Controller */}
-      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
         <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
             <HardDrive size={16} className="text-[#00f3ff]" />
