@@ -169,7 +169,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             Original-language books are full of words a dictionary won't crack — literary phrasings, cultural idioms, sentences whose meaning bends with the paragraph around them. DecodEbook wraps an AI tutor around every page. Tap a word for what it means <em className="text-zinc-300 not-italic">in this passage</em>. Hear it pronounced. Ask why the grammar bends that way. Five ways to understand — until the book clicks.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <button onClick={onEnterApp} className="px-5 sm:px-8 py-2.5 sm:py-3 bg-neon-cyan text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-5 sm:px-8 py-2.5 sm:py-3 bg-neon-cyan text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg flex items-center gap-2">
               Decode Your First Chapter <ArrowRight size={14} />
             </button>
             <span className="text-[9px] sm:text-[10px] text-zinc-600 font-mono">Free · 100 credits/mo · 30 seconds</span>
@@ -602,7 +602,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             </h2>
           </FadeSection>
           <FadeSection delay={100}>
-            <button onClick={onEnterApp} className="px-5 sm:px-10 py-3 sm:py-3.5 bg-neon-cyan text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] inline-flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-5 sm:px-10 py-3 sm:py-3.5 bg-neon-cyan text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg inline-flex items-center gap-2">
               Decode Your First Book <ArrowRight size={14} />
             </button>
             <p className="text-[9px] sm:text-[10px] text-zinc-600 font-mono mt-3">Free · EPUB, PDF, TXT · 50+ languages</p>
@@ -687,7 +687,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       {/* Bottom */}
       <div className="w-full px-6 pb-8 relative z-10 space-y-4">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button onClick={onEnterApp} className="px-8 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
+          <button onClick={onEnterApp} className="px-8 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg flex items-center gap-2">
             Start Free — 100 credits/mo <ArrowRight size={14} />
           </button>
           <button onClick={onEnterApp} className="px-8 py-3 border border-neon-cyan/30 text-neon-cyan font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/10 transition-all flex items-center gap-2">
@@ -859,7 +859,7 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           {/* Prompt */}
           <div className="text-center space-y-3 pt-4">
             <p className="text-zinc-400 text-sm">Like it? Upload your own book.</p>
-            <button onClick={onEnterApp} className="px-8 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] inline-flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-8 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg inline-flex items-center gap-2">
               Get Started Free <ArrowRight size={14} />
             </button>
           </div>
@@ -2089,7 +2089,7 @@ function TransformationLanding({
           </p>
           <HeroLearningBlocksVelocity />
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <button onClick={onEnterApp} className="px-7 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-7 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg flex items-center gap-2">
               Decode Your First Chapter <ArrowRight size={14} />
             </button>
           </div>

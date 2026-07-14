@@ -648,7 +648,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 overflow-hidden text-left">
-       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2">
+       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-glow-ambient w-full flex-wrap gap-2">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
                  <Mic2 size={16} className="text-neon-cyan" />
@@ -665,7 +665,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
               </div>
               <button
                 onClick={handleToggleGeneration}
-                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isLoading ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}
+                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-glow-sm justify-center ${isLoading ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}
               >
                  {isLoading ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                  {isLoading ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
@@ -682,7 +682,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                       {audioSrc && !isLoading && episodeTitle && (
                         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none animate-fade-in">
                             <div className="relative max-w-[90%] px-8 py-4 overflow-hidden">
-                               <span className="content-font font-black text-neon-red uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
+                               <span className="content-font font-black text-neon-red uppercase drop-shadow-glow-red italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
                                   <div className="w-3 h-3 rounded-full bg-neon-red shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
                                   {episodeTitle.toUpperCase()}
                                </span>
@@ -733,7 +733,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                    </div>
                    <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
                        <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} aria-label="Rewind 15 seconds" className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={14} /></button>
-                       <button onClick={togglePlay} disabled={!audioSrc} aria-label="Play/pause" className={`w-8 h-8 md:w-9 md:h-9 rounded-full transition-all flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-neon-cyan border-neon-cyan text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}</button>
+                       <button onClick={togglePlay} disabled={!audioSrc} aria-label="Play/pause" className={`w-8 h-8 md:w-9 md:h-9 rounded-full transition-all flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>{isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}</button>
                        <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} aria-label="Forward 15 seconds" className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={14} /></button>
                    </div>
                    <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">

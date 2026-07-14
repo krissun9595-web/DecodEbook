@@ -515,7 +515,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Mail size={14} className="text-zinc-600 shrink-0" />
                     <input id="acct-reset-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
                   </div>
-                  <button onClick={handleForgotPassword} disabled={authLoading} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
+                  <button onClick={handleForgotPassword} disabled={authLoading} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
                     {authLoading && <Loader2 size={14} className="animate-spin" />}
                     Send Reset Link
                   </button>
@@ -554,7 +554,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </label>
                   )}
 
-                  <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
+                  <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
                     {authLoading ? <Loader2 size={14} className="animate-spin" /> : authMode === 'login' ? <LogIn size={14} /> : <UserPlus size={14} />}
                     {authMode === 'login' ? 'Sign In' : 'Create Account'}
                   </button>

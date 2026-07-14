@@ -857,7 +857,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
           .hide-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(0, 243, 255, 0.3); }
        `}</style>
 
-       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-glow-ambient w-full flex-wrap gap-2 z-20">
            <div className="hidden md:flex items-center gap-4">
                <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
                    <NotebookIcon size={16} className="text-neon-cyan" />
@@ -896,7 +896,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                <button
                   onClick={handleInitiateMindMap}
                   disabled={filteredItems.length === 0}
-                  className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center ${isGeneratingMap ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-[0_0_10px_rgba(0,243,255,0.3)]'}`}
+                  className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center ${isGeneratingMap ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-glow-sm'}`}
                >
                    {isGeneratingMap ? <Square size={13} fill="currentColor" /> : hasInitiatedMap ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                    {isGeneratingMap ? "STOP" : hasInitiatedMap ? "REGENERATE" : "INITIATE"}

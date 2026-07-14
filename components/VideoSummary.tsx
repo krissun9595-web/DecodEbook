@@ -230,7 +230,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 text-left overflow-hidden">
-      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-glow-ambient w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
                  <Film size={16} className="text-neon-cyan" />
@@ -249,7 +249,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                     <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
                  </div>
               </div>
-              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}>
+              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-glow-sm justify-center ${isGenerating ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}>
                 {currentStatusIcon}
                 {currentStatusLabel}
               </button>
@@ -338,7 +338,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
 
                     <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
                         <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={14} /></button>
-                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-neon-cyan border-neon-cyan text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
                             {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                         </button>
                         <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={14} /></button>
