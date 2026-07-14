@@ -1,0 +1,77 @@
+.parallax {
+  position: relative;
+  overflow: hidden;
+}
+
+.scroller {
+  display: flex;
+  white-space: nowrap;
+  text-align: center;
+  font-family: sans-serif;
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+}
+
+.scroller span {
+  flex-shrink: 0;
+}
+
+.decodebook-scroll-velocity {
+  width: min(100vw, 860px);
+  margin-inline: calc((min(100vw, 860px) - 100%) / -2);
+}
+
+.decodebook-scroll-velocity__row {
+  padding-block: 0.125rem;
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+
+.decodebook-scroll-velocity__scroller {
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
+}
+
+.decodebook-scroll-velocity__copy {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.decodebook-scroll-velocity__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-inline: 0.1875rem;
+}
+
+.decodebook-scroll-velocity__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  font-family: "Roboto Mono", "Share Tech Mono", monospace;
+  font-size: 0.5rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+@media (min-width: 640px) {
+  .decodebook-scroll-velocity__group {
+    gap: 0.5rem;
+    padding-inline: 0.25rem;
+  }
+
+  .decodebook-scroll-velocity__chip {
+    min-height: 1.625rem;
+    padding-inline: 0.75rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+  }
+}

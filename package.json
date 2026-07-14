@@ -26,6 +26,8 @@
     "jspdf": "2.5.1",
     "jszip": "3.10.1",
     "lucide-react": "^0.555.0",
+    "matter-js": "^0.20.0",
+    "motion": "^12.41.0",
     "pdfjs-dist": "^6.0.227",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

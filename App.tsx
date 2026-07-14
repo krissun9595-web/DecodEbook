@@ -237,7 +237,7 @@ const restoreLibrarySources = async (items: LibraryItem[]): Promise<LibraryItem[
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.LANDING);
-  const [landingVariant, setLandingVariant] = useState<'A' | 'B' | 'C' | 'D' | 'E'>('A');
+  const [landingVariant, setLandingVariant] = useState<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'>('A');
   const unsubRef = useRef<(() => void) | null>(null);
 
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -368,6 +368,8 @@ const App: React.FC = () => {
       else if (v === 'C' || v === 'c') setLandingVariant('C');
       else if (v === 'D' || v === 'd') setLandingVariant('D');
       else if (v === 'E' || v === 'e') setLandingVariant('E');
+      else if (v === 'F' || v === 'f') setLandingVariant('F');
+      else if (v === 'G' || v === 'g') setLandingVariant('G');
 
       // Handle referral link
       const refCode = params.get('ref');

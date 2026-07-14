@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Languages, Headphones, Brain, Film, Mic2, ChevronDown, Zap, Crown, ArrowRight, Sparkles, MessageSquare, Map, Image as ImageIcon, Upload } from 'lucide-react';
+import ScrollVelocity from './ui/ScrollVelocity';
+import FallingText from './ui/FallingText';
+import DecryptedText from './ui/DecryptedText';
+import TrueFocus from './ui/TrueFocus';
+import './ui/LandingCyberpunk.css';
 
 interface LandingPageProps {
-  variant: 'A' | 'B' | 'C' | 'D' | 'E';
+  variant: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   onEnterApp: () => void;
   onSignIn: () => void;
 }
@@ -1064,8 +1069,8 @@ function VersionD({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   );
 }
 
-// ─── Version E: Eight-screen Transformation ───
-// Hero → six "You used to / Now you" feature screens → CTA. Alternating sides.
+// ─── Version E: Transformation Scroll ───
+// Hero → seven feature screens → CTA. Alternating sides.
 
 type FeatureE = {
   id: string;
@@ -1074,10 +1079,12 @@ type FeatureE = {
   label: string;
   side: 'left' | 'right';
   color: string;
-  before: React.ReactNode;
-  after: React.ReactNode;
+  before: string;
+  after: string;
+  beforeHighlights?: string[];
   cta: string;
   demo: React.ReactNode;
+  demoDurationMs?: number;
   patternBreak?: boolean;
 };
 
@@ -1090,10 +1097,60 @@ const LANDING_E_PALETTE = {
   pink: '#ff4fd8',
 };
 
+const LANDING_E_LEARNING_BLOCKS = [
+  { label: 'Read', color: LANDING_E_PALETTE.cyan },
+  { label: 'Listen', color: LANDING_E_PALETTE.emerald },
+  { label: 'Discuss', color: LANDING_E_PALETTE.amber },
+  { label: 'Visualize', color: LANDING_E_PALETTE.violet },
+  { label: 'Watch', color: LANDING_E_PALETTE.rose },
+  { label: 'Share', color: LANDING_E_PALETTE.pink },
+  { label: 'Recap', color: '#38bdf8' },
+  { label: 'Ask', color: '#f472b6' },
+];
+
 function MediaFrameE({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative w-full max-w-[580px] mx-auto aspect-[4/3]">
+    <div className="relative w-full max-w-[640px] mx-auto aspect-video">
       {children}
+    </div>
+  );
+}
+
+function LearningBlockRow({ blocks }: { blocks: typeof LANDING_E_LEARNING_BLOCKS }) {
+  return (
+    <span className="decodebook-scroll-velocity__group">
+      {blocks.map(block => (
+        <span
+          key={block.label}
+          className="decodebook-scroll-velocity__chip"
+          style={{ color: block.color, borderColor: `${block.color}40` }}
+        >
+          {block.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function HeroLearningBlocksVelocity() {
+  const rows = [
+    LANDING_E_LEARNING_BLOCKS.slice(0, 4),
+    LANDING_E_LEARNING_BLOCKS.slice(4),
+  ];
+
+  return (
+    <div className="decodebook-scroll-velocity mx-auto animate-fade-in" style={{ animationDelay: '0.25s' }}>
+      <ScrollVelocity
+        texts={rows.map((blocks, index) => <LearningBlockRow key={index} blocks={blocks} />)}
+        velocity={18}
+        damping={45}
+        stiffness={320}
+        numCopies={8}
+        velocityMapping={{ input: [0, 1000], output: [0, 2.5] }}
+        className="decodebook-scroll-velocity__copy"
+        parallaxClassName="decodebook-scroll-velocity__row"
+        scrollerClassName="decodebook-scroll-velocity__scroller"
+      />
     </div>
   );
 }
@@ -1253,20 +1310,20 @@ function MemLogDemo() {
 function GenFilesDemo() {
   const files = [
     { kind: 'Audio', name: 'ch21_narration_FR.mp3', size: '3.2 MB', color: '#00f3ff' },
-    { kind: 'Podcast', name: 'ch21_discussion_EN.mp3', size: '8.7 MB', color: '#f59e0b' },
-    { kind: 'Script', name: 'ch21_podcast_transcript.txt', size: '12 KB', color: '#f59e0b' },
+    { kind: 'Podcast', name: 'ch21_discussion_EN.mp3', size: '8.7 MB', color: '#fbbf24' },
+    { kind: 'Script', name: 'ch21_podcast_transcript.txt', size: '12 KB', color: '#fbbf24' },
     { kind: 'Image', name: 'ch21_cinematic_3x.png', size: '4.1 MB', color: '#a78bfa' },
     { kind: 'Video', name: 'ch21_summary_1080p.mp4', size: '24.3 MB', color: '#ff003c' },
-    { kind: 'Notebook', name: 'sparks_4_chapters.pdf', size: '88 KB', color: '#10b981' },
+    { kind: 'Notebook', name: 'sparks_4_chapters.pdf', size: '88 KB', color: '#34d399' },
   ];
   return (
-    <div className="bg-[#0a0a0c] border border-zinc-700/40 rounded-sm p-5 sm:p-6 space-y-3 relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-zinc-500/40 to-transparent" />
+    <div className="h-full bg-[#0a0a0c] border border-[#38bdf8]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#38bdf8]/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Generated files · Le Petit Prince</p>
-        <button className="text-[9px] uppercase tracking-widest text-zinc-400 hover:text-white transition-colors">Download all ↓</button>
+        <button className="text-[9px] uppercase tracking-widest text-[#38bdf8] hover:text-white transition-colors">Download all ↓</button>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 flex-1 min-h-0">
         {files.map((f, i) => (
           <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-sm border border-zinc-800/50 hover:border-zinc-700 transition-colors group">
             <span className="text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-sm shrink-0 w-[68px] text-center" style={{ color: f.color, backgroundColor: `${f.color}10`, borderWidth: 1, borderColor: `${f.color}30` }}>{f.kind}</span>
@@ -1322,47 +1379,61 @@ function AiTutorDemo() {
 
 const FEATURES_E: FeatureE[] = [
   {
-    id: 'guided_reader', num: '01', codename: 'guided_reader', label: 'Read & Listen', side: 'left', color: LANDING_E_PALETTE.cyan,
+    id: 'voice_synth', num: '01', codename: 'VOICE_SYNTH', label: 'Read & Listen', side: 'left', color: LANDING_E_PALETTE.cyan,
     before: 'The original used to mean reading line by line with a dictionary always open.',
-    after: <>Now the original, translation, and narration stay synced, with <span className="text-[#00f3ff]">contextual meaning on tap</span>.</>,
+    beforeHighlights: ['original', 'dictionary'],
+    after: 'Now the original, translation, and narration stay synced, with contextual meaning on tap.',
     cta: 'Open the reader',
     demo: <VoiceSynthDemo />,
   },
   {
-    id: 'context_tutor', num: '02', codename: 'context_tutor', label: 'Ask the Book', side: 'right', color: LANDING_E_PALETTE.pink,
-    before: 'Your questions used to outlive the reading session.',
-    after: <>Now you ask about grammar, nuance, and context, and get <span className="text-[#ff4fd8]">answers grounded in the chapter</span>.</>,
-    cta: 'Ask the tutor',
-    demo: <AiTutorDemo />,
-  },
-  {
-    id: 'chapter_podcast', num: '03', codename: 'chapter_podcast', label: 'Discuss', side: 'left', color: LANDING_E_PALETTE.amber,
+    id: 'net_cast', num: '02', codename: 'NET_CAST', label: 'Follow The Discussion', side: 'right', color: LANDING_E_PALETTE.amber,
     before: 'Dense chapters used to demand a desk, silence, and an hour of focus.',
-    after: <>Now two hosts unpack the chapter in the <span className="text-[#fbbf24]">tone and language you choose</span>. Listen anywhere.</>,
+    beforeHighlights: ['Dense', 'chapters'],
+    after: 'Now two hosts unpack the chapter in the tone and language you choose. Listen anywhere.',
     cta: 'Create a podcast',
     demo: <PodcastDemo />,
   },
   {
-    id: 'visual_notes', num: '04', codename: 'visual_notes', label: 'Visualize', side: 'right', color: LANDING_E_PALETTE.violet,
+    id: 'visual_core', num: '03', codename: 'VISUAL_CORE', label: 'Visualize The Concept', side: 'left', color: LANDING_E_PALETTE.violet,
     before: 'Abstract scenes and ideas used to stay vague.',
-    after: <>Now key concepts become <span className="text-[#a78bfa]">reference images</span> in the style and ratio you choose.</>,
+    beforeHighlights: ['Abstract', 'ideas'],
+    after: 'Now key concepts become reference images in the style and ratio you choose.',
     cta: 'Generate visuals',
     demo: <VisualCoreDemo />,
   },
   {
-    id: 'video_summary', num: '05', codename: 'video_summary', label: 'Watch', side: 'left', color: LANDING_E_PALETTE.rose,
+    id: 'cine_render', num: '04', codename: 'CINE_RENDER', label: 'Summarize With Scenes', side: 'right', color: LANDING_E_PALETTE.rose,
     patternBreak: true,
-    before: <span className="not-italic text-zinc-300">Some chapters stay with you.</span>,
-    after: <>Now more of them can: <span className="text-[#ff003c]">short summary videos</span> give each chapter a memorable shape.</>,
+    before: 'Some chapters stay with you.',
+    beforeHighlights: ['chapters'],
+    after: 'Now more of them can: short summary videos give each chapter a memorable shape.',
     cta: 'Make a video',
     demo: <CineRenderDemo />,
   },
   {
-    id: 'study_notebook', num: '06', codename: 'study_notebook', label: 'Keep & Share', side: 'right', color: LANDING_E_PALETTE.emerald,
+    id: 'mem_log', num: '05', codename: 'MEM_LOG', label: 'Share Your Thoughts', side: 'left', color: LANDING_E_PALETTE.emerald,
     before: 'Highlights used to scatter across screenshots, notes, and downloads.',
-    after: <>Now saved words, lines, mind maps, and generated files stay <span className="text-[#34d399]">organized by book</span>.</>,
+    beforeHighlights: ['Highlights', 'scatter'],
+    after: 'Now share a card with your thought or a mindmap with your thinking path.',
     cta: 'Open the notebook',
     demo: <MemLogDemo />,
+  },
+  {
+    id: 'gen_files', num: '06', codename: 'GEN_FILES', label: 'Keep In Order', side: 'right', color: '#38bdf8',
+    before: 'You looked around for what you just save.',
+    beforeHighlights: ['looked', 'save'],
+    after: 'Now everything stay organized by book, filtered by type.',
+    cta: 'Review files',
+    demo: <GenFilesDemo />,
+  },
+  {
+    id: 'neural_assistant', num: '07', codename: 'NEURAL_ASSISTANT', label: 'Ask the Expert', side: 'left', color: LANDING_E_PALETTE.pink,
+    before: 'Your questions used to outlive the reading session.',
+    beforeHighlights: ['questions'],
+    after: 'Now you ask about grammar, nuance, and context, and get answers grounded in the chapter.',
+    cta: 'Ask the expert',
+    demo: <AiTutorDemo />,
   },
 ];
 
@@ -1372,32 +1443,125 @@ const LANDING_E_SECTION_IDS = [
   'e-cta',
 ];
 
+const LANDING_F_SECTION_IDS = [
+  'f-hero',
+  ...FEATURES_E.map(feature => `f-feature-${feature.id}`),
+  'f-cta',
+];
+
+const LANDING_G_SECTION_IDS = [
+  'g-hero',
+  ...FEATURES_E.map(feature => `g-feature-${feature.id}`),
+  'g-cta',
+];
+
 const LANDING_E_SECTION_ACCENTS = [
   LANDING_E_PALETTE.cyan,
   ...FEATURES_E.map(feature => feature.color),
   LANDING_E_PALETTE.cyan,
 ];
 
+const LANDING_F_SECTION_ACCENTS = LANDING_E_SECTION_ACCENTS;
+const LANDING_G_SECTION_ACCENTS = LANDING_E_SECTION_ACCENTS;
+
+const FEATURE_STEP_ORDER = ['before', 'after', 'demo', 'cta'] as const;
+type FeatureStepE = typeof FEATURE_STEP_ORDER[number];
+
+const FEATURE_STEP_DURATIONS_MS: Record<FeatureStepE, number> = {
+  before: 3000,
+  after: 3000,
+  demo: 5000,
+  cta: 2000,
+};
+
+const FEATURE_STEP_LABELS: Record<FeatureStepE, string> = {
+  before: 'Before',
+  after: 'After',
+  demo: 'Demo',
+  cta: 'CTA',
+};
+
+function FeatureTitleE({ feature }: { feature: FeatureE }) {
+  return (
+    <div className="flex items-baseline gap-3 flex-wrap">
+      <span className="text-[10px] sm:text-xs font-mono tracking-[0.25em] text-zinc-600">{feature.num}</span>
+      <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.25em]" style={{ color: feature.color }}>{feature.codename}</span>
+      <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">· {feature.label}</span>
+    </div>
+  );
+}
+
+function FeatureStepNavE({
+  activeStep,
+  color,
+  onSelect,
+}: {
+  activeStep: FeatureStepE;
+  color: string;
+  onSelect: (step: FeatureStepE) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2 pt-2">
+      {FEATURE_STEP_ORDER.map(step => {
+        const active = activeStep === step;
+        return (
+          <button
+            key={step}
+            type="button"
+            onClick={() => onSelect(step)}
+            className="min-w-[4.5rem] px-2.5 py-1.5 rounded-sm border font-mono text-[9px] uppercase tracking-[0.18em] transition-colors"
+            style={{
+              borderColor: active ? `${color}80` : 'rgba(63, 63, 70, 0.75)',
+              color: active ? color : '#52525b',
+              backgroundColor: active ? `${color}12` : 'transparent',
+            }}
+          >
+            {FEATURE_STEP_LABELS[step]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; index: number; onEnterApp: () => void }) {
-  const { ref, visible } = useInView(0.2);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(false);
   const textOrder = feature.side === 'left' ? 'md:order-1' : 'md:order-2';
   const demoOrder = feature.side === 'left' ? 'md:order-2' : 'md:order-1';
   const beforeClass = feature.patternBreak
     ? 'text-[1.35rem] sm:text-2xl md:text-[2rem] text-zinc-300 leading-[1.25] max-w-[31rem] font-medium tracking-normal'
     : 'text-[15px] sm:text-[17px] md:text-[18px] text-zinc-500 leading-[1.7] max-w-[32rem]';
+
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.2 }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section ref={ref} className="min-h-[100svh] scroll-mt-16 flex items-center px-4 sm:px-6 md:px-10 py-20 sm:py-24 border-t border-zinc-900/50" id={`e-feature-${feature.id}`}>
+    <section
+      ref={sectionRef}
+      className="min-h-[100svh] scroll-mt-16 flex items-center px-4 sm:px-6 md:px-10 py-20 sm:py-24 border-t border-zinc-900/50"
+      id={`e-feature-${feature.id}`}
+    >
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 sm:gap-14 md:gap-20 items-center w-full">
-        <div className={`space-y-5 sm:space-y-6 ${textOrder} transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-[10px] sm:text-xs font-mono tracking-[0.25em] text-zinc-600">{feature.num}</span>
-            <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.25em]" style={{ color: feature.color }}>{feature.codename}</span>
-            <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">· {feature.label}</span>
-          </div>
-          <p className={beforeClass}>
-            {feature.before}
-          </p>
-          {/* Transformation marker — hairline with accent pulse */}
+        <div
+          className={`space-y-5 sm:space-y-6 ${textOrder} transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
+          style={{ transitionDelay: `${index * 30}ms` }}
+        >
+          <FeatureTitleE feature={feature} />
+          <p className={beforeClass}>{feature.before}</p>
           <div className="flex items-center gap-3 max-w-md py-1">
             <div className="flex-1 h-[1px]" style={{ background: `linear-gradient(to right, transparent, ${feature.color}66, transparent)` }} />
             <ArrowRight size={11} style={{ color: feature.color }} strokeWidth={2} />
@@ -1422,12 +1586,407 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
   );
 }
 
-function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+function FeatureScreenF({ feature, index, onEnterApp }: { feature: FeatureE; index: number; onEnterApp: () => void }) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const activeStep = FEATURE_STEP_ORDER[stepIndex];
+  const demoDurationMs = feature.demoDurationMs ?? FEATURE_STEP_DURATIONS_MS.demo;
+  const activeDurationMs = activeStep === 'demo' ? demoDurationMs : FEATURE_STEP_DURATIONS_MS[activeStep];
+
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const isActive = entry.isIntersecting && entry.intersectionRatio >= 0.2;
+        if (entry.isIntersecting) setVisible(true);
+        setActive(isActive);
+      },
+      { threshold: [0, 0.2, 0.45, 0.7] }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (active) setStepIndex(0);
+  }, [active, feature.id]);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => {
+      setStepIndex(current => (current + 1) % FEATURE_STEP_ORDER.length);
+    }, activeDurationMs);
+
+    return () => window.clearTimeout(timer);
+  }, [active, activeDurationMs]);
+
+  const selectStep = (step: FeatureStepE) => {
+    setStepIndex(FEATURE_STEP_ORDER.indexOf(step));
+  };
+
+  return (
+    <section
+      ref={sectionRef}
+      className="min-h-[100svh] scroll-mt-16 flex items-center justify-center px-4 sm:px-6 md:px-10 py-20 sm:py-24 border-t border-zinc-900/50"
+      id={`f-feature-${feature.id}`}
+    >
+      <div className="mx-auto flex w-full flex-col items-center gap-4 sm:gap-5">
+        <div
+          className={`flex justify-center text-center transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+          style={{
+            width: 'min(80vw, calc(80svh * 16 / 9))',
+            maxWidth: '1280px',
+            transitionDelay: `${index * 30}ms`,
+          }}
+        >
+          <FeatureTitleE feature={feature} />
+        </div>
+        <div
+          className={`relative aspect-video overflow-hidden rounded-sm border bg-[#050507]/95 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
+          style={{
+            width: 'min(80vw, calc(80svh * 16 / 9))',
+            maxWidth: '1280px',
+            maxHeight: '80svh',
+            borderColor: `${feature.color}33`,
+            boxShadow: `0 0 48px ${feature.color}14`,
+            transitionDelay: `${index * 30}ms`,
+          }}
+        >
+          <div className="pointer-events-none absolute inset-0 bg-grid opacity-10" />
+          <div className="pointer-events-none absolute inset-0" style={{ background: `radial-gradient(ellipse at 50% 35%, ${feature.color}16 0%, transparent 58%)` }} />
+
+          <div className="absolute left-4 right-4 top-3 z-20 flex justify-end sm:left-6 sm:right-6 sm:top-5">
+            <span
+              className="shrink-0 rounded-sm border px-2 py-1 font-mono text-[8px] uppercase tracking-[0.18em] sm:text-[9px]"
+              style={{ color: feature.color, borderColor: `${feature.color}45`, backgroundColor: `${feature.color}10` }}
+            >
+              {FEATURE_STEP_LABELS[activeStep]}
+            </span>
+          </div>
+
+          <div className="absolute inset-x-4 bottom-3 z-20 h-1 overflow-hidden rounded-full bg-black/45 sm:inset-x-6 sm:bottom-5">
+            <div
+              key={`${feature.id}-${activeStep}-${stepIndex}-progress`}
+              className="landing-demo-progress h-full rounded-full"
+              style={{
+                backgroundColor: feature.color,
+                animationDuration: `${activeDurationMs}ms`,
+                boxShadow: `0 0 14px ${feature.color}99`,
+              }}
+            />
+          </div>
+
+          <div className="absolute inset-0 z-10 px-4 pb-8 pt-12 sm:px-8 sm:pb-12 sm:pt-20 md:px-10">
+            {activeStep === 'before' && (
+              <FallingText
+                key={`${feature.id}-before-${stepIndex}`}
+                text={feature.before}
+                highlightWords={feature.beforeHighlights ?? []}
+                highlightClass="landing-falling-highlight"
+                trigger="auto"
+                backgroundColor="transparent"
+                wireframes={false}
+                gravity={feature.patternBreak ? 0.42 : 0.5}
+                fontSize={feature.patternBreak ? 'clamp(1.25rem, 3.5vw, 3.1rem)' : 'clamp(0.95rem, 2.4vw, 2.25rem)'}
+                wordSpacing="4px"
+                startDelayMs={1200}
+                mouseConstraintStiffness={0.9}
+              />
+            )}
+
+            {activeStep === 'after' && (
+              <div className="flex h-full items-center justify-center text-center">
+                <h2 className="max-w-[78%] font-semibold tracking-normal text-white leading-[1.16]" style={{ fontSize: 'clamp(1.05rem, 3.3vw, 3.6rem)' }}>
+                  <DecryptedText
+                    key={`${feature.id}-after-${stepIndex}`}
+                    text={feature.after}
+                    speed={22}
+                    maxIterations={18}
+                    sequential
+                    revealDirection="center"
+                    animateOn="view"
+                    parentClassName="landing-decrypted-parent"
+                    className="landing-decrypted-revealed"
+                    encryptedClassName="landing-decrypted-encrypted"
+                    characters="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&*+-_"
+                  />
+                </h2>
+              </div>
+            )}
+
+            {activeStep === 'demo' && (
+              <div className="mx-auto h-full w-full max-w-[78%]">
+                <div className="relative h-full w-full">
+                  {feature.demo}
+                </div>
+              </div>
+            )}
+
+            {activeStep === 'cta' && (
+              <div className="flex h-full items-center justify-center">
+                <button
+                  onClick={onEnterApp}
+                  className="inline-flex min-h-14 max-w-[82%] items-center justify-center gap-3 rounded-sm border bg-[#00f3ff]/5 px-5 py-4 transition-all hover:bg-[#00f3ff]/10 hover:shadow-[0_0_30px_rgba(0,243,255,0.18)] sm:px-8 sm:py-6"
+                  style={{ borderColor: `${LANDING_E_PALETTE.cyan}66` }}
+                >
+                  <TrueFocus
+                    sentence={feature.cta}
+                    manualMode={false}
+                    blurAmount={3}
+                    borderColor={LANDING_E_PALETTE.cyan}
+                    glowColor="rgba(0, 243, 255, 0.75)"
+                    animationDuration={0.35}
+                    pauseBetweenAnimations={0.35}
+                    className="landing-true-focus landing-true-focus-stage"
+                  />
+                  <ArrowRight size={14} className="shrink-0 text-[#00f3ff]" strokeWidth={2} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <FeatureStepNavE activeStep={activeStep} color={feature.color} onSelect={selectStep} />
+      </div>
+    </section>
+  );
+}
+
+function FeatureTitleG({ feature }: { feature: FeatureE }) {
+  return (
+    <div className="landing-g-title">
+      <span className="landing-g-title__num">{feature.num}</span>
+      <span className="landing-g-title__code" style={{ color: feature.color }}>{feature.codename}</span>
+      <span className="landing-g-title__label">{feature.label}</span>
+    </div>
+  );
+}
+
+function FeatureScreenG({ feature, index, onEnterApp }: { feature: FeatureE; index: number; onEnterApp: () => void }) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [pointer, setPointer] = useState({ x: 50, y: 50 });
+  const activeStep = FEATURE_STEP_ORDER[stepIndex];
+  const demoDurationMs = feature.demoDurationMs ?? FEATURE_STEP_DURATIONS_MS.demo;
+  const activeDurationMs = activeStep === 'demo' ? demoDurationMs : FEATURE_STEP_DURATIONS_MS[activeStep];
+
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const isActive = entry.isIntersecting && entry.intersectionRatio >= 0.2;
+        if (entry.isIntersecting) setVisible(true);
+        setActive(isActive);
+      },
+      { threshold: [0, 0.2, 0.45, 0.7] }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (active) setStepIndex(0);
+  }, [active, feature.id]);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => {
+      setStepIndex(current => (current + 1) % FEATURE_STEP_ORDER.length);
+    }, activeDurationMs);
+
+    return () => window.clearTimeout(timer);
+  }, [active, activeDurationMs]);
+
+  const selectStep = (step: FeatureStepE) => {
+    setStepIndex(FEATURE_STEP_ORDER.indexOf(step));
+  };
+
+  const updatePointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPointer({
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    });
+  };
+
+  return (
+    <section
+      ref={sectionRef}
+      className="landing-g-section min-h-[100svh] scroll-mt-16 flex items-center justify-center px-4 sm:px-6 md:px-10 py-20 sm:py-24 border-t border-zinc-900/50"
+      id={`g-feature-${feature.id}`}
+    >
+      <div className="mx-auto flex w-full flex-col items-center gap-4 sm:gap-5">
+        <div
+          className={`landing-g-title-panel transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+          style={{
+            width: 'min(80vw, calc(80svh * 16 / 9))',
+            maxWidth: '1280px',
+            transitionDelay: `${index * 30}ms`,
+          }}
+        >
+          <FeatureTitleG feature={feature} />
+        </div>
+
+        <div
+          className={`landing-g-console relative aspect-video overflow-hidden rounded-sm border transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
+          onPointerMove={updatePointer}
+          style={{
+            width: 'min(80vw, calc(80svh * 16 / 9))',
+            maxWidth: '1280px',
+            maxHeight: '80svh',
+            borderColor: `${feature.color}66`,
+            boxShadow: `0 0 58px ${feature.color}18, inset 0 0 42px rgba(0, 243, 255, 0.04)`,
+            background: `radial-gradient(circle at ${pointer.x}% ${pointer.y}%, ${feature.color}24 0%, transparent 28%), linear-gradient(135deg, rgba(2, 2, 4, 0.58) 0%, rgba(7, 9, 16, 0.44) 56%, rgba(3, 3, 5, 0.5) 100%)`,
+            transitionDelay: `${index * 30}ms`,
+          }}
+        >
+          <div className="landing-g-wire" style={{ borderColor: `${feature.color}22` }} />
+          <div className="landing-g-scanlines" />
+          <div className="landing-g-noise" />
+          <div className="landing-g-hud-corner landing-g-hud-corner--tl" style={{ borderColor: feature.color }} />
+          <div className="landing-g-hud-corner landing-g-hud-corner--tr" style={{ borderColor: feature.color }} />
+          <div className="landing-g-hud-corner landing-g-hud-corner--bl" style={{ borderColor: feature.color }} />
+          <div className="landing-g-hud-corner landing-g-hud-corner--br" style={{ borderColor: feature.color }} />
+
+          <div className="landing-g-side-label landing-g-side-label--left">DECODE_PROTOCOL</div>
+          <div className="landing-g-side-label landing-g-side-label--right">NEURAL_READER</div>
+
+          <div className="absolute left-4 right-4 top-3 z-30 flex items-start justify-between gap-3 sm:left-6 sm:right-6 sm:top-5">
+            <span className="landing-g-metric" style={{ color: feature.color, borderColor: `${feature.color}45` }}>
+              SIGNAL {String(stepIndex + 1).padStart(2, '0')} / 04
+            </span>
+            <span
+              className="landing-g-step-badge"
+              style={{ color: feature.color, borderColor: `${feature.color}55`, backgroundColor: `${feature.color}10` }}
+            >
+              {FEATURE_STEP_LABELS[activeStep]}
+            </span>
+          </div>
+
+          <div className="landing-g-progress-track absolute inset-x-4 bottom-3 z-30 h-1 overflow-hidden rounded-full sm:inset-x-6 sm:bottom-5">
+            <div
+              key={`${feature.id}-g-${activeStep}-${stepIndex}-progress`}
+              className="landing-demo-progress h-full rounded-full"
+              style={{
+                backgroundColor: feature.color,
+                animationDuration: `${activeDurationMs}ms`,
+                boxShadow: `0 0 16px ${feature.color}`,
+              }}
+            />
+          </div>
+
+          <div className="absolute inset-0 z-20 px-4 pb-8 pt-12 sm:px-8 sm:pb-12 sm:pt-20 md:px-10">
+            {activeStep === 'before' && (
+              <FallingText
+                key={`${feature.id}-g-before-${stepIndex}`}
+                className="landing-g-falling"
+                text={feature.before}
+                highlightWords={feature.beforeHighlights ?? []}
+                highlightClass="landing-falling-highlight"
+                trigger="auto"
+                backgroundColor="transparent"
+                wireframes={false}
+                gravity={feature.patternBreak ? 0.42 : 0.5}
+                fontSize={feature.patternBreak ? 'clamp(1.25rem, 3.5vw, 3.1rem)' : 'clamp(0.95rem, 2.4vw, 2.25rem)'}
+                wordSpacing="4px"
+                startDelayMs={1200}
+                mouseConstraintStiffness={0.9}
+              />
+            )}
+
+            {activeStep === 'after' && (
+              <div className="flex h-full items-center justify-center text-center">
+                <h2 className="landing-g-after max-w-[78%] font-semibold tracking-normal text-white leading-[1.16]" style={{ fontSize: 'clamp(1.05rem, 3.3vw, 3.6rem)' }}>
+                  <DecryptedText
+                    key={`${feature.id}-g-after-${stepIndex}`}
+                    text={feature.after}
+                    speed={22}
+                    maxIterations={18}
+                    sequential
+                    revealDirection="center"
+                    animateOn="view"
+                    parentClassName="landing-decrypted-parent"
+                    className="landing-decrypted-revealed"
+                    encryptedClassName="landing-decrypted-encrypted"
+                    characters="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&*+-_"
+                  />
+                </h2>
+              </div>
+            )}
+
+            {activeStep === 'demo' && (
+              <div className="mx-auto h-full w-full max-w-[78%] landing-g-demo-shell">
+                <div className="relative h-full w-full">
+                  {feature.demo}
+                </div>
+              </div>
+            )}
+
+            {activeStep === 'cta' && (
+              <div className="flex h-full items-center justify-center">
+                <button
+                  onClick={onEnterApp}
+                  className="landing-g-cta inline-flex min-h-14 max-w-[82%] items-center justify-center gap-3 rounded-sm border px-5 py-4 transition-all sm:px-8 sm:py-6"
+                  style={{ borderColor: `${feature.color}75`, color: feature.color, boxShadow: `0 0 32px ${feature.color}1f` }}
+                >
+                  <TrueFocus
+                    sentence={feature.cta}
+                    manualMode={false}
+                    blurAmount={3}
+                    borderColor={feature.color}
+                    glowColor={`${feature.color}bf`}
+                    animationDuration={0.35}
+                    pauseBetweenAnimations={0.35}
+                    className="landing-true-focus landing-true-focus-stage"
+                  />
+                  <ArrowRight size={14} className="shrink-0" strokeWidth={2} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="landing-g-step-nav">
+          <FeatureStepNavE activeStep={activeStep} color={feature.color} onSelect={selectStep} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TransformationLanding({
+  onEnterApp,
+  onSignIn,
+  sectionIds,
+  sectionAccents,
+  heroId,
+  ctaId,
+  renderFeature,
+}: {
+  onEnterApp: () => void;
+  onSignIn: () => void;
+  sectionIds: string[];
+  sectionAccents: string[];
+  heroId: string;
+  ctaId: string;
+  renderFeature: (feature: FeatureE, index: number) => React.ReactNode;
+}) {
   useUnlockScroll();
   const [screen, setScreen] = useState(0);
-  const totalScreens = LANDING_E_SECTION_IDS.length;
-  const activeAccent = LANDING_E_SECTION_ACCENTS[screen] || LANDING_E_PALETTE.cyan;
+  const totalScreens = sectionIds.length;
+  const activeAccent = sectionAccents[screen] || LANDING_E_PALETTE.cyan;
   const progressPercent = totalScreens > 1 ? (screen / (totalScreens - 1)) * 100 : 0;
+  const isCyber = heroId.startsWith('g-');
 
   useEffect(() => {
     let frame = 0;
@@ -1437,7 +1996,7 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       let nextScreen = 0;
       let nearestDistance = Number.POSITIVE_INFINITY;
 
-      LANDING_E_SECTION_IDS.forEach((id, index) => {
+      sectionIds.forEach((id, index) => {
         const element = document.getElementById(id);
         if (!element) return;
         const rect = element.getBoundingClientRect();
@@ -1470,18 +2029,18 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       window.removeEventListener('resize', scheduleUpdate);
       window.removeEventListener('orientationchange', scheduleUpdate);
     };
-  }, []);
+  }, [sectionIds]);
 
   const scrollToScreen = (i: number) => {
-    const target = document.getElementById(LANDING_E_SECTION_IDS[Math.max(0, Math.min(totalScreens - 1, i))]);
+    const target = document.getElementById(sectionIds[Math.max(0, Math.min(totalScreens - 1, i))]);
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     target?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
   };
 
   return (
-    <div className="bg-[#020202] text-zinc-100 min-h-screen">
+    <div className={`bg-[#020202] text-zinc-100 min-h-screen ${isCyber ? 'landing-g-shell' : ''}`}>
       {/* Nav */}
-      <nav className="fixed top-0 w-full z-50 bg-[#020202]/80 backdrop-blur-md border-b border-zinc-900/60">
+      <nav className={`fixed top-0 w-full z-50 bg-[#020202]/80 backdrop-blur-md border-b border-zinc-900/60 ${isCyber ? 'landing-g-nav' : ''}`}>
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 md:px-10 py-3.5">
           <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-[#00f3ff]">Ebook</span></span>
           <div className="flex items-center gap-3 sm:gap-4">
@@ -1516,29 +2075,19 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       </div>
 
       {/* Screen 1 — Hero */}
-      <section id="e-hero" className="min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden">
+      <section id={heroId} className={`min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden ${isCyber ? 'landing-g-hero' : ''}`}>
         <div className="absolute inset-0 bg-grid opacity-20" />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,243,255,0.07) 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-4xl space-y-7 sm:space-y-9">
-          <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.3em] text-zinc-600 animate-fade-in">One book · six ways to understand</p>
+          <p className="text-[10px] sm:text-xs font-mono tracking-[0.2em] text-zinc-500 animate-fade-in">One Book, Multiple Ways to Learn.</p>
           <h1 className="text-[2.3rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
             Read the original.<br />
             <span className="text-[#00f3ff] drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
           </h1>
           <p className="text-zinc-500 text-sm sm:text-base max-w-[34rem] mx-auto leading-[1.75] animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            DecodEbook turns EPUB, PDF, and text into a bilingual reader, pronunciation coach, AI tutor, podcast, visual brief, video summary, and notebook.
+            DecodEbook turns EPUB, PDF, and text into a bilingual reader, pronunciation coach, live podcast, visual brief, video summary and notebook. With AI tutor, you can learn everything you want to.
           </p>
-          <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: '0.25s' }}>
-            {FEATURES_E.map(feature => (
-              <span
-                key={feature.id}
-                className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.18em] px-2.5 py-1 rounded-sm border bg-black/20"
-                style={{ color: feature.color, borderColor: `${feature.color}40` }}
-              >
-                {feature.label}
-              </span>
-            ))}
-          </div>
+          <HeroLearningBlocksVelocity />
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
             <button onClick={onEnterApp} className="px-7 py-3 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
               Decode Your First Chapter <ArrowRight size={14} />
@@ -1552,7 +2101,7 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
 
       {/* Screens 2–7 — feature transformations */}
       {FEATURES_E.map((f, i) => (
-        <FeatureScreenE key={f.id} feature={f} index={i} onEnterApp={onEnterApp} />
+        <React.Fragment key={f.id}>{renderFeature(f, i)}</React.Fragment>
       ))}
 
       {/* Social proof strip — between last feature and CTA */}
@@ -1573,14 +2122,14 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       </section>
 
       {/* Screen 8 — Final CTA */}
-      <section id="e-cta" className="min-h-[100svh] scroll-mt-16 flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden">
+      <section id={ctaId} className="min-h-[100svh] scroll-mt-16 flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 70%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-3xl space-y-8 sm:space-y-10">
           <h2 className="text-[2rem] sm:text-4xl md:text-[3.75rem] font-semibold tracking-normal leading-[1.1] text-white">
             Decode your first chapter<br /><span className="text-[#00f3ff]">for free</span>.
           </h2>
           <p className="text-[11px] sm:text-xs text-zinc-500 font-mono tracking-wider">
-            100 credits · EPUB, PDF, or text · 50+ languages
+            100 credits for new user registered
           </p>
           <button onClick={onEnterApp} className="px-8 py-3.5 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_40px_rgba(0,243,255,0.4)] inline-flex items-center gap-2">
             Decode Your First Chapter <ArrowRight size={14} />
@@ -1600,6 +2149,54 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   );
 }
 
+function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+  return (
+    <TransformationLanding
+      onEnterApp={onEnterApp}
+      onSignIn={onSignIn}
+      sectionIds={LANDING_E_SECTION_IDS}
+      sectionAccents={LANDING_E_SECTION_ACCENTS}
+      heroId="e-hero"
+      ctaId="e-cta"
+      renderFeature={(feature, index) => (
+        <FeatureScreenE feature={feature} index={index} onEnterApp={onEnterApp} />
+      )}
+    />
+  );
+}
+
+function VersionF({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+  return (
+    <TransformationLanding
+      onEnterApp={onEnterApp}
+      onSignIn={onSignIn}
+      sectionIds={LANDING_F_SECTION_IDS}
+      sectionAccents={LANDING_F_SECTION_ACCENTS}
+      heroId="f-hero"
+      ctaId="f-cta"
+      renderFeature={(feature, index) => (
+        <FeatureScreenF feature={feature} index={index} onEnterApp={onEnterApp} />
+      )}
+    />
+  );
+}
+
+function VersionG({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+  return (
+    <TransformationLanding
+      onEnterApp={onEnterApp}
+      onSignIn={onSignIn}
+      sectionIds={LANDING_G_SECTION_IDS}
+      sectionAccents={LANDING_G_SECTION_ACCENTS}
+      heroId="g-hero"
+      ctaId="g-cta"
+      renderFeature={(feature, index) => (
+        <FeatureScreenG feature={feature} index={index} onEnterApp={onEnterApp} />
+      )}
+    />
+  );
+}
+
 // ─── Main Export ───
 
 export function LandingPage({ variant, onEnterApp, onSignIn }: LandingPageProps) {
@@ -1609,5 +2206,7 @@ export function LandingPage({ variant, onEnterApp, onSignIn }: LandingPageProps)
     case 'C': return <VersionC onEnterApp={onEnterApp} onSignIn={onSignIn} />;
     case 'D': return <VersionD onEnterApp={onEnterApp} onSignIn={onSignIn} />;
     case 'E': return <VersionE onEnterApp={onEnterApp} onSignIn={onSignIn} />;
+    case 'F': return <VersionF onEnterApp={onEnterApp} onSignIn={onSignIn} />;
+    case 'G': return <VersionG onEnterApp={onEnterApp} onSignIn={onSignIn} />;
   }
 }
