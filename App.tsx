@@ -3239,7 +3239,7 @@ const App: React.FC = () => {
           ) : (
              <div className="flex-1 min-h-0 flex flex-col">
                 {/* Full-text search */}
-                <div className="shrink-0 px-4 min-h-[53px] flex flex-col justify-center border-b border-zinc-900 bg-black/40">
+                <div className="shrink-0 px-4 min-h-[61px] flex flex-col justify-center border-b border-zinc-900 bg-black/40">
                   <div className="relative flex items-center">
                     <Search size={12} className="absolute left-2 text-zinc-600 pointer-events-none" />
                     <input
