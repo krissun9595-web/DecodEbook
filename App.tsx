@@ -3168,7 +3168,7 @@ const App: React.FC = () => {
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-80' : 'md:w-0'} bg-void-1 flex flex-col overflow-hidden border-r border-zinc-900`}
       >
-        <div className="p-4 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
+        <div className="px-4 pt-4 pb-1.5 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-neon-cyan opacity-20"></div>
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-1.5">
