@@ -3173,7 +3173,7 @@ const App: React.FC = () => {
       {isSidebarOpen && !focusMode && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 md:w-80 transition-transform duration-300 ${isSidebarOpen && !focusMode ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen && !focusMode ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
+        className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen && !focusMode ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen && !focusMode ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
       >
         <div className="p-4 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-[#00f3ff] opacity-20"></div>
@@ -3184,8 +3184,8 @@ const App: React.FC = () => {
                     title={focusMode ? 'Exit focus mode' : 'Focus mode — hide the interface'}
                     className="flex items-center gap-1.5 group"
                 >
-                    <span className="font-tech font-bold text-[#00f3ff] text-base leading-none group-hover:drop-shadow-[0_0_6px_rgba(0,243,255,0.6)] transition-all">{'>_'}</span>
-                    <span className="text-xs font-tech font-bold tracking-[0.12em]">
+                    <span className="font-tech font-bold text-[#00f3ff] text-lg leading-none group-hover:drop-shadow-[0_0_6px_rgba(0,243,255,0.6)] transition-all">{'>_'}</span>
+                    <span className="text-lg font-tech font-bold tracking-[0.06em] leading-none">
                         <span className="text-white">Decod</span><span className="text-[#00f3ff]">Ebook</span>
                     </span>
                 </button>
@@ -3417,7 +3417,7 @@ const App: React.FC = () => {
             aria-label="Exit focus mode"
             title="Exit focus mode"
             onClick={() => setFocusMode(false)}
-            className="fixed top-3 right-3 z-50 p-2 rounded-sm border border-zinc-800 bg-black/70 backdrop-blur-md text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff]/50 transition-colors opacity-40 hover:opacity-100"
+            className="fixed top-3 left-3 z-50 p-2 rounded-sm border border-zinc-800 bg-black/70 backdrop-blur-md text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff]/50 transition-colors opacity-40 hover:opacity-100"
           >
             <Minimize2 size={16} />
           </button>
