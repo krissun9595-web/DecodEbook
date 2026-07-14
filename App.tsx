@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search, Maximize2, Minimize2 } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search, Minimize2 } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -3170,18 +3170,25 @@ const App: React.FC = () => {
         key={isAccountOpen ? 'open' : 'closed'}
       />
 
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
+      {isSidebarOpen && !focusMode && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 md:w-80 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
+        className={`fixed inset-y-0 left-0 z-40 w-72 md:w-80 transition-transform duration-300 ${isSidebarOpen && !focusMode ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen && !focusMode ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
       >
         <div className="p-4 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-[#00f3ff] opacity-20"></div>
             <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                    <Cpu size={16} className="text-[#00f3ff]" />
-                    <span className="text-xs font-tech font-bold text-white tracking-[0.2em]">DECOD.EBOOK</span>
-                </div>
+                <button
+                    onClick={() => setFocusMode(f => !f)}
+                    aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+                    title={focusMode ? 'Exit focus mode' : 'Focus mode — hide the interface'}
+                    className="flex items-center gap-1.5 group"
+                >
+                    <span className="font-tech font-bold text-[#00f3ff] text-base leading-none group-hover:drop-shadow-[0_0_6px_rgba(0,243,255,0.6)] transition-all">{'>_'}</span>
+                    <span className="text-xs font-tech font-bold tracking-[0.12em]">
+                        <span className="text-white">Decod</span><span className="text-[#00f3ff]">Ebook</span>
+                    </span>
+                </button>
                 <button 
                     onClick={() => setView(AppView.UPLOAD)} 
                     className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-[#00f3ff] transition-colors"
@@ -3434,16 +3441,6 @@ const App: React.FC = () => {
                   </div>
               ) : (
                   <span className="text-[10px] md:text-xs font-tech text-zinc-500 tracking-widest">AWAITING_INPUT</span>
-              )}
-              {activeChapterId && (
-                <button
-                  aria-label="Focus mode"
-                  title="Focus mode — hide the interface"
-                  onClick={() => { setFocusMode(true); setSidebarOpen(false); }}
-                  className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0 ml-1"
-                >
-                  <Maximize2 size={15} />
-                </button>
               )}
             </div>
 
