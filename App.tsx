@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search, Minimize2 } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -334,13 +334,6 @@ const App: React.FC = () => {
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  // Focus / immersive reading mode: hides the HUD chrome (header, sidebar) and mutes the CRT
-  // scanlines so only the calm book text remains. Toggled from the reader header.
-  const [focusMode, setFocusMode] = useState(false);
-  useEffect(() => {
-    document.body.classList.toggle('focus-mode', focusMode);
-    return () => document.body.classList.remove('focus-mode');
-  }, [focusMode]);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
@@ -3170,25 +3163,20 @@ const App: React.FC = () => {
         key={isAccountOpen ? 'open' : 'closed'}
       />
 
-      {isSidebarOpen && !focusMode && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen && !focusMode ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen && !focusMode ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
+        className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
       >
         <div className="p-4 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-[#00f3ff] opacity-20"></div>
             <div className="flex items-center justify-between mb-6">
-                <button
-                    onClick={() => setFocusMode(f => !f)}
-                    aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
-                    title={focusMode ? 'Exit focus mode' : 'Focus mode — hide the interface'}
-                    className="flex items-center gap-1.5 group"
-                >
-                    <span className="font-tech font-bold text-[#00f3ff] text-lg leading-none group-hover:drop-shadow-[0_0_6px_rgba(0,243,255,0.6)] transition-all">{'>_'}</span>
+                <div className="flex items-center gap-1.5">
+                    <span className="font-tech font-bold text-[#00f3ff] text-lg leading-none">{'>_'}</span>
                     <span className="text-lg font-tech font-bold tracking-[0.06em] leading-none">
                         <span className="text-white">Decod</span><span className="text-[#00f3ff]">Ebook</span>
                     </span>
-                </button>
+                </div>
                 <button 
                     onClick={() => setView(AppView.UPLOAD)} 
                     className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-[#00f3ff] transition-colors"
@@ -3412,17 +3400,7 @@ const App: React.FC = () => {
       </aside>
 
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
-        {focusMode && (
-          <button
-            aria-label="Exit focus mode"
-            title="Exit focus mode"
-            onClick={() => setFocusMode(false)}
-            className="fixed top-3 left-3 z-50 p-2 rounded-sm border border-zinc-800 bg-black/70 backdrop-blur-md text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff]/50 transition-colors opacity-40 hover:opacity-100"
-          >
-            <Minimize2 size={16} />
-          </button>
-        )}
-        <header className={`border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0 ${focusMode ? 'hidden' : ''}`}>
+        <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
           <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
             <div className="flex items-center gap-2 md:gap-4 min-w-0">
               <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
