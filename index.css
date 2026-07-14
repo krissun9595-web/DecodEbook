@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================================
+   Design tokens (Phase 0). Semantic values also exposed to Tailwind via
+   tailwind.config.js theme.extend — use `bg-void-1`, `text-fg-dim`,
+   `text-neon-cyan`, `shadow-glow-cyan`, etc. Raw CSS (effect components,
+   scrollbar, scanlines) reads the CSS vars below.
+   =========================================================================== */
+:root {
+  /* neon accents */
+  --neon-cyan: #00f3ff;
+  --neon-red: #ff003c;
+  --neon-pink: #ff4fd8;
+  --neon-violet: #a78bfa;
+  --neon-amber: #fbbf24;
+
+  /* backgrounds (0 = deepest) */
+  --bg-dark: #050505; /* legacy alias kept for existing references */
+  --void-0: #020202;
+  --void-1: #050505;
+  --void-2: #0a0a0c;
+  --surface: #0a0a0c;
+
+  /* foreground text */
+  --fg-hi: #f4f4f5;
+  --fg-mid: #a1a1aa;
+  --fg-dim: #8b8b95;
+
+  /* hud edge */
+  --edge: rgba(0, 243, 255, 0.15);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-dark);
+  color: #e4e4e7;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  overflow: hidden;
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: env(safe-area-inset-left, 0px);
+  right: env(safe-area-inset-right, 0px);
+}
+
+/* Tech Font Class */
+.font-tech {
+  font-family: 'Share Tech Mono', monospace;
+}
+
+/* User-selected content font — applied to all ebook-derived content */
+.content-font {
+  font-family: var(--content-font, inherit);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-cyan);
+}
+
+/* CRT Scanline Effect */
+.scanlines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0) 50%,
+    rgba(0, 0, 0, 0.1) 50%,
+    rgba(0, 0, 0, 0.1)
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.3;
+}
+
+/* Subtle Grid Background */
+.bg-grid {
+  background-size: 40px 40px;
+  background-image: linear-gradient(to right, rgba(30, 41, 59, 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.3) 1px, transparent 1px);
+}
+
+/* HUD Corner Borders */
+.hud-border {
+  position: relative;
+  border: 1px solid rgba(0, 243, 255, 0.1);
+}
+.hud-border::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--neon-cyan);
+  border-left: 2px solid var(--neon-cyan);
+}
+.hud-border::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--neon-cyan);
+  border-right: 2px solid var(--neon-cyan);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
