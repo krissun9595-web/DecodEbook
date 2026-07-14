@@ -249,11 +249,11 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] md:text-[10px] font-mono text-zinc-600">
                     <span className={`md:hidden ${config.color}`}>{config.label}</span>
                     <span>{formatFileSize(file.size)}</span>
-                    <span className="hidden md:inline text-zinc-800">|</span>
+                    <span className="hidden md:inline text-zinc-500">|</span>
                     <span className="truncate max-w-[100px] md:max-w-[150px]">{getBookTitle(file.bookId)}</span>
-                    <span className="hidden md:inline text-zinc-800">|</span>
+                    <span className="hidden md:inline text-zinc-500">|</span>
                     <span>CH.{String(file.chapterId).padStart(2, '0')}</span>
-                    <span className="hidden md:inline text-zinc-800">|</span>
+                    <span className="hidden md:inline text-zinc-500">|</span>
                     <span>{formatRelativeTime(file.timestamp)}</span>
                   </div>
                 </div>

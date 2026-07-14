@@ -3298,7 +3298,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const renderTranslatedRuns = (runs: SentenceRun[]) => {
     const hasTranslation = runs.some(run => translationByIndex.has(run.globalIndex));
     if (isTranslating && !hasTranslation) {
-      return <span className="animate-pulse text-[10px] font-mono text-zinc-700 uppercase">Decrypting_Matrix...</span>;
+      return <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>;
     }
     if (translationError && !hasTranslation) {
       return <span className="text-[10px] font-mono text-[#ff003c]/80 uppercase">{translationError}</span>;
@@ -3516,7 +3516,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         <canvas ref={canvasRef} width={1800} height={250} className="w-full h-full opacity-100" />
                     </>
                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-zinc-700 font-mono text-xs">
+                    <div className="flex flex-col items-center gap-2 text-zinc-500 font-mono text-xs">
                         <Activity size={32} className="opacity-20" />
                         <span>AWAITING_HOLOGRAPHIC_DATA</span>
                     </div>
@@ -3749,7 +3749,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               style={paragraphStyle}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
-                                <span className="animate-pulse text-[10px] font-mono text-zinc-700 uppercase">Decrypting_Matrix...</span>
+                                <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
                               ) : showTranslationError && lineIdx === 0 ? (
                                 <span className="text-[10px] font-mono text-[#ff003c]/80 uppercase">{translationError}</span>
                               ) : !showTranslationPlaceholder && !showTranslationError ? (

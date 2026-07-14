@@ -206,3 +206,29 @@ body {
     display: none !important;
   }
 }
+
+/* Touch devices: give tappable controls a comfortable minimum height (WCAG 2.5.5 / Apple HIG).
+   min-height only (not width) so horizontal toolbars don't wrap or overlap, and :where() keeps
+   specificity 0 so a component can opt out. Pointer (mouse) devices are unaffected. Inline footnote/
+   reference markers live in <sub>/<sup> inside reading text — reset them so line spacing is intact. */
+@media (pointer: coarse) {
+  :where(button, [role='button'], [role='tab'], [role='switch']):not(:disabled) {
+    min-height: 44px;
+  }
+  sub button,
+  sup button,
+  [data-footnote-marker] button,
+  [data-reference-marker] button {
+    min-height: 0;
+  }
+}
+
+/* Focus / immersive reading mode (toggled from the reader header): quiet the ambient cyberpunk
+   chrome — nearly drop the CRT scanlines and remove the HUD grid — so only the calm book text
+   remains ("cyberpunk chrome, calm content"). */
+body.focus-mode .scanlines {
+  opacity: 0.06;
+}
+body.focus-mode .bg-grid {
+  background-image: none;
+}

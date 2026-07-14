@@ -173,7 +173,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const creditPct = monthlyCredits === Infinity ? 0 : Math.min(((tierInfo?.credits_used || 0) / monthlyCredits) * 100, 100);
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
       <div className="bg-[#050505] border border-zinc-800 rounded-lg w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-[#00f3ff] to-[#ff003c]"></div>
 
@@ -589,7 +589,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </button>
                   </div>
 
-                  <p className="text-[9px] text-zinc-700 font-mono text-center leading-relaxed">
+                  <p className="text-[9px] text-zinc-500 font-mono text-center leading-relaxed">
                     By continuing, you agree to our <a href="/terms" target="_blank" className="text-zinc-500 hover:text-[#00f3ff] underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-zinc-500 hover:text-[#00f3ff] underline">Privacy Policy</a>
                   </p>
                 </div>

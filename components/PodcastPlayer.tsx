@@ -697,7 +697,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                       ) : audioSrc ? (
                         <canvas ref={canvasRef} width={1800} height={250} className="w-full h-full opacity-100" />
                       ) : (
-                        <div className="flex flex-col items-center gap-2 text-zinc-700 font-mono text-xs">
+                        <div className="flex flex-col items-center gap-2 text-zinc-500 font-mono text-xs">
                           <Activity size={32} className="opacity-20" />
                           <span>AWAITING_HOLOGRAPHIC_DATA</span>
                         </div>

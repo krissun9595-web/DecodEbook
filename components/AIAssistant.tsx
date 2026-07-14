@@ -433,7 +433,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             onMouseDown={(e) => e.stopPropagation()}
                             placeholder={isRecording ? "Listening..." : "Input command..."}
-                            className="w-full bg-[#050505] border border-zinc-700 rounded-sm px-3 py-2 text-xs text-[#00f3ff] focus:border-[#00f3ff] focus:outline-none font-mono placeholder:text-zinc-700 disabled:opacity-50"
+                            className="w-full bg-[#050505] border border-zinc-700 rounded-sm px-3 py-2 text-xs text-[#00f3ff] focus:border-[#00f3ff] focus:outline-none font-mono placeholder:text-zinc-500 disabled:opacity-50"
                             disabled={isRecording || isLoading}
                         />
                     </div>

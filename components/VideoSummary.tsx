@@ -268,7 +268,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                 {!videoUrl && !isGenerating && (
                     <div className="z-10 text-center space-y-4 p-8">
                         <div className="w-16 h-16 bg-zinc-900/50 rounded-full flex items-center justify-center mx-auto border border-zinc-800">
-                             <Film className="text-zinc-700 w-6 h-6" />
+                             <Film className="text-zinc-500 w-6 h-6" />
                         </div>
                         <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-widest">Awaiting Render Signal</p>
                         {error && <p className="text-[#ff003c] text-[9px] font-mono mt-2 border border-[#ff003c]/20 p-2 bg-[#ff003c]/5">ERROR: {error}</p>}

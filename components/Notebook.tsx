@@ -1098,9 +1098,9 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                        <Loader text="GENERATING_MAP..." />
                    </div>
                ) : items.length === 0 ? (
-                   <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 font-mono gap-4 animate-fade-in"><Book size={48} className="opacity-20" /><p className="text-sm">NO_DATA_LOGGED</p><p className="text-[10px] text-zinc-700 max-w-xs text-center uppercase tracking-widest">Right-click text selection in reader to populate your lexicon.</p></div>
+                   <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 font-mono gap-4 animate-fade-in"><Book size={48} className="opacity-20" /><p className="text-sm">NO_DATA_LOGGED</p><p className="text-[10px] text-zinc-500 max-w-xs text-center uppercase tracking-widest">Right-click text selection in reader to populate your lexicon.</p></div>
                ) : filteredItems.length === 0 ? (
-                   <div className="flex-1 flex flex-col items-center justify-center text-zinc-700 font-mono gap-2 animate-fade-in"><p className="text-xs uppercase tracking-widest opacity-50">BUFFER_EMPTY_FOR_{activeFilter === 'all' ? 'ALL_ITEMS' : activeFilter.toUpperCase() + 'S'}</p></div>
+                   <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 font-mono gap-2 animate-fade-in"><p className="text-xs uppercase tracking-widest opacity-50">BUFFER_EMPTY_FOR_{activeFilter === 'all' ? 'ALL_ITEMS' : activeFilter.toUpperCase() + 'S'}</p></div>
                ) : (
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
                        {filteredItems.map((item, idx) => {
@@ -1123,7 +1123,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                                {item.inked && <span className={`text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded border ${inkBadgeClass}`}>INKED</span>}
                                                {item.bookTitle && <span className="text-[10px] font-mono text-cyan-500/60 truncate max-w-[150px]">{item.bookTitle}</span>}
                                                {item.sourceChapter && <span className="text-[10px] font-mono text-zinc-600 truncate max-w-[200px]">CH: {item.sourceChapter}</span>}
-                                               <span className="text-[10px] font-mono text-zinc-700 flex items-center gap-1"><Clock size={10} />{new Date(item.timestamp).toLocaleDateString()}</span>
+                                               <span className="text-[10px] font-mono text-zinc-500 flex items-center gap-1"><Clock size={10} />{new Date(item.timestamp).toLocaleDateString()}</span>
                                            </div>
                                        </div>
                                        {item.definition && (

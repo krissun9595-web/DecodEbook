@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Globe, Highlighter, PenLine, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
 import { AppSettings, ThemeColor } from '../types';
 import { inkLineStyle } from '../utils/inkLine';
@@ -100,10 +100,17 @@ const LANGUAGES = [
 ];
 
 export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans">
+    <div role="dialog" aria-modal="true" aria-label="Settings" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans">
       <div className="bg-[#050505] border border-zinc-800 rounded-lg w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative">
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-[#00f3ff] to-[#ff003c]"></div>
         

@@ -102,7 +102,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
   const modeTitle = { login: 'SIGN_IN', signup: 'SIGN_UP', forgot: 'RESET_PASSWORD' };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label="Account" className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
       <div className="bg-[#0a0a0c] border border-zinc-800 rounded-lg w-full max-w-md p-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors"><X size={18} /></button>
 
@@ -237,7 +237,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
             </div>
 
             {mode === 'login' && (
-              <p className="text-[9px] text-zinc-700 font-mono text-center leading-relaxed">
+              <p className="text-[9px] text-zinc-500 font-mono text-center leading-relaxed">
                 By signing in, you agree to our{' '}
                 <a href="/terms" target="_blank" className="text-zinc-500 hover:text-[#00f3ff] underline">Terms of Service</a>
                 {' '}and{' '}
@@ -434,11 +434,11 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
               </button>
             </div>
 
-            <button onClick={onSkip} className="w-full py-2 text-zinc-700 hover:text-zinc-500 text-[10px] font-mono uppercase tracking-widest transition-colors">
+            <button onClick={onSkip} className="w-full py-2 text-zinc-500 hover:text-zinc-500 text-[10px] font-mono uppercase tracking-widest transition-colors">
               Continue Without Account
             </button>
 
-            <p className="text-[9px] text-zinc-700 font-mono text-center leading-relaxed">
+            <p className="text-[9px] text-zinc-500 font-mono text-center leading-relaxed">
               By continuing, you agree to our{' '}
               <a href="/terms" target="_blank" className="text-zinc-500 hover:text-[#00f3ff] underline">Terms of Service</a>
               {' '}and{' '}

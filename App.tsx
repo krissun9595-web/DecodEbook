@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Cpu, Notebook as NotebookIcon, Terminal, Activity, Database, Shield, HardDrive, User as UserIcon, Trash2, Search, Maximize2, Minimize2 } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -334,6 +334,13 @@ const App: React.FC = () => {
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  // Focus / immersive reading mode: hides the HUD chrome (header, sidebar) and mutes the CRT
+  // scanlines so only the calm book text remains. Toggled from the reader header.
+  const [focusMode, setFocusMode] = useState(false);
+  useEffect(() => {
+    document.body.classList.toggle('focus-mode', focusMode);
+    return () => document.body.classList.remove('focus-mode');
+  }, [focusMode]);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
@@ -3229,7 +3236,7 @@ const App: React.FC = () => {
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); handleDeleteBook(item.book.id); }}
-                            className="p-1.5 text-zinc-700 hover:text-[#ff003c] opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            className="p-1.5 text-zinc-500 hover:text-[#ff003c] opacity-0 group-hover:opacity-100 transition-all shrink-0"
                             title="Delete"
                         >
                             <Trash2 size={14} />
@@ -3248,7 +3255,7 @@ const App: React.FC = () => {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="SEARCH_FULLTEXT"
-                      className="w-full bg-zinc-900/60 border border-zinc-800 focus:border-[#00f3ff]/50 rounded-sm pl-7 pr-7 py-1.5 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-700 focus:outline-none tracking-wide"
+                      className="w-full bg-zinc-900/60 border border-zinc-800 focus:border-[#00f3ff]/50 rounded-sm pl-7 pr-7 py-1.5 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none tracking-wide"
                     />
                     {searchQuery && (
                       <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-[#ff003c] transition-colors" title="Clear search">
@@ -3267,7 +3274,7 @@ const App: React.FC = () => {
                 {searchActive && (
                   <div className="shrink-0 max-h-[45%] overflow-y-auto custom-scrollbar border-b border-zinc-900/70 bg-black/20">
                     {!isIndexing && searchResults.length === 0 ? (
-                      <div className="px-4 py-4 text-[9px] font-mono uppercase tracking-widest text-zinc-700">No matches found</div>
+                      <div className="px-4 py-4 text-[9px] font-mono uppercase tracking-widest text-zinc-500">No matches found</div>
                     ) : (
                       searchResults.map((hit, i) => (
                         <button
@@ -3334,7 +3341,7 @@ const App: React.FC = () => {
                                 ) : hasHierarchy ? (
                                     <span className="w-3 shrink-0" />
                                 ) : (
-                                    <span className={`text-[9px] font-mono w-6 text-right shrink-0 ${activeChapterId === chapter.id ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>
+                                    <span className={`text-[9px] font-mono w-6 text-right shrink-0 ${activeChapterId === chapter.id ? 'text-[#00f3ff]' : 'text-zinc-500'}`}>
                                         {String(idx + 1).padStart(2, '0')}
                                     </span>
                                 )}
@@ -3346,7 +3353,7 @@ const App: React.FC = () => {
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); toggleBookmark(chapter.id); }}
-                                className={`p-1.5 transition-colors shrink-0 ${isBookmarked ? 'text-amber-400' : 'text-zinc-800 hover:text-zinc-500'}`}
+                                className={`p-1.5 transition-colors shrink-0 ${isBookmarked ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-500'}`}
                                 title={isBookmarked ? "Remove Bookmark" : "Add Bookmark"}
                             >
                                 <Tag size={12} fill={isBookmarked ? "currentColor" : "none"} />
@@ -3370,7 +3377,7 @@ const App: React.FC = () => {
                 <Database size={14} />
                 <span>{showLibraryList ? "SESSION_DATA" : "DATA_BANKS"}</span>
              </div>
-             <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-[#00f3ff]' : 'text-zinc-700'}`}>●</span>
+             <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-[#00f3ff]' : 'text-zinc-500'}`}>●</span>
           </button>
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -3398,7 +3405,17 @@ const App: React.FC = () => {
       </aside>
 
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
-        <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
+        {focusMode && (
+          <button
+            aria-label="Exit focus mode"
+            title="Exit focus mode"
+            onClick={() => setFocusMode(false)}
+            className="fixed top-3 right-3 z-50 p-2 rounded-sm border border-zinc-800 bg-black/70 backdrop-blur-md text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff]/50 transition-colors opacity-40 hover:opacity-100"
+          >
+            <Minimize2 size={16} />
+          </button>
+        )}
+        <header className={`border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0 ${focusMode ? 'hidden' : ''}`}>
           <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
             <div className="flex items-center gap-2 md:gap-4 min-w-0">
               <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
@@ -3410,13 +3427,23 @@ const App: React.FC = () => {
                       <span className="text-[8px] md:text-[9px] font-mono text-zinc-600 bg-zinc-900 border border-zinc-800 px-1 md:px-1.5 py-0.5 shrink-0">
                           SEC.{String(activeChapterId || 0).padStart(2, '0')}
                       </span>
-                      <ChevronRight size={10} className="text-zinc-700 shrink-0 hidden sm:block" />
+                      <ChevronRight size={10} className="text-zinc-500 shrink-0 hidden sm:block" />
                       <span className="text-[10px] md:text-xs font-bold text-[#00f3ff] font-tech tracking-wide truncate">
                           {activeChapter?.title.toUpperCase()}
                       </span>
                   </div>
               ) : (
                   <span className="text-[10px] md:text-xs font-tech text-zinc-500 tracking-widest">AWAITING_INPUT</span>
+              )}
+              {activeChapterId && (
+                <button
+                  aria-label="Focus mode"
+                  title="Focus mode — hide the interface"
+                  onClick={() => { setFocusMode(true); setSidebarOpen(false); }}
+                  className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0 ml-1"
+                >
+                  <Maximize2 size={15} />
+                </button>
               )}
             </div>
 
