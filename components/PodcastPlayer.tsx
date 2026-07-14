@@ -648,7 +648,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 overflow-hidden text-left">
-       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-glow-ambient w-full flex-wrap gap-2">
+       <div className="hud-panel mb-1.5 md:mb-2 flex items-center justify-between shrink-0 w-full flex-wrap gap-2">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
                  <Mic2 size={16} className="text-neon-cyan" />
@@ -656,7 +656,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
               </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
-              <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
+              <div className="select-group">
                  <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
                  <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  <div className="w-[1px] h-3.5 bg-zinc-700"></div>
@@ -665,7 +665,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
               </div>
               <button
                 onClick={handleToggleGeneration}
-                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-glow-sm justify-center ${isLoading ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}
+                className={`btn-action ${isLoading ? 'btn-stop' : 'btn-go'}`}
               >
                  {isLoading ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                  {isLoading ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}

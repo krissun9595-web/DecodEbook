@@ -154,7 +154,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   return (
     <div className="h-full flex flex-col animate-fade-in font-sans text-left overflow-hidden">
       {/* Controller */}
-      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-glow-ambient w-full flex-wrap gap-2 z-20">
+      <div className="hud-panel mb-1.5 md:mb-2 flex items-center justify-between shrink-0 w-full flex-wrap gap-2 z-20">
         <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
             <HardDrive size={16} className="text-neon-cyan" />
@@ -163,7 +163,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
           <span className="text-[10px] font-mono text-zinc-600 uppercase">{formatFileSize(totalSize)} // {files.length} files</span>
         </div>
         <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
-          <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
+          <div className="select-group">
             <div className="p-1 md:p-1.5 text-zinc-500"><HardDrive size={13} /></div>
             <select
               value={filterBook}

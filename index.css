@@ -3,6 +3,34 @@
 @tailwind utilities;
 
 /* ===========================================================================
+   Phase 3 — Shared chrome recipes (single source of truth)
+   Extracted from the per-module controller toolbars so the neon control surface,
+   the primary action button, and the selector cluster are defined once. Content
+   panels intentionally keep their zinc borders (hierarchy), so only the cyan-edged
+   interactive toolbars use .hud-panel.
+   =========================================================================== */
+@layer components {
+  /* Module controller toolbar surface (cyan-edged interactive panel + ambient halo). */
+  .hud-panel {
+    @apply bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 shadow-glow-ambient;
+  }
+  /* Primary action button (INITIATE / REGENERATE); merge .btn-go or .btn-stop for state. */
+  .btn-action {
+    @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center;
+  }
+  .btn-go {
+    @apply bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-glow-sm;
+  }
+  .btn-stop {
+    @apply bg-neon-red text-white hover:bg-rose-600;
+  }
+  /* Inline selector cluster (voice / tone / style / language). */
+  .select-group {
+    @apply flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800;
+  }
+}
+
+/* ===========================================================================
    Design tokens (Phase 0). Semantic values also exposed to Tailwind via
    tailwind.config.js theme.extend — use `bg-void-1`, `text-fg-dim`,
    `text-neon-cyan`, `shadow-glow-cyan`, etc. Raw CSS (effect components,
