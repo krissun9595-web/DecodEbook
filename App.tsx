@@ -3186,10 +3186,10 @@ const App: React.FC = () => {
                 </button>
             </div>
             {!showLibraryList && activeBook && (
-                <div className="mt-4 p-3 border border-zinc-800 bg-zinc-900/20 rounded-sm relative group cursor-default">
+                <div className="mt-4 p-1.5 md:p-2 border border-zinc-800 bg-zinc-900/20 rounded-sm relative group cursor-default">
                     <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-neon-cyan"></div>
                     <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-neon-cyan"></div>
-                    <h1 className="font-bold text-xs text-white truncate leading-tight mb-1 font-tech uppercase tracking-wide">{activeBook.title}</h1>
+                    <h1 className="font-bold text-xs text-white truncate leading-tight mb-0.5 font-tech uppercase tracking-wide">{activeBook.title}</h1>
                     <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
                 </div>
             )}
@@ -3239,7 +3239,7 @@ const App: React.FC = () => {
           ) : (
              <div className="flex-1 min-h-0 flex flex-col">
                 {/* Full-text search */}
-                <div className="shrink-0 px-4 pt-3 pb-3 border-b border-zinc-900 bg-black/40">
+                <div className="shrink-0 px-4 pt-2 pb-2 border-b border-zinc-900 bg-black/40">
                   <div className="relative flex items-center">
                     <Search size={12} className="absolute left-2 text-zinc-600 pointer-events-none" />
                     <input
