@@ -226,30 +226,30 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
   }, [playbackRate, videoUrl]);
 
   const currentStatusLabel = isGenerating ? "STOP" : videoUrl ? "REGENERATE" : "INITIATE";
-  const currentStatusIcon = isGenerating ? <Square size={14} fill="currentColor" /> : videoUrl ? <RefreshCw size={14} /> : <Play size={14} fill="currentColor" />;
+  const currentStatusIcon = isGenerating ? <Square size={13} fill="currentColor" /> : videoUrl ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />;
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 text-left overflow-hidden">
-      <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-2 md:mb-4 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-4">
-              <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
-                 <Film size={18} className="text-[#00f3ff]" />
+              <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
+                 <Film size={16} className="text-[#00f3ff]" />
                  <span>Cine_Render</span>
               </div>
           </div>
-          <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
-              <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-                 <div className="flex items-center gap-1 md:gap-2">
-                    <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
-                    <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{STYLES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+          <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
+              <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
+                 <div className="flex items-center gap-1 md:gap-1.5">
+                    <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
+                    <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">{STYLES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  </div>
-                 <div className="w-[1px] h-4 bg-zinc-700"></div>
-                 <div className="flex items-center gap-1 md:gap-2">
-                    <div className="p-1 md:p-1.5 text-zinc-500"><Maximize2 size={14} /></div>
-                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
+                 <div className="w-[1px] h-3.5 bg-zinc-700"></div>
+                 <div className="flex items-center gap-1 md:gap-1.5">
+                    <div className="p-1 md:p-1.5 text-zinc-500"><Maximize2 size={13} /></div>
+                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
                  </div>
               </div>
-              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}>
+              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}>
                 {currentStatusIcon}
                 {currentStatusLabel}
               </button>
@@ -319,7 +319,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                     </div>
                 </div>
 
-                <div className="flex items-center p-2 md:p-3 overflow-hidden min-w-0 gap-1">
+                <div className="flex items-center p-1.5 md:p-2 overflow-hidden min-w-0 gap-1">
                     <div className="flex-1 flex items-center gap-1 min-w-0">
                         <select value={playbackRate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); if(videoRef.current) videoRef.current.playbackRate = Number(e.target.value); }} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s}x</option>)}</select>
                         <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
@@ -336,25 +336,25 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-center gap-2 md:gap-6 shrink-0">
-                        <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={16} /></button>
-                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
-                            {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
+                    <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
+                        <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={14} /></button>
+                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                            {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                         </button>
-                        <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={16} /></button>
+                        <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={14} /></button>
                     </div>
 
                     <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                         <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                         <button aria-label={isMuted ? "Unmute" : "Mute"} onClick={toggleMute} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
-                            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                            {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                         </button>
                         <a aria-label="Download video" href={videoUrl || '#'} download={`video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
-                            <Download size={16} />
+                            <Download size={14} />
                         </a>
-                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0" title="Share"><Share2 size={16} /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0" title="Share"><Share2 size={14} /></button>
                         <button aria-label={isFullScreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullScreen} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition-colors shrink-0">
-                            {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                            {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>
                     </div>
                 </div>

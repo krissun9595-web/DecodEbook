@@ -3467,30 +3467,30 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       />
 
       {/* Controller Toolbar */}
-      <div className="bg-zinc-950/80 p-2 md:p-3 rounded-lg border border-cyan-900/40 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
+      <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-4">
-              <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-xs">
-                 <Headphones size={18} className="text-[#00f3ff]" />
+              <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
+                 <Headphones size={16} className="text-[#00f3ff]" />
                  <span>Voice_Synth</span>
               </div>
           </div>
-          <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-between md:justify-end">
-              <div className="flex items-center gap-1 md:gap-2 bg-black/50 p-1 rounded-sm border border-zinc-800">
-                 <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={14} /></div>
-                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[120px] bg-[#050505]">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
+              <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
+                 <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
+                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">
                     {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
-                 <div className="w-[1px] h-4 bg-zinc-700"></div>
-                 <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={14} /></div>
-                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; writeStoredValue('audiobook_audio_language', e.target.value); resetAudioState(); }} className="bg-transparent text-[10px] md:text-xs text-[#00f3ff] outline-none font-mono uppercase w-[80px] md:w-[120px] bg-[#050505] cursor-pointer">
+                 <div className="w-[1px] h-3.5 bg-zinc-700"></div>
+                 <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={13} /></div>
+                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; writeStoredValue('audiobook_audio_language', e.target.value); resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none font-mono uppercase w-[80px] md:w-[112px] bg-[#050505] cursor-pointer">
                     {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                  </select>
               </div>
               <button
                 onClick={handleInitiateToggle}
-                className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 rounded-sm text-[10px] md:text-xs font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
+                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
               >
-                 {isGenerating ? <Square size={14} fill="currentColor" /> : hasInitiated ? <RefreshCw size={14} /> : <Play size={14} fill="currentColor" />}
+                 {isGenerating ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                  {isGenerating ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
               </button>
           </div>
