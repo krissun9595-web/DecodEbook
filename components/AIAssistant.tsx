@@ -312,24 +312,24 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleTouchStart}
                 onClick={handleClick}
-                className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-sm border-2 border-[#00f3ff] shadow-[0_0_25px_rgba(0,243,255,0.6)] flex items-center justify-center cursor-grab active:cursor-grabbing group relative overflow-visible transition-transform hover:scale-110 animate-float touch-none"
+                className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-sm border-2 border-neon-cyan shadow-[0_0_25px_rgba(0,243,255,0.6)] flex items-center justify-center cursor-grab active:cursor-grabbing group relative overflow-visible transition-transform hover:scale-110 animate-float touch-none"
             >
-                <div className="absolute inset-0 bg-gradient-to-tr from-[#00f3ff]/40 to-transparent rounded-full animate-pulse-slow"></div>
-                <Cpu className="text-[#00f3ff] relative z-10 w-8 h-8 drop-shadow-[0_0_5px_rgba(0,243,255,1)]" />
-                <div className="absolute -inset-2 border border-dashed border-[#00f3ff]/30 rounded-full animate-spin-slow pointer-events-none"></div>
+                <div className="absolute inset-0 bg-gradient-to-tr from-neon-cyan/40 to-transparent rounded-full animate-pulse-slow"></div>
+                <Cpu className="text-neon-cyan relative z-10 w-8 h-8 drop-shadow-[0_0_5px_rgba(0,243,255,1)]" />
+                <div className="absolute -inset-2 border border-dashed border-neon-cyan/30 rounded-full animate-spin-slow pointer-events-none"></div>
                 
                 {/* Expand Button on Sphere */}
                 <button 
                   onClick={handleQuickExpand}
                   onMouseDown={(e) => e.stopPropagation()}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-[#00f3ff] text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-125 z-50 border border-white/20"
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-neon-cyan text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-125 z-50 border border-white/20"
                   title="Expand to Full View"
                 >
                   <Maximize2 size={12} />
                 </button>
 
-                <div className="absolute -inset-1 border border-dotted border-[#ff003c]/30 rounded-full animate-reverse-spin pointer-events-none opacity-50"></div>
-                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black border border-[#00f3ff]/50 px-2 py-0.5 rounded text-[9px] font-mono text-[#00f3ff] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <div className="absolute -inset-1 border border-dotted border-neon-red/30 rounded-full animate-reverse-spin pointer-events-none opacity-50"></div>
+                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black border border-neon-cyan/50 px-2 py-0.5 rounded text-[9px] font-mono text-neon-cyan opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                     AI_CORE_ACTIVE
                 </div>
             </div>
@@ -339,15 +339,15 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
         {isOpen && (
             <div 
                 ref={chatRef}
-                className="w-full h-full bg-[#050505]/95 backdrop-blur-xl border border-[#00f3ff]/30 rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden origin-center"
+                className="w-full h-full bg-void-1/95 backdrop-blur-xl border border-neon-cyan/30 rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden origin-center"
             >
                 {/* Header - Draggable unless full screen */}
                 <div 
                     onMouseDown={handleMouseDown}
                     onTouchStart={handleTouchStart}
-                    className={`p-3 bg-zinc-900/90 border-b border-[#00f3ff]/20 flex items-center justify-between select-none shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
+                    className={`p-3 bg-zinc-900/90 border-b border-neon-cyan/20 flex items-center justify-between select-none shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
                 >
-                    <div className="flex items-center gap-2 text-[#00f3ff]">
+                    <div className="flex items-center gap-2 text-neon-cyan">
                         <Zap size={16} className="fill-current" />
                         <span className="text-xs font-bold font-tech uppercase tracking-widest text-shadow-neon">Neural_Assistant</span>
                     </div>
@@ -355,14 +355,14 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsFullScreen(!isFullScreen); }}
                             onMouseDown={(e) => e.stopPropagation()}
-                            className="p-1 hover:bg-[#00f3ff]/10 text-zinc-500 hover:text-[#00f3ff] transition-colors rounded"
+                            className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
                             title={isFullScreen ? "Exit Full Window" : "Full Window View"}
                         >
                             {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>
                         <button 
                             onClick={() => { setIsOpen(false); setIsFullScreen(false); }}
-                            className="p-1 hover:bg-[#00f3ff]/10 text-zinc-500 hover:text-[#00f3ff] transition-colors rounded"
+                            className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
                             title="Minimize to Sphere"
                             onMouseDown={(e) => e.stopPropagation()} 
                         >
@@ -379,7 +379,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                             <div className={`
                                 max-w-[85%] p-3 text-[11px] leading-relaxed content-font tracking-wide shadow-lg
                                 ${msg.role === 'user'
-                                    ? 'bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/40 rounded-t-lg rounded-bl-lg'
+                                    ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/40 rounded-t-lg rounded-bl-lg'
                                     : 'bg-[#1a1a1c] text-zinc-300 border border-zinc-700 rounded-t-lg rounded-br-lg'
                                 }
                             `}>
@@ -390,7 +390,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     {isLoading && (
                         <div className="flex justify-start relative z-10">
                             <div className="bg-[#1a1a1c] p-2 rounded rounded-bl-none flex items-center gap-2 border border-zinc-700">
-                                <Loader2 size={12} className="animate-spin text-[#00f3ff]" />
+                                <Loader2 size={12} className="animate-spin text-neon-cyan" />
                                 <span className="text-[10px] text-zinc-500 font-mono animate-pulse">PROCESSING_DATA...</span>
                             </div>
                         </div>
@@ -400,14 +400,14 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
 
                 {/* Input Area */}
                 <div 
-                    className={`p-3 bg-zinc-900/90 border-t border-[#00f3ff]/20 flex gap-2 shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
+                    className={`p-3 bg-zinc-900/90 border-t border-neon-cyan/20 flex gap-2 shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
                     onMouseDown={handleMouseDown}
                     onTouchStart={handleTouchStart}
                 >
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleStop(); }}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isLoading ? 'bg-[#ff003c] border-[#ff003c] text-white hover:bg-[#ff003c]/80' : 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed opacity-50'}`}
+                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isLoading ? 'bg-neon-red border-neon-red text-white hover:bg-neon-red/80' : 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed opacity-50'}`}
                         disabled={!isLoading}
                         title="Stop Generation"
                     >
@@ -417,7 +417,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleRecordToggle(); }}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isRecording ? 'bg-[#ff003c] border-[#ff003c] text-white animate-pulse' : 'bg-[#00f3ff]/10 border-[#00f3ff] text-[#00f3ff] hover:bg-[#00f3ff] hover:text-black'}`}
+                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isRecording ? 'bg-neon-red border-neon-red text-white animate-pulse' : 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black'}`}
                         title={isRecording ? "Stop Recording" : "Voice Input"}
                     >
                         {isRecording ? <Square size={16} fill="currentColor" /> : <Mic size={16} />}
@@ -433,7 +433,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             onMouseDown={(e) => e.stopPropagation()}
                             placeholder={isRecording ? "Listening..." : "Input command..."}
-                            className="w-full bg-[#050505] border border-zinc-700 rounded-sm px-3 py-2 text-xs text-[#00f3ff] focus:border-[#00f3ff] focus:outline-none font-mono placeholder:text-zinc-500 disabled:opacity-50"
+                            className="w-full bg-void-1 border border-zinc-700 rounded-sm px-3 py-2 text-xs text-neon-cyan focus:border-neon-cyan focus:outline-none font-mono placeholder:text-zinc-500 disabled:opacity-50"
                             disabled={isRecording || isLoading}
                         />
                     </div>
@@ -442,7 +442,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         disabled={isLoading || !input.trim() || isRecording}
                         onMouseDown={(e) => e.stopPropagation()}
                         aria-label="Send message"
-                        className="p-2 bg-[#00f3ff]/10 border border-[#00f3ff] text-[#00f3ff] rounded-sm hover:bg-[#00f3ff] hover:text-black disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                        className="p-2 bg-neon-cyan/10 border border-neon-cyan text-neon-cyan rounded-sm hover:bg-neon-cyan hover:text-black disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                     >
                         <Send size={16} />
                     </button>

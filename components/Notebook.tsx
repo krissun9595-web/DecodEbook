@@ -40,12 +40,12 @@ interface Props {
 type FilterType = 'all' | 'word' | 'phrase' | 'sentence';
 
 const INK_BADGE_STYLES: Record<AppSettings['highlightColor'], string> = {
-  indigo: 'bg-[#00f3ff]/10 border-[#00f3ff]/30 text-[#00f3ff]',
+  indigo: 'bg-neon-cyan/10 border-neon-cyan/30 text-neon-cyan',
   emerald: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-  rose: 'bg-[#ff003c]/10 border-[#ff003c]/30 text-[#ff003c]',
+  rose: 'bg-neon-red/10 border-neon-red/30 text-neon-red',
   amber: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
   violet: 'bg-violet-500/10 border-violet-500/30 text-violet-400',
-  pink: 'bg-[#ff4fd8]/10 border-[#ff4fd8]/30 text-[#ff4fd8]',
+  pink: 'bg-neon-pink/10 border-neon-pink/30 text-neon-pink',
 };
 
 interface LayoutNode {
@@ -860,7 +860,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
        <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
            <div className="hidden md:flex items-center gap-4">
                <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-                   <NotebookIcon size={16} className="text-[#00f3ff]" />
+                   <NotebookIcon size={16} className="text-neon-cyan" />
                    <span>Mem_Log</span>
                </div>
            </div>
@@ -871,7 +871,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                         <select
                             value={activeBookFilter}
                             onChange={(e) => setActiveBookFilter(e.target.value)}
-                            className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]"
+                            className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1"
                         >
                             <option value="all">ALL BOOKS</option>
                             {bookTitles.map(t => <option key={t} value={t}>{t.length > 15 ? t.substring(0, 15) + '...' : t}</option>)}
@@ -883,7 +883,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                         <select
                             value={activeFilter}
                             onChange={(e) => setActiveFilter(e.target.value as FilterType)}
-                            className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]"
+                            className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1"
                         >
                             <option value="all">ALL ITEMS</option>
                             <option value="word">WORDS</option>
@@ -896,7 +896,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                <button
                   onClick={handleInitiateMindMap}
                   disabled={filteredItems.length === 0}
-                  className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center ${isGeneratingMap ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc] shadow-[0_0_10px_rgba(0,243,255,0.3)]'}`}
+                  className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center ${isGeneratingMap ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-[0_0_10px_rgba(0,243,255,0.3)]'}`}
                >
                    {isGeneratingMap ? <Square size={13} fill="currentColor" /> : hasInitiatedMap ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                    {isGeneratingMap ? "STOP" : hasInitiatedMap ? "REGENERATE" : "INITIATE"}
@@ -906,7 +906,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
 
        {isMindMapMode ? (
            <div 
-             className="flex-1 bg-[#050505] border border-zinc-800 rounded-lg relative overflow-hidden flex flex-col items-center justify-center animate-fade-in group" 
+             className="flex-1 bg-void-1 border border-zinc-800 rounded-lg relative overflow-hidden flex flex-col items-center justify-center animate-fade-in group" 
              ref={mapContainerRef}
              onMouseDown={handleMapMouseDown}
              onMouseMove={handleMapMouseMove}
@@ -919,21 +919,21 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                
                {/* Floating Controls in Top Right */}
                <div className="absolute top-2 right-2 md:top-4 md:right-4 flex flex-wrap justify-end gap-1.5 md:gap-2 z-50 max-w-[calc(100%-16px)] md:max-w-none">
-                    <button onClick={handleFitView} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Fit View"><Scan size={14}/></button>
-                    <button onClick={() => setMapZoom(z => Math.max(0.2, z - 0.1))} aria-label="Zoom out" className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0"><ZoomOut size={14}/></button>
-                    <button onClick={() => setMapZoom(z => Math.min(3, z + 0.1))} aria-label="Zoom in" className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0"><ZoomIn size={14}/></button>
+                    <button onClick={handleFitView} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Fit View"><Scan size={14}/></button>
+                    <button onClick={() => setMapZoom(z => Math.max(0.2, z - 0.1))} aria-label="Zoom out" className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0"><ZoomOut size={14}/></button>
+                    <button onClick={() => setMapZoom(z => Math.min(3, z + 0.1))} aria-label="Zoom in" className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0"><ZoomIn size={14}/></button>
                     <div className="hidden md:block w-[1px] h-10 bg-zinc-800 mx-0.5"></div>
-                    <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
-                    <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
-                    <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
-                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 hover:text-[#00f3ff] rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
-                    <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#050505] border border-zinc-800 hover:border-[#ff003c] text-[#ff003c] rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
+                    <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
+                    <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
+                    <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
+                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
+                    <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-red text-neon-red rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
                </div>
 
                {isGeneratingMap ? (
                    <div className="flex flex-col items-center gap-4 z-10">
-                       <Loader2 size={48} className="text-[#00f3ff] animate-spin" />
-                       <p className="text-sm font-mono text-[#00f3ff] uppercase tracking-widest animate-pulse">Analyzing Neural Structures...</p>
+                       <Loader2 size={48} className="text-neon-cyan animate-spin" />
+                       <p className="text-sm font-mono text-neon-cyan uppercase tracking-widest animate-pulse">Analyzing Neural Structures...</p>
                    </div>
                ) : mindMapData ? (
                    <div className="w-full h-full overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing">
@@ -1104,18 +1104,18 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                ) : (
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
                        {filteredItems.map((item, idx) => {
-                           const typeColor = item.type === 'phrase' ? 'text-[#ff003c]' : item.type === 'word' ? 'text-cyan-400' : 'text-[#00f3ff]';
+                           const typeColor = item.type === 'phrase' ? 'text-neon-red' : item.type === 'word' ? 'text-cyan-400' : 'text-neon-cyan';
                            const inkBadgeClass = INK_BADGE_STYLES[settings.highlightColor] || INK_BADGE_STYLES.indigo;
                            return (
-                           <div key={item.id} className="bg-[#0a0a0c] border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${idx * 0.05}s` }}>
+                           <div key={item.id} className="bg-void-2 border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${idx * 0.05}s` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
-	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-[#00f3ff] bg-[#00f3ff]/10 animate-pulse' : 'text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10'}`} title="Pronounce"><Volume2 size={14} /></button>
-                                   <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
-                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `note-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 text-zinc-600 hover:text-[#00f3ff] bg-zinc-900/50 hover:bg-[#00f3ff]/10 rounded border border-transparent hover:border-[#00f3ff]/20 transition-all" title="Share"><Share2 size={14} /></button>
-                                   <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-[#ff003c] bg-zinc-900/50 hover:bg-[#ff003c]/10 rounded border border-transparent hover:border-[#ff003c]/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
+	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title="Pronounce"><Volume2 size={14} /></button>
+                                   <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
+                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `note-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Share"><Share2 size={14} /></button>
+                                   <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-neon-red bg-zinc-900/50 hover:bg-neon-red/10 rounded border border-transparent hover:border-neon-red/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">
-                                   <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-[#00f3ff]" /> : item.type === 'phrase' ? <Zap size={16} className="text-[#ff003c]" /> : <Type size={16} className="text-cyan-400" />}</div>
+                                   <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-neon-cyan" /> : item.type === 'phrase' ? <Zap size={16} className="text-neon-red" /> : <Type size={16} className="text-cyan-400" />}</div>
                                    <div className="flex-1 min-w-0 space-y-3">
                                        <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words" style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</p>
                                            <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -1129,7 +1129,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                        {item.definition && (
                                            <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-sm text-zinc-500 italic font-mono leading-relaxed">{item.definition}</p></div>
                                        )}
-                                       <div className="mt-2"><textarea placeholder="Add neural annotations..." value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="w-full bg-[#050505] border border-zinc-800 rounded p-2 text-xs text-zinc-400 focus:border-[#00f3ff] focus:outline-none transition-colors min-h-[50px] font-mono" /></div>
+                                       <div className="mt-2"><textarea placeholder="Add neural annotations..." value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="w-full bg-void-1 border border-zinc-800 rounded p-2 text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[50px] font-mono" /></div>
                                    </div>
                                </div>
                            </div>

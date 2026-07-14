@@ -20,7 +20,7 @@ interface Props {
 
 const TIER_DISPLAY: Record<string, { label: string; color: string; border: string; bg: string }> = {
   free: { label: 'FREE', color: 'text-zinc-400', border: 'border-zinc-700', bg: 'bg-zinc-800/50' },
-  pro: { label: 'PRO', color: 'text-[#00f3ff]', border: 'border-[#00f3ff]/30', bg: 'bg-[#00f3ff]/5' },
+  pro: { label: 'PRO', color: 'text-neon-cyan', border: 'border-neon-cyan/30', bg: 'bg-neon-cyan/5' },
   unlimited: { label: 'UNLIMITED', color: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/5' },
 };
 
@@ -45,7 +45,7 @@ const PLANS = [
     annualSave: 'Save 17% — $8.33/mo',
     icon: Crown,
     color: '[#00f3ff]',
-    accentBorder: 'border-[#00f3ff]/40',
+    accentBorder: 'border-neon-cyan/40',
     features: ['1,000 credits/month', 'All AI features unlocked', '30-150 cr/video · 40 cr/podcast', 'Buy extra credit packs anytime'],
   },
 ];
@@ -174,8 +174,8 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
-      <div className="bg-[#050505] border border-zinc-800 rounded-lg w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
-        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-[#00f3ff] to-[#ff003c]"></div>
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
+        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">My_Account</h2>
@@ -188,11 +188,11 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
               {/* ── Account Info ── */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-[#00f3ff] mb-2">
+                <div className="flex items-center gap-2 text-neon-cyan mb-2">
                   <Shield size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Account_Info</label>
                 </div>
-                <div className="bg-[#0a0a0c] border border-zinc-800 rounded-sm p-4 space-y-3">
+                <div className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-white font-mono">{user.email}</p>
@@ -248,7 +248,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
               {/* ── Credits Dashboard ── */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-[#ff003c] mb-2">
+                <div className="flex items-center gap-2 text-neon-red mb-2">
                   <BarChart3 size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Credits</label>
                 </div>
@@ -258,7 +258,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Loader2 size={16} className="animate-spin text-zinc-500" />
                   </div>
                 ) : tierInfo ? (
-                  <div className="bg-[#0a0a0c] border border-zinc-800 rounded-sm p-4 space-y-3">
+                  <div className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-3">
                     {monthlyCredits === Infinity ? (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-emerald-400 font-mono font-bold">Unlimited Credits</span>
@@ -268,13 +268,13 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <>
                         <div className="flex items-center justify-between text-xs mb-1">
                           <span className="text-zinc-400 font-mono">Monthly credits</span>
-                          <span className={`font-mono font-bold ${creditPct > 90 ? 'text-red-400' : creditPct > 70 ? 'text-amber-400' : 'text-[#00f3ff]'}`}>
+                          <span className={`font-mono font-bold ${creditPct > 90 ? 'text-red-400' : creditPct > 70 ? 'text-amber-400' : 'text-neon-cyan'}`}>
                             {tierInfo.credits_used} / {monthlyCredits} used
                           </span>
                         </div>
                         <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full transition-all ${creditPct > 90 ? 'bg-red-500' : creditPct > 70 ? 'bg-amber-500' : 'bg-[#00f3ff]'}`}
+                            className={`h-full rounded-full transition-all ${creditPct > 90 ? 'bg-red-500' : creditPct > 70 ? 'bg-amber-500' : 'bg-neon-cyan'}`}
                             style={{ width: `${creditPct}%` }}
                           />
                         </div>
@@ -290,7 +290,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           </span>
                         </div>
                         <div className="text-[10px] font-mono font-bold text-zinc-300">
-                          Total available: <span className={available < 10 ? 'text-red-400' : 'text-[#00f3ff]'}>{available}</span> credits
+                          Total available: <span className={available < 10 ? 'text-red-400' : 'text-neon-cyan'}>{available}</span> credits
                         </div>
                       </>
                     )}
@@ -323,12 +323,12 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Gift size={18} />
                     <label className="text-xs font-bold uppercase tracking-widest font-mono">Earn Free Credits</label>
                   </div>
-                  <div className="bg-[#0a0a0c] border border-emerald-500/20 rounded-sm p-4 space-y-4">
+                  <div className="bg-void-2 border border-emerald-500/20 rounded-sm p-4 space-y-4">
                     {/* Share link */}
                     <div className="space-y-2">
                       <p className="text-[10px] text-zinc-400 font-mono">Share your link — earn <span className="text-emerald-400">5 credits</span> per unique click (up to 50)</p>
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-[#050505] border border-zinc-800 rounded-sm px-3 py-1.5 text-[10px] font-mono text-zinc-400 truncate">
+                        <div className="flex-1 bg-void-1 border border-zinc-800 rounded-sm px-3 py-1.5 text-[10px] font-mono text-zinc-400 truncate">
                           {getShareUrl(refCode)}
                         </div>
                         <button
@@ -392,7 +392,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     const isProPlan = plan.id === 'pro';
 
                     return (
-                      <div key={plan.id} className={`bg-[#0a0a0c] border rounded-sm overflow-hidden transition-all ${isCurrent ? plan.accentBorder : 'border-zinc-800'}`}>
+                      <div key={plan.id} className={`bg-void-2 border rounded-sm overflow-hidden transition-all ${isCurrent ? plan.accentBorder : 'border-zinc-800'}`}>
                         <div className="p-4">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
@@ -429,7 +429,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                                 disabled={!!upgrading}
                                 className={`w-full py-2 text-[10px] font-mono uppercase tracking-widest rounded-sm transition-colors flex items-center justify-center gap-1.5 ${
                                   isProPlan
-                                    ? 'bg-[#00f3ff]/10 border border-[#00f3ff]/30 text-[#00f3ff] hover:bg-[#00f3ff]/20'
+                                    ? 'bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20'
                                     : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
                                 }`}
                               >
@@ -481,7 +481,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {PACKS.map(pack => (
-                      <div key={pack.type} className="bg-[#0a0a0c] border border-zinc-800 rounded-sm p-3 text-center space-y-2">
+                      <div key={pack.type} className="bg-void-2 border border-zinc-800 rounded-sm p-3 text-center space-y-2">
                         <p className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</p>
                         <p className="text-[9px] text-zinc-500 font-mono uppercase">credits</p>
                         <p className="text-sm font-bold text-amber-400">{pack.price}</p>
@@ -511,26 +511,26 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               {authMode === 'forgot' ? (
                 <div className="space-y-4">
                   <p className="text-xs text-zinc-500 font-mono leading-relaxed">Enter your email to receive a password reset link.</p>
-                  <div className="flex items-center gap-2 bg-[#0a0a0c] border border-zinc-800 rounded-sm px-3 py-2.5">
+                  <div className="flex items-center gap-2 bg-void-2 border border-zinc-800 rounded-sm px-3 py-2.5">
                     <Mail size={14} className="text-zinc-600 shrink-0" />
                     <input id="acct-reset-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
                   </div>
-                  <button onClick={handleForgotPassword} disabled={authLoading} className="w-full py-2.5 bg-[#00f3ff] text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
+                  <button onClick={handleForgotPassword} disabled={authLoading} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
                     {authLoading && <Loader2 size={14} className="animate-spin" />}
                     Send Reset Link
                   </button>
-                  <button onClick={() => { setAuthMode('login'); setError(''); setSuccess(''); }} className="w-full py-2 text-zinc-500 hover:text-[#00f3ff] text-[10px] font-mono uppercase tracking-widest transition-colors">
+                  <button onClick={() => { setAuthMode('login'); setError(''); setSuccess(''); }} className="w-full py-2 text-zinc-500 hover:text-neon-cyan text-[10px] font-mono uppercase tracking-widest transition-colors">
                     Back to Sign In
                   </button>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 bg-[#0a0a0c] border border-zinc-800 rounded-sm px-3 py-2.5">
+                    <div className="flex items-center gap-2 bg-void-2 border border-zinc-800 rounded-sm px-3 py-2.5">
                       <Mail size={14} className="text-zinc-600 shrink-0" />
                       <input id="acct-auth-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
                     </div>
-                    <div className="flex items-center gap-2 bg-[#0a0a0c] border border-zinc-800 rounded-sm px-3 py-2.5">
+                    <div className="flex items-center gap-2 bg-void-2 border border-zinc-800 rounded-sm px-3 py-2.5">
                       <KeyIcon size={14} className="text-zinc-600 shrink-0" />
                       <input id="acct-auth-password" name="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} placeholder="password" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
@@ -541,20 +541,20 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
                   {authMode === 'login' && (
                     <div className="flex justify-end">
-                      <button onClick={() => { setAuthMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-[#00f3ff] font-mono uppercase tracking-widest transition-colors">Forgot Password?</button>
+                      <button onClick={() => { setAuthMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">Forgot Password?</button>
                     </div>
                   )}
 
                   {authMode === 'signup' && (
                     <label className="flex items-start gap-2 cursor-pointer">
-                      <input id="acct-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-[#00f3ff]" />
+                      <input id="acct-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-neon-cyan" />
                       <span className="text-[10px] text-zinc-500 font-mono leading-relaxed">
-                        I agree to the <a href="/terms" target="_blank" className="text-[#00f3ff] hover:underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-[#00f3ff] hover:underline">Privacy Policy</a>
+                        I agree to the <a href="/terms" target="_blank" className="text-neon-cyan hover:underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-neon-cyan hover:underline">Privacy Policy</a>
                       </span>
                     </label>
                   )}
 
-                  <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-[#00f3ff] text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
+                  <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
                     {authLoading ? <Loader2 size={14} className="animate-spin" /> : authMode === 'login' ? <LogIn size={14} /> : <UserPlus size={14} />}
                     {authMode === 'login' ? 'Sign In' : 'Create Account'}
                   </button>
@@ -584,13 +584,13 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   )}
 
                   <div className="flex items-center justify-center">
-                    <button onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setError(''); setSuccess(''); setAgreedToTerms(false); }} className="text-[10px] text-zinc-500 hover:text-[#00f3ff] font-mono uppercase tracking-widest transition-colors">
+                    <button onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setError(''); setSuccess(''); setAgreedToTerms(false); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">
                       {authMode === 'login' ? 'Create Account' : 'Already have an account?'}
                     </button>
                   </div>
 
                   <p className="text-[9px] text-zinc-500 font-mono text-center leading-relaxed">
-                    By continuing, you agree to our <a href="/terms" target="_blank" className="text-zinc-500 hover:text-[#00f3ff] underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-zinc-500 hover:text-[#00f3ff] underline">Privacy Policy</a>
+                    By continuing, you agree to our <a href="/terms" target="_blank" className="text-zinc-500 hover:text-neon-cyan underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-zinc-500 hover:text-neon-cyan underline">Privacy Policy</a>
                   </p>
                 </div>
               )}
@@ -603,7 +603,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 </div>
                 <div className="space-y-2">
                   {PLANS.map(plan => (
-                    <div key={plan.id} className="flex items-center justify-between p-3 rounded-sm border border-zinc-800 bg-[#0a0a0c]">
+                    <div key={plan.id} className="flex items-center justify-between p-3 rounded-sm border border-zinc-800 bg-void-2">
                       <div className="flex items-center gap-2">
                         <plan.icon size={14} className={`text-${plan.color}`} />
                         <span className={`text-xs font-mono font-bold tracking-widest text-${plan.color}`}>{plan.name}</span>

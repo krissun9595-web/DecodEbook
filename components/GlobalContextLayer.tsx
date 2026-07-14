@@ -610,7 +610,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
           if (parts.length > 1 && parts[0].length < 25) {
              return (
                  <div key={idx} className="mb-3">
-                     <span className="text-[#00f3ff] font-bold uppercase text-[10px] tracking-widest">{parts[0]}:</span>
+                     <span className="text-neon-cyan font-bold uppercase text-[10px] tracking-widest">{parts[0]}:</span>
                      <p className="mt-1 text-zinc-300">{parts.slice(1).join(':').trim()}</p>
                  </div>
              );
@@ -624,17 +624,17 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {menu.visible && (
             <div 
                 ref={menuRef}
-                className="absolute bg-[#0a0a0c] border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-sm overflow-hidden min-w-[180px] pointer-events-auto animate-fade-in origin-top-left z-[101]"
+                className="absolute bg-void-2 border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-sm overflow-hidden min-w-[180px] pointer-events-auto animate-fade-in origin-top-left z-[101]"
                 style={{ top: menu.y, left: menu.x }}
             >
                 <div className="px-3 py-2 bg-zinc-900 border-b border-zinc-800 text-[10px] text-zinc-500 font-mono uppercase truncate max-w-[200px]">
                     {menu.text.length > 20 ? menu.text.substring(0, 20) + '...' : menu.text}
 	                </div>
 	                <div className="p-1">
-	                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Defination</button>
-	                    <button onClick={() => handlePronounce(false)} onPointerEnter={() => prefetchActivePronunciation(false)} onFocus={() => prefetchActivePronunciation(false)} className={`w-full text-left px-3 py-2 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-[#00f3ff] bg-[#00f3ff]/10 animate-pulse' : 'text-zinc-300'}`}><Volume2 size={14} />{isPlaying ? 'Stop Pronunciation' : 'Pronunciation'}</button>
-	                    <button onClick={() => handleInk()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><PenLine size={14} />{menu.isInked ? 'Remove Ink' : 'Ink'}</button>
-	                    <button onClick={() => openCommentComposer()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-[#00f3ff]/10 hover:text-[#00f3ff] text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><MessageSquare size={14} />Comment</button>
+	                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Defination</button>
+	                    <button onClick={() => handlePronounce(false)} onPointerEnter={() => prefetchActivePronunciation(false)} onFocus={() => prefetchActivePronunciation(false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}><Volume2 size={14} />{isPlaying ? 'Stop Pronunciation' : 'Pronunciation'}</button>
+	                    <button onClick={() => handleInk()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><PenLine size={14} />{menu.isInked ? 'Remove Ink' : 'Ink'}</button>
+	                    <button onClick={() => openCommentComposer()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><MessageSquare size={14} />Comment</button>
 	                </div>
             </div>
         )}
@@ -642,11 +642,11 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {commentComposer.visible && (
             <div
                 ref={commentRef}
-                className="absolute bg-[#050505]/95 backdrop-blur-md border border-[#00f3ff]/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 w-[calc(100vw-32px)] md:w-[300px] pointer-events-auto animate-fade-in-up origin-top-left z-[102]"
+                className="absolute bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 w-[calc(100vw-32px)] md:w-[300px] pointer-events-auto animate-fade-in-up origin-top-left z-[102]"
                 style={{ top: commentComposer.y, left: commentComposer.x }}
             >
                 <div className="mb-3">
-                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#00f3ff] flex items-center gap-2">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neon-cyan flex items-center gap-2">
                         <MessageSquare size={14} />
                         Neural Annotation
                     </div>
@@ -657,11 +657,11 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                     value={commentComposer.draft}
                     onChange={(e) => setCommentComposer(prev => ({ ...prev, draft: e.target.value }))}
                     placeholder="Add neural annotations..."
-                    className="w-full min-h-[90px] bg-[#020202] border border-zinc-800 rounded-sm p-2 text-xs text-zinc-300 focus:border-[#00f3ff] focus:outline-none transition-colors font-mono resize-none"
+                    className="w-full min-h-[90px] bg-void-0 border border-zinc-800 rounded-sm p-2 text-xs text-zinc-300 focus:border-neon-cyan focus:outline-none transition-colors font-mono resize-none"
                 />
                 <div className="flex items-center justify-end gap-2 mt-3">
                     <button onClick={() => setCommentComposer(prev => ({ ...prev, visible: false }))} className="px-3 py-2 text-[10px] font-mono uppercase text-zinc-600 hover:text-zinc-300 transition-colors">Cancel</button>
-                    <button onClick={saveComment} disabled={!commentComposer.draft.trim()} className="px-3 py-2 text-[10px] font-mono uppercase bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 rounded-sm hover:bg-[#00f3ff]/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Save</button>
+                    <button onClick={saveComment} disabled={!commentComposer.draft.trim()} className="px-3 py-2 text-[10px] font-mono uppercase bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 rounded-sm hover:bg-neon-cyan/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Save</button>
                 </div>
             </div>
         )}
@@ -669,11 +669,11 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {definition.visible && (
              <div 
                 ref={defRef}
-                className="absolute bg-[#050505]/95 backdrop-blur-md border border-[#00f3ff]/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 md:p-5 w-[calc(100vw-32px)] md:w-80 pointer-events-auto animate-fade-in-up origin-top-left z-[102] max-h-[400px] flex flex-col"
+                className="absolute bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 md:p-5 w-[calc(100vw-32px)] md:w-80 pointer-events-auto animate-fade-in-up origin-top-left z-[102] max-h-[400px] flex flex-col"
                 style={{ top: definition.position.y, left: definition.position.x }}
              >
 	                 <div className="flex items-start justify-between mb-3 shrink-0">
-	                     <h3 className="text-[#00f3ff] font-bold font-mono text-sm uppercase tracking-wider flex items-center gap-2">
+	                     <h3 className="text-neon-cyan font-bold font-mono text-sm uppercase tracking-wider flex items-center gap-2">
 	                         <BookOpen size={16} />
 	                         Defination
 	                     </h3>
@@ -698,12 +698,12 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {mobileBar.visible && !definition.visible && (
             <div
                 ref={mobileBarRef}
-                className="absolute pointer-events-auto animate-fade-in z-[101] flex items-center gap-0.5 bg-[#0a0a0c] border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-full px-1 py-1 max-w-[calc(100vw-16px)] overflow-x-auto"
+                className="absolute pointer-events-auto animate-fade-in z-[101] flex items-center gap-0.5 bg-void-2 border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-full px-1 py-1 max-w-[calc(100vw-16px)] overflow-x-auto"
                 style={{ top: mobileBar.y, left: mobileBar.x }}
             >
                 <button
                     onTouchEnd={(e) => { e.preventDefault(); handleDefine(e as any, true); }}
-                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-[#00f3ff] active:bg-[#00f3ff]/10 text-[10px] font-mono uppercase rounded-full transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
 	                >
 	                    <Search size={14} />
 	                    Defination
@@ -712,7 +712,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                <button
 	                    onTouchStart={() => prefetchActivePronunciation(true)}
 	                    onTouchEnd={(e) => { e.preventDefault(); handlePronounce(true); }}
-	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-[#00f3ff] active:bg-[#00f3ff]/10 text-[10px] font-mono uppercase rounded-full transition-colors"
+	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
 	                >
 	                    <Volume2 size={14} />
 	                    {isPlaying ? 'Stop' : 'Pronunciation'}
@@ -720,7 +720,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                <div className="w-[1px] h-5 bg-zinc-700" />
 	                <button
 	                    onTouchEnd={(e) => { e.preventDefault(); handleInk(true); }}
-	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-[#00f3ff] active:bg-[#00f3ff]/10 text-[10px] font-mono uppercase rounded-full transition-colors"
+	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
 	                >
                     <PenLine size={14} />
                     {mobileBar.isInked ? 'Unink' : 'Ink'}
@@ -728,7 +728,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                 <div className="w-[1px] h-5 bg-zinc-700" />
                 <button
                     onTouchEnd={(e) => { e.preventDefault(); openCommentComposer(true); }}
-                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-[#00f3ff] active:bg-[#00f3ff]/10 text-[10px] font-mono uppercase rounded-full transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
                 >
                     <MessageSquare size={14} />
                     Comment

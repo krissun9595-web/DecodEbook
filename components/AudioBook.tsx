@@ -232,24 +232,24 @@ interface ParagraphData {
 interface ColumnPara { sentences: { text: string; gi: number }[] }
 
 const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
-  indigo: 'text-[#00f3ff] drop-shadow-[0_0_2px_rgba(0,243,255,0.8)]',
+  indigo: 'text-neon-cyan drop-shadow-[0_0_2px_rgba(0,243,255,0.8)]',
   emerald: 'text-emerald-400 drop-shadow-[0_0_2px_rgba(52,211,153,0.8)]',
-  rose: 'text-[#ff003c] drop-shadow-[0_0_2px_rgba(255,0,60,0.8)]',
+  rose: 'text-neon-red drop-shadow-[0_0_2px_rgba(255,0,60,0.8)]',
   amber: 'text-amber-400 drop-shadow-[0_0_2px_rgba(251,191,36,0.8)]',
   violet: 'text-violet-400 drop-shadow-[0_0_2px_rgba(167,139,250,0.8)]',
-  pink: 'text-[#ff4fd8] drop-shadow-[0_0_2px_rgba(255,79,216,0.8)]',
+  pink: 'text-neon-pink drop-shadow-[0_0_2px_rgba(255,79,216,0.8)]',
 };
 
 // Hyperlinks render in the app's selected accent colour (not the PDF's original link colour), so a
 // link is unmistakable and easy to match against the coloured link in the source. Static strings so
 // Tailwind keeps the classes.
 const LINK_STYLES: Record<ThemeColor, string> = {
-  indigo: 'text-[#00f3ff] underline decoration-[#00f3ff]/70 underline-offset-4 hover:text-white',
+  indigo: 'text-neon-cyan underline decoration-neon-cyan/70 underline-offset-4 hover:text-white',
   emerald: 'text-emerald-400 underline decoration-emerald-400/70 underline-offset-4 hover:text-white',
-  rose: 'text-[#ff003c] underline decoration-[#ff003c]/70 underline-offset-4 hover:text-white',
+  rose: 'text-neon-red underline decoration-neon-red/70 underline-offset-4 hover:text-white',
   amber: 'text-amber-400 underline decoration-amber-400/70 underline-offset-4 hover:text-white',
   violet: 'text-violet-400 underline decoration-violet-400/70 underline-offset-4 hover:text-white',
-  pink: 'text-[#ff4fd8] underline decoration-[#ff4fd8]/70 underline-offset-4 hover:text-white',
+  pink: 'text-neon-pink underline decoration-neon-pink/70 underline-offset-4 hover:text-white',
 };
 
 const HIGHLIGHT_TEXT_COLORS: Record<ThemeColor, string> = {
@@ -1263,7 +1263,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
   // would letterbox it and make it look smaller.
   const imageBox = (src: string | null, loading: boolean, note: string, natural = false) => (
     <div
-      className="relative w-full overflow-hidden rounded-sm border border-zinc-800/60 bg-[#0a0a0c] select-none"
+      className="relative w-full overflow-hidden rounded-sm border border-zinc-800/60 bg-void-2 select-none"
       style={natural && src ? undefined : { aspectRatio: String(aspect) }}
       onContextMenu={e => { e.preventDefault(); openMenu(e.clientX, e.clientY); }}
       onDoubleClick={e => openMenu(e.clientX, e.clientY)}
@@ -2891,16 +2891,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       case 'italic':
         return 'italic text-zinc-200';
       case 'underline':
-        return 'underline decoration-[#00f3ff]/70 underline-offset-4 text-zinc-100';
+        return 'underline decoration-neon-cyan/70 underline-offset-4 text-zinc-100';
       case 'strike':
-        return 'line-through decoration-[#ff003c]/70 text-zinc-500';
+        return 'line-through decoration-neon-red/70 text-zinc-500';
       case 'link':
         return LINK_STYLES[settings.highlightColor];
       case 'attribution':
       case 'attributionFootnote':
         return 'block mt-0.5 mb-4 leading-tight text-right text-zinc-500 italic text-[0.82em]';
       case 'footnote':
-        return 'ml-[2px] text-[0.86em] leading-none text-[#00f3ff] not-italic';
+        return 'ml-[2px] text-[0.86em] leading-none text-neon-cyan not-italic';
       case 'referenceMarker':
         return 'ml-[2px] text-[0.86em] leading-none text-zinc-400 not-italic';
       default:
@@ -2982,7 +2982,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               {onFootnoteClick ? (
                 <button
                   type="button"
-                  className="ml-[2px] text-[0.86em] leading-none text-[#00f3ff] not-italic hover:text-white focus:outline-none focus:text-white"
+                  className="ml-[2px] text-[0.86em] leading-none text-neon-cyan not-italic hover:text-white focus:outline-none focus:text-white"
                   title={`Go to note ${marker}`}
                   draggable={false}
                   onClick={(event) => onFootnoteClick(marker, event, href)}
@@ -2990,7 +2990,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   {marker}
                 </button>
               ) : (
-                <span className="ml-[2px] text-[0.86em] leading-none text-[#00f3ff] not-italic">{marker}</span>
+                <span className="ml-[2px] text-[0.86em] leading-none text-neon-cyan not-italic">{marker}</span>
               )}
             </sub>
           ) : null}
@@ -3041,7 +3041,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           <sup key={key} className="align-super leading-none">
             <button
               type="button"
-              className="ml-[2px] text-[0.86em] leading-none text-[#00f3ff] not-italic hover:text-white focus:outline-none focus:text-white"
+              className="ml-[2px] text-[0.86em] leading-none text-neon-cyan not-italic hover:text-white focus:outline-none focus:text-white"
               title="Back to footnote"
               onClick={handleNoteBackNavigation}
             >
@@ -3184,7 +3184,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         <sup key="note-back-link" className="mr-1 align-super leading-none">
           <button
             type="button"
-            className="text-[0.86em] leading-none text-[#00f3ff] hover:text-white focus:outline-none focus:text-white"
+            className="text-[0.86em] leading-none text-neon-cyan hover:text-white focus:outline-none focus:text-white"
             title="Back to footnote"
             onClick={handleNoteBackNavigation}
           >
@@ -3301,7 +3301,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       return <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>;
     }
     if (translationError && !hasTranslation) {
-      return <span className="text-[10px] font-mono text-[#ff003c]/80 uppercase">{translationError}</span>;
+      return <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>;
     }
     return runs.map((run, idx) => {
       const isActive = autoScroll && run.globalIndex === activeSentenceIndex;
@@ -3470,25 +3470,25 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-                 <Headphones size={16} className="text-[#00f3ff]" />
+                 <Headphones size={16} className="text-neon-cyan" />
                  <span>Voice_Synth</span>
               </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
               <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
-                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">
+                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">
                     {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
                  <div className="w-[1px] h-3.5 bg-zinc-700"></div>
                  <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={13} /></div>
-                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; writeStoredValue('audiobook_audio_language', e.target.value); resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none font-mono uppercase w-[80px] md:w-[112px] bg-[#050505] cursor-pointer">
+                 <select value={audioLanguage} onChange={(e) => { setAudioLanguage(e.target.value); lastAudioLanguage = e.target.value; writeStoredValue('audiobook_audio_language', e.target.value); resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none font-mono uppercase w-[80px] md:w-[112px] bg-void-1 cursor-pointer">
                     {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                  </select>
               </div>
               <button
                 onClick={handleInitiateToggle}
-                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
+                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}
               >
                  {isGenerating ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                  {isGenerating ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
@@ -3497,7 +3497,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       </div>
 
       {/* Advanced Visualizer Module */}
-      <div className={`bg-[#0a0a0c] border border-zinc-800 rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isModuleMinimized ? 'h-auto' : 'h-[277px]'}`}>
+      <div className={`bg-void-2 border border-zinc-800 rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isModuleMinimized ? 'h-auto' : 'h-[277px]'}`}>
           {!isModuleMinimized && (
               <div className="flex-1 bg-[#010102] w-full flex items-center justify-center overflow-hidden relative group border-b border-zinc-900">
                  <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
@@ -3507,8 +3507,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     <>
                         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none animate-fade-in">
                             <div className="relative max-w-[90%] px-8 py-4 overflow-hidden">
-                                <span className="content-font font-black text-[#ff003c] uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
-                                    <div className="w-3 h-3 rounded-full bg-[#ff003c] shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
+                                <span className="content-font font-black text-neon-red uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
+                                    <div className="w-3 h-3 rounded-full bg-neon-red shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
                                     {chapter.title} — PG.{String(currentPage + 1).padStart(2,'0')}
                                 </span>
                             </div>
@@ -3523,38 +3523,38 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                  )}
                  <div className="absolute bottom-0 left-0 w-full h-1 bg-zinc-900 z-30 group cursor-pointer">
                     <input type="range" min="0" max="100" step="0.01" value={playbackProgress} onChange={handleSeek} disabled={!audioSrc} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-40" />
-                    <div className="h-full bg-[#00f3ff] relative transition-none shadow-[0_0_10px_#00f3ff]" style={{ width: `${playbackProgress}%` }} />
+                    <div className="h-full bg-neon-cyan relative transition-none shadow-[0_0_10px_#00f3ff]" style={{ width: `${playbackProgress}%` }} />
                  </div>
               </div>
           )}
 
-          <div className="bg-[#020202] p-1.5 md:p-2 flex items-center gap-1 overflow-hidden min-w-0">
+          <div className="bg-void-0 p-1.5 md:p-2 flex items-center gap-1 overflow-hidden min-w-0">
               <div className="flex-1 flex items-center gap-1 min-w-0">
-                  <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
+                  <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
                   <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                   <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                        {RATES.map(s => (
-                         <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>
+                         <button key={s} onClick={() => setPlaybackRate(s)} className={`transition-colors font-mono ${playbackRate === s ? 'text-neon-cyan font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}>{s.toFixed(2)}x</button>
                        ))}
                   </div>
               </div>
               <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
                   <button aria-label="Rewind 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={14} /></button>
-                  <button aria-label="Play or pause" onClick={togglePlay} disabled={!audioSrc} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                  <button aria-label="Play or pause" onClick={togglePlay} disabled={!audioSrc} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-neon-cyan border-neon-cyan text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
                     {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                   </button>
                   <button aria-label="Forward 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={14} /></button>
               </div>
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                  <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                  <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                   <button aria-label="Minimize or maximize player" onClick={() => {
                     const nextMinimized = !isModuleMinimized;
                     setIsModuleMinimized(nextMinimized);
                     lastVoiceSynthMinimized = nextMinimized;
                     writeStoredValue('voice_synth_player_minimized', String(nextMinimized));
-                  }} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0">{isModuleMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
+                  }} className="p-1 md:p-2 text-zinc-600 hover:text-neon-cyan transition-colors rounded-full bg-zinc-900/50 shrink-0">{isModuleMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
               </div>
           </div>
       </div>
@@ -3564,9 +3564,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
            <Loader text="DECODING_TEXT_BLOCK..." />
         </div>
       ) : sourceError ? (
-        <div className="flex-1 flex items-center justify-center min-h-[220px] rounded-sm border border-[#ff003c]/30 bg-[#050505] text-center px-6">
+        <div className="flex-1 flex items-center justify-center min-h-[220px] rounded-sm border border-neon-red/30 bg-void-1 text-center px-6">
           <div className="max-w-md space-y-3">
-            <div className="text-[#ff003c] text-xs font-mono uppercase tracking-[0.25em]">SOURCE_REQUIRED</div>
+            <div className="text-neon-red text-xs font-mono uppercase tracking-[0.25em]">SOURCE_REQUIRED</div>
             <p className="text-zinc-400 text-sm leading-relaxed content-font">{sourceError}</p>
             <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">
               Cached metadata cannot reproduce original chapters.
@@ -3576,15 +3576,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       ) : (
         <>
            {/* Reader Mode Controls */}
-           <div className="flex shrink-0 border border-zinc-800 bg-[#0a0a0c]/90 backdrop-blur-md rounded-sm z-10 w-full flex-col overflow-hidden">
+           <div className="flex shrink-0 border border-zinc-800 bg-void-2/90 backdrop-blur-md rounded-sm z-10 w-full flex-col overflow-hidden">
               <div className="flex items-center justify-between p-1.5 md:p-2 gap-1">
                    <div className="flex items-center gap-1 md:gap-2">
-                      <button aria-label="Previous page" onClick={() => changePage(false)} disabled={!canGoPrevious} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
-                      <h3 className="text-[9px] md:text-[10px] font-bold text-[#00f3ff] font-tech uppercase tracking-widest px-2 md:px-4 flex items-center gap-2">
+                      <button aria-label="Previous page" onClick={() => changePage(false)} disabled={!canGoPrevious} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-neon-cyan text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
+                      <h3 className="text-[9px] md:text-[10px] font-bold text-neon-cyan font-tech uppercase tracking-widest px-2 md:px-4 flex items-center gap-2">
                         <span>PG.{String(currentPage + 1).padStart(2,'0')}</span>
                         {currentReaderPage?.label && <span className="hidden sm:inline text-zinc-600">{currentReaderPage.label}</span>}
                       </h3>
-                      <button aria-label="Next page" onClick={() => changePage(true)} disabled={!canGoNext} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-[#00f3ff] text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
+                      <button aria-label="Next page" onClick={() => changePage(true)} disabled={!canGoNext} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-neon-cyan text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
                   </div>
                   <div className="flex items-center gap-1 md:gap-2">
                       <button onClick={() => {
@@ -3592,18 +3592,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         setViewMode(nextMode);
                         lastViewMode = nextMode;
                         writeStoredValue('audiobook_view_mode', nextMode);
-                      }} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${viewMode === 'split' ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> <span className="hidden sm:inline">SPLIT</span></button>
+                      }} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${viewMode === 'split' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> <span className="hidden sm:inline">SPLIT</span></button>
                       <button onClick={() => {
                         const nextAutoScroll = !autoScroll;
                         setAutoScroll(nextAutoScroll);
                         lastAutoScroll = nextAutoScroll;
                         writeStoredValue('audiobook_auto_scroll', String(nextAutoScroll));
-                      }} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC</span></button>
+                      }} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC</span></button>
                    </div>
               </div>
           </div>
 
-          <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-[#050505] relative flex flex-col hud-border text-left">
+          <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-void-1 relative flex flex-col hud-border text-left">
              <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
                   // An extracted PDF figure — inline image loaded from the cache.
@@ -3751,7 +3751,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
                               ) : showTranslationError && lineIdx === 0 ? (
-                                <span className="text-[10px] font-mono text-[#ff003c]/80 uppercase">{translationError}</span>
+                                <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>
                               ) : !showTranslationPlaceholder && !showTranslationError ? (
                                 line.map(({ sentence, sIdx, globalIndex }) => {
                                   const isActive = autoScroll && globalIndex === activeSentenceIndex;

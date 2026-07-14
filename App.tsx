@@ -3009,8 +3009,8 @@ const App: React.FC = () => {
 
   if (!configReady) {
     return (
-      <div className="min-h-screen bg-[#020202] flex items-center justify-center">
-        <div className="text-[#00f3ff] font-tech text-xs tracking-[0.3em] animate-pulse uppercase">Initializing_System...</div>
+      <div className="min-h-screen bg-void-0 flex items-center justify-center">
+        <div className="text-neon-cyan font-tech text-xs tracking-[0.3em] animate-pulse uppercase">Initializing_System...</div>
       </div>
     );
   }
@@ -3048,36 +3048,36 @@ const App: React.FC = () => {
 
   if (view === AppView.UPLOAD) {
     return (
-      <div className="min-h-screen bg-[#020202] bg-grid flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-tech text-left">
+      <div className="min-h-screen bg-void-0 bg-grid flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-tech text-left">
         <div className="absolute top-8 left-8 w-24 h-24 border-l border-t border-zinc-800 rounded-tl-lg pointer-events-none hidden md:block"></div>
         <div className="absolute bottom-8 right-8 w-24 h-24 border-r border-b border-zinc-800 rounded-br-lg pointer-events-none hidden md:block"></div>
 
         <div className="z-10 max-w-lg w-full text-center space-y-8 md:space-y-12">
           <div className="space-y-2 animate-fade-in-up text-center">
              <div className="flex items-center justify-center gap-2 mb-4">
-                <Terminal size={28} className="text-[#00f3ff] md:w-8 md:h-8" />
+                <Terminal size={28} className="text-neon-cyan md:w-8 md:h-8" />
              </div>
             <h1 className="text-4xl md:text-7xl font-bold tracking-tighter text-white drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">
-              Decod<span className="text-[#00f3ff]">Ebook</span>
+              Decod<span className="text-neon-cyan">Ebook</span>
             </h1>
             <p className="text-zinc-500 tracking-[0.2em] text-[10px] md:text-xs uppercase">
               V.4.2 // Neural Text Decoding Interface
             </p>
           </div>
 
-          <div className="relative group animate-fade-in-up hud-border bg-[#050505] p-6 md:p-10 transition-all duration-500 hover:shadow-[0_0_30px_rgba(0,243,255,0.1)]" style={{ animationDelay: '0.1s' }}>
+          <div className="relative group animate-fade-in-up hud-border bg-void-1 p-6 md:p-10 transition-all duration-500 hover:shadow-[0_0_30px_rgba(0,243,255,0.1)]" style={{ animationDelay: '0.1s' }}>
               {isProcessing ? (
                 <Loader text="DECODING_SOURCE..." />
               ) : (
                 <div className="relative flex flex-col items-center justify-center space-y-8">
                   <div className="relative">
-                    <div className="w-32 h-32 bg-[#0a0a0c] border border-zinc-800 rounded-full flex items-center justify-center group-hover:border-[#00f3ff] transition-all duration-500">
-                        <Upload className="w-12 h-12 text-zinc-600 group-hover:text-[#00f3ff] transition-colors" />
+                    <div className="w-32 h-32 bg-void-2 border border-zinc-800 rounded-full flex items-center justify-center group-hover:border-neon-cyan transition-all duration-500">
+                        <Upload className="w-12 h-12 text-zinc-600 group-hover:text-neon-cyan transition-colors" />
                     </div>
-                    <div className="absolute -inset-2 border border-dashed border-zinc-800 rounded-full animate-spin-slow pointer-events-none group-hover:border-[#00f3ff]/30"></div>
+                    <div className="absolute -inset-2 border border-dashed border-zinc-800 rounded-full animate-spin-slow pointer-events-none group-hover:border-neon-cyan/30"></div>
                   </div>
                   <div className="space-y-2 text-center">
-                    <p className="text-[#00f3ff] font-bold uppercase tracking-widest text-sm animate-pulse">Initialize Upload</p>
+                    <p className="text-neon-cyan font-bold uppercase tracking-widest text-sm animate-pulse">Initialize Upload</p>
                     <p className="text-[10px] text-zinc-600 font-mono">SUPPORTED PROTOCOLS: PDF / EPUB / TXT / MD</p>
                   </div>
                   <input
@@ -3095,21 +3095,21 @@ const App: React.FC = () => {
           {library.length > 0 && (
              <button 
                 onClick={() => setView(AppView.DASHBOARD)}
-                className="text-zinc-500 hover:text-[#00f3ff] text-xs font-mono uppercase tracking-widest transition-colors flex items-center gap-2 mx-auto border border-transparent hover:border-[#00f3ff]/30 px-4 py-2 rounded-sm"
+                className="text-zinc-500 hover:text-neon-cyan text-xs font-mono uppercase tracking-widest transition-colors flex items-center gap-2 mx-auto border border-transparent hover:border-neon-cyan/30 px-4 py-2 rounded-sm"
              >
                 <LibraryIcon size={14} />
                 Access_Data_Bank [{library.length}]
              </button>
           )}
-          {error && <p className="text-[#ff003c] text-xs font-mono border border-[#ff003c]/30 p-2 bg-[#ff003c]/5">{error}</p>}
+          {error && <p className="text-neon-red text-xs font-mono border border-neon-red/30 p-2 bg-neon-red/5">{error}</p>}
         </div>
         {pendingLanguagePromptBookId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-            <div className="w-full max-w-md bg-[#050505] border border-zinc-800 rounded-lg shadow-[0_0_50px_rgba(0,243,255,0.08)] overflow-hidden text-left">
-              <div className="h-[2px] bg-gradient-to-r from-[#00f3ff] to-[#ff003c]" />
+            <div className="w-full max-w-md bg-void-1 border border-zinc-800 rounded-lg shadow-[0_0_50px_rgba(0,243,255,0.08)] overflow-hidden text-left">
+              <div className="h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red" />
               <div className="p-6 space-y-5">
                 <div className="space-y-2">
-                  <div className="text-[10px] font-mono text-[#00f3ff] uppercase tracking-[0.3em]">Translation_Default</div>
+                  <div className="text-[10px] font-mono text-neon-cyan uppercase tracking-[0.3em]">Translation_Default</div>
                   <h2 className="text-2xl font-black text-white uppercase tracking-tight">Choose Target Language</h2>
                   <p className="text-xs text-zinc-500 leading-relaxed font-mono">
                     This becomes the default translated layer for this and future books until you change it again.
@@ -3118,7 +3118,7 @@ const App: React.FC = () => {
                 <select
                   value={settings.targetLanguage}
                   onChange={(e) => setSettings(prev => ({ ...prev, targetLanguage: e.target.value }))}
-                  className="w-full bg-[#020202] border border-zinc-800 text-[#00f3ff] font-mono text-xs uppercase focus:border-[#00f3ff] outline-none rounded-sm px-4 py-3 transition-all cursor-pointer"
+                  className="w-full bg-void-0 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-4 py-3 transition-all cursor-pointer"
                 >
                   {TARGET_LANGUAGES.map(language => (
                     <option key={language} value={language}>{language}</option>
@@ -3126,7 +3126,7 @@ const App: React.FC = () => {
                 </select>
                 <button
                   onClick={continueAfterLanguagePrompt}
-                  className="w-full py-3 bg-[#00f3ff] text-black font-black uppercase tracking-[0.25em] text-xs rounded-sm hover:bg-white transition-colors"
+                  className="w-full py-3 bg-neon-cyan text-black font-black uppercase tracking-[0.25em] text-xs rounded-sm hover:bg-white transition-colors"
                 >
                   Continue
                 </button>
@@ -3139,7 +3139,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-[#020202] bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
+    <div className="flex h-screen bg-void-0 bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
       <a href="#main-content" className="skip-to-content">Skip to content</a>
       <GlobalContextLayer onAddToNotebook={handleAddToNotebook} activeLanguage={settings.targetLanguage} />
       <AIAssistant
@@ -3166,20 +3166,20 @@ const App: React.FC = () => {
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-80' : 'md:w-0'} bg-[#050505] flex flex-col overflow-hidden border-r border-zinc-900`}
+        className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-80' : 'md:w-0'} bg-void-1 flex flex-col overflow-hidden border-r border-zinc-900`}
       >
         <div className="p-4 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-[#00f3ff] opacity-20"></div>
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-neon-cyan opacity-20"></div>
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-1.5">
-                    <span className="font-tech font-bold text-[#00f3ff] text-lg leading-none">{'>_'}</span>
+                    <span className="font-tech font-bold text-neon-cyan text-lg leading-none">{'>_'}</span>
                     <span className="text-lg font-tech font-bold tracking-[0.06em] leading-none">
-                        <span className="text-white">Decod</span><span className="text-[#00f3ff]">Ebook</span>
+                        <span className="text-white">Decod</span><span className="text-neon-cyan">Ebook</span>
                     </span>
                 </div>
                 <button 
                     onClick={() => setView(AppView.UPLOAD)} 
-                    className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-[#00f3ff] transition-colors"
+                    className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-neon-cyan transition-colors"
                     title="Upload New"
                 >
                     <Upload size={14} />
@@ -3187,8 +3187,8 @@ const App: React.FC = () => {
             </div>
             {!showLibraryList && activeBook && (
                 <div className="mt-4 p-3 border border-zinc-800 bg-zinc-900/20 rounded-sm relative group cursor-default">
-                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[#00f3ff]"></div>
-                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[#00f3ff]"></div>
+                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-neon-cyan"></div>
+                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-neon-cyan"></div>
                     <h1 className="font-bold text-xs text-white truncate leading-tight mb-1 font-tech uppercase tracking-wide">{activeBook.title}</h1>
                     <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
                 </div>
@@ -3202,7 +3202,7 @@ const App: React.FC = () => {
                         key={item.book.id}
                         className={`w-full flex items-center gap-3 p-4 border-b border-zinc-900 transition-all group ${
                             activeBookId === item.book.id
-                            ? 'bg-[#00f3ff]/5'
+                            ? 'bg-neon-cyan/5'
                             : 'hover:bg-zinc-900'
                         }`}
                     >
@@ -3218,9 +3218,9 @@ const App: React.FC = () => {
                             }}
                             className="flex items-center gap-3 flex-1 min-w-0"
                         >
-                            <div className={`w-1 h-8 shrink-0 ${activeBookId === item.book.id ? 'bg-[#00f3ff]' : 'bg-zinc-800'}`}></div>
+                            <div className={`w-1 h-8 shrink-0 ${activeBookId === item.book.id ? 'bg-neon-cyan' : 'bg-zinc-800'}`}></div>
                             <div className="text-left min-w-0">
-                                <h4 className={`text-[10px] font-bold truncate font-tech uppercase tracking-wide ${activeBookId === item.book.id ? 'text-[#00f3ff]' : 'text-zinc-400'}`}>
+                                <h4 className={`text-[10px] font-bold truncate font-tech uppercase tracking-wide ${activeBookId === item.book.id ? 'text-neon-cyan' : 'text-zinc-400'}`}>
                                     {item.book.title}
                                 </h4>
                                 <p className="text-[9px] text-zinc-600 truncate font-mono">{item.book.chapters.length} DATA_BLOCKS</p>
@@ -3228,7 +3228,7 @@ const App: React.FC = () => {
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); handleDeleteBook(item.book.id); }}
-                            className="p-1.5 text-zinc-500 hover:text-[#ff003c] opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            className="p-1.5 text-zinc-500 hover:text-neon-red opacity-0 group-hover:opacity-100 transition-all shrink-0"
                             title="Delete"
                         >
                             <Trash2 size={14} />
@@ -3247,10 +3247,10 @@ const App: React.FC = () => {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="SEARCH_FULLTEXT"
-                      className="w-full bg-zinc-900/60 border border-zinc-800 focus:border-[#00f3ff]/50 rounded-sm pl-7 pr-7 py-1.5 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none tracking-wide"
+                      className="w-full bg-zinc-900/60 border border-zinc-800 focus:border-neon-cyan/50 rounded-sm pl-7 pr-7 py-1.5 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none tracking-wide"
                     />
                     {searchQuery && (
-                      <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-[#ff003c] transition-colors" title="Clear search">
+                      <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-neon-red transition-colors" title="Clear search">
                         <X size={12} />
                       </button>
                     )}
@@ -3258,7 +3258,7 @@ const App: React.FC = () => {
                   {searchActive && (
                     <div className="mt-1.5 flex items-center justify-between text-[8px] font-mono uppercase tracking-widest text-zinc-600">
                       <span>{isIndexing ? 'INDEXING…' : `${searchResults.length} MATCH${searchResults.length === 1 ? '' : 'ES'}`}</span>
-                      <button onClick={clearSearch} className="text-zinc-600 hover:text-[#00f3ff] transition-colors">CLEAR</button>
+                      <button onClick={clearSearch} className="text-zinc-600 hover:text-neon-cyan transition-colors">CLEAR</button>
                     </div>
                   )}
                 </div>
@@ -3272,10 +3272,10 @@ const App: React.FC = () => {
                         <button
                           key={`${hit.chapterId}-${hit.pageIndex}-${i}`}
                           onClick={() => handleSearchResultClick(hit)}
-                          className="w-full text-left px-4 py-2.5 border-b border-zinc-900/50 hover:bg-[#00f3ff]/5 group transition-colors"
+                          className="w-full text-left px-4 py-2.5 border-b border-zinc-900/50 hover:bg-neon-cyan/5 group transition-colors"
                         >
                           <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-[8px] font-mono uppercase tracking-wider text-[#00f3ff] truncate">
+                            <span className="text-[8px] font-mono uppercase tracking-wider text-neon-cyan truncate">
                               {String(hit.chapterNumber).padStart(2, '0')} · {hit.chapterTitle}
                             </span>
                             <span className="text-[8px] font-mono text-zinc-600 shrink-0">PG.{String(hit.pageNumber).padStart(2, '0')}{hit.occurrences > 1 ? ` ×${hit.occurrences}` : ''}</span>
@@ -3285,7 +3285,7 @@ const App: React.FC = () => {
                             style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', height: '2.75em' } as React.CSSProperties}
                           >
                             {hit.snippet.slice(0, hit.matchStart)}
-                            <mark className="bg-transparent text-[#00f3ff] font-semibold">{hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength)}</mark>
+                            <mark className="bg-transparent text-neon-cyan font-semibold">{hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength)}</mark>
                             {hit.snippet.slice(hit.matchStart + hit.matchLength)}
                           </p>
                         </button>
@@ -3316,7 +3316,7 @@ const App: React.FC = () => {
                                 onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterPageTarget('first'); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
                                 className={`flex-1 text-left flex items-center gap-2 border-l-2 py-1 transition-all min-w-0 pr-2 ${level > 0 ? 'pl-5' : ''} ${
                                     activeChapterId === chapter.id
-                                    ? 'border-[#00f3ff]'
+                                    ? 'border-neon-cyan'
                                     : 'border-transparent'
                                 }`}
                             >
@@ -3325,7 +3325,7 @@ const App: React.FC = () => {
                                         role="button"
                                         tabIndex={0}
                                         onClick={(e) => { e.stopPropagation(); setCollapsedParts(prev => { const n = new Set(prev); if (n.has(chapter.id)) n.delete(chapter.id); else n.add(chapter.id); return n; }); }}
-                                        className="shrink-0 p-0.5 text-zinc-600 hover:text-[#00f3ff] cursor-pointer"
+                                        className="shrink-0 p-0.5 text-zinc-600 hover:text-neon-cyan cursor-pointer"
                                         title={collapsed ? 'Expand' : 'Collapse'}
                                     >
                                         <ChevronRight size={12} className={`transition-transform ${collapsed ? '' : 'rotate-90'}`} />
@@ -3333,7 +3333,7 @@ const App: React.FC = () => {
                                 ) : hasHierarchy ? (
                                     <span className="w-3 shrink-0" />
                                 ) : (
-                                    <span className={`text-[9px] font-mono w-6 text-right shrink-0 ${activeChapterId === chapter.id ? 'text-[#00f3ff]' : 'text-zinc-500'}`}>
+                                    <span className={`text-[9px] font-mono w-6 text-right shrink-0 ${activeChapterId === chapter.id ? 'text-neon-cyan' : 'text-zinc-500'}`}>
                                         {String(idx + 1).padStart(2, '0')}
                                     </span>
                                 )}
@@ -3362,31 +3362,31 @@ const App: React.FC = () => {
           <button 
             onClick={() => setShowLibraryList(!showLibraryList)}
             className={`w-full flex items-center justify-between p-4 transition-all text-[10px] font-bold font-tech uppercase tracking-widest border-b border-zinc-900/30 ${
-                showLibraryList ? 'text-[#00f3ff] bg-[#00f3ff]/5' : 'text-zinc-500 hover:bg-zinc-900 hover:text-[#00f3ff]'
+                showLibraryList ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:bg-zinc-900 hover:text-neon-cyan'
             }`}
           >
              <div className="flex items-center gap-3">
                 <Database size={14} />
                 <span>{showLibraryList ? "SESSION_DATA" : "DATA_BANKS"}</span>
              </div>
-             <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-[#00f3ff]' : 'text-zinc-500'}`}>●</span>
+             <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-neon-cyan' : 'text-zinc-500'}`}>●</span>
           </button>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-[#00f3ff] transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
           >
             <SettingsIcon size={14} />
             <span>SYS_CONFIG</span>
           </button>
           <button
             onClick={() => setIsAccountOpen(true)}
-            className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-emerald-500 hover:text-emerald-400' : 'text-zinc-500 hover:text-[#00f3ff]'}`}
+            className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-emerald-500 hover:text-emerald-400' : 'text-zinc-500 hover:text-neon-cyan'}`}
           >
             <UserIcon size={14} />
             <span>MY_ACCOUNT</span>
             {userTier && userTier.tier !== 'free' && (
               <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded ${
-                userTier.tier === 'pro' ? 'bg-[#00f3ff]/10 text-[#00f3ff]' :
+                userTier.tier === 'pro' ? 'bg-neon-cyan/10 text-neon-cyan' :
                 'bg-amber-500/10 text-amber-400'
               }`}>
                 {userTier.tier.toUpperCase()}
@@ -3400,7 +3400,7 @@ const App: React.FC = () => {
         <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
           <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
             <div className="flex items-center gap-2 md:gap-4 min-w-0">
-              <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-[#00f3ff] transition-colors shrink-0">
+              <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-neon-cyan transition-colors shrink-0">
                 {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
               <div className="h-4 w-[1px] bg-zinc-800 shrink-0"></div>
@@ -3410,7 +3410,7 @@ const App: React.FC = () => {
                           SEC.{String(activeChapterId || 0).padStart(2, '0')}
                       </span>
                       <ChevronRight size={10} className="text-zinc-500 shrink-0 hidden sm:block" />
-                      <span className="text-[10px] md:text-xs font-bold text-[#00f3ff] font-tech tracking-wide truncate">
+                      <span className="text-[10px] md:text-xs font-bold text-neon-cyan font-tech tracking-wide truncate">
                           {activeChapter?.title.toUpperCase()}
                       </span>
                   </div>
@@ -3434,11 +3434,11 @@ const App: React.FC = () => {
                   onClick={() => { switchTab(tab.id as Tab); }}
                   className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
                     activeTab === tab.id
-                      ? 'bg-[#00f3ff]/10 text-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.1)]'
+                      ? 'bg-neon-cyan/10 text-neon-cyan shadow-[0_0_10px_rgba(0,243,255,0.1)]'
                       : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900'
                   }`}
                 >
-                  <tab.icon size={12} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
+                  <tab.icon size={12} className={activeTab === tab.id ? 'text-neon-cyan' : ''} />
                   <span className="hidden xl:inline">{tab.label}</span>
                 </button>
               ))}
@@ -3459,11 +3459,11 @@ const App: React.FC = () => {
                 onClick={() => { switchTab(tab.id as Tab); }}
                 className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all ${
                   activeTab === tab.id
-                    ? 'text-[#00f3ff] bg-[#00f3ff]/10 border-b-2 border-[#00f3ff]'
+                    ? 'text-neon-cyan bg-neon-cyan/10 border-b-2 border-neon-cyan'
                     : 'text-zinc-600 border-b-2 border-transparent'
                 }`}
               >
-                <tab.icon size={14} className={activeTab === tab.id ? 'text-[#00f3ff]' : ''} />
+                <tab.icon size={14} className={activeTab === tab.id ? 'text-neon-cyan' : ''} />
                 <span className="text-[7px] font-bold font-tech tracking-wide">{tab.label}</span>
               </button>
             ))}

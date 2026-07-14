@@ -651,21 +651,21 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
        <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-                 <Mic2 size={16} className="text-[#00f3ff]" />
+                 <Mic2 size={16} className="text-neon-cyan" />
                  <span>Neural_Podcast</span>
               </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
               <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
-                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                 <select value={selectedTone} onChange={(e) => { setSelectedTone(e.target.value); lastPodcastTone = e.target.value; }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{TONES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  <div className="w-[1px] h-3.5 bg-zinc-700"></div>
                  <div className="p-1 md:p-1.5 text-zinc-500"><Globe size={13} /></div>
-                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; writeStoredValue('podcast_language', e.target.value); }} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
+                 <select value={selectedLanguage} onChange={(e) => { setSelectedLanguage(e.target.value); lastPodcastLanguage = e.target.value; writeStoredValue('podcast_language', e.target.value); }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}</select>
               </div>
               <button
                 onClick={handleToggleGeneration}
-                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isLoading ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}
+                className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isLoading ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}
               >
                  {isLoading ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                  {isLoading ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
@@ -674,7 +674,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
        </div>
 
        <div className="flex-1 flex flex-col gap-2 overflow-hidden w-full">
-           <div className={`bg-[#0a0a0c] border border-zinc-800 rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isPlayerMinimized ? 'h-auto' : 'h-[277px]'}`}>
+           <div className={`bg-void-2 border border-zinc-800 rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isPlayerMinimized ? 'h-auto' : 'h-[277px]'}`}>
                {!isPlayerMinimized && (
                    <div className="flex-1 bg-[#010102] w-full flex items-center justify-center overflow-hidden relative group border-b border-zinc-900">
                       <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
@@ -682,8 +682,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                       {audioSrc && !isLoading && episodeTitle && (
                         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none animate-fade-in">
                             <div className="relative max-w-[90%] px-8 py-4 overflow-hidden">
-                               <span className="content-font font-black text-[#ff003c] uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
-                                  <div className="w-3 h-3 rounded-full bg-[#ff003c] shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
+                               <span className="content-font font-black text-neon-red uppercase drop-shadow-[0_0_12px_rgba(255,0,60,0.8)] italic flex items-center gap-4 justify-center text-center leading-tight whitespace-nowrap" style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', letterSpacing: '0.2em' }}>
+                                  <div className="w-3 h-3 rounded-full bg-neon-red shadow-[0_0_10px_#ff003c] animate-pulse shrink-0"></div>
                                   {episodeTitle.toUpperCase()}
                                </span>
                             </div>
@@ -711,20 +711,20 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                           disabled={!audioSrc} 
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-40" 
                         />
-                        <div className="h-full bg-[#00f3ff] relative transition-none shadow-[0_0_10px_#00f3ff]" style={{ width: `${playbackProgress}%` }} />
+                        <div className="h-full bg-neon-cyan relative transition-none shadow-[0_0_10px_#00f3ff]" style={{ width: `${playbackProgress}%` }} />
                       </div>
                    </div>
                )}
-               <div className="bg-[#020202] p-1.5 md:p-2 flex items-center overflow-hidden min-w-0 gap-1">
+               <div className="bg-void-0 p-1.5 md:p-2 flex items-center overflow-hidden min-w-0 gap-1">
                    <div className="flex-1 flex items-center gap-1 min-w-0">
-                       <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
+                       <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
                        <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                        <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                             {SPEEDS.map(s => (
                               <button
                                 key={s}
                                 onClick={() => setPlaybackRate(s)}
-                                className={`transition-colors font-mono ${playbackRate === s ? 'text-[#00f3ff] font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}
+                                className={`transition-colors font-mono ${playbackRate === s ? 'text-neon-cyan font-bold underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}
                               >
                                 {s.toFixed(2)}x
                               </button>
@@ -733,20 +733,20 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                    </div>
                    <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
                        <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} aria-label="Rewind 15 seconds" className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={14} /></button>
-                       <button onClick={togglePlay} disabled={!audioSrc} aria-label="Play/pause" className={`w-8 h-8 md:w-9 md:h-9 rounded-full transition-all flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}</button>
+                       <button onClick={togglePlay} disabled={!audioSrc} aria-label="Play/pause" className={`w-8 h-8 md:w-9 md:h-9 rounded-full transition-all flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-neon-cyan border-neon-cyan text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>{isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}</button>
                        <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} aria-label="Forward 15 seconds" className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={14} /></button>
                    </div>
                    <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                        <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                       <button onClick={downloadScript} disabled={!script} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${script ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={14} /></button>
-                       <a href={audioSrc || '#'} download={`podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#ff003c] hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={14} /></a>
-                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - ${selectedTone} Podcast`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-[#00f3ff] hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                       <button onClick={downloadScript} disabled={!script} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${script ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={14} /></button>
+                       <a href={audioSrc || '#'} download={`podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-neon-red hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={14} /></a>
+                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - ${selectedTone} Podcast`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                        <button onClick={() => {
                          const nextMinimized = !isPlayerMinimized;
                          setIsPlayerMinimized(nextMinimized);
                          lastPodcastPlayerMinimized = nextMinimized;
                          writeStoredValue('podcast_player_minimized', String(nextMinimized));
-                       }} className="p-1 md:p-2 text-zinc-600 hover:text-[#00f3ff] transition-colors rounded-full bg-zinc-900/50 shrink-0" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
+                       }} className="p-1 md:p-2 text-zinc-600 hover:text-neon-cyan transition-colors rounded-full bg-zinc-900/50 shrink-0" title={isPlayerMinimized ? "Expand Player" : "Minimize Player"}>{isPlayerMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
                    </div>
                </div>
            </div>
@@ -770,10 +770,10 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                       const leftAligned = cur === h1 || cur.includes(h1);
                       return (
                         <div key={idx} ref={el => { segmentRefs.current[idx] = el; }} className={`flex w-full ${leftAligned ? 'justify-start' : 'justify-end'} animate-fade-in`}>
-                            <div onClick={() => seekToSegment(idx)} className={`relative max-w-[85%] rounded-sm p-4 pt-5 border transition-all duration-300 cursor-pointer ${isActive ? (leftAligned ? 'bg-cyan-950/20 border-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.3)] scale-[1.02]' : 'bg-rose-950/20 border-[#ff003c] shadow-[0_0_20px_rgba(255,0,60,0.3)] scale-[1.02]') : 'bg-zinc-900/30 border-zinc-800 hover:border-zinc-700'}`}>
-                                <div className={`absolute -top-2.5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${leftAligned ? 'left-4 bg-cyan-900 border-cyan-500/50 text-cyan-200' : 'right-4 bg-rose-900 border-[#ff003c]/50 text-rose-200'}`}>{seg.speaker}</div>
+                            <div onClick={() => seekToSegment(idx)} className={`relative max-w-[85%] rounded-sm p-4 pt-5 border transition-all duration-300 cursor-pointer ${isActive ? (leftAligned ? 'bg-cyan-950/20 border-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.3)] scale-[1.02]' : 'bg-rose-950/20 border-neon-red shadow-[0_0_20px_rgba(255,0,60,0.3)] scale-[1.02]') : 'bg-zinc-900/30 border-zinc-800 hover:border-zinc-700'}`}>
+                                <div className={`absolute -top-2.5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${leftAligned ? 'left-4 bg-cyan-900 border-cyan-500/50 text-cyan-200' : 'right-4 bg-rose-900 border-neon-red/50 text-rose-200'}`}>{seg.speaker}</div>
                                 <p className={`leading-relaxed transition-colors duration-300 ${isActive ? 'text-white font-medium' : 'text-zinc-400'}`}>{seg.text}</p>
-                                {isActive && <div className={`absolute top-1/2 -translate-y-1/2 w-1.5 h-1/2 rounded-full ${leftAligned ? '-left-0.5 bg-cyan-500 shadow-[0_0_10px_#00f3ff]' : '-right-0.5 bg-[#ff003c] shadow-[0_0_10px_#ff003c]'}`}></div>}
+                                {isActive && <div className={`absolute top-1/2 -translate-y-1/2 w-1.5 h-1/2 rounded-full ${leftAligned ? '-left-0.5 bg-cyan-500 shadow-[0_0_10px_#00f3ff]' : '-right-0.5 bg-neon-red shadow-[0_0_10px_#ff003c]'}`}></div>}
                             </div>
                         </div>
                       );

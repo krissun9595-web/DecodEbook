@@ -180,18 +180,18 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
     <div className="h-full flex flex-col font-sans text-zinc-100 text-left overflow-hidden">
        <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 animate-fade-in shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-             <ImageIcon size={16} className="text-[#00f3ff]" />
+             <ImageIcon size={16} className="text-neon-cyan" />
              <span>Visual_Matrix</span>
           </div>
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
               <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
                   <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
-                  <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} disabled={isInitializing} className={`bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505] ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{STYLES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                  <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} disabled={isInitializing} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{STYLES.map(s => <option key={s} value={s}>{s}</option>)}</select>
                   <div className="w-[1px] h-3.5 bg-zinc-700"></div>
                   <div className="p-1 md:p-1.5 text-zinc-500"><Maximize size={13} /></div>
-                  <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={isInitializing} className={`bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505] ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{RATIOS.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                  <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={isInitializing} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{RATIOS.map(r => <option key={r} value={r}>{r}</option>)}</select>
               </div>
-              <button onClick={handleToggleInitiate} disabled={isInitializing} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGeneratingAll ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'} ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{renderButtonIcon()}{renderButtonLabel()}</button>
+              <button onClick={handleToggleInitiate} disabled={isInitializing} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGeneratingAll ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'} ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{renderButtonIcon()}{renderButtonLabel()}</button>
           </div>
        </div>
        <div className="flex-1 min-h-0 flex flex-col relative w-full">
@@ -200,7 +200,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                     <Loader text="Extracting neural concepts..." />
                 </div>
             ) : concepts.length === 0 ? (
-                <div className="flex-1 h-full w-full relative bg-[#0a0a0c] border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg">
+                <div className="flex-1 h-full w-full relative bg-void-2 border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg">
                     <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono bg-black">
                         <ImageIcon size={48} className="opacity-20" />
                         <div className="text-center space-y-1">
@@ -210,7 +210,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                     </div>
                 </div>
             ) : currentConcept ? (
-                <div className="flex-1 h-full w-full relative group/container bg-[#0a0a0c] border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
+                <div className="flex-1 h-full w-full relative group/container bg-void-2 border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
                     
                     <div className="relative bg-black group/image flex-1 min-h-0 flex items-center justify-center w-full overflow-hidden">
                         
@@ -218,10 +218,10 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                         <div className="absolute top-6 left-0 w-full flex flex-col items-center gap-2 z-30 pointer-events-none px-4">
                             {/* Title */}
                             <div className="bg-black/60 backdrop-blur-md border border-white/10 px-6 py-2 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-                                <h3 className="text-xs font-bold text-[#ff003c] content-font uppercase tracking-widest flex items-center gap-3 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                                    <span className="w-1.5 h-1.5 bg-[#ff003c] rounded-full shadow-[0_0_8px_#ff003c]"></span>
+                                <h3 className="text-xs font-bold text-neon-red content-font uppercase tracking-widest flex items-center gap-3 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                                    <span className="w-1.5 h-1.5 bg-neon-red rounded-full shadow-[0_0_8px_#ff003c]"></span>
                                     {currentConcept.term}
-                                    <span className="w-1.5 h-1.5 bg-[#ff003c] rounded-full shadow-[0_0_8px_#ff003c]"></span>
+                                    <span className="w-1.5 h-1.5 bg-neon-red rounded-full shadow-[0_0_8px_#ff003c]"></span>
                                 </h3>
                             </div>
                             {/* Definition */}
@@ -236,7 +236,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                         <button
                             aria-label="Previous concept"
                             onClick={handlePrev}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-zinc-800 bg-black/60 backdrop-blur-sm text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff] flex items-center justify-center transition-all z-40 shadow-[0_0_20px_rgba(0,0,0,0.5)] group/btn hover:scale-110"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-zinc-800 bg-black/60 backdrop-blur-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan flex items-center justify-center transition-all z-40 shadow-[0_0_20px_rgba(0,0,0,0.5)] group/btn hover:scale-110"
                         >
                             <ChevronLeft size={24} className="group-hover/btn:-translate-x-0.5 transition-transform" />
                         </button>
@@ -244,7 +244,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                         <button
                             aria-label="Next concept"
                             onClick={handleNext}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-zinc-800 bg-black/60 backdrop-blur-sm text-zinc-500 hover:text-[#00f3ff] hover:border-[#00f3ff] flex items-center justify-center transition-all z-40 shadow-[0_0_20px_rgba(0,0,0,0.5)] group/btn hover:scale-110"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-zinc-800 bg-black/60 backdrop-blur-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan flex items-center justify-center transition-all z-40 shadow-[0_0_20px_rgba(0,0,0,0.5)] group/btn hover:scale-110"
                         >
                             <ChevronRight size={24} className="group-hover/btn:translate-x-0.5 transition-transform" />
                         </button>
@@ -257,7 +257,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                                     <a href={images[currentConcept.term]} download={`concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Download"><Download size={20} /></a>
                                     <button onClick={async () => { const r = await fetch(images[currentConcept.term]); const b = await r.blob(); const fn = `concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`; shareFile(b, fn, `${chapter.title} - ${currentConcept.term}`); }} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Share"><Share2 size={20} /></button>
                                     <button onClick={handleCopyPrompt} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Copy Prompt"><Copy size={20} /></button>
-                                    <button onClick={() => handleGenerateImage(currentConcept, true)} className="p-3 bg-zinc-900 text-[#ff003c] rounded-sm hover:bg-[#ff003c] hover:text-white transition-all border border-[#ff003c]/30" title="Regenerate"><RefreshCw size={20} /></button>
+                                    <button onClick={() => handleGenerateImage(currentConcept, true)} className="p-3 bg-zinc-900 text-neon-red rounded-sm hover:bg-neon-red hover:text-white transition-all border border-neon-red/30" title="Regenerate"><RefreshCw size={20} /></button>
                                 </div>
                             </div>
                             </>
@@ -267,7 +267,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                                 {loadingImages[currentConcept.term] ? (
                                     <div className="flex flex-col items-center gap-2 text-zinc-500 animate-fade-in z-10"><Loader text="Rendering..." /></div>
                                 ) : (
-                                    <button onClick={() => handleGenerateImage(currentConcept)} className="flex flex-col items-center gap-3 text-zinc-600 hover:text-[#00f3ff] transition-colors group-hover:scale-105 transform duration-300 w-full h-full justify-center z-10"><ImageIcon size={32} /><span className="text-xs font-bold font-mono uppercase tracking-widest">Generate_Visual</span></button>
+                                    <button onClick={() => handleGenerateImage(currentConcept)} className="flex flex-col items-center gap-3 text-zinc-600 hover:text-neon-cyan transition-colors group-hover:scale-105 transform duration-300 w-full h-full justify-center z-10"><ImageIcon size={32} /><span className="text-xs font-bold font-mono uppercase tracking-widest">Generate_Visual</span></button>
                                 )}
                             </div>
                         )}

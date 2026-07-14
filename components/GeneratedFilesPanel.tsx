@@ -157,7 +157,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
         <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-            <HardDrive size={16} className="text-[#00f3ff]" />
+            <HardDrive size={16} className="text-neon-cyan" />
             <span>Generated_Files</span>
           </div>
           <span className="text-[10px] font-mono text-zinc-600 uppercase">{formatFileSize(totalSize)} // {files.length} files</span>
@@ -168,7 +168,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             <select
               value={filterBook}
               onChange={(e) => setFilterBook(e.target.value)}
-              className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]"
+              className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1"
             >
               <option value="all">ALL BOOKS</option>
               {library.map(item => (
@@ -182,7 +182,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as FilterType)}
-              className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]"
+              className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1"
             >
               {FILTER_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -203,9 +203,9 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center border disabled:opacity-50 ${
               actionMode === 'clear'
                 ? confirmClear
-                  ? 'bg-[#ff003c] text-white border-[#ff003c] animate-pulse hover:bg-rose-600'
-                  : 'text-[#ff003c] border-[#ff003c]/30 hover:bg-[#ff003c]/10'
-                : 'text-[#00f3ff] border-[#00f3ff]/30 hover:bg-[#00f3ff]/10'
+                  ? 'bg-neon-red text-white border-neon-red animate-pulse hover:bg-rose-600'
+                  : 'text-neon-red border-neon-red/30 hover:bg-neon-red/10'
+                : 'text-neon-cyan border-neon-cyan/30 hover:bg-neon-cyan/10'
             }`}
             title="Right-click to switch between Save and Clear mode"
           >
@@ -231,7 +231,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             return (
               <div
                 key={file.key}
-                className="bg-[#0a0a0c] border border-zinc-800 rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 transition-all group"
+                className="bg-void-2 border border-zinc-800 rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 transition-all group"
               >
                 {/* Icon */}
                 <div className={`w-8 h-8 md:w-10 md:h-10 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
@@ -262,21 +262,21 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                 <div className="flex items-center gap-0.5 md:gap-1 shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleDownload(file)}
-                    className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 text-zinc-600 hover:text-neon-cyan hover:bg-zinc-900 rounded-sm transition-all"
                     title="Download"
                   >
                     <Download size={14} />
                   </button>
                   <button
                     onClick={async () => { const cached = await getFile(file.key); if (cached) shareFile(cached.blob, file.filename, file.filename); }}
-                    className="p-1.5 md:p-2 text-zinc-600 hover:text-[#00f3ff] hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 text-zinc-600 hover:text-neon-cyan hover:bg-zinc-900 rounded-sm transition-all"
                     title="Share"
                   >
                     <Share2 size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(file.key)}
-                    className="p-1.5 md:p-2 text-zinc-600 hover:text-[#ff003c] hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 text-zinc-600 hover:text-neon-red hover:bg-zinc-900 rounded-sm transition-all"
                     title="Delete"
                   >
                     <Trash2 size={14} />

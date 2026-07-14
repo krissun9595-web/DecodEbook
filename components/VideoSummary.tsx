@@ -233,7 +233,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
       <div className="bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 mb-1.5 md:mb-2 flex items-center justify-between shrink-0 shadow-[0_0_15px_rgba(0,243,255,0.05)] w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-                 <Film size={16} className="text-[#00f3ff]" />
+                 <Film size={16} className="text-neon-cyan" />
                  <span>Cine_Render</span>
               </div>
           </div>
@@ -241,22 +241,22 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
               <div className="flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800">
                  <div className="flex items-center gap-1 md:gap-1.5">
                     <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
-                    <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">{STYLES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                    <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{STYLES.map(t => <option key={t} value={t}>{t}</option>)}</select>
                  </div>
                  <div className="w-[1px] h-3.5 bg-zinc-700"></div>
                  <div className="flex items-center gap-1 md:gap-1.5">
                     <div className="p-1 md:p-1.5 text-zinc-500"><Maximize2 size={13} /></div>
-                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-[11px] text-[#00f3ff] outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-[#050505]">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
+                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
                  </div>
               </div>
-              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-[#ff003c] text-white hover:bg-rose-600' : 'bg-[#00f3ff] text-black hover:bg-[#00c2cc]'}`}>
+              <button onClick={handleToggleGeneration} className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all shadow-[0_0_10px_rgba(0,243,255,0.3)] justify-center ${isGenerating ? 'bg-neon-red text-white hover:bg-rose-600' : 'bg-neon-cyan text-black hover:bg-[#00c2cc]'}`}>
                 {currentStatusIcon}
                 {currentStatusLabel}
               </button>
           </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-start relative min-h-0 bg-[#020202] rounded-lg border border-zinc-900 shadow-inner overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-start relative min-h-0 bg-void-0 rounded-lg border border-zinc-900 shadow-inner overflow-hidden">
         <div className="absolute inset-0 bg-grid opacity-[0.05] pointer-events-none"></div>
 
         <div 
@@ -271,7 +271,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                              <Film className="text-zinc-500 w-6 h-6" />
                         </div>
                         <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-widest">Awaiting Render Signal</p>
-                        {error && <p className="text-[#ff003c] text-[9px] font-mono mt-2 border border-[#ff003c]/20 p-2 bg-[#ff003c]/5">ERROR: {error}</p>}
+                        {error && <p className="text-neon-red text-[9px] font-mono mt-2 border border-neon-red/20 p-2 bg-neon-red/5">ERROR: {error}</p>}
                     </div>
                 )}
 
@@ -305,7 +305,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
                 )}
             </div>
 
-            <div className={`w-full bg-[#020202] relative z-40 shrink-0 transition-all duration-500 ${videoUrl && controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'}`}>
+            <div className={`w-full bg-void-0 relative z-40 shrink-0 transition-all duration-500 ${videoUrl && controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'}`}>
                 <div className="absolute top-0 left-0 w-full h-1 bg-zinc-800 hover:h-2 transition-all cursor-pointer z-50 group/progress">
                     <input 
                         type="range" 
@@ -321,14 +321,14 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
 
                 <div className="flex items-center p-1.5 md:p-2 overflow-hidden min-w-0 gap-1">
                     <div className="flex-1 flex items-center gap-1 min-w-0">
-                        <select value={playbackRate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); if(videoRef.current) videoRef.current.playbackRate = Number(e.target.value); }} className="md:hidden bg-[#050505] text-[10px] text-[#00f3ff] font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s}x</option>)}</select>
+                        <select value={playbackRate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); if(videoRef.current) videoRef.current.playbackRate = Number(e.target.value); }} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s}x</option>)}</select>
                         <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                         <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                             {SPEEDS.map(s => (
                                 <button
                                     key={s}
                                     onClick={(e) => { e.stopPropagation(); setPlaybackRate(s); }}
-                                    className={`transition-colors font-mono font-bold ${playbackRate === s ? 'text-[#00f3ff] underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}
+                                    className={`transition-colors font-mono font-bold ${playbackRate === s ? 'text-neon-cyan underline underline-offset-4' : 'text-zinc-600 hover:text-zinc-400'}`}
                                 >
                                     {s}x
                                 </button>
@@ -338,7 +338,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
 
                     <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
                         <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCcw size={14} /></button>
-                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-[#00f3ff] border-[#00f3ff] text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
+                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-[0_0_15px_rgba(0,243,255,0.3)]' : 'bg-neon-cyan border-neon-cyan text-black shadow-[0_0_20px_rgba(0,243,255,0.6)] hover:scale-105'}`}>
                             {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                         </button>
                         <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition-colors"><RotateCw size={14} /></button>

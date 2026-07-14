@@ -69,7 +69,7 @@ function PricingCards({ onEnterApp }: { onEnterApp: () => void }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
       {PRICING.map(plan => (
-        <div key={plan.id} className="bg-[#0a0a0c] border rounded-sm p-6 space-y-4 transition-all hover:border-opacity-60" style={{ borderColor: `${plan.color}33` }}>
+        <div key={plan.id} className="bg-void-2 border rounded-sm p-6 space-y-4 transition-all hover:border-opacity-60" style={{ borderColor: `${plan.color}33` }}>
           <div className="flex items-center gap-2">
             <plan.icon size={18} style={{ color: plan.color }} />
             <span className="font-mono font-bold tracking-widest text-sm" style={{ color: plan.color }}>{plan.name}</span>
@@ -138,14 +138,14 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#020202] text-zinc-100 overflow-x-hidden">
+    <div className="min-h-screen bg-void-0 text-zinc-100 overflow-x-hidden">
       {/* Nav */}
-      <nav className="fixed top-0 w-full z-50 bg-[#020202]/80 backdrop-blur-md border-b border-zinc-900">
+      <nav className="fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
-          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-[#00f3ff]">Ebook</span></span>
+          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
           <div className="flex items-center gap-2 sm:gap-3">
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
-            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-[#00f3ff]/10 border border-[#00f3ff]/30 text-[#00f3ff] px-3 sm:px-4 py-1.5 rounded-sm hover:bg-[#00f3ff]/20 transition-colors">Decode a Book</button>
+            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-3 sm:px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Decode a Book</button>
           </div>
         </div>
       </nav>
@@ -155,21 +155,21 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         <div className="absolute inset-0 bg-grid opacity-30" />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
         {/* Floating book spines — multi-color to hint at the theme */}
-        <div className="absolute left-[8%] top-[18%] w-2.5 h-28 bg-gradient-to-b from-[#00f3ff]/20 to-transparent rounded-sm hidden md:block" style={{ transform: `translateY(${scrollY * 0.1}px) rotate(-5deg)` }} />
-        <div className="absolute right-[12%] top-[25%] w-2.5 h-20 bg-gradient-to-b from-[#ff003c]/20 to-transparent rounded-sm hidden md:block" style={{ transform: `translateY(${scrollY * 0.15}px) rotate(3deg)` }} />
+        <div className="absolute left-[8%] top-[18%] w-2.5 h-28 bg-gradient-to-b from-neon-cyan/20 to-transparent rounded-sm hidden md:block" style={{ transform: `translateY(${scrollY * 0.1}px) rotate(-5deg)` }} />
+        <div className="absolute right-[12%] top-[25%] w-2.5 h-20 bg-gradient-to-b from-neon-red/20 to-transparent rounded-sm hidden md:block" style={{ transform: `translateY(${scrollY * 0.15}px) rotate(3deg)` }} />
         <div className="absolute left-[18%] bottom-[22%] w-2.5 h-24 bg-gradient-to-b from-emerald-500/20 to-transparent rounded-sm hidden md:block" style={{ transform: `translateY(${scrollY * -0.08}px) rotate(-8deg)` }} />
         <div className="absolute right-[20%] bottom-[30%] w-2.5 h-16 bg-gradient-to-b from-amber-500/20 to-transparent rounded-sm hidden md:block" style={{ transform: `translateY(${scrollY * 0.12}px) rotate(6deg)` }} />
 
         <div className="relative z-10 text-center max-w-3xl mx-auto space-y-5 sm:space-y-6">
           <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.25em] sm:tracking-[0.3em] text-zinc-600 animate-fade-in">The book is in your hands. The meaning is in ours.</p>
           <h1 className="text-[1.75rem] sm:text-4xl md:text-7xl font-bold tracking-tighter leading-[0.9] animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            Finish the book.<br /><span className="text-[#00f3ff] drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Not just start it.</span>
+            Finish the book.<br /><span className="text-neon-cyan drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Not just start it.</span>
           </h1>
           <p className="text-zinc-400 text-xs sm:text-sm md:text-base max-w-xl mx-auto leading-relaxed animate-fade-in" style={{ animationDelay: '0.2s' }}>
             Original-language books are full of words a dictionary won't crack — literary phrasings, cultural idioms, sentences whose meaning bends with the paragraph around them. DecodEbook wraps an AI tutor around every page. Tap a word for what it means <em className="text-zinc-300 not-italic">in this passage</em>. Hear it pronounced. Ask why the grammar bends that way. Five ways to understand — until the book clicks.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <button onClick={onEnterApp} className="px-5 sm:px-8 py-2.5 sm:py-3 bg-[#00f3ff] text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-5 sm:px-8 py-2.5 sm:py-3 bg-neon-cyan text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
               Decode Your First Chapter <ArrowRight size={14} />
             </button>
             <span className="text-[9px] sm:text-[10px] text-zinc-600 font-mono">Free · 100 credits/mo · 30 seconds</span>
@@ -186,7 +186,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           </div>
         </div>
 
-        <button aria-label="Scroll down" onClick={() => document.getElementById('section-problem')?.scrollIntoView({ behavior: 'smooth' })} className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-[#00f3ff] transition-colors animate-bounce">
+        <button aria-label="Scroll down" onClick={() => document.getElementById('section-problem')?.scrollIntoView({ behavior: 'smooth' })} className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-neon-cyan transition-colors animate-bounce">
           <ChevronDown size={20} />
         </button>
       </section>
@@ -208,7 +208,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
               { tag: 'Slow readers', line: 'Listen on the commute, read at night — same book, same place.', color: '#ff003c' },
             ].map((u, i) => (
               <FadeSection key={i} delay={i * 60}>
-                <div className="bg-[#0a0a0c] border rounded-sm p-3 sm:p-4 h-full hover:border-opacity-50 transition-colors" style={{ borderColor: `${u.color}20` }}>
+                <div className="bg-void-2 border rounded-sm p-3 sm:p-4 h-full hover:border-opacity-50 transition-colors" style={{ borderColor: `${u.color}20` }}>
                   <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: u.color }}>{u.tag}</p>
                   <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">{u.line}</p>
                 </div>
@@ -222,12 +222,12 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       <section id="section-problem" className="py-16 sm:py-20 md:py-28 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto">
           <FadeSection>
-            <div className="bg-[#0a0a0c] border border-zinc-800 rounded-sm p-5 sm:p-8 md:p-10 mb-12 sm:mb-16 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-[#ff003c] via-[#00f3ff] to-emerald-500" />
-              <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-[#00f3ff] mb-3 sm:mb-4">Why "decode"?</p>
+            <div className="bg-void-2 border border-zinc-800 rounded-sm p-5 sm:p-8 md:p-10 mb-12 sm:mb-16 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-red via-neon-cyan to-emerald-500" />
+              <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-neon-cyan mb-3 sm:mb-4">Why "decode"?</p>
               <h2 className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-white mb-3 sm:mb-4 leading-snug">
-                A dictionary translates <span className="text-[#ff003c]">words</span>.<br />
-                Decoding translates <span className="text-[#00f3ff]">meaning</span>.
+                A dictionary translates <span className="text-neon-red">words</span>.<br />
+                Decoding translates <span className="text-neon-cyan">meaning</span>.
               </h2>
               <p className="text-[11px] sm:text-sm text-zinc-400 leading-relaxed max-w-2xl">
                 The hard part of a foreign-language book isn't the vocabulary — it's the literary phrasing, the cultural idiom, the sentence whose meaning bends with the paragraph around it. A dictionary tells you what a word means. DecodEbook tells you what the <em className="text-zinc-300 not-italic">author</em> means, <em className="text-zinc-300 not-italic">in this passage</em>. That's the difference between translating and decoding.
@@ -236,9 +236,9 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           </FadeSection>
 
           <FadeSection>
-            <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-[#ff003c] mb-3">Sound familiar?</p>
+            <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-neon-red mb-3">Sound familiar?</p>
             <h2 className="text-xl sm:text-2xl md:text-4xl font-bold tracking-tight text-white mb-8 sm:mb-12">
-              Five books started.<br />One <span className="text-[#ff003c]">finished</span>.
+              Five books started.<br />One <span className="text-neon-red">finished</span>.
             </h2>
           </FadeSection>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -249,7 +249,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
               { title: 'No one to ask at 11pm', desc: 'Why is this verb different? What\'s the nuance? There\'s no teacher when you\'re finally reading.', icon: MessageSquare, color: '#10b981' },
             ].map((item, i) => (
               <FadeSection key={i} delay={i * 100}>
-                <div className="bg-[#0a0a0c] border rounded-sm p-4 sm:p-5 space-y-2 hover:border-opacity-40 transition-colors h-full" style={{ borderColor: `${item.color}15` }}>
+                <div className="bg-void-2 border rounded-sm p-4 sm:p-5 space-y-2 hover:border-opacity-40 transition-colors h-full" style={{ borderColor: `${item.color}15` }}>
                   <div className="flex items-center gap-2">
                     <item.icon size={14} className="shrink-0" style={{ color: item.color }} />
                     <h3 className="font-mono font-bold text-[11px] sm:text-xs text-white tracking-wide">{item.title}</h3>
@@ -267,7 +267,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,243,255,0.03) 0%, transparent 60%)' }} />
         <div className="max-w-5xl mx-auto relative z-10">
           <FadeSection>
-            <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-[#00f3ff] mb-3">Five modes of comprehension</p>
+            <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-neon-cyan mb-3">Five modes of comprehension</p>
             <h2 className="text-xl sm:text-2xl md:text-4xl font-bold tracking-tight text-white mb-2 sm:mb-3">
               Read it. Hear it. Discuss it.<br />See it. Watch it.
             </h2>
@@ -281,11 +281,11 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center mb-16 sm:mb-24">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <BookOpen size={14} className="text-[#00f3ff]" />
-                  <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#00f3ff]">01 · Read &amp; Understand</p>
+                  <BookOpen size={14} className="text-neon-cyan" />
+                  <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-neon-cyan">01 · Read &amp; Understand</p>
                 </div>
                 <h3 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight">
-                  Bilingual pages.<br />A voice that <span className="text-[#00f3ff]">follows your eyes</span>.
+                  Bilingual pages.<br />A voice that <span className="text-neon-cyan">follows your eyes</span>.
                 </h3>
                 <p className="text-[11px] sm:text-sm text-zinc-400 leading-relaxed">
                   Split-screen original and translation. The audiobook reads with you — every sentence highlighted in turn, every voice, pace, and accent your choice. Tap a word for what it means <em className="text-zinc-300 not-italic">here</em>, not in some dictionary. Save it, copy it, send it to your notebook.
@@ -293,21 +293,21 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                 <ul className="space-y-1.5 pt-2">
                   {['8 voices · adjustable pace', 'Sentence-level auto-highlight', 'Tap-word contextual meaning', 'Notebook integration in one tap'].map(l => (
                     <li key={l} className="text-[10px] sm:text-[11px] text-zinc-500 font-mono flex items-center gap-2">
-                      <span className="text-[#00f3ff]">+</span>{l}
+                      <span className="text-neon-cyan">+</span>{l}
                     </li>
                   ))}
                 </ul>
               </div>
-              <div className="bg-[#0a0a0c] border border-[#00f3ff]/20 rounded-sm p-4 sm:p-5 font-mono text-[10px] sm:text-[11px] space-y-3 relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#00f3ff]/40 to-transparent" />
+              <div className="bg-void-2 border border-neon-cyan/20 rounded-sm p-4 sm:p-5 font-mono text-[10px] sm:text-[11px] space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-cyan/40 to-transparent" />
                 <div className="grid grid-cols-2 gap-3 text-zinc-400 leading-relaxed">
                   <div>
                     <p className="text-[8px] uppercase tracking-widest text-zinc-600 mb-2">FR · original</p>
-                    <p>L'essentiel est <span className="bg-[#00f3ff]/15 text-[#00f3ff] px-0.5">invisible</span> pour les yeux.</p>
+                    <p>L'essentiel est <span className="bg-neon-cyan/15 text-neon-cyan px-0.5">invisible</span> pour les yeux.</p>
                   </div>
                   <div>
                     <p className="text-[8px] uppercase tracking-widest text-zinc-600 mb-2">EN · decoded</p>
-                    <p>What is essential is <span className="bg-[#00f3ff]/15 text-[#00f3ff] px-0.5">invisible</span> to the eye.</p>
+                    <p>What is essential is <span className="bg-neon-cyan/15 text-neon-cyan px-0.5">invisible</span> to the eye.</p>
                   </div>
                 </div>
                 <div className="border-t border-zinc-800 pt-3 space-y-1.5">
@@ -315,7 +315,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                   <p className="text-zinc-400 leading-relaxed">Here it carries a philosophical weight — not unseen, but <em className="text-zinc-300 not-italic">imperceptible to surface reading</em>. The fox's lesson hinges on this word.</p>
                 </div>
                 <div className="flex items-center gap-2 pt-1">
-                  <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full w-1/3 bg-[#00f3ff]" /></div>
+                  <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full w-1/3 bg-neon-cyan" /></div>
                   <span className="text-[8px] text-zinc-600 font-mono">0:14 / 0:42</span>
                 </div>
               </div>
@@ -344,7 +344,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                   ))}
                 </ul>
               </div>
-              <div className="bg-[#0a0a0c] border border-[#f59e0b]/20 rounded-sm p-4 sm:p-5 font-mono text-[10px] sm:text-[11px] space-y-3 md:order-1 relative overflow-hidden">
+              <div className="bg-void-2 border border-[#f59e0b]/20 rounded-sm p-4 sm:p-5 font-mono text-[10px] sm:text-[11px] space-y-3 md:order-1 relative overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#f59e0b]/40 to-transparent" />
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -379,11 +379,11 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center mb-16 sm:mb-24">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <ImageIcon size={14} className="text-[#a78bfa]" />
-                  <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#a78bfa]">03 · Visualize</p>
+                  <ImageIcon size={14} className="text-neon-violet" />
+                  <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-neon-violet">03 · Visualize</p>
                 </div>
                 <h3 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight">
-                  Concepts<br /><span className="text-[#a78bfa]">you can see</span>.
+                  Concepts<br /><span className="text-neon-violet">you can see</span>.
                 </h3>
                 <p className="text-[11px] sm:text-sm text-zinc-400 leading-relaxed">
                   Visualize the chapter's ideas, places, and characters. Pick an art style — line drawing, cinematic still, watercolor — and the aspect ratio. Save the images as note material, slide decks, or just to look at while the words settle.
@@ -391,13 +391,13 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                 <ul className="space-y-1.5 pt-2">
                   {['6+ art styles', 'Aspect ratios for note / slide / wallpaper', 'Generated per concept, not per page', 'Download as PNG'].map(l => (
                     <li key={l} className="text-[10px] sm:text-[11px] text-zinc-500 font-mono flex items-center gap-2">
-                      <span className="text-[#a78bfa]">+</span>{l}
+                      <span className="text-neon-violet">+</span>{l}
                     </li>
                   ))}
                 </ul>
               </div>
-              <div className="bg-[#0a0a0c] border border-[#a78bfa]/20 rounded-sm p-4 sm:p-5 space-y-3 relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#a78bfa]/40 to-transparent" />
+              <div className="bg-void-2 border border-neon-violet/20 rounded-sm p-4 sm:p-5 space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-violet/40 to-transparent" />
                 <div className="flex items-center justify-between">
                   <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-mono">Style · cinematic still · 16:9</p>
                   <span className="text-[8px] text-zinc-600 font-mono">×3 variants</span>
@@ -428,11 +428,11 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center mb-16 sm:mb-24">
               <div className="space-y-3 md:order-2">
                 <div className="flex items-center gap-2">
-                  <Film size={14} className="text-[#ff003c]" />
-                  <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#ff003c]">04 · Watch</p>
+                  <Film size={14} className="text-neon-red" />
+                  <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-neon-red">04 · Watch</p>
                 </div>
                 <h3 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight">
-                  A chapter, in<br /><span className="text-[#ff003c]">moving pictures</span>.
+                  A chapter, in<br /><span className="text-neon-red">moving pictures</span>.
                 </h3>
                 <p className="text-[11px] sm:text-sm text-zinc-400 leading-relaxed">
                   Each chapter becomes a short summary video — visual context that turns abstract scenes into something you'll actually remember. The kind of memory that holds vocabulary in place long after the page is closed.
@@ -440,13 +440,13 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                 <ul className="space-y-1.5 pt-2">
                   {['60–90 second summary per chapter', '720p / 1080p export', 'Narration in your target language', 'Save to library or download as MP4'].map(l => (
                     <li key={l} className="text-[10px] sm:text-[11px] text-zinc-500 font-mono flex items-center gap-2">
-                      <span className="text-[#ff003c]">+</span>{l}
+                      <span className="text-neon-red">+</span>{l}
                     </li>
                   ))}
                 </ul>
               </div>
-              <div className="bg-[#0a0a0c] border border-[#ff003c]/20 rounded-sm p-4 sm:p-5 space-y-3 md:order-1 relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#ff003c]/40 to-transparent" />
+              <div className="bg-void-2 border border-neon-red/20 rounded-sm p-4 sm:p-5 space-y-3 md:order-1 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-red/40 to-transparent" />
                 <div className="flex items-center justify-between">
                   <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-mono">Ch. 21 · The Fox</p>
                   <span className="text-[8px] text-zinc-600 font-mono">1080p · 1:24</span>
@@ -493,7 +493,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                   ))}
                 </ul>
               </div>
-              <div className="bg-[#0a0a0c] border border-[#10b981]/20 rounded-sm p-4 sm:p-5 space-y-3 relative overflow-hidden min-h-[220px]">
+              <div className="bg-void-2 border border-[#10b981]/20 rounded-sm p-4 sm:p-5 space-y-3 relative overflow-hidden min-h-[220px]">
                 <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#10b981]/40 to-transparent" />
                 <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-mono">12 sparks · 4 chapters</p>
                 <div className="relative h-[180px]">
@@ -528,7 +528,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         <div className="max-w-3xl mx-auto">
           <FadeSection>
             <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-emerald-500 mb-3 text-center">Getting started</p>
-            <h2 className="text-xl sm:text-2xl md:text-4xl font-bold tracking-tight text-white mb-10 sm:mb-16 text-center">Upload. <span className="text-[#00f3ff]">Decode</span>. Finish.</h2>
+            <h2 className="text-xl sm:text-2xl md:text-4xl font-bold tracking-tight text-white mb-10 sm:mb-16 text-center">Upload. <span className="text-neon-cyan">Decode</span>. Finish.</h2>
           </FadeSection>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
             {[
@@ -538,7 +538,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             ].map((s, i) => (
               <FadeSection key={i} delay={i * 150}>
                 <div className="text-center space-y-2.5 sm:space-y-3">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto bg-[#0a0a0c] border border-zinc-800 rounded-full flex items-center justify-center">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto bg-void-2 border border-zinc-800 rounded-full flex items-center justify-center">
                     <s.icon size={18} style={{ color: s.color }} />
                   </div>
                   <p className="text-[10px] font-mono tracking-widest" style={{ color: s.color }}>{s.step}</p>
@@ -567,7 +567,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
               { tag: 'Keys on the server', body: 'API keys never touch the browser. Every call routes through our worker, encrypted in transit.', color: '#a78bfa' },
             ].map((p, i) => (
               <FadeSection key={i} delay={i * 80}>
-                <div className="bg-[#0a0a0c] border rounded-sm p-4 sm:p-5 h-full" style={{ borderColor: `${p.color}20` }}>
+                <div className="bg-void-2 border rounded-sm p-4 sm:p-5 h-full" style={{ borderColor: `${p.color}20` }}>
                   <p className="text-[10px] font-mono uppercase tracking-[0.25em] mb-2" style={{ color: p.color }}>{p.tag}</p>
                   <p className="text-[11px] text-zinc-400 leading-relaxed">{p.body}</p>
                 </div>
@@ -598,11 +598,11 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         <div className="max-w-3xl mx-auto text-center relative z-10 space-y-5 sm:space-y-6">
           <FadeSection>
             <h2 className="text-xl sm:text-3xl md:text-5xl font-bold tracking-tight text-white leading-tight">
-              Every book you gave up on<br />was just <span className="text-[#00f3ff]">missing a tutor</span>.
+              Every book you gave up on<br />was just <span className="text-neon-cyan">missing a tutor</span>.
             </h2>
           </FadeSection>
           <FadeSection delay={100}>
-            <button onClick={onEnterApp} className="px-5 sm:px-10 py-3 sm:py-3.5 bg-[#00f3ff] text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] inline-flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-5 sm:px-10 py-3 sm:py-3.5 bg-neon-cyan text-black font-mono font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] inline-flex items-center gap-2">
               Decode Your First Book <ArrowRight size={14} />
             </button>
             <p className="text-[9px] sm:text-[10px] text-zinc-600 font-mono mt-3">Free · EPUB, PDF, TXT · 50+ languages</p>
@@ -616,7 +616,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           <span className="font-mono text-[10px] sm:text-xs text-zinc-600">DecodEbook &copy; {new Date().getFullYear()}</span>
           <div className="flex items-center gap-4 sm:gap-6">
             <button onClick={onSignIn} className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Sign In</button>
-            <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-[#00f3ff] transition-colors uppercase tracking-widest">Open App</button>
+            <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Open App</button>
           </div>
         </div>
       </footer>
@@ -636,13 +636,13 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   }, []);
 
   return (
-    <div className="h-screen bg-[#020202] flex flex-col items-center justify-between overflow-hidden relative">
+    <div className="h-screen bg-void-0 flex flex-col items-center justify-between overflow-hidden relative">
       <div className="absolute inset-0 bg-grid opacity-20" />
       <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,243,255,0.04) 0%, transparent 60%)' }} />
 
       {/* Top bar */}
       <nav className="w-full flex items-center justify-between px-6 py-4 relative z-10">
-        <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-[#00f3ff]">Ebook</span></span>
+        <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
         <div className="flex items-center gap-3">
           <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
         </div>
@@ -653,7 +653,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-center leading-[0.95]">
           Read any book.<br />
           In any language.<br />
-          <span className="text-[#00f3ff] drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">With AI.</span>
+          <span className="text-neon-cyan drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">With AI.</span>
         </h1>
 
         {/* Animated pills */}
@@ -663,7 +663,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
               key={label}
               className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-sm border transition-all duration-500 ${
                 i === activePill
-                  ? 'border-[#00f3ff]/50 text-[#00f3ff] bg-[#00f3ff]/10 shadow-[0_0_15px_rgba(0,243,255,0.15)]'
+                  ? 'border-neon-cyan/50 text-neon-cyan bg-neon-cyan/10 shadow-[0_0_15px_rgba(0,243,255,0.15)]'
                   : 'border-zinc-800 text-zinc-600'
               }`}
             >
@@ -673,24 +673,24 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         </div>
 
         {/* Screenshot placeholder */}
-        <div className="w-full max-w-2xl aspect-video bg-[#0a0a0c] border border-zinc-800 rounded-sm overflow-hidden relative group">
+        <div className="w-full max-w-2xl aspect-video bg-void-2 border border-zinc-800 rounded-sm overflow-hidden relative group">
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center space-y-2">
               <BookOpen size={32} className="text-zinc-700 mx-auto" />
               <p className="text-[10px] font-mono text-zinc-700 uppercase tracking-widest">App Preview</p>
             </div>
           </div>
-          <div className="absolute inset-0 bg-gradient-to-t from-[#020202] via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-void-0 via-transparent to-transparent" />
         </div>
       </div>
 
       {/* Bottom */}
       <div className="w-full px-6 pb-8 relative z-10 space-y-4">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button onClick={onEnterApp} className="px-8 py-3 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
+          <button onClick={onEnterApp} className="px-8 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
             Start Free — 100 credits/mo <ArrowRight size={14} />
           </button>
-          <button onClick={onEnterApp} className="px-8 py-3 border border-[#00f3ff]/30 text-[#00f3ff] font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/10 transition-all flex items-center gap-2">
+          <button onClick={onEnterApp} className="px-8 py-3 border border-neon-cyan/30 text-neon-cyan font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/10 transition-all flex items-center gap-2">
             Go Pro — $9.99/mo <Crown size={14} />
           </button>
         </div>
@@ -746,14 +746,14 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   const resetDemo = () => { setActiveDemo(null); setShowResult(false); setTyping(''); };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-zinc-100 overflow-x-hidden">
+    <div className="min-h-screen bg-void-0 text-zinc-100 overflow-x-hidden">
       {/* Nav */}
-      <nav className="fixed top-0 w-full z-50 bg-[#020202]/80 backdrop-blur-md border-b border-zinc-900">
+      <nav className="fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-3">
-          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-[#00f3ff]">Ebook</span></span>
+          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
           <div className="flex items-center gap-3">
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
-            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-[#00f3ff]/10 border border-[#00f3ff]/30 text-[#00f3ff] px-4 py-1.5 rounded-sm hover:bg-[#00f3ff]/20 transition-colors">Try Free</button>
+            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Try Free</button>
           </div>
         </div>
       </nav>
@@ -762,17 +762,17 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       <section className="pt-20 pb-12 px-6 min-h-screen flex flex-col items-center justify-center">
         <div className="max-w-3xl w-full space-y-6">
           <div className="text-center space-y-2">
-            <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-[#00f3ff]">Live demo</p>
+            <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-neon-cyan">Live demo</p>
             <h1 className="text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight">
-              Try it. <span className="text-[#00f3ff]">Right now.</span>
+              Try it. <span className="text-neon-cyan">Right now.</span>
             </h1>
             <p className="text-zinc-500 text-sm">Click any action below to see AI transform this passage.</p>
           </div>
 
           {/* Book mock */}
-          <div className="bg-[#0a0a0c] border border-zinc-800 rounded-sm overflow-hidden">
+          <div className="bg-void-2 border border-zinc-800 rounded-sm overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-[#080808]">
-              <BookOpen size={12} className="text-[#00f3ff]" />
+              <BookOpen size={12} className="text-neon-cyan" />
               <span className="text-[10px] font-mono text-zinc-500">The Little Prince — Antoine de Saint-Exupéry</span>
             </div>
             <div className="p-6">
@@ -792,8 +792,8 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                   onClick={() => activeDemo === btn.id ? resetDemo() : triggerDemo(btn.id)}
                   className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-sm border transition-all flex items-center gap-1.5 ${
                     activeDemo === btn.id
-                      ? 'border-[#00f3ff]/50 text-[#00f3ff] bg-[#00f3ff]/10'
-                      : 'border-zinc-800 text-zinc-500 hover:border-[#00f3ff]/30 hover:text-[#00f3ff]'
+                      ? 'border-neon-cyan/50 text-neon-cyan bg-neon-cyan/10'
+                      : 'border-zinc-800 text-zinc-500 hover:border-neon-cyan/30 hover:text-neon-cyan'
                   }`}
                 >
                   <btn.icon size={12} /> {btn.label}
@@ -805,22 +805,22 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             {activeDemo && (
               <div className="border-t border-zinc-800 p-4">
                 {!showResult ? (
-                  <div className="flex items-center gap-2 text-[10px] font-mono text-[#00f3ff]">
-                    <div className="w-3 h-3 border-2 border-[#00f3ff] border-t-transparent rounded-full animate-spin" />
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-neon-cyan">
+                    <div className="w-3 h-3 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
                     Processing...
                   </div>
                 ) : activeDemo === 'translate' ? (
                   <div className="space-y-2 animate-fade-in">
-                    <p className="text-[10px] font-mono text-[#00f3ff] uppercase tracking-widest">French Translation</p>
+                    <p className="text-[10px] font-mono text-neon-cyan uppercase tracking-widest">French Translation</p>
                     <p className="text-sm text-zinc-300 leading-relaxed font-serif italic">{DEMO_TRANSLATION}</p>
                   </div>
                 ) : activeDemo === 'tts' ? (
                   <div className="space-y-3 animate-fade-in">
-                    <p className="text-[10px] font-mono text-[#00f3ff] uppercase tracking-widest">Neural TTS</p>
+                    <p className="text-[10px] font-mono text-neon-cyan uppercase tracking-widest">Neural TTS</p>
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
                         {Array.from({ length: 24 }).map((_, i) => (
-                          <div key={i} className="w-1 bg-[#00f3ff] rounded-full animate-pulse" style={{ height: `${8 + Math.random() * 20}px`, animationDelay: `${i * 0.05}s` }} />
+                          <div key={i} className="w-1 bg-neon-cyan rounded-full animate-pulse" style={{ height: `${8 + Math.random() * 20}px`, animationDelay: `${i * 0.05}s` }} />
                         ))}
                       </div>
                       <span className="text-[10px] font-mono text-zinc-500">0:12 / 0:28</span>
@@ -830,13 +830,13 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
                 ) : activeDemo === 'chat' ? (
                   <div className="space-y-2 animate-fade-in">
                     <p className="text-[10px] font-mono text-zinc-500">Q: What does "seeing with the heart" mean in this context?</p>
-                    <p className="text-sm text-zinc-300 leading-relaxed">{typing}<span className="animate-blink text-[#00f3ff]">|</span></p>
+                    <p className="text-sm text-zinc-300 leading-relaxed">{typing}<span className="animate-blink text-neon-cyan">|</span></p>
                   </div>
                 ) : activeDemo === 'mindmap' ? (
                   <div className="space-y-3 animate-fade-in">
-                    <p className="text-[10px] font-mono text-[#00f3ff] uppercase tracking-widest">Mind Map</p>
+                    <p className="text-[10px] font-mono text-neon-cyan uppercase tracking-widest">Mind Map</p>
                     <div className="flex flex-col items-center gap-4 py-4">
-                      <span className="text-xs font-mono font-bold text-[#00f3ff] border border-[#00f3ff]/30 bg-[#00f3ff]/5 px-4 py-2 rounded-sm">{DEMO_MINDMAP.center}</span>
+                      <span className="text-xs font-mono font-bold text-neon-cyan border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-2 rounded-sm">{DEMO_MINDMAP.center}</span>
                       <div className="flex flex-wrap justify-center gap-6">
                         {DEMO_MINDMAP.branches.map((b, i) => (
                           <div key={i} className="text-center space-y-2">
@@ -859,7 +859,7 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           {/* Prompt */}
           <div className="text-center space-y-3 pt-4">
             <p className="text-zinc-400 text-sm">Like it? Upload your own book.</p>
-            <button onClick={onEnterApp} className="px-8 py-3 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] inline-flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-8 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] inline-flex items-center gap-2">
               Get Started Free <ArrowRight size={14} />
             </button>
           </div>
@@ -872,9 +872,9 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-8 text-center">Everything your books need.</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {FEATURES.map((f, i) => (
-              <div key={i} className="bg-[#0a0a0c] border border-zinc-800 rounded-sm p-4 space-y-2 hover:border-[#00f3ff]/20 transition-colors">
+              <div key={i} className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 hover:border-neon-cyan/20 transition-colors">
                 <div className="flex items-center gap-2">
-                  <f.icon size={14} className="text-[#00f3ff]" />
+                  <f.icon size={14} className="text-neon-cyan" />
                   <span className="text-[10px] font-mono font-bold text-white tracking-wide">{f.title}</span>
                   <span className="text-[8px] font-mono text-zinc-600 ml-auto">{f.credit}</span>
                 </div>
@@ -899,7 +899,7 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           <span className="font-mono text-xs text-zinc-600">DecodEbook — read smarter, not harder.</span>
           <div className="flex items-center gap-6">
             <button onClick={onSignIn} className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Sign In</button>
-            <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-[#00f3ff] transition-colors uppercase tracking-widest">Open App</button>
+            <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Open App</button>
           </div>
         </div>
       </footer>
@@ -1157,8 +1157,8 @@ function HeroLearningBlocksVelocity() {
 
 function VoiceSynthDemo() {
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#00f3ff]/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#00f3ff]/40 to-transparent" />
+    <div className="h-full bg-void-2 border border-neon-cyan/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-cyan/40 to-transparent" />
       <div className="flex items-center justify-between">
         <p className="text-[8px] sm:text-[9px] uppercase tracking-widest text-zinc-600">Le Petit Prince · Ch. 21</p>
         <span className="text-[9px] text-zinc-600">FR ↔ EN</span>
@@ -1166,11 +1166,11 @@ function VoiceSynthDemo() {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 text-zinc-400 leading-[1.6]">
         <div>
           <p className="text-[9px] uppercase tracking-widest text-zinc-600 mb-2">Original</p>
-          <p>"Je ne suis pas <span className="bg-[#00f3ff]/15 text-[#00f3ff] px-1 rounded-sm">apprivoisé</span>", dit le renard.</p>
+          <p>"Je ne suis pas <span className="bg-neon-cyan/15 text-neon-cyan px-1 rounded-sm">apprivoisé</span>", dit le renard.</p>
         </div>
         <div>
           <p className="text-[9px] uppercase tracking-widest text-zinc-600 mb-2">Decoded</p>
-          <p>"I am not <span className="bg-[#00f3ff]/15 text-[#00f3ff] px-1 rounded-sm">tamed</span>", said the fox.</p>
+          <p>"I am not <span className="bg-neon-cyan/15 text-neon-cyan px-1 rounded-sm">tamed</span>", said the fox.</p>
         </div>
       </div>
       <div className="border-t border-zinc-800 pt-3 space-y-1.5 flex-1 min-h-0">
@@ -1178,10 +1178,10 @@ function VoiceSynthDemo() {
         <p className="text-zinc-400 leading-[1.65]">Tamed, but in Saint-Exupery's hands it means something deeper: <em className="text-zinc-300 not-italic">to be bound to another by ritual and care.</em></p>
       </div>
       <div className="flex items-center gap-3 pt-1">
-        <div className="w-7 h-7 rounded-full bg-[#00f3ff]/10 border border-[#00f3ff]/40 flex items-center justify-center shrink-0">
-          <div className="w-0 h-0 border-l-[6px] border-l-[#00f3ff] border-y-[4px] border-y-transparent ml-[2px]" />
+        <div className="w-7 h-7 rounded-full bg-neon-cyan/10 border border-neon-cyan/40 flex items-center justify-center shrink-0">
+          <div className="w-0 h-0 border-l-[6px] border-l-neon-cyan border-y-[4px] border-y-transparent ml-[2px]" />
         </div>
-        <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full w-1/3 bg-[#00f3ff]" /></div>
+        <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full w-1/3 bg-neon-cyan" /></div>
         <span className="text-[9px] text-zinc-600">0:14 / 0:42</span>
       </div>
     </div>
@@ -1190,24 +1190,24 @@ function VoiceSynthDemo() {
 
 function PodcastDemo() {
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#fbbf24]/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#fbbf24]/40 to-transparent" />
+    <div className="h-full bg-void-2 border border-neon-amber/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-amber/40 to-transparent" />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-[9px] uppercase tracking-widest text-zinc-600">Ep · ch. 21</span>
-          <span className="text-[#fbbf24]">●</span>
+          <span className="text-neon-amber">●</span>
           <span className="text-[9px] text-zinc-500">FR book · EN discussion · late-night</span>
         </div>
         <span className="text-[9px] text-zinc-600">12:04</span>
       </div>
       <div className="flex items-end gap-[2px] h-10 sm:h-12 shrink-0">
         {[3,7,4,8,5,9,6,4,7,8,5,3,6,9,7,4,8,5,9,6,3,7,5,8,4,6,9,5,3,7,4,8,5,9,6,4,7,5,3,6,8,4,9,5,7].map((h,i) => (
-          <div key={i} className="flex-1 bg-[#fbbf24]/50" style={{ height: `${h*10}%` }} />
+          <div key={i} className="flex-1 bg-neon-amber/50" style={{ height: `${h*10}%` }} />
         ))}
       </div>
       <div className="border-t border-zinc-800 pt-3 space-y-2.5 flex-1 min-h-0">
         <div className="flex gap-2.5">
-          <span className="text-[9px] text-[#fbbf24] uppercase tracking-widest shrink-0 w-10">Maya</span>
+          <span className="text-[9px] text-neon-amber uppercase tracking-widest shrink-0 w-10">Maya</span>
           <p className="text-zinc-400 leading-[1.6]">"The fox is not defining taming. He is showing how responsibility begins."</p>
         </div>
         <div className="flex gap-2.5">
@@ -1221,8 +1221,8 @@ function PodcastDemo() {
 
 function VisualCoreDemo() {
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#a78bfa]/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#a78bfa]/40 to-transparent" />
+    <div className="h-full bg-void-2 border border-neon-violet/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-violet/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Style · cinematic still · 16:9</p>
         <span className="text-[9px] text-zinc-600">×3 variants</span>
@@ -1246,7 +1246,7 @@ function VisualCoreDemo() {
       </p>
       <div className="flex items-center gap-2 pt-1 font-mono">
         {['Cinematic', 'Watercolor', 'Line drawing', 'Ukiyo-e'].map((s, i) => (
-          <span key={s} className={`text-[9px] px-2 py-0.5 rounded-sm border ${i === 0 ? 'border-[#a78bfa]/40 text-[#a78bfa] bg-[#a78bfa]/10' : 'border-zinc-800 text-zinc-600'}`}>{s}</span>
+          <span key={s} className={`text-[9px] px-2 py-0.5 rounded-sm border ${i === 0 ? 'border-neon-violet/40 text-neon-violet bg-neon-violet/10' : 'border-zinc-800 text-zinc-600'}`}>{s}</span>
         ))}
       </div>
     </div>
@@ -1255,8 +1255,8 @@ function VisualCoreDemo() {
 
 function CineRenderDemo() {
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#ff003c]/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#ff003c]/40 to-transparent" />
+    <div className="h-full bg-void-2 border border-neon-red/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-red/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Ch. 21 · The Fox</p>
         <span className="text-[9px] text-zinc-600">1080p · 1:24</span>
@@ -1283,7 +1283,7 @@ function CineRenderDemo() {
 
 function MemLogDemo() {
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#34d399]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
+    <div className="h-full bg-void-2 border border-[#34d399]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#34d399]/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Notebook · 12 sparks · 4 chapters</p>
@@ -1317,7 +1317,7 @@ function GenFilesDemo() {
     { kind: 'Notebook', name: 'sparks_4_chapters.pdf', size: '88 KB', color: '#34d399' },
   ];
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#38bdf8]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
+    <div className="h-full bg-void-2 border border-[#38bdf8]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#38bdf8]/40 to-transparent" />
       <div className="flex items-center justify-between font-mono">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Generated files · Le Petit Prince</p>
@@ -1339,11 +1339,11 @@ function GenFilesDemo() {
 
 function AiTutorDemo() {
   return (
-    <div className="h-full bg-[#0a0a0c] border border-[#ff4fd8]/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#ff4fd8]/40 to-transparent" />
+    <div className="h-full bg-void-2 border border-neon-pink/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 relative overflow-hidden flex flex-col">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-pink/40 to-transparent" />
       <div className="flex items-center justify-between">
         <p className="text-[9px] uppercase tracking-widest text-zinc-600">Tutor · Le Petit Prince · Ch. 21</p>
-        <span className="text-[9px] text-[#ff4fd8]">● online</span>
+        <span className="text-[9px] text-neon-pink">● online</span>
       </div>
       <div className="space-y-2.5 sm:space-y-3 pt-1 flex-1 min-h-0">
         <div className="flex justify-end">
@@ -1352,9 +1352,9 @@ function AiTutorDemo() {
           </div>
         </div>
         <div className="flex">
-          <div className="max-w-[85%] bg-[#ff4fd8]/10 border border-[#ff4fd8]/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] space-y-1.5">
+          <div className="max-w-[85%] bg-neon-pink/10 border border-neon-pink/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] space-y-1.5">
             <p>French has two "you" forms — <em className="text-zinc-200 not-italic">vous</em> (formal, distant) and <em className="text-zinc-200 not-italic">tu</em> (intimate, between friends).</p>
-            <p>Saint-Exupery shifts to <em className="text-[#ff4fd8] not-italic">tu</em> when the fox accepts the prince's friendship. The pronoun makes the bond visible.</p>
+            <p>Saint-Exupery shifts to <em className="text-neon-pink not-italic">tu</em> when the fox accepts the prince's friendship. The pronoun makes the bond visible.</p>
           </div>
         </div>
         <div className="flex justify-end">
@@ -1363,11 +1363,11 @@ function AiTutorDemo() {
           </div>
         </div>
         <div className="flex">
-          <div className="max-w-[80%] bg-[#ff4fd8]/10 border border-[#ff4fd8]/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] flex items-center gap-2">
+          <div className="max-w-[80%] bg-neon-pink/10 border border-neon-pink/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] flex items-center gap-2">
             <span className="inline-flex gap-0.5">
-              <span className="w-1 h-1 rounded-full bg-[#ff4fd8] animate-pulse" />
-              <span className="w-1 h-1 rounded-full bg-[#ff4fd8] animate-pulse" style={{ animationDelay: '0.2s' }} />
-              <span className="w-1 h-1 rounded-full bg-[#ff4fd8] animate-pulse" style={{ animationDelay: '0.4s' }} />
+              <span className="w-1 h-1 rounded-full bg-neon-pink animate-pulse" />
+              <span className="w-1 h-1 rounded-full bg-neon-pink animate-pulse" style={{ animationDelay: '0.2s' }} />
+              <span className="w-1 h-1 rounded-full bg-neon-pink animate-pulse" style={{ animationDelay: '0.4s' }} />
             </span>
             <span className="text-zinc-500">tutor is reading…</span>
           </div>
@@ -1731,7 +1731,7 @@ function FeatureScreenF({ feature, index, onEnterApp }: { feature: FeatureE; ind
               <div className="flex h-full items-center justify-center">
                 <button
                   onClick={onEnterApp}
-                  className="inline-flex min-h-14 max-w-[82%] items-center justify-center gap-3 rounded-sm border bg-[#00f3ff]/5 px-5 py-4 transition-all hover:bg-[#00f3ff]/10 hover:shadow-[0_0_30px_rgba(0,243,255,0.18)] sm:px-8 sm:py-6"
+                  className="inline-flex min-h-14 max-w-[82%] items-center justify-center gap-3 rounded-sm border bg-neon-cyan/5 px-5 py-4 transition-all hover:bg-neon-cyan/10 hover:shadow-[0_0_30px_rgba(0,243,255,0.18)] sm:px-8 sm:py-6"
                   style={{ borderColor: `${LANDING_E_PALETTE.cyan}66` }}
                 >
                   <TrueFocus
@@ -1744,7 +1744,7 @@ function FeatureScreenF({ feature, index, onEnterApp }: { feature: FeatureE; ind
                     pauseBetweenAnimations={0.35}
                     className="landing-true-focus landing-true-focus-stage"
                   />
-                  <ArrowRight size={14} className="shrink-0 text-[#00f3ff]" strokeWidth={2} />
+                  <ArrowRight size={14} className="shrink-0 text-neon-cyan" strokeWidth={2} />
                 </button>
               </div>
             )}
@@ -2038,14 +2038,14 @@ function TransformationLanding({
   };
 
   return (
-    <div className={`bg-[#020202] text-zinc-100 min-h-screen ${isCyber ? 'landing-g-shell' : ''}`}>
+    <div className={`bg-void-0 text-zinc-100 min-h-screen ${isCyber ? 'landing-g-shell' : ''}`}>
       {/* Nav */}
-      <nav className={`fixed top-0 w-full z-50 bg-[#020202]/80 backdrop-blur-md border-b border-zinc-900/60 ${isCyber ? 'landing-g-nav' : ''}`}>
+      <nav className={`fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900/60 ${isCyber ? 'landing-g-nav' : ''}`}>
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 md:px-10 py-3.5">
-          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-[#00f3ff]">Ebook</span></span>
+          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
           <div className="flex items-center gap-3 sm:gap-4">
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
-            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-[#00f3ff]/10 border border-[#00f3ff]/30 text-[#00f3ff] px-3 sm:px-4 py-1.5 rounded-sm hover:bg-[#00f3ff]/20 transition-colors">Decode</button>
+            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-3 sm:px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Decode</button>
           </div>
         </div>
       </nav>
@@ -2061,7 +2061,7 @@ function TransformationLanding({
           <button
             key={i}
             onClick={() => scrollToScreen(i)}
-            className={`relative z-10 w-2 h-2 rounded-full border transition-all ${screen === i ? 'scale-125' : 'bg-[#020202] border-zinc-700 hover:border-zinc-500'}`}
+            className={`relative z-10 w-2 h-2 rounded-full border transition-all ${screen === i ? 'scale-125' : 'bg-void-0 border-zinc-700 hover:border-zinc-500'}`}
             style={screen === i ? { backgroundColor: activeAccent, borderColor: activeAccent, boxShadow: `0 0 10px ${activeAccent}99` } : undefined}
             aria-label={`Screen ${i + 1}`}
           />
@@ -2082,19 +2082,19 @@ function TransformationLanding({
           <p className="text-[10px] sm:text-xs font-mono tracking-[0.2em] text-zinc-500 animate-fade-in">One Book, Multiple Ways to Learn.</p>
           <h1 className="text-[2.3rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
             Read the original.<br />
-            <span className="text-[#00f3ff] drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
+            <span className="text-neon-cyan drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
           </h1>
           <p className="text-zinc-500 text-sm sm:text-base max-w-[34rem] mx-auto leading-[1.75] animate-fade-in" style={{ animationDelay: '0.2s' }}>
             DecodEbook turns EPUB, PDF, and text into a bilingual reader, pronunciation coach, live podcast, visual brief, video summary and notebook. With AI tutor, you can learn everything you want to.
           </p>
           <HeroLearningBlocksVelocity />
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <button onClick={onEnterApp} className="px-7 py-3 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
+            <button onClick={onEnterApp} className="px-7 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center gap-2">
               Decode Your First Chapter <ArrowRight size={14} />
             </button>
           </div>
         </div>
-        <button onClick={() => scrollToScreen(1)} className="absolute bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-[#00f3ff] transition-colors animate-bounce" aria-label="Next">
+        <button onClick={() => scrollToScreen(1)} className="absolute bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-neon-cyan transition-colors animate-bounce" aria-label="Next">
           <ChevronDown size={22} strokeWidth={1.5} />
         </button>
       </section>
@@ -2114,7 +2114,7 @@ function TransformationLanding({
             </div>
             <div className="hidden md:block w-px h-12 bg-zinc-800" />
             <div className="space-y-1">
-              <p className="text-2xl sm:text-3xl font-semibold tracking-normal text-white">50+ <span className="text-[#00f3ff]">languages</span></p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-normal text-white">50+ <span className="text-neon-cyan">languages</span></p>
               <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">Read in the original, learn in yours</p>
             </div>
           </div>
@@ -2126,12 +2126,12 @@ function TransformationLanding({
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 70%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-3xl space-y-8 sm:space-y-10">
           <h2 className="text-[2rem] sm:text-4xl md:text-[3.75rem] font-semibold tracking-normal leading-[1.1] text-white">
-            Decode your first chapter<br /><span className="text-[#00f3ff]">for free</span>.
+            Decode your first chapter<br /><span className="text-neon-cyan">for free</span>.
           </h2>
           <p className="text-[11px] sm:text-xs text-zinc-500 font-mono tracking-wider">
             100 credits for new user registered
           </p>
-          <button onClick={onEnterApp} className="px-8 py-3.5 bg-[#00f3ff] text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-[#00f3ff]/90 transition-all hover:shadow-[0_0_40px_rgba(0,243,255,0.4)] inline-flex items-center gap-2">
+          <button onClick={onEnterApp} className="px-8 py-3.5 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_40px_rgba(0,243,255,0.4)] inline-flex items-center gap-2">
             Decode Your First Chapter <ArrowRight size={14} />
           </button>
         </div>
@@ -2140,7 +2140,7 @@ function TransformationLanding({
             <span className="font-mono text-[10px] text-zinc-600">DecodEbook &copy; {new Date().getFullYear()}</span>
             <div className="flex items-center gap-4 sm:gap-6">
               <button onClick={onSignIn} className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Sign In</button>
-              <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-[#00f3ff] transition-colors uppercase tracking-widest">Open App</button>
+              <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Open App</button>
             </div>
           </div>
         </footer>
