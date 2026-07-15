@@ -92,7 +92,8 @@ body {
   font-family: var(--content-font, inherit);
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar (WebKit). Firefox uses scrollbar-width/color below — both
+   kept in sync so scrollbars look the same cross-browser. */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -105,6 +106,12 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--neon-cyan);
+}
+/* Firefox — thin dark scrollbar matching the WebKit thumb/track (inherits to
+   all scroll containers). */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #333 #000;
 }
 
 /* CRT Scanline Effect */

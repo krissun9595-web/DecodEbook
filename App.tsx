@@ -3186,9 +3186,7 @@ const App: React.FC = () => {
                 </button>
             </div>
             {!showLibraryList && activeBook && (
-                <div className="mt-4 h-[53px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm relative group cursor-default">
-                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-neon-cyan"></div>
-                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-neon-cyan"></div>
+                <div className="mt-4 h-[53px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border group cursor-default">
                     <h1 className="font-bold text-xs text-white truncate leading-tight mb-0.5 font-tech uppercase tracking-wide">{activeBook.title}</h1>
                     <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
                 </div>
