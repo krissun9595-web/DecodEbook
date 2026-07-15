@@ -196,6 +196,59 @@ body {
   animation: blink 1s step-end infinite;
 }
 
+/* Motion set (Phase 5). These animate-* / scale-in classes are referenced across
+   the app (modal enters, HUD rings, floating accents) but were never defined, so
+   the intended motion silently did nothing. Defined here — transform/opacity only
+   for performance; the reduced-motion block below neutralises all of them. */
+
+/* Element enter: fade + rise. */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* Modal / panel enter: fade + subtle scale up (declared after fade-in-up so it
+   wins on elements that carry both, e.g. the settings modal). */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.scale-in {
+  animation: scaleIn 0.25s ease-out forwards;
+}
+
+/* Decorative HUD rings — slow rotation (and a counter-rotating variant). */
+@keyframes spinSlow {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spinSlow 8s linear infinite;
+}
+.animate-reverse-spin {
+  animation: spinSlow 10s linear infinite reverse;
+}
+
+/* Slow ambient pulse. */
+@keyframes pulseSlow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-pulse-slow {
+  animation: pulseSlow 4s ease-in-out infinite;
+}
+
+/* Gentle vertical float. */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
 /* ===========================================================================
    Phase 1 — Accessibility
    =========================================================================== */
