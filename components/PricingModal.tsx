@@ -44,7 +44,7 @@ const PLANS = [
     annualPeriod: '/year',
     annualSave: 'Save 17% — $8.33/mo',
     icon: Crown,
-    color: '[#00f3ff]',
+    color: 'neon-cyan',
     accentBorder: 'border-neon-cyan/40',
     features: ['1,000 credits/month', 'All AI features unlocked', '30-150 cr/video · 40 cr/podcast', 'Buy extra credit packs anytime'],
   },
@@ -179,7 +179,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">My_Account</h2>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
+          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition active:scale-90"><X size={24} /></button>
         </div>
 
         <div className="overflow-y-auto max-h-[70vh] custom-scrollbar">
@@ -236,10 +236,10 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   )}
 
                   <div className="border-t border-zinc-800 pt-3 flex gap-2">
-                    <button onClick={handleSwitchAccount} className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-1.5">
+                    <button onClick={handleSwitchAccount} className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-1.5">
                       <RefreshCw size={10} /> Switch Account
                     </button>
-                    <button onClick={handleSignOut} className="flex-1 py-2 bg-zinc-900 hover:bg-rose-950/30 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-1.5">
+                    <button onClick={handleSignOut} className="flex-1 py-2 bg-zinc-900 hover:bg-rose-950/30 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-1.5">
                       <LogOut size={10} /> Sign Out
                     </button>
                   </div>
@@ -334,15 +334,15 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <button
                           onClick={() => { navigator.clipboard.writeText(getShareUrl(refCode)); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                           aria-label="Copy referral link"
-                          className="shrink-0 p-1.5 border border-zinc-800 rounded-sm text-zinc-500 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
+                          className="shrink-0 p-1.5 border border-zinc-800 rounded-sm text-zinc-500 hover:text-emerald-400 hover:border-emerald-500/30 transition active:scale-90"
                         >
                           {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                         </button>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#1DA1F2] hover:border-[#1DA1F2]/30 transition-colors">𝕏 Twitter</button>
-                        <button onClick={() => shareOnFacebook(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#1877F2] hover:border-[#1877F2]/30 transition-colors">Facebook</button>
-                        <button onClick={() => shareOnLinkedIn(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#0A66C2] hover:border-[#0A66C2]/30 transition-colors">LinkedIn</button>
+                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#1DA1F2] hover:border-[#1DA1F2]/30 transition active:scale-95">𝕏 Twitter</button>
+                        <button onClick={() => shareOnFacebook(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#1877F2] hover:border-[#1877F2]/30 transition active:scale-95">Facebook</button>
+                        <button onClick={() => shareOnLinkedIn(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#0A66C2] hover:border-[#0A66C2]/30 transition active:scale-95">LinkedIn</button>
                       </div>
                     </div>
 
@@ -419,7 +419,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           </div>
 
                           {isCurrent && isPaid ? (
-                            <button onClick={handleManage} disabled={portalLoading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest border border-zinc-700 rounded-sm text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors flex items-center justify-center gap-1.5">
+                            <button onClick={handleManage} disabled={portalLoading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest border border-zinc-700 rounded-sm text-zinc-400 hover:text-white hover:border-zinc-500 transition active:scale-[0.98] flex items-center justify-center gap-1.5">
                               {portalLoading ? <Loader2 size={12} className="animate-spin" /> : <><ExternalLink size={10} /> Manage Subscription</>}
                             </button>
                           ) : !isCurrent && isPaid ? (
@@ -427,7 +427,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                               <button
                                 onClick={() => handleUpgrade(plan.id)}
                                 disabled={!!upgrading}
-                                className={`w-full py-2 text-[10px] font-mono uppercase tracking-widest rounded-sm transition-colors flex items-center justify-center gap-1.5 ${
+                                className={`w-full py-2 text-[10px] font-mono uppercase tracking-widest rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5 ${
                                   isProPlan
                                     ? 'bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20'
                                     : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
@@ -451,7 +451,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                                         </div>
                                         <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">{plan.annualSave}</span>
                                       </div>
-                                      <button onClick={() => handleUpgrade('pro', true)} disabled={!!upgrading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 rounded-sm transition-colors flex items-center justify-center gap-1.5">
+                                      <button onClick={() => handleUpgrade('pro', true)} disabled={!!upgrading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
                                         {upgrading === 'pro_annual' ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade to Annual'}
                                       </button>
                                     </div>
@@ -488,7 +488,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <button
                           onClick={() => handleBuyPack(pack.storageKey, pack.type)}
                           disabled={!!buyingPack}
-                          className="w-full py-1.5 text-[10px] font-mono uppercase tracking-widest bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 rounded-sm transition-colors flex items-center justify-center gap-1"
+                          className="w-full py-1.5 text-[10px] font-mono uppercase tracking-widest bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1"
                         >
                           {buyingPack === pack.type ? <Loader2 size={10} className="animate-spin" /> : 'Buy'}
                         </button>
@@ -515,7 +515,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Mail size={14} className="text-zinc-600 shrink-0" />
                     <input id="acct-reset-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
                   </div>
-                  <button onClick={handleForgotPassword} disabled={authLoading} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
+                  <button onClick={handleForgotPassword} disabled={authLoading} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
                     {authLoading && <Loader2 size={14} className="animate-spin" />}
                     Send Reset Link
                   </button>
@@ -554,7 +554,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </label>
                   )}
 
-                  <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
+                  <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
                     {authLoading ? <Loader2 size={14} className="animate-spin" /> : authMode === 'login' ? <LogIn size={14} /> : <UserPlus size={14} />}
                     {authMode === 'login' ? 'Sign In' : 'Create Account'}
                   </button>
@@ -567,16 +567,16 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <div className="flex-1 h-[1px] bg-zinc-800"></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => handleOAuth('google')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        <button onClick={() => handleOAuth('google')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
                           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Google
                         </button>
-                        <button onClick={() => handleOAuth('github')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        <button onClick={() => handleOAuth('github')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
                           <Github size={14} /> GitHub
                         </button>
-                        <button onClick={() => handleOAuth('x')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        <button onClick={() => handleOAuth('x')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
                           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> X
                         </button>
-                        <button onClick={() => handleOAuth('discord')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        <button onClick={() => handleOAuth('discord')} disabled={authLoading} className="py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-sm text-xs font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50">
                           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg> Discord
                         </button>
                       </div>
@@ -603,7 +603,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 </div>
                 <div className="space-y-2">
                   {PLANS.map(plan => (
-                    <div key={plan.id} className="flex items-center justify-between p-3 rounded-sm border border-zinc-800 bg-void-2">
+                    <div key={plan.id} className="flex items-center justify-between p-3 rounded-sm content-panel">
                       <div className="flex items-center gap-2">
                         <plan.icon size={14} className={`text-${plan.color}`} />
                         <span className={`text-xs font-mono font-bold tracking-widest text-${plan.color}`}>{plan.name}</span>
