@@ -319,3 +319,14 @@ body {
     min-height: 0;
   }
 }
+
+/* Mobile: render text inputs/textareas at >=16px so iOS Safari doesn't zoom-in
+   on focus. This is what lets the viewport drop `maximum-scale=1`, so pinch-zoom
+   works again (WCAG 1.4.4). Selects use a native picker (no focus zoom) and
+   range/checkbox/radio have no text, so they stay at their compact size. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea {
+    font-size: 16px;
+  }
+}
