@@ -3179,7 +3179,7 @@ const App: React.FC = () => {
                 </div>
                 <button 
                     onClick={() => setView(AppView.UPLOAD)} 
-                    className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-neon-cyan transition-colors"
+                    className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-neon-cyan transition active:scale-90"
                     title="Upload New"
                 >
                     <Upload size={14} />
@@ -3203,7 +3203,7 @@ const App: React.FC = () => {
                         className={`w-full flex items-center gap-3 p-4 border-b border-zinc-900 transition-all group ${
                             activeBookId === item.book.id
                             ? 'bg-neon-cyan/5'
-                            : 'hover:bg-zinc-900'
+                            : 'hover:bg-zinc-900 active:bg-zinc-800/70'
                         }`}
                     >
                         <button
@@ -3228,7 +3228,7 @@ const App: React.FC = () => {
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); handleDeleteBook(item.book.id); }}
-                            className="p-1.5 text-zinc-500 hover:text-neon-red opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            className="p-1.5 text-zinc-500 hover:text-neon-red opacity-0 group-hover:opacity-100 transition-all shrink-0 active:scale-90"
                             title="Delete"
                         >
                             <Trash2 size={14} />

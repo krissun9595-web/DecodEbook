@@ -3539,22 +3539,22 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   </div>
               </div>
               <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
-                  <button aria-label="Rewind 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCcw size={14} /></button>
-                  <button aria-label="Play or pause" onClick={togglePlay} disabled={!audioSrc} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
+                  <button aria-label="Rewind 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition hover:bg-zinc-900 rounded-full disabled:opacity-30 active:scale-90"><RotateCcw size={14} /></button>
+                  <button aria-label="Play or pause" onClick={togglePlay} disabled={!audioSrc} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 transition-transform active:scale-95 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
                     {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                   </button>
-                  <button aria-label="Forward 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition-colors hover:bg-zinc-900 rounded-full disabled:opacity-30"><RotateCw size={14} /></button>
+                  <button aria-label="Forward 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition hover:bg-zinc-900 rounded-full disabled:opacity-30 active:scale-90"><RotateCw size={14} /></button>
               </div>
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                  <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition-colors rounded-full shrink-0 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                  <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                   <button aria-label="Minimize or maximize player" onClick={() => {
                     const nextMinimized = !isModuleMinimized;
                     setIsModuleMinimized(nextMinimized);
                     lastVoiceSynthMinimized = nextMinimized;
                     writeStoredValue('voice_synth_player_minimized', String(nextMinimized));
-                  }} className="p-1 md:p-2 text-zinc-600 hover:text-neon-cyan transition-colors rounded-full bg-zinc-900/50 shrink-0">{isModuleMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
+                  }} className="p-1 md:p-2 text-zinc-600 hover:text-neon-cyan transition rounded-full bg-zinc-900/50 shrink-0 active:scale-90">{isModuleMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
               </div>
           </div>
       </div>
