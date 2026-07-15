@@ -760,7 +760,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
              className="hidden" 
            />
            {segments.length > 0 ? (
-               <div className="flex-1 min-h-0 bg-black/40 border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-inner">
+               <div className="flex-1 min-h-0 content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
                   <div ref={scriptContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth custom-scrollbar content-font text-sm">
                     {segments.map((seg, idx) => {
                       const isActive = idx === activeIndex;
