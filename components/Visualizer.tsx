@@ -4,6 +4,7 @@ import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon,
 import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage } from '../services/gemini';
 import { Loader } from './ui/Loader';
+import { EmptyState } from './ui/EmptyState';
 import { shareFile } from '../utils/share';
 import { titleCase } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -201,13 +202,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                 </div>
             ) : concepts.length === 0 ? (
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
-                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono bg-black">
-                        <ImageIcon size={48} className="opacity-20" />
-                        <div className="text-center space-y-1">
-                            <p className="text-xs uppercase tracking-[0.3em]">Visual_Core_Idle</p>
-                            <p className="text-[10px] opacity-50">Click INITIATE to extract and visualize concepts</p>
-                        </div>
-                    </div>
+                    <EmptyState icon={ImageIcon} label="Visual_Core_Idle" sublabel="Click INITIATE to extract and visualize concepts" className="flex-1 min-h-0 bg-black" />
                 </div>
             ) : currentConcept ? (
                 <div className="flex-1 h-full w-full relative group/container content-panel rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">

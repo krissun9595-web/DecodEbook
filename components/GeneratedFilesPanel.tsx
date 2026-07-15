@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save, Share2 } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
+import { EmptyState } from './ui/EmptyState';
 import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase } from '../utils/filename';
@@ -218,13 +219,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       {/* File List */}
       <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
         {filteredFiles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-600 gap-4 font-mono">
-            <HardDrive size={48} className="opacity-20" />
-            <div className="text-center space-y-1">
-              <p className="text-xs uppercase tracking-[0.3em]">Cache_Empty</p>
-              <p className="text-[10px] opacity-50">Generated files will appear here after creation</p>
-            </div>
-          </div>
+          <EmptyState icon={HardDrive} label="Cache_Empty" sublabel="Generated files will appear here after creation" className="h-full" />
         ) : (
           filteredFiles.map(file => {
             const config = FILE_TYPE_CONFIG[file.fileType] || FILE_TYPE_CONFIG['audio'];

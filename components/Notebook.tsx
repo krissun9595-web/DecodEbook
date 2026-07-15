@@ -7,6 +7,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
 
 import { Loader } from './ui/Loader';
+import { EmptyState } from './ui/EmptyState';
 import { saveFile, buildCacheKey } from '../services/fileCache';
 import { playPronunciationAudio, prefetchPronunciation } from '../services/pronunciationAudio';
 import { shareFile } from '../utils/share';
@@ -1098,7 +1099,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                        <Loader text="GENERATING_MAP..." />
                    </div>
                ) : items.length === 0 ? (
-                   <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 font-mono gap-4 animate-fade-in"><Book size={48} className="opacity-20" /><p className="text-sm">NO_DATA_LOGGED</p><p className="text-[10px] text-zinc-500 max-w-xs text-center uppercase tracking-widest">Right-click text selection in reader to populate your lexicon.</p></div>
+                   <EmptyState icon={Book} label="NO_DATA_LOGGED" sublabel="Right-click text selection in reader to populate your lexicon." className="flex-1 animate-fade-in" />
                ) : filteredItems.length === 0 ? (
                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 font-mono gap-2 animate-fade-in"><p className="text-xs uppercase tracking-widest opacity-50">BUFFER_EMPTY_FOR_{activeFilter === 'all' ? 'ALL_ITEMS' : activeFilter.toUpperCase() + 'S'}</p></div>
                ) : (

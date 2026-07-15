@@ -4,6 +4,7 @@ import { Play, Pause, RotateCcw, RotateCw, Mic2, Download, FileDown, Settings2, 
 import { generatePodcastAudio } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
+import { EmptyState } from './ui/EmptyState';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase } from '../utils/filename';
@@ -781,13 +782,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                   </div>
                </div>
            ) : !isLoading && !error && (
-               <div className="flex-1 content-panel rounded-lg shadow-lg flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono min-h-[200px]">
-                   <Radio size={48} className="opacity-20 animate-pulse" />
-                   <div className="text-center space-y-1">
-                      <p className="text-xs uppercase tracking-[0.3em]">Ready_to_Stream</p>
-                      <p className="text-[10px] opacity-50">Select tone and language above to begin decoding</p>
-                   </div>
-               </div>
+               <EmptyState icon={Radio} label="Ready_to_Stream" sublabel="Select tone and language above to begin decoding" iconClassName="animate-pulse" className="flex-1 content-panel rounded-lg shadow-lg min-h-[200px]" />
            )}
            {error && (
                <div className="flex-1 bg-rose-950/10 border border-rose-900/30 rounded-lg flex flex-col items-center justify-center text-rose-500 p-8 text-center font-mono min-h-[200px]">
