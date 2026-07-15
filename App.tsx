@@ -3195,10 +3195,11 @@ const App: React.FC = () => {
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {showLibraryList ? (
              <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col animate-fade-in">
-                {library.map(item => (
+                {library.map((item, i) => (
                     <div
                         key={item.book.id}
-                        className={`w-full flex items-center gap-3 p-4 border-b border-zinc-900 transition-all group ${
+                        style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
+                        className={`w-full flex items-center gap-3 p-4 border-b border-zinc-900 transition-all group animate-fade-in-up ${
                             activeBookId === item.book.id
                             ? 'bg-neon-cyan/5'
                             : 'hover:bg-zinc-900 active:bg-zinc-800/70'
@@ -3270,7 +3271,8 @@ const App: React.FC = () => {
                         <button
                           key={`${hit.chapterId}-${hit.pageIndex}-${i}`}
                           onClick={() => handleSearchResultClick(hit)}
-                          className="w-full text-left px-4 py-2.5 border-b border-zinc-900/50 hover:bg-neon-cyan/5 group transition-colors"
+                          style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
+                          className="w-full text-left px-4 py-2.5 border-b border-zinc-900/50 hover:bg-neon-cyan/5 group transition-colors animate-fade-in-up"
                         >
                           <div className="flex items-center justify-between gap-2 mb-1">
                             <span className="text-[8px] font-mono uppercase tracking-wider text-neon-cyan truncate">

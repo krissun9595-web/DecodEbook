@@ -221,12 +221,13 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
         {filteredFiles.length === 0 ? (
           <EmptyState icon={HardDrive} label="Cache_Empty" sublabel="Generated files will appear here after creation" className="h-full" />
         ) : (
-          filteredFiles.map(file => {
+          filteredFiles.map((file, i) => {
             const config = FILE_TYPE_CONFIG[file.fileType] || FILE_TYPE_CONFIG['audio'];
             return (
               <div
                 key={file.key}
-                className="content-panel rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group"
+                style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
+                className="content-panel rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group animate-fade-in-up"
               >
                 {/* Icon */}
                 <div className={`w-8 h-8 md:w-10 md:h-10 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
