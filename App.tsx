@@ -3255,9 +3255,8 @@ const App: React.FC = () => {
                     )}
                   </div>
                   {searchActive && (
-                    <div className="mt-1.5 flex items-center justify-between text-[8px] font-mono uppercase tracking-widest text-zinc-600">
+                    <div className="mt-1.5 flex items-center text-[8px] font-mono uppercase tracking-widest text-zinc-600">
                       <span>{isIndexing ? 'INDEXING…' : `${searchResults.length} MATCH${searchResults.length === 1 ? '' : 'ES'}`}</span>
-                      <button onClick={clearSearch} className="text-zinc-600 hover:text-neon-cyan transition-colors">CLEAR</button>
                     </div>
                   )}
                 </div>

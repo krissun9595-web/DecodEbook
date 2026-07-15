@@ -1118,7 +1118,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                <div className="flex items-start gap-4">
                                    <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-neon-cyan" /> : item.type === 'phrase' ? <Zap size={16} className="text-neon-red" /> : <Type size={16} className="text-cyan-400" />}</div>
                                    <div className="flex-1 min-w-0 space-y-3">
-                                       <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words" style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</p>
+                                       <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words"><span style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</span></p>
                                            <div className="flex items-center gap-3 mt-2 flex-wrap">
                                                <span className={`text-[9px] font-mono uppercase tracking-wide bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 ${typeColor}`}>{item.type}</span>
                                                {item.inked && <span className={`text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded border ${inkBadgeClass}`}>INKED</span>}
