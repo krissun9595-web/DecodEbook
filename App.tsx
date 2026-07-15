@@ -3432,7 +3432,7 @@ const App: React.FC = () => {
                   key={tab.id}
                   aria-label={tab.label}
                   onClick={() => { switchTab(tab.id as Tab); }}
-                  className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all text-[9px] font-bold uppercase tracking-wider font-tech ${
+                  className={`flex items-center justify-center gap-2 w-[120px] py-1.5 transition-all active:scale-[0.97] text-[9px] font-bold uppercase tracking-wider font-tech ${
                     activeTab === tab.id
                       ? 'bg-neon-cyan/10 text-neon-cyan shadow-[0_0_10px_rgba(0,243,255,0.1)]'
                       : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900'
@@ -3457,7 +3457,7 @@ const App: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => { switchTab(tab.id as Tab); }}
-                className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all ${
+                className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all active:scale-95 ${
                   activeTab === tab.id
                     ? 'text-neon-cyan bg-neon-cyan/10 border-b-2 border-neon-cyan'
                     : 'text-zinc-600 border-b-2 border-transparent'

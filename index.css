@@ -16,7 +16,7 @@
   }
   /* Primary action button (INITIATE / REGENERATE); merge .btn-go or .btn-stop for state. */
   .btn-action {
-    @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center;
+    @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center active:scale-[0.97];
   }
   .btn-go {
     @apply bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-glow-sm;
