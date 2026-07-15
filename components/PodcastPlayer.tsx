@@ -781,7 +781,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
                   </div>
                </div>
            ) : !isLoading && !error && (
-               <div className="flex-1 bg-black/40 border border-dashed border-zinc-800 rounded-lg flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono min-h-[200px]">
+               <div className="flex-1 content-panel rounded-lg shadow-lg flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono min-h-[200px]">
                    <Radio size={48} className="opacity-20 animate-pulse" />
                    <div className="text-center space-y-1">
                       <p className="text-xs uppercase tracking-[0.3em]">Ready_to_Stream</p>
