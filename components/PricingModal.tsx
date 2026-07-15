@@ -192,7 +192,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <Shield size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Account_Info</label>
                 </div>
-                <div className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-3">
+                <div className="content-panel rounded-sm p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-white font-mono">{user.email}</p>
@@ -258,7 +258,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Loader2 size={16} className="animate-spin text-zinc-500" />
                   </div>
                 ) : tierInfo ? (
-                  <div className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-3">
+                  <div className="content-panel rounded-sm p-4 space-y-3">
                     {monthlyCredits === Infinity ? (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-emerald-400 font-mono font-bold">Unlimited Credits</span>
@@ -481,7 +481,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {PACKS.map(pack => (
-                      <div key={pack.type} className="bg-void-2 border border-zinc-800 rounded-sm p-3 text-center space-y-2">
+                      <div key={pack.type} className="content-panel rounded-sm p-3 text-center space-y-2">
                         <p className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</p>
                         <p className="text-[9px] text-zinc-500 font-mono uppercase">credits</p>
                         <p className="text-sm font-bold text-amber-400">{pack.price}</p>
@@ -511,7 +511,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               {authMode === 'forgot' ? (
                 <div className="space-y-4">
                   <p className="text-xs text-zinc-500 font-mono leading-relaxed">Enter your email to receive a password reset link.</p>
-                  <div className="flex items-center gap-2 bg-void-2 border border-zinc-800 rounded-sm px-3 py-2.5">
+                  <div className="flex items-center gap-2 content-panel rounded-sm px-3 py-2.5">
                     <Mail size={14} className="text-zinc-600 shrink-0" />
                     <input id="acct-reset-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} />
                   </div>
@@ -526,11 +526,11 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 bg-void-2 border border-zinc-800 rounded-sm px-3 py-2.5">
+                    <div className="flex items-center gap-2 content-panel rounded-sm px-3 py-2.5">
                       <Mail size={14} className="text-zinc-600 shrink-0" />
                       <input id="acct-auth-email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="email@example.com" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
                     </div>
-                    <div className="flex items-center gap-2 bg-void-2 border border-zinc-800 rounded-sm px-3 py-2.5">
+                    <div className="flex items-center gap-2 content-panel rounded-sm px-3 py-2.5">
                       <KeyIcon size={14} className="text-zinc-600 shrink-0" />
                       <input id="acct-auth-password" name="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} placeholder="password" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">

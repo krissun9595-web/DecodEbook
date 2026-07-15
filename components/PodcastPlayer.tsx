@@ -674,7 +674,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
        </div>
 
        <div className="flex-1 flex flex-col gap-2 overflow-hidden w-full">
-           <div className={`bg-void-2 border border-zinc-800 rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isPlayerMinimized ? 'h-auto' : 'h-[277px]'}`}>
+           <div className={`content-panel rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isPlayerMinimized ? 'h-auto' : 'h-[277px]'}`}>
                {!isPlayerMinimized && (
                    <div className="flex-1 bg-[#010102] w-full flex items-center justify-center overflow-hidden relative group border-b border-zinc-900">
                       <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>

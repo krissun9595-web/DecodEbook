@@ -103,7 +103,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Account" className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-      <div className="bg-void-2 border border-zinc-800 rounded-lg w-full max-w-md p-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="content-panel rounded-lg w-full max-w-md p-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors"><X size={18} /></button>
 
         <div className="flex items-center gap-2 mb-6">

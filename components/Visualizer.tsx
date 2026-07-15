@@ -200,7 +200,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                     <Loader text="Extracting neural concepts..." />
                 </div>
             ) : concepts.length === 0 ? (
-                <div className="flex-1 h-full w-full relative bg-void-2 border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg">
+                <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
                     <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono bg-black">
                         <ImageIcon size={48} className="opacity-20" />
                         <div className="text-center space-y-1">
@@ -210,7 +210,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
                     </div>
                 </div>
             ) : currentConcept ? (
-                <div className="flex-1 h-full w-full relative group/container bg-void-2 border border-zinc-800 rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
+                <div className="flex-1 h-full w-full relative group/container content-panel rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
                     
                     <div className="relative bg-black group/image flex-1 min-h-0 flex items-center justify-center w-full overflow-hidden">
                         

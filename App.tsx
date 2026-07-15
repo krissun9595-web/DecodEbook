@@ -3071,7 +3071,7 @@ const App: React.FC = () => {
               ) : (
                 <div className="relative flex flex-col items-center justify-center space-y-8">
                   <div className="relative">
-                    <div className="w-32 h-32 bg-void-2 border border-zinc-800 rounded-full flex items-center justify-center group-hover:border-neon-cyan transition-all duration-500">
+                    <div className="w-32 h-32 content-panel rounded-full flex items-center justify-center group-hover:border-neon-cyan transition-all duration-500">
                         <Upload className="w-12 h-12 text-zinc-600 group-hover:text-neon-cyan transition-colors" />
                     </div>
                     <div className="absolute -inset-2 border border-dashed border-zinc-800 rounded-full animate-spin-slow pointer-events-none group-hover:border-neon-cyan/30"></div>

@@ -222,7 +222,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       <section id="section-problem" className="py-16 sm:py-20 md:py-28 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto">
           <FadeSection>
-            <div className="bg-void-2 border border-zinc-800 rounded-sm p-5 sm:p-8 md:p-10 mb-12 sm:mb-16 relative overflow-hidden">
+            <div className="content-panel rounded-sm p-5 sm:p-8 md:p-10 mb-12 sm:mb-16 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-red via-neon-cyan to-emerald-500" />
               <p className="text-[9px] sm:text-[10px] font-mono uppercase tracking-[0.3em] text-neon-cyan mb-3 sm:mb-4">Why "decode"?</p>
               <h2 className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-white mb-3 sm:mb-4 leading-snug">
@@ -538,7 +538,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             ].map((s, i) => (
               <FadeSection key={i} delay={i * 150}>
                 <div className="text-center space-y-2.5 sm:space-y-3">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto bg-void-2 border border-zinc-800 rounded-full flex items-center justify-center">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto content-panel rounded-full flex items-center justify-center">
                     <s.icon size={18} style={{ color: s.color }} />
                   </div>
                   <p className="text-[10px] font-mono tracking-widest" style={{ color: s.color }}>{s.step}</p>
@@ -673,7 +673,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
         </div>
 
         {/* Screenshot placeholder */}
-        <div className="w-full max-w-2xl aspect-video bg-void-2 border border-zinc-800 rounded-sm overflow-hidden relative group">
+        <div className="w-full max-w-2xl aspect-video content-panel rounded-sm overflow-hidden relative group">
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center space-y-2">
               <BookOpen size={32} className="text-zinc-700 mx-auto" />
@@ -770,7 +770,7 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           </div>
 
           {/* Book mock */}
-          <div className="bg-void-2 border border-zinc-800 rounded-sm overflow-hidden">
+          <div className="content-panel rounded-sm overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-[#080808]">
               <BookOpen size={12} className="text-neon-cyan" />
               <span className="text-[10px] font-mono text-zinc-500">The Little Prince — Antoine de Saint-Exupéry</span>
@@ -872,7 +872,7 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-8 text-center">Everything your books need.</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {FEATURES.map((f, i) => (
-              <div key={i} className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 hover:border-neon-cyan/20 transition-colors">
+              <div key={i} className="content-panel rounded-sm p-4 space-y-2 hover:border-neon-cyan/20 transition-colors">
                 <div className="flex items-center gap-2">
                   <f.icon size={14} className="text-neon-cyan" />
                   <span className="text-[10px] font-mono font-bold text-white tracking-wide">{f.title}</span>

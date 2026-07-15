@@ -231,7 +231,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             return (
               <div
                 key={file.key}
-                className="bg-void-2 border border-zinc-800 rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group"
+                className="content-panel rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group"
               >
                 {/* Icon */}
                 <div className={`w-8 h-8 md:w-10 md:h-10 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>

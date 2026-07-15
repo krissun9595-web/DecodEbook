@@ -14,6 +14,11 @@
   .hud-panel {
     @apply bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 shadow-glow-ambient;
   }
+  /* Content card/panel surface (zinc counterpart to .hud-panel) — player/visualizer
+     containers, file rows, module content panels. Radius stays inline (sm chips vs lg cards). */
+  .content-panel {
+    @apply bg-void-2 border border-zinc-800;
+  }
   /* Primary action button (INITIATE / REGENERATE); merge .btn-go or .btn-stop for state. */
   .btn-action {
     @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center active:scale-[0.97];
