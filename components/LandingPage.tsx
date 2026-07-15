@@ -661,7 +661,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
           {PILL_LABELS.map((label, i) => (
             <span
               key={label}
-              className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-sm border transition-all duration-500 ${
+              className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-sm border transition-all duration-300 ${
                 i === activePill
                   ? 'border-neon-cyan/50 text-neon-cyan bg-neon-cyan/10 shadow-[0_0_15px_rgba(0,243,255,0.15)]'
                   : 'border-zinc-800 text-zinc-600'
