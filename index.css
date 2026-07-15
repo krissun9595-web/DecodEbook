@@ -107,11 +107,15 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--neon-cyan);
 }
-/* Firefox — thin dark scrollbar matching the WebKit thumb/track (inherits to
-   all scroll containers). */
-html {
-  scrollbar-width: thin;
-  scrollbar-color: #333 #000;
+/* Firefox — thin dark scrollbar matching the WebKit thumb/track. Scoped to
+   browsers WITHOUT ::-webkit-scrollbar: on Chrome/Safari the standard
+   scrollbar-width/color would override (and disable) the custom ::-webkit rules
+   above, making the bar thicker and dropping the neon hover. */
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: #333 #000;
+  }
 }
 
 /* CRT Scanline Effect */
