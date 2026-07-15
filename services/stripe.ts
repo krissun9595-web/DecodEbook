@@ -16,7 +16,7 @@ export const TIER_CREDITS: Record<string, number> = {
 
 export const CREDIT_COSTS: Record<string, number> = {
   translate: 1, quickDefinition: 1, chat: 1,
-  analyzeBookStructure: 2, extractConcepts: 2, extractDictionary: 2, generateMindMap: 2,
+  analyzeBookStructure: 6, extractConcepts: 2, extractDictionary: 2, generateMindMap: 2,
   extractChapterText: 3, podcastScript: 3,
   tts: 5, generateImage: 10, podcastAudio: 40,
   videoSeedanceFast: 30, videoSeedance: 50, videoVeo: 150,

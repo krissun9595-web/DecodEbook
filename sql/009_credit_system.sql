@@ -28,7 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_credit_pack_purchases_user ON credit_pack_purchas
 UPDATE usage_logs SET credits_cost = CASE
   WHEN action LIKE 'text:%' THEN 1
   WHEN action = 'chat' THEN 1
-  WHEN action = 'analyzeBookStructure' THEN 2
+  WHEN action = 'analyzeBookStructure' THEN 6
   WHEN action IN ('extractConcepts', 'extractDictionary') THEN 2
   WHEN action IN ('extractChapterText', 'podcastScript') THEN 3
   WHEN action = 'tts' THEN 5
