@@ -24,6 +24,7 @@ const INK_LINE_COLORS: Record<AppSettings['highlightColor'], string> = {
   amber: '#fbbf24',
   violet: '#a78bfa',
   pink: '#ff4fd8',
+  yellow: '#FCEE0A',
 };
 
 interface Props {
@@ -47,6 +48,7 @@ const INK_BADGE_STYLES: Record<AppSettings['highlightColor'], string> = {
   amber: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
   violet: 'bg-violet-500/10 border-violet-500/30 text-violet-400',
   pink: 'bg-neon-pink/10 border-neon-pink/30 text-neon-pink',
+  yellow: 'bg-neon-yellow/10 border-neon-yellow/30 text-neon-yellow',
 };
 
 interface LayoutNode {

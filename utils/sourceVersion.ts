@@ -397,7 +397,49 @@
 //      one right margin) vs ragged-left, and store it (sourceJustified). Under the reader's 'auto'
 //      alignment setting this mirrors the source — justify + hyphenation for justified books, left
 //      for ragged ones (e.g. Elon Musk) — with a Settings override [Auto | Justify | Left].
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v92-justify-detect';
+// v93: a "Praise for …" page (centred heading over flush-RIGHT body prose) mis-split a two-sentence
+//      quote at its internal period. The right-aligned display detection is a property of the BODY
+//      lines, but it spanned ALL display lines — the centred heading's short right edge inflated the
+//      right-edge span, defeated the 'right' classification, and dropped the page into the prose
+//      splitter, where the second sentence's line (starting well right of the margin) read as a new
+//      first-line-indent paragraph. Classify alignment from the non-heading lines when there are ≥3
+//      of them, emit the heading as a heading, and join the flush-right quotes into one paragraph
+//      each (breaking on the credit dash) — short display pages keep the legacy whole-page basis.
+// v94: two-column short-line measure. The back-cover "what you'll learn" bullets split at their wrap
+//      ("…agentic mesh" | "and its transformative potential") because bothShort's short-line test
+//      measured every line against the DOCUMENT-wide text width — a column line spans only its column,
+//      so all of them read as "short data" and shattered one block per line. Now a line the band
+//      detector assigned to a column is measured against that COLUMN's own width (isShortColLine);
+//      single-column lines (col===undefined) keep the page-wide measure, so only two-column bands change.
+// v95: a CUSTOM-TEXT link (anchor is descriptive text, not the URL) whose anchor wraps across a line
+//      rendered as two underlined spans with a gap ("…COO of Google" | "DeepMind, writes") — pdf.js
+//      emits one link box per wrapped line, so the same-url anchor came out "[…Google](u) [DeepMind…](u)".
+//      The existing merge only covered the HYPHENATED wrap; now consecutive same-url spans separated by
+//      the soft-wrap space collapse into one link too (looped for a 3+-line anchor).
+// v96: keep front-matter bookmarks (Cover, Copyright, Title Page, Dedication) as their own catalogue
+//      chapters. Their titles aren't headings in the page, so heading-offset resolution left them
+//      unresolved and pass-2 DROPPED them — the first surviving chapter (Table of Contents) then
+//      absorbed their content via sourceStart→0. Now, when the outline is page-MONOTONIC (a reliable
+//      /XYZ outline, not a broken z-library /Fit one whose pages jump around), an unresolved entry is
+//      anchored at its OWN bookmark page marker when that offset falls in the gap between resolved
+//      neighbours. Non-monotonic outlines keep the drop, so broken bookmarks still can't split chapters.
+// v97: a multi-line RIGHT-ALIGNED signature at the end of prose (Foreword: "— Sean Falconer" /
+//      "Head of AI, Confluent") was split by bothShort (both lines short), so only the dash-led first
+//      line got the right-align tag and the title line rendered as stray left-aligned body. bothShort
+//      now keeps a FLUSH-RIGHT continuation (no leading dash) attached to its flush-right dash-led
+//      opener, so the whole credit is one right-aligned block; a NEW "—credit" still splits normally.
+// v98: the v97 right-credit-continuation join missed ITALIC credits. A set-off credit is usually
+//      italic, so the emphasis wrapper makes the line text start with "*" ("*— Sean Falconer*"), and
+//      the v97 guard's /^\s*[—–]/ dash test failed on the leading marker — so bothShort still split the
+//      title line off. Both the continuation guard AND isRightAttribution now skip a leading */_/~/`
+//      run before the dash (matching opensCredit), so an italic multi-line credit stays one right block.
+// v99: a chapter whose heading sets its NUMBER on its own line above the title ("2" ¶ "AFRICA", Elon
+//      Musk) left a stray bold "2" at the END of the previous chapter. findHeadingOffsetByTitle drops
+//      the number (normalizeHeadingText) and its `pre` only reaches a same-line number, so the chapter
+//      offset landed on the title line and orphaned the number line. Now the match optionally absorbs
+//      the title's EXACT leading number sitting on its own line just before the title, so the chapter
+//      starts at its number (specific-number match avoids grabbing an unrelated page/footer number).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v99-chapter-number-line';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

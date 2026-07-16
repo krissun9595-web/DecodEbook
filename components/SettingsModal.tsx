@@ -1,6 +1,7 @@
 
 import React, { useEffect } from 'react';
 import { X, Globe, Highlighter, PenLine, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
+import { Engine } from './ui/glyphs';
 import { AppSettings, ThemeColor } from '../types';
 import { inkLineStyle } from '../utils/inkLine';
 
@@ -18,6 +19,7 @@ const COLORS: { id: ThemeColor; label: string; class: string }[] = [
   { id: 'amber', label: 'Amber', class: 'bg-amber-500' },
   { id: 'violet', label: 'Violet', class: 'bg-violet-400' },
   { id: 'pink', label: 'Neural Pink', class: 'bg-neon-pink' },
+  { id: 'yellow', label: 'Cyber Yellow', class: 'bg-neon-yellow' },
 ];
 
 const INK_LINES: { id: AppSettings['inkLine']; label: string; style: 'solid' | 'wavy' | 'dotted' }[] = [
@@ -125,7 +127,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
           {/* LLM Engines */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-neon-cyan mb-2">
-              <Cpu size={18} />
+              <Engine size={18} />
               <label className="text-xs font-bold uppercase tracking-widest font-mono">LLM_Engines</label>
             </div>
 

@@ -201,7 +201,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             }}
             onContextMenu={(e) => { e.preventDefault(); setActionMode(actionMode === 'save' ? 'clear' : 'save'); setConfirmClear(false); }}
             disabled={actionMode === 'save' && filteredFiles.length === 0}
-            className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center border disabled:opacity-50 ${
+            className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center min-w-[104px] md:min-w-[122px] border disabled:opacity-50 ${
               actionMode === 'clear'
                 ? confirmClear
                   ? 'bg-neon-red text-white border-neon-red animate-pulse hover:bg-rose-600'

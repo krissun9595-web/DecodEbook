@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle } from 'lucide-react';
+import { Engine } from './ui/glyphs';
 import { createChatSession, sendMessageToChat } from '../services/gemini';
 import { FileContext } from '../types';
 import { Chat, Content } from "@google/genai";
@@ -315,7 +316,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-sm border-2 border-neon-cyan shadow-[0_0_25px_rgba(0,243,255,0.6)] flex items-center justify-center cursor-grab active:cursor-grabbing group relative overflow-visible transition-transform hover:scale-110 animate-float touch-none"
             >
                 <div className="absolute inset-0 bg-gradient-to-tr from-neon-cyan/40 to-transparent rounded-full animate-pulse-slow"></div>
-                <Cpu className="text-neon-cyan relative z-10 w-8 h-8 drop-shadow-[0_0_5px_rgba(0,243,255,1)]" />
+                <Engine className="text-neon-cyan relative z-10 w-8 h-8 drop-shadow-[0_0_5px_rgba(0,243,255,1)]" />
                 <div className="absolute -inset-2 border border-dashed border-neon-cyan/30 rounded-full animate-spin-slow pointer-events-none"></div>
                 
                 {/* Expand Button on Sphere */}

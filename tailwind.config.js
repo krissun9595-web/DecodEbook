@@ -12,6 +12,7 @@ export default {
           pink: '#ff4fd8',
           violet: '#a78bfa',
           amber: '#fbbf24',
+          yellow: '#FCEE0A',
         },
         // backgrounds: bg-void-0 (deepest) → bg-void-2
         void: {

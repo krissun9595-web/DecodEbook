@@ -926,9 +926,19 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
   const gap = `[\\s'’‘\\-‐‑–—.,()${junk}]+`;
   const pre = `[ \\t\\u00A0]*(?:\\d+[.)]?[ \\t\\u00A0]*)?[${junk}]*`;
   const post = `[ \\t${junk}]*`;
+  // A chapter heading often sets its NUMBER on its OWN line above the title ("2" ¶ "AFRICA").
+  // normalizeHeadingText drops the number, and `pre` only reaches a number on the SAME line, so the
+  // match would land on the title line and ORPHAN the lone number line at the END of the previous
+  // chapter (e.g. a stray bold "2" tail). When the title carries a leading number, let the match also
+  // absorb THAT EXACT number sitting on its own line (+ sentinels/blank line) just before the title —
+  // matching the specific number avoids grabbing an unrelated page/footer number.
+  const numMatch = title.match(/^\s*(\d{1,3})[.)]?\s+\S/u);
+  const numLine = numMatch
+    ? `(?:[ \\t\\u00A0${junk}]*${numMatch[1]}[.)]?[ \\t\\u00A0${junk}]*\\n+[ \\t\\u00A0${junk}]*)?`
+    : '';
   let pat: RegExp;
   try {
-    pat = new RegExp(`(^|\\n)(${pre}${parts.join(gap)}${post})(?=\\n|$)`, 'giu');
+    pat = new RegExp(`(^|\\n)(${numLine}${pre}${parts.join(gap)}${post})(?=\\n|$)`, 'giu');
   } catch {
     return undefined;
   }

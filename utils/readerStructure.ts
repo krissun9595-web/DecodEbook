@@ -915,19 +915,64 @@ export const paginateReaderText = (
   return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize, options.measureVisibleLength, options.preferLineBreaks);
 };
 
-// Baseline char budget per page, calibrated for ~700px of readable height at 'base'/'normal'.
-export const DEFAULT_PAGE_TARGET_SIZE = 1600;
+// Baseline char budget per page (SSR / no-DOM fallback only). ~2500 chars fills ~700px of readable
+// FULL-WIDTH prose at 'base'/'normal' — the old 1600 undershot by ~35%, leaving that fraction of every
+// page blank. The live path below measures the real zone and ignores this.
+export const DEFAULT_PAGE_TARGET_SIZE = 2500;
 
-// Chars-per-page scaled to the actual viewport and the reader's text/line-height settings, so a tall
-// desktop page holds more text (fewer paragraph splits, less bottom whitespace, and a long paragraph
-// can fit whole) while a short phone page holds less. Larger text / looser leading ⇒ fewer chars.
-// SHARED by the reader AND the search index so their page numbers agree — both must paginate with the
-// same size or "PG.NN" in search won't match the reader's page.
+// One reusable canvas to measure the average rendered width of a character in the reader's ACTUAL
+// font — far more accurate than a fixed chars-per-line guess.
+let __measureCanvas: HTMLCanvasElement | null = null;
+const CHAR_SAMPLE =
+  'the quick brown fox jumps over a lazy dog and then some more ordinary english prose to average out letter widths across a line';
+const measureAvgCharWidth = (font: string): number => {
+  try {
+    if (typeof document === 'undefined') return 0;
+    if (!__measureCanvas) __measureCanvas = document.createElement('canvas');
+    const ctx = __measureCanvas.getContext('2d');
+    if (!ctx) return 0;
+    ctx.font = font;
+    const w = ctx.measureText(CHAR_SAMPLE).width;
+    return w > 0 ? w / CHAR_SAMPLE.length : 0;
+  } catch { return 0; }
+};
+
+// Chars-per-page. PREFERRED path: measure the reader's ACTUAL page zone — the real text-column width
+// (max-w-3xl in single view, w-1/2 in split), the visible height, the real font/line-height, letter
+// spacing — so the budget equals what genuinely fits. This adapts exactly to window size, browser
+// ZOOM (all measured in CSS px), split view, text size and leading, with no magic constant. Falls back
+// to a viewport estimate only when the reader isn't mounted (e.g. a search index built before render).
+// SHARED by the reader AND the search index so their "PG.NN" page numbers agree — both call this and,
+// when the reader is on screen, both read the same DOM and get the same size.
 export const computePageTargetSize = (textSize: string, lineHeight: string): number => {
-  if (typeof window === 'undefined') return DEFAULT_PAGE_TARGET_SIZE;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return DEFAULT_PAGE_TARGET_SIZE;
+  const zone = document.querySelector('[data-reader-zone]') as HTMLElement | null;
+  const textEl = document.querySelector('[data-reader-text]') as HTMLElement | null;
+  if (zone && textEl && zone.clientHeight > 0 && textEl.clientWidth > 0) {
+    const zcs = getComputedStyle(zone);
+    // Usable text height: the scroll viewport minus its top padding and its bottom clearance
+    // (pb-32, reserved for the fixed player bar) — i.e. the band a page's text can actually occupy.
+    const visibleH = zone.clientHeight - parseFloat(zcs.paddingTop || '0') - parseFloat(zcs.paddingBottom || '0');
+    const tcs = getComputedStyle(textEl);
+    const textW = textEl.clientWidth - parseFloat(tcs.paddingLeft || '0') - parseFloat(tcs.paddingRight || '0');
+    const fontSizePx = parseFloat(tcs.fontSize || '16') || 16;
+    const lineHeightPx = parseFloat(tcs.lineHeight || '0') || fontSizePx * 1.5;
+    const ls = parseFloat(tcs.letterSpacing || '0'); // 'normal' -> NaN
+    const font = `${tcs.fontStyle || 'normal'} ${tcs.fontWeight || '400'} ${tcs.fontSize || '16px'} ${tcs.fontFamily || 'serif'}`;
+    const avgCharW = measureAvgCharWidth(font) + (Number.isNaN(ls) ? 0 : ls);
+    if (visibleH > 0 && textW > 0 && lineHeightPx > 0 && avgCharW > 0) {
+      const charsPerLine = textW / avgCharW;
+      const linesPerPage = visibleH / lineHeightPx;
+      // 0.94: small headroom for inter-paragraph gaps (vertical space the character count can't see)
+      // so a full page doesn't spill into a scrollbar. Fills ~94% vs the old ~63%.
+      const size = Math.round(charsPerLine * linesPerPage * 0.94);
+      return Math.min(6000, Math.max(500, size));
+    }
+  }
+  // Fallback: viewport estimate (recalibrated to ~2500/700px full width).
   const readable = Math.max(360, window.innerHeight - 170); // minus header + reader controls chrome
   const sizeFactor: Record<string, number> = { sm: 1.22, base: 1, lg: 0.82, xl: 0.66 };
   const lineFactor: Record<string, number> = { tight: 1.12, normal: 1, relaxed: 0.9, loose: 0.82 };
   const scaled = (readable / 700) * DEFAULT_PAGE_TARGET_SIZE * (sizeFactor[textSize] ?? 1) * (lineFactor[lineHeight] ?? 1);
-  return Math.round(Math.min(4200, Math.max(1100, scaled)));
+  return Math.round(Math.min(6000, Math.max(1100, scaled)));
 };

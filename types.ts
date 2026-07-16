@@ -172,7 +172,7 @@ export enum Tab {
   GEN_FILES = 'GEN_FILES'
 }
 
-export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'violet' | 'pink';
+export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'violet' | 'pink' | 'yellow';
 
 export interface AppSettings {
   targetLanguage: string;

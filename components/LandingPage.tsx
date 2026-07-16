@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Languages, Headphones, Brain, Film, Mic2, ChevronDown, Zap, Crown, ArrowRight, Sparkles, MessageSquare, Map, Image as ImageIcon, Upload } from 'lucide-react';
+import { Pro } from './ui/glyphs';
 import ScrollVelocity from './ui/ScrollVelocity';
 import FallingText from './ui/FallingText';
 import DecryptedText from './ui/DecryptedText';
@@ -691,7 +692,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
             Start Free — 100 credits/mo <ArrowRight size={14} />
           </button>
           <button onClick={onEnterApp} className="px-8 py-3 border border-neon-cyan/30 text-neon-cyan font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/10 transition-all flex items-center gap-2">
-            Go Pro — $9.99/mo <Crown size={14} />
+            Go Pro — $9.99/mo <Pro size={14} />
           </button>
         </div>
         <p className="text-[10px] text-zinc-600 font-mono text-center">No credit card required &middot; Upload EPUB, PDF, TXT</p>

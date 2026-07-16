@@ -18,7 +18,7 @@ import {
 // reader, audio, or translation paths. The few small helpers below mirror the
 // ones local to AudioBook.tsx; if that pipeline changes, mirror it here too.
 
-const PAGE_TARGET_SIZE = 1600;
+const PAGE_TARGET_SIZE = 2500; // fallback only; App passes the live computePageTargetSize value
 
 const isNotesChapterTitle = (value: string): boolean =>
   /^(?:chapter\s+)?(?:notes|endnotes|footnotes|references)\b|(?:notes|endnotes|footnotes)$/iu.test(value.trim());

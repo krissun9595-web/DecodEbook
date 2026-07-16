@@ -72,7 +72,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v31-side-by-side-columns';
+const CHAPTER_TEXT_CACHE_VERSION = 'v32-contents-index-format';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v18-dbname-restore';
 
@@ -238,6 +238,7 @@ const HIGHLIGHT_STYLES: Record<ThemeColor, string> = {
   amber: 'text-amber-400 drop-shadow-[0_0_2px_rgba(251,191,36,0.8)]',
   violet: 'text-violet-400 drop-shadow-[0_0_2px_rgba(167,139,250,0.8)]',
   pink: 'text-neon-pink drop-shadow-[0_0_2px_rgba(255,79,216,0.8)]',
+  yellow: 'text-neon-yellow drop-shadow-[0_0_2px_rgba(252,238,10,0.8)]',
 };
 
 // Hyperlinks render in the app's selected accent colour (not the PDF's original link colour), so a
@@ -250,6 +251,7 @@ const LINK_STYLES: Record<ThemeColor, string> = {
   amber: 'text-amber-400 underline decoration-amber-400/70 underline-offset-4 hover:text-white',
   violet: 'text-violet-400 underline decoration-violet-400/70 underline-offset-4 hover:text-white',
   pink: 'text-neon-pink underline decoration-neon-pink/70 underline-offset-4 hover:text-white',
+  yellow: 'text-neon-yellow underline decoration-neon-yellow/70 underline-offset-4 hover:text-white',
 };
 
 const HIGHLIGHT_TEXT_COLORS: Record<ThemeColor, string> = {
@@ -259,6 +261,7 @@ const HIGHLIGHT_TEXT_COLORS: Record<ThemeColor, string> = {
   amber: '#fbbf24',
   violet: '#a78bfa',
   pink: '#ff4fd8',
+  yellow: '#FCEE0A',
 };
 
 const INK_LINE_COLORS: Record<ThemeColor, string> = {
@@ -268,6 +271,7 @@ const INK_LINE_COLORS: Record<ThemeColor, string> = {
   amber: '#fbbf24',
   violet: '#a78bfa',
   pink: '#ff4fd8',
+  yellow: '#FCEE0A',
 };
 
 const TEXT_SIZES: Record<string, string> = {
@@ -456,6 +460,13 @@ const isNotesChapterTitle = (value: string): boolean =>
 
 const isIndexChapterTitle = (value: string): boolean =>
   /^(?:chapter\s+)?index\b|\bindex$/iu.test(value.trim());
+
+// A Table of Contents (and List of Figures/Tables) is the SAME structure as a back-of-book index —
+// the isListPage extractor emits it one entry per line with NBSP-encoded sub-entry depth. It must get
+// the index's entry-per-paragraph formatting, NOT rearrangeAndCleanText, which reflows the entries
+// into run-on paragraphs (the "Table of Contents" chapter was falling through to the prose path).
+const isContentsChapterTitle = (value: string): boolean =>
+  /^(?:table\s+of\s+)?contents$|^list\s+of\s+(?:figures|tables|illustrations)$/iu.test(value.trim());
 
 const normalizeNoteScopeText = (value?: string): string =>
   stripInlineFormatSyntax(value || '')
@@ -1560,7 +1571,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // line settings). Shared by the initial load and re-pagination so both stay identical.
   const paginateChapterText = (cleanText: string): ReaderPage[] => {
     const isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
-    const isIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
+    const isIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
+      || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
     return paginateReaderText(cleanText, computePageTargetSize(settings.textSize, settings.lineHeight), {
       topicsPerPage: 10,
       leadingHeading: leadingTopicHeadingFor(chapter, fileContext.content, cleanText),
@@ -1574,6 +1586,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // new page that contains them. Kept in a ref so the resize listener always calls the latest closure
   // without re-subscribing every render.
   const repaginateRef = useRef<() => void>(() => {});
+  // Tracks which chapter text we've already re-paginated against the MEASURED zone, so the one-time
+  // post-render correction (below) runs once per chapter, not on every pages change.
+  const measuredForTextRef = useRef<string | null>(null);
   repaginateRef.current = () => {
     const cleanText = cleanTextRef.current;
     if (!cleanText || pages.length === 0) return;
@@ -1597,24 +1612,60 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.textSize, settings.lineHeight]);
 
-  // Viewport resize (debounced) → re-paginate, so the reader's page count tracks the screen and stays
-  // in step with the search index (which paginates with the same live page size). Only react to a
-  // SIGNIFICANT height change (orientation, desktop resize) — mobile address-bar show/hide nudges the
-  // height by tens of pixels while scrolling, which shouldn't re-flow the page.
-  const lastViewportHeightRef = useRef<number>(typeof window !== 'undefined' ? window.innerHeight : 0);
+  // Re-paginate whenever the reader's page ZONE changes size — its first real layout (so the measured
+  // page budget replaces the pre-render estimate), window resize, and browser ZOOM (which rescales the
+  // zone in CSS px). A ResizeObserver on the zone catches width AND height (the old height-only window
+  // listener missed horizontal resize and zoom). Only re-flows on a SIGNIFICANT change — a zoom step
+  // (~10% ⇒ tens–hundreds of px) or a real window resize — and IGNORES casual nudges: a mobile
+  // address-bar show/hide (~60px height), sub-pixel jitter, and small drags. This matters because a
+  // re-flow shifts page boundaries and thus invalidates the per-page audio/translation caches (keyed on
+  // page text), so churning on every tiny nudge would force needless regeneration. Width is the bigger
+  // lever (chars per line) so it has the lower threshold; height uses a higher one to clear the address
+  // bar. First render + split toggles are handled elsewhere, so the observer only handles later resizes.
   useEffect(() => {
+    const zone = readerScrollRef.current;
+    if (!zone) return;
     let timer: ReturnType<typeof setTimeout>;
-    const onResize = () => {
+    let last = { w: zone.clientWidth, h: zone.clientHeight };
+    let primed = false; // the observer's initial callback is the baseline, not a change to react to
+    const onZoneResize = () => {
+      const w = zone.clientWidth, h = zone.clientHeight;
+      if (!primed) { primed = true; last = { w, h }; return; }
+      if (Math.abs(w - last.w) < 56 && Math.abs(h - last.h) < 120) return;
+      last = { w, h };
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (Math.abs(window.innerHeight - lastViewportHeightRef.current) < 120) return;
-        lastViewportHeightRef.current = window.innerHeight;
-        repaginateRef.current();
-      }, 250);
+      timer = setTimeout(() => { if (cleanTextRef.current) repaginateRef.current(); }, 320);
     };
-    window.addEventListener('resize', onResize);
-    return () => { clearTimeout(timer); window.removeEventListener('resize', onResize); };
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(onZoneResize);
+      ro.observe(zone);
+      return () => { clearTimeout(timer); ro.disconnect(); };
+    }
+    window.addEventListener('resize', onZoneResize);
+    return () => { clearTimeout(timer); window.removeEventListener('resize', onZoneResize); };
   }, []);
+
+  // Split toggle changes the text column width (max-w-3xl ↔ w-1/2), so the measured page budget
+  // changes — re-paginate against the new column. (Skips first mount; loadContent handles that.)
+  const didMountSplitRef = useRef(false);
+  useEffect(() => {
+    if (!didMountSplitRef.current) { didMountSplitRef.current = true; return; }
+    if (cleanTextRef.current) repaginateRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
+
+  // The FIRST pagination of a chapter runs before its text column is on screen, so computePageTargetSize
+  // falls back to the viewport estimate. Once the page has rendered (text element measurable), re-
+  // paginate ONCE against the measured zone for an exact fill. Guarded per-chapter so it can't loop
+  // (the re-paginate changes `pages`, which re-fires this effect — the ref check makes that a no-op).
+  useEffect(() => {
+    if (!pages.length || !cleanTextRef.current) return;
+    if (measuredForTextRef.current === cleanTextRef.current) return;
+    measuredForTextRef.current = cleanTextRef.current;
+    const id = requestAnimationFrame(() => { if (cleanTextRef.current) repaginateRef.current(); });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages]);
 
   const loadContent = async () => {
     setIsLoadingText(true);
@@ -1661,7 +1712,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // reflow its one-entry-per-line layout into joined paragraphs and strip the
         // sub-entry indentation. Use a light cleanup that preserves both.
         const isIndexChapterSource =
-          isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
+          isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '') ||
+          isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
         // A PDF source (its extraction carries "[[PAGE n]]" markers) encodes index
         // sub-entry depth as leading non-breaking spaces and emits one entry per line, so
         // it needs its own entry-per-paragraph formatting; EPUB indexes keep the existing
@@ -2489,7 +2541,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
   const currentReaderPage = pages[currentPage];
   const isNotesChapter = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
-  const isIndexChapter = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
+  // A Table of Contents (and List of Figures/Tables) is the SAME structured entry-per-line list as a
+  // back-of-book index — it must render with the index's sub-entry INDENTATION (NBSP depth) and, crucially,
+  // its page-number links must render as PLAIN links, NOT footnote/reference markers. Without this the TOC
+  // chapter fell to the prose render path: indentation dropped, and each "[76](#pdfref)" page number was
+  // parsed as a reference marker and broken onto its own line. (Mirrors the extraction-side gate.)
+  const isIndexChapter = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
+    || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
   const activeNoteTarget =
     typeof pendingNavigationTarget === 'object' && pendingNavigationTarget?.type === 'note'
       ? pendingNavigationTarget
@@ -3604,7 +3662,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           </div>
 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-void-1 relative flex flex-col hud-border text-left">
-             <div ref={readerScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
+             <div ref={readerScrollRef} data-reader-zone="" className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
                   // An extracted PDF figure — inline image loaded from the cache.
                   if (para.figure) {
@@ -3723,6 +3781,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
+                            data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                             style={{ ...paragraphStyle, ...alignStyle, ...justifyStyle }}
                           >

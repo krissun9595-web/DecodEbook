@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { X, LogIn, UserPlus, Github, Mail, Key, Loader2, Eye, EyeOff, Shield, Terminal, ExternalLink } from 'lucide-react';
+import { Privacy } from './ui/glyphs';
 import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
   isSupabaseConfigured
@@ -107,7 +108,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
         <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors"><X size={18} /></button>
 
         <div className="flex items-center gap-2 mb-6">
-          <Shield size={18} className="text-neon-cyan" />
+          <Privacy size={18} className="text-neon-cyan" />
           <h2 className="text-sm font-bold text-white font-mono uppercase tracking-widest">
             {user ? 'MY_ACCOUNT' : modeTitle[mode]}
           </h2>

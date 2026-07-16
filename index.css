@@ -20,8 +20,12 @@
     @apply bg-void-2 border border-zinc-800;
   }
   /* Primary action button (INITIATE / REGENERATE); merge .btn-go or .btn-stop for state. */
+  /* min-w fits the widest label (REGENERATE) so the button keeps ONE width across
+     INITIATE / REGENERATE / STOP — state change no longer resizes it (which was
+     shifting the toolbar and making the dropdowns look mismatched). Content is
+     centered, so shorter labels just get symmetric padding. */
   .btn-action {
-    @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center active:scale-[0.97];
+    @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center active:scale-[0.97] min-w-[104px] md:min-w-[122px];
   }
   .btn-go {
     @apply bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-glow-sm;
@@ -32,6 +36,25 @@
   /* Inline selector cluster (voice / tone / style / language). */
   .select-group {
     @apply flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800;
+  }
+  /* Root-cause fix for uneven module dropdowns: a native <select> sizes to its
+     longest option and ignores the CSS width (and, as a flex child, min-width:auto
+     = content width). So modules with long options (languages, styles, book titles)
+     rendered wider than voice_synth. appearance-none + min-width:0 make the Tailwind
+     width (w-[80px] md:w-[112px]) authoritative so every dropdown is identical; the
+     background chevron restores the dropdown affordance. */
+  .select-group select {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 auto;      /* never grow or shrink — width is authoritative */
+    min-width: 0;        /* don't let long option text floor the width above w-[…] */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 14px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2300f3ff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1px center;
   }
 }
 
@@ -48,6 +71,7 @@
   --neon-pink: #ff4fd8;
   --neon-violet: #a78bfa;
   --neon-amber: #fbbf24;
+  --neon-yellow: #FCEE0A;
 
   /* backgrounds (0 = deepest) */
   --bg-dark: #050505; /* legacy alias kept for existing references */

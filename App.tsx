@@ -2069,10 +2069,8 @@ const App: React.FC = () => {
       // not paragraph lines, by exactly this line-fill signal.)
       const sortedEdges = [...allRightEdges].sort((a, b) => a - b);
       const bodyRightEdge = sortedEdges.length ? sortedEdges[Math.floor(sortedEdges.length * 0.9)] : 0;
-      const isShortDataLine = (line: PdfLine, bodyLeft: number): boolean => {
-        const measure = bodyRightEdge - bodyLeft;
-        return measure > 0 && (line.rightX - line.x) < measure * 0.5;
-      };
+      // (Short-data-line detection is column-aware — see isShortColLine in the per-page loop, which
+      // measures a column line against its own column width instead of this document-wide margin.)
       // A footnote entry starts a new block: it sits in the smaller footnote font and opens
       // with a marker — already linked by the note-anchor injection ("[II](#…) Adam Smith…"),
       // or a bare number/Roman ("II. …") for a footnote whose forward marker wasn't found.
@@ -2204,9 +2202,20 @@ const App: React.FC = () => {
         if (dispLines.length >= 3) {
           const span = (a: number[]): number => (a.length ? Math.max(...a) - Math.min(...a) : 0);
           const tol = Math.max(6, bodyFont);
-          const leftVaries = span(dispLines.map(l => l.x)) > bodyFont * 2;
-          const rightSpan = span(dispLines.map(l => l.rightX));
-          const centreSpan = span(dispLines.map(l => (l.x + l.rightX) / 2));
+          // Alignment is a property of the BODY lines. A centred page heading ("Praise for …")
+          // sitting above flush-right body prose has a right edge SHORT of the body's right
+          // margin, so including it inflated the right-edge span and defeated the right-aligned
+          // detection — the page fell through to the prose splitter, which then mis-split a
+          // two-sentence flush-right quote at its internal period (the second sentence's line
+          // starts well right of the margin and reads as a first-line indent). Classify from the
+          // non-heading lines when there are enough of them; keep the legacy whole-page basis for
+          // short display pages (title/dedication/epigraph) so their emission is byte-unchanged.
+          const dispBody = dispLines.filter(line => !isHeadingLine(line));
+          const useBody = dispBody.length >= 3;
+          const alignSrc = useBody ? dispBody : dispLines;
+          const leftVaries = span(alignSrc.map(l => l.x)) > bodyFont * 2;
+          const rightSpan = span(alignSrc.map(l => l.rightX));
+          const centreSpan = span(alignSrc.map(l => (l.x + l.rightX) / 2));
           const align: 'right' | 'center' | null =
             leftVaries && rightSpan <= tol ? 'right'
               : leftVaries && rightSpan > tol && centreSpan <= tol ? 'center'
@@ -2220,32 +2229,56 @@ const App: React.FC = () => {
             // measure), JOIN the wrapped lines into paragraphs (breaking on a larger vertical gap) so
             // each quote and its attribution is one right-aligned paragraph. (Centre stays one-per-line
             // — title pages are genuine line-lists.)
-            const measure = Math.max(...dispLines.map(l => l.rightX)) - Math.min(...dispLines.map(l => l.x));
-            const proseLike = align === 'right' && measure > 0 && (median(dispLines.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
-            let outBlocks: EmitBlock[];
-            if (proseLike) {
-              const gaps = dispLines.slice(1).map((l, i) => dispLines[i].y - l.y).filter(g => g > 0 && g < bodyFont * 4);
-              const medGap = median(gaps) || bodyFont;
-              // Break a paragraph on a larger vertical gap OR before a line that opens with an em/en
-              // dash — the reliable "attribution/credit" marker — so a quote and its "—Name, title"
-              // become separate right-aligned paragraphs (the credit gap is only slightly wider than
-              // the line gap, so the dash carries the split).
-              const opensCredit = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[—–]/u.test(t); // skip a leading italic/bold marker: an italic credit is "*—Name*"
-              const groups: PdfLine[][] = [];
-              let cur: PdfLine[] = [];
-              for (let i = 0; i < dispLines.length; i++) {
-                const gap = i > 0 ? dispLines[i - 1].y - dispLines[i].y : 0;
-                if (i > 0 && cur.length && (gap > medGap * 1.4 || opensCredit(dispLines[i].text))) { groups.push(cur); cur = []; }
-                cur.push(dispLines[i]);
+            const measure = Math.max(...alignSrc.map(l => l.rightX)) - Math.min(...alignSrc.map(l => l.x));
+            const proseLike = align === 'right' && measure > 0 && (median(alignSrc.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
+            // Turn a contiguous run of display lines into blocks: JOIN wrapped prose into paragraphs
+            // (breaking on a larger vertical gap or a leading credit dash) when proseLike, else one
+            // item per line (a genuine line-list).
+            const bodyToBlocks = (src: PdfLine[]): EmitBlock[] => {
+              if (!src.length) return [];
+              if (proseLike) {
+                const gaps = src.slice(1).map((l, i) => src[i].y - l.y).filter(g => g > 0 && g < bodyFont * 4);
+                const medGap = median(gaps) || bodyFont;
+                // Break a paragraph on a larger vertical gap OR before a line that opens with an em/en
+                // dash — the reliable "attribution/credit" marker — so a quote and its "—Name, title"
+                // become separate right-aligned paragraphs (the credit gap is only slightly wider than
+                // the line gap, so the dash carries the split).
+                const opensCredit = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[—–]/u.test(t); // skip a leading italic/bold marker: an italic credit is "*—Name*"
+                const groups: PdfLine[][] = [];
+                let cur: PdfLine[] = [];
+                for (let i = 0; i < src.length; i++) {
+                  const gap = i > 0 ? src[i - 1].y - src[i].y : 0;
+                  if (i > 0 && cur.length && (gap > medGap * 1.4 || opensCredit(src[i].text))) { groups.push(cur); cur = []; }
+                  cur.push(src[i]);
+                }
+                if (cur.length) groups.push(cur);
+                return groups.map(g => {
+                  let t = g[0].text;
+                  for (let k = 1; k < g.length; k++) t = /[A-Za-z]-$/.test(t) && /^[a-z]/.test(g[k].text) ? t + g[k].text : `${t} ${g[k].text}`;
+                  return { text: sentinel + t.replace(/\s+/gu, ' ').trim(), role: 'body' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' };
+                });
               }
-              if (cur.length) groups.push(cur);
-              outBlocks = groups.map(g => {
-                let t = g[0].text;
-                for (let k = 1; k < g.length; k++) t = /[A-Za-z]-$/.test(t) && /^[a-z]/.test(g[k].text) ? t + g[k].text : `${t} ${g[k].text}`;
-                return { text: sentinel + t.replace(/\s+/gu, ' ').trim(), role: 'body' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' };
-              });
+              return src.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }));
+            };
+            let outBlocks: EmitBlock[];
+            if (useBody) {
+              // Classified from the body: walk the display lines in reading order, emit each heading
+              // as its own heading block and each maximal run of body lines through bodyToBlocks — the
+              // heading keeps its role while the flush-right body is joined into quote paragraphs.
+              outBlocks = [];
+              let run: PdfLine[] = [];
+              const flushRun = () => { if (run.length) { outBlocks.push(...bodyToBlocks(run)); run = []; } };
+              for (const line of dispLines) {
+                if (isHeadingLine(line)) {
+                  flushRun();
+                  outBlocks.push({ text: line.text.replace(/[*_~]/gu, '').replace(/\s+/gu, ' ').trim(), role: 'heading', firstX: line.x, firstRightX: line.rightX, lastRightX: line.rightX, lastText: line.text, topY: line.pageY });
+                } else {
+                  run.push(line);
+                }
+              }
+              flushRun();
             } else {
-              outBlocks = dispLines.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }));
+              outBlocks = bodyToBlocks(dispLines);
             }
             pageEmit.push({ pageNum, blocks: outBlocks, rightMargin, bodyLeft });
             continue;
@@ -2258,6 +2291,29 @@ const App: React.FC = () => {
         const bodyLines = lines.filter(line => !isHeadingLine(line));
         const bodyGaps = bodyLines.slice(1).map((line, index) => bodyLines[index].y - line.y).filter(gap => gap > 0 && gap < bodyFont * 3);
         const bodyLineGap = median(bodyGaps) || lineGap;
+
+        // isShortDataLine's "measure" (the page's text width) is DOCUMENT-wide, but on a two-column
+        // page a column line spans only its column — so every left/right-column line reads as "short"
+        // and bothShort shatters a wrapped bullet/paragraph into one block per line (the back-cover
+        // "what you'll learn" bullets split at their wrap: "…agentic mesh" | "and its transformative
+        // potential"). For lines the band detector assigned to a column, measure against that COLUMN's
+        // own left/right edges instead. col===undefined (single-column) keeps the page-wide measure,
+        // so nothing outside a detected two-column band changes.
+        const colBounds = new Map<0 | 1, { left: number; right: number }>();
+        for (const c of [0, 1] as const) {
+          const cl = bodyLines.filter(l => l.col === c && l.text.trim());
+          if (cl.length < 3) continue; // a real column, not a stray line the sort tagged
+          const rs = cl.map(l => l.rightX).sort((a, b) => a - b);
+          const ls = cl.map(l => l.x).sort((a, b) => a - b);
+          colBounds.set(c, { left: ls[Math.floor(ls.length * 0.1)], right: rs[Math.floor(rs.length * 0.9)] });
+        }
+        const isShortColLine = (line: PdfLine): boolean => {
+          const b = line.col !== undefined ? colBounds.get(line.col) : undefined;
+          const left = b ? b.left : bodyLeft;
+          const right = b ? b.right : bodyRightEdge;
+          const measure = right - left;
+          return measure > 0 && (line.rightX - line.x) < measure * 0.5;
+        };
 
         // A LABELED HANGING-INDENT list — a dialogue ("CASSANDRA: …" / "RAY: …"), a CIP/cataloging
         // block ("Names: …" / "Title: …"), a glossary: each entry starts at the body margin and its
@@ -2354,8 +2410,24 @@ const App: React.FC = () => {
               // detectLabeledHangingList re-splits, and breaking before it would fragment the
               // dialogue into pieces too small to detect (a one-word turn beside a short wrapped
               // continuation otherwise tripped bothShort and merged that run into one paragraph).
-              const bothShort = isShortDataLine(previous, bodyLeft) && isShortDataLine(current, bodyLeft)
-                && !labelStart.test(current.text.replace(/[*_~]/gu, '').trim());
+              // A multi-line RIGHT-ALIGNED signature/credit ("— Sean Falconer" / "Head of AI,
+              // Confluent") at the end of prose is not line-structured data — both lines are short but
+              // sit FLUSH-RIGHT. bothShort would split it, and only the dash-led first line then gets
+              // the right-align tag (isRightAttribution below), leaving the title line as stray left-
+              // aligned body. Keep a flush-right continuation (no leading dash) attached to its flush-
+              // right, dash-led opener; a NEW credit (its own leading dash) still splits normally.
+              // The opener/continuation may be ITALIC (a set-off credit is often italic), so the line
+              // text starts with an emphasis marker ("*— Sean Falconer*") — skip a leading */_/~/` run
+              // before the dash, exactly like opensCredit in the display branch.
+              const flushRightEdge = rightMargin - Math.max(6, bodyFont);
+              const opensDash = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[—–]/u.test(t);
+              const attributionContinuation =
+                rightMargin > 0 &&
+                opensDash(group[0].text) && group[0].rightX >= flushRightEdge &&
+                current.rightX >= flushRightEdge && !opensDash(current.text);
+              const bothShort = isShortColLine(previous) && isShortColLine(current)
+                && !labelStart.test(current.text.replace(/[*_~]/gu, '').trim())
+                && !attributionContinuation;
               endsBlock =
                 bothShort ||
                 startsFootnoteEntry(current) ||
@@ -2420,6 +2492,13 @@ const App: React.FC = () => {
           // soft hyphen + join space (ASCII "-" compounds are left intact).
           text = text.replace(/([A-Za-z])[‐‑­]\]\(([^)]*)\)\s+\[([a-z][^\]]*)\]\(\2\)/gu, '$1$3]($2)');
           text = text.replace(/([A-Za-z])[‐‑­](\]\([^)]*\))?\s+(\[?)([a-z])/gu, '$1$2$3$4');
+          // A custom-text link (anchor is descriptive text, not the URL itself) whose anchor wrapped
+          // across a line arrives as TWO adjacent spans to the SAME url, split by the soft-wrap space
+          // ("[…COO of Google](u) [DeepMind, writes](u)") — pdf.js emits one link box per wrapped line.
+          // Collapse consecutive same-url spans into one so the reader underlines one continuous link
+          // instead of two with a gap. Looped, so an anchor wrapping across 3+ lines fully coalesces.
+          let mergedSpan: string;
+          do { mergedSpan = text; text = text.replace(/\]\(([^)]*)\)(\s+)\[([^\]]*)\]\(\1\)/gu, '$2$3]($1)'); } while (text !== mergedSpan);
           // A heading is styled as a whole by the reader, so inline emphasis inside it is
           // noise. It also actively harms: a bold-only glyph among bold-italic words (e.g.
           // an upright bold chapter number, "Chapter **5.** *The Life…*") leaves a stray
@@ -2435,7 +2514,7 @@ const App: React.FC = () => {
             // chapter titles), the attribution dash is not — so headings/index tails never match.
             const groupMinX = Math.min(...group.map(l => l.x));
             const groupMaxRight = Math.max(...group.map(l => l.rightX));
-            const isRightAttribution = !groupIsHeading && /^\s*[\u2014\u2013]/u.test(text)
+            const isRightAttribution = !groupIsHeading && /^\s*(?:[*_~`]+\s*)?[\u2014\u2013]/u.test(text)
               && groupMinX > bodyLeft + bodyFont * 4 && groupMaxRight >= rightMargin - Math.max(6, bodyFont);
             blocks.push({
               text: isRightAttribution ? '\uE011' + text : text,
@@ -2665,12 +2744,24 @@ const App: React.FC = () => {
         return { entry, offset };
       });
 
-      // Pass 2: an entry still unresolved has no findable title and a broken destination. If it is an
-      // image-only plate section, anchor it — in reading order — to the figure cluster that falls in
-      // its GAP between the nearest resolved neighbours (so "Picture Section" lands with the plates
-      // before Appendix 1, while front matter like "Title Page"/"Dedication", whose gap holds no
-      // figures, stays unresolved and is dropped). Bounding to the gap is what keeps an unanchorable
-      // front-matter entry from greedily grabbing the one plate cluster 600k chars away.
+      // A RELIABLE outline has destination pages in non-decreasing reading order (proper /XYZ
+      // destinations, e.g. Agentic Mesh / Singularity). A BROKEN one (z-library /Fit bookmarks, e.g.
+      // Elon Musk) has pages that jump around — Title Page/Dedication/Ch1 all point at the same wrong
+      // page. Only trust a bookmark's own PAGE destination for an unresolved entry when the whole
+      // outline is monotonic; otherwise a broken pointer would drop the entry onto the wrong page.
+      const outlineMonotonic =
+        outlineEntries.length > 0 &&
+        outlineEntries.every((e, i) => i === 0 || e.page >= outlineEntries[i - 1].page);
+      // Pass 2: an entry still unresolved has no findable title. If it is an image-only plate section,
+      // anchor it — in reading order — to the figure cluster that falls in its GAP between the nearest
+      // resolved neighbours (so "Picture Section" lands with the plates before Appendix 1). Otherwise,
+      // when the outline is reliable (monotonic pages), front matter whose title is NOT a heading
+      // (Cover, Copyright, Title Page, Dedication) is anchored at its OWN bookmark page marker when
+      // that offset falls inside the gap — so it survives as its own catalogue chapter instead of
+      // dissolving into the next one (the first survivor's start is pulled to 0). A broken /Fit
+      // bookmark (non-monotonic outline, or a page pointing OUTSIDE the gap) is still dropped, which
+      // keeps it from splitting a real chapter. Bounding to the gap also stops an unanchorable entry
+      // from greedily grabbing the one plate cluster 600k chars away.
       const outline: PdfOutlineItem[] = prelim.map((item, i) => {
         let offset = item.offset;
         if (offset == null) {
@@ -2680,16 +2771,23 @@ const App: React.FC = () => {
           for (let j = i + 1; j < prelim.length; j++) { const o = prelim[j].offset; if (o != null && o > prevOff && o < nextOff) nextOff = o; }
           const cluster = findFigureClusterStart(prevOff + 1);
           if (cluster != null && cluster < nextOff) offset = cluster;
+          else if (outlineMonotonic) {
+            let pageOff: number | null = null;
+            for (let p = item.entry.page; p < item.entry.page + 12; p++) {
+              const idx = fullText.indexOf(`[[PAGE ${p}]]`);
+              if (idx >= 0) { pageOff = idx; break; }
+            }
+            if (pageOff != null && pageOff >= prevOff && pageOff < nextOff) offset = pageOff;
+          }
         }
         return { title: item.entry.title, page: item.entry.page, level: item.entry.level, offset };
       });
 
-      // Drop entries the two passes could not place. Their offset is intentionally undefined —
-      // an unanchorable section with a broken bookmark (Title Page/Dedication → Chapter 1's page,
-      // Copyright → a page inside Chapter 4). buildChaptersFromOutline would otherwise resurrect
-      // them via `offset ?? offsetForPage(page)`, dropping the entry onto its WRONG bookmark page
-      // and splitting a real chapter. Removing them here means every surviving entry carries a real
-      // resolved offset, so that page fallback never fires.
+      // Drop entries the passes could not place at all (broken bookmark, non-monotonic outline, page
+      // outside the gap). Their offset stays undefined so buildChaptersFromOutline's own
+      // `offset ?? offsetForPage(page)` fallback can't drop them onto a WRONG bookmark page and split a
+      // real chapter. Every surviving entry now carries a real offset (a resolved heading, a figure
+      // cluster, or — for reliable monotonic outlines — its in-gap page marker).
       const resolvedOutline = outline.filter(o => o.offset != null);
 
       // Caption-based missing-figure check (best-effort, never throws). Every "Figure N" / "Table N"
@@ -3379,14 +3477,14 @@ const App: React.FC = () => {
           </button>
           <button
             onClick={() => setIsAccountOpen(true)}
-            className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-emerald-500 hover:text-emerald-400' : 'text-zinc-500 hover:text-neon-cyan'}`}
+            className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-neon-cyan hover:text-white' : 'text-zinc-500 hover:text-neon-cyan'}`}
           >
             <UserIcon size={14} />
             <span>MY_ACCOUNT</span>
             {userTier && userTier.tier !== 'free' && (
               <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded ${
                 userTier.tier === 'pro' ? 'bg-neon-cyan/10 text-neon-cyan' :
-                'bg-amber-500/10 text-amber-400'
+                'bg-neon-cyan/10 text-neon-cyan'
               }`}>
                 {userTier.tier.toUpperCase()}
               </span>

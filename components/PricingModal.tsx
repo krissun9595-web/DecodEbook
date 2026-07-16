@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, Calendar, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, ChevronDown, ChevronUp, Package, Gift, Share2, Copy, Check } from 'lucide-react';
+import { Privacy, Pro } from './ui/glyphs';
 import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
 import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
@@ -21,7 +22,7 @@ interface Props {
 const TIER_DISPLAY: Record<string, { label: string; color: string; border: string; bg: string }> = {
   free: { label: 'FREE', color: 'text-zinc-400', border: 'border-zinc-700', bg: 'bg-zinc-800/50' },
   pro: { label: 'PRO', color: 'text-neon-cyan', border: 'border-neon-cyan/30', bg: 'bg-neon-cyan/5' },
-  unlimited: { label: 'UNLIMITED', color: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/5' },
+  unlimited: { label: 'UNLIMITED', color: 'text-neon-cyan', border: 'border-neon-cyan/30', bg: 'bg-neon-cyan/5' },
 };
 
 const PLANS = [
@@ -43,7 +44,7 @@ const PLANS = [
     annualPrice: '$99.99',
     annualPeriod: '/year',
     annualSave: 'Save 17% — $8.33/mo',
-    icon: Crown,
+    icon: Pro,
     color: 'neon-cyan',
     accentBorder: 'border-neon-cyan/40',
     features: ['1,000 credits/month', 'All AI features unlocked', '30-150 cr/video · 40 cr/podcast', 'Buy extra credit packs anytime'],
@@ -189,7 +190,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               {/* ── Account Info ── */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-neon-cyan mb-2">
-                  <Shield size={18} />
+                  <Privacy size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Account_Info</label>
                 </div>
                 <div className="content-panel rounded-sm p-4 space-y-3">
@@ -224,7 +225,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         </div>
                       </div>
                       {tierInfo.cancel_at_period_end && (
-                        <p className="text-[10px] font-mono text-amber-400 bg-amber-500/5 border border-amber-500/20 rounded-sm px-2 py-1">
+                        <p className="text-[10px] font-mono text-neon-cyan bg-neon-cyan/5 border border-neon-cyan/20 rounded-sm px-2 py-1">
                           Cancels on {new Date(tierInfo.period_end || '').toLocaleDateString()}
                         </p>
                       )}
@@ -248,7 +249,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
               {/* ── Credits Dashboard ── */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-neon-red mb-2">
+                <div className="flex items-center gap-2 text-neon-cyan mb-2">
                   <BarChart3 size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Credits</label>
                 </div>
@@ -261,20 +262,20 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <div className="content-panel rounded-sm p-4 space-y-3">
                     {monthlyCredits === Infinity ? (
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-emerald-400 font-mono font-bold">Unlimited Credits</span>
+                        <span className="text-sm text-neon-cyan font-mono font-bold">Unlimited Credits</span>
                         <span className="text-[9px] text-zinc-600 font-mono">Unlimited tier</span>
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center justify-between text-xs mb-1">
                           <span className="text-zinc-400 font-mono">Monthly credits</span>
-                          <span className={`font-mono font-bold ${creditPct > 90 ? 'text-red-400' : creditPct > 70 ? 'text-amber-400' : 'text-neon-cyan'}`}>
+                          <span className={`font-mono font-bold ${creditPct > 90 ? 'text-red-400' : creditPct > 70 ? 'text-neon-cyan' : 'text-neon-cyan'}`}>
                             {tierInfo.credits_used} / {monthlyCredits} used
                           </span>
                         </div>
                         <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full transition-all ${creditPct > 90 ? 'bg-red-500' : creditPct > 70 ? 'bg-amber-500' : 'bg-neon-cyan'}`}
+                            className={`h-full rounded-full transition-all ${creditPct > 90 ? 'bg-red-500' : creditPct > 70 ? 'bg-neon-cyan' : 'bg-neon-cyan'}`}
                             style={{ width: `${creditPct}%` }}
                           />
                         </div>
@@ -282,10 +283,10 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           <span>{subscriptionRemaining} remaining this period</span>
                           <span className="flex items-center gap-2">
                             {tierInfo.pack_credits > 0 && (
-                              <span className="text-emerald-400">+{tierInfo.pack_credits} pack</span>
+                              <span className="text-neon-cyan">+{tierInfo.pack_credits} pack</span>
                             )}
                             {(tierInfo.bonus_credits || 0) > 0 && (
-                              <span className="text-emerald-400">+{tierInfo.bonus_credits} bonus</span>
+                              <span className="text-neon-cyan">+{tierInfo.bonus_credits} bonus</span>
                             )}
                           </span>
                         </div>
@@ -319,14 +320,14 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               {/* ── Earn Free Credits ── */}
               {refCode && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                  <div className="flex items-center gap-2 text-neon-cyan mb-2">
                     <Gift size={18} />
                     <label className="text-xs font-bold uppercase tracking-widest font-mono">Earn Free Credits</label>
                   </div>
-                  <div className="bg-void-2 border border-emerald-500/20 rounded-sm p-4 space-y-4">
+                  <div className="bg-void-2 border border-neon-cyan/20 rounded-sm p-4 space-y-4">
                     {/* Share link */}
                     <div className="space-y-2">
-                      <p className="text-[10px] text-zinc-400 font-mono">Share your link — earn <span className="text-emerald-400">5 credits</span> per unique click (up to 50)</p>
+                      <p className="text-[10px] text-zinc-400 font-mono">Share your link — earn <span className="text-neon-cyan">5 credits</span> per unique click (up to 50)</p>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-void-1 border border-zinc-800 rounded-sm px-3 py-1.5 text-[10px] font-mono text-zinc-400 truncate">
                           {getShareUrl(refCode)}
@@ -334,21 +335,21 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <button
                           onClick={() => { navigator.clipboard.writeText(getShareUrl(refCode)); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                           aria-label="Copy referral link"
-                          className="shrink-0 p-1.5 border border-zinc-800 rounded-sm text-zinc-500 hover:text-emerald-400 hover:border-emerald-500/30 transition active:scale-90"
+                          className="shrink-0 p-1.5 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-90"
                         >
-                          {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                          {copied ? <Check size={12} className="text-neon-cyan" /> : <Copy size={12} />}
                         </button>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#1DA1F2] hover:border-[#1DA1F2]/30 transition active:scale-95">𝕏 Twitter</button>
-                        <button onClick={() => shareOnFacebook(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#1877F2] hover:border-[#1877F2]/30 transition active:scale-95">Facebook</button>
-                        <button onClick={() => shareOnLinkedIn(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-[#0A66C2] hover:border-[#0A66C2]/30 transition active:scale-95">LinkedIn</button>
+                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">𝕏 Twitter</button>
+                        <button onClick={() => shareOnFacebook(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">Facebook</button>
+                        <button onClick={() => shareOnLinkedIn(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-1 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">LinkedIn</button>
                       </div>
                     </div>
 
                     {/* Referral invite */}
                     <div className="border-t border-zinc-800 pt-3 space-y-1">
-                      <p className="text-[10px] text-zinc-400 font-mono">Invite a friend — earn <span className="text-emerald-400">100 credits</span> when they sign up and use the app</p>
+                      <p className="text-[10px] text-zinc-400 font-mono">Invite a friend — earn <span className="text-neon-cyan">100 credits</span> when they sign up and use the app</p>
                       <p className="text-[9px] text-zinc-600 font-mono">Credits awarded after your friend uses 10 credits</p>
                     </div>
 
@@ -356,7 +357,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     {refStats && refStats.total_earned > 0 && (
                       <div className="border-t border-zinc-800 pt-3 flex items-center gap-4">
                         <div className="text-center">
-                          <p className="text-sm font-bold text-emerald-400 font-mono">{refStats.total_earned}</p>
+                          <p className="text-sm font-bold text-neon-cyan font-mono">{refStats.total_earned}</p>
                           <p className="text-[8px] text-zinc-600 font-mono uppercase">Earned</p>
                         </div>
                         <div className="text-center">
@@ -379,8 +380,8 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
               {/* ── Plans ── */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-white mb-2">
-                  <Crown size={18} />
+                <div className="flex items-center gap-2 text-neon-cyan mb-2">
+                  <Pro size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Plans</label>
                 </div>
 
@@ -430,7 +431,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                                 className={`w-full py-2 text-[10px] font-mono uppercase tracking-widest rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5 ${
                                   isProPlan
                                     ? 'bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20'
-                                    : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                                    : 'bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20'
                                 }`}
                               >
                                 {upgrading === plan.id ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade'}
@@ -438,20 +439,20 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
                               {isProPlan && 'annualPrice' in plan && (
                                 <>
-                                  <button onClick={() => setExpandedAnnual(!expandedAnnual)} className="w-full flex items-center justify-center gap-1 text-[9px] text-zinc-600 hover:text-emerald-400 font-mono uppercase tracking-widest transition-colors py-1">
+                                  <button onClick={() => setExpandedAnnual(!expandedAnnual)} className="w-full flex items-center justify-center gap-1 text-[9px] text-zinc-600 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors py-1">
                                     {expandedAnnual ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                                     Annual plan available
                                   </button>
                                   {expandedAnnual && (
-                                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-sm p-3 space-y-2 animate-fade-in">
+                                    <div className="bg-neon-cyan/5 border border-neon-cyan/20 rounded-sm p-3 space-y-2 animate-fade-in">
                                       <div className="flex items-center justify-between">
                                         <div>
                                           <span className="text-sm font-bold text-white">{plan.annualPrice}</span>
                                           <span className="text-zinc-500 text-xs ml-0.5">{plan.annualPeriod}</span>
                                         </div>
-                                        <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">{plan.annualSave}</span>
+                                        <span className="text-[9px] font-mono text-neon-cyan bg-neon-cyan/10 px-1.5 py-0.5 rounded-sm">{plan.annualSave}</span>
                                       </div>
-                                      <button onClick={() => handleUpgrade('pro', true)} disabled={!!upgrading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
+                                      <button onClick={() => handleUpgrade('pro', true)} disabled={!!upgrading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
                                         {upgrading === 'pro_annual' ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade to Annual'}
                                       </button>
                                     </div>
@@ -475,7 +476,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               {/* ── Credit Packs (Pro only) ── */}
               {currentTier === 'pro' && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-amber-400 mb-2">
+                  <div className="flex items-center gap-2 text-neon-cyan mb-2">
                     <Package size={18} />
                     <label className="text-xs font-bold uppercase tracking-widest font-mono">Credit_Packs</label>
                   </div>
@@ -484,11 +485,11 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <div key={pack.type} className="content-panel rounded-sm p-3 text-center space-y-2">
                         <p className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</p>
                         <p className="text-[9px] text-zinc-500 font-mono uppercase">credits</p>
-                        <p className="text-sm font-bold text-amber-400">{pack.price}</p>
+                        <p className="text-sm font-bold text-neon-cyan">{pack.price}</p>
                         <button
                           onClick={() => handleBuyPack(pack.storageKey, pack.type)}
                           disabled={!!buyingPack}
-                          className="w-full py-1.5 text-[10px] font-mono uppercase tracking-widest bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1"
+                          className="w-full py-1.5 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1"
                         >
                           {buyingPack === pack.type ? <Loader2 size={10} className="animate-spin" /> : 'Buy'}
                         </button>
@@ -506,7 +507,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
             /* ── Auth View ── */
             <div className="p-6 space-y-6">
               {error && <div className="p-2 bg-rose-950/30 border border-rose-900/50 rounded-sm text-xs text-rose-400 font-mono">{error}</div>}
-              {success && <div className="p-2 bg-emerald-950/30 border border-emerald-900/50 rounded-sm text-xs text-emerald-400 font-mono">{success}</div>}
+              {success && <div className="p-2 bg-neon-cyan/30 border border-neon-cyan/50 rounded-sm text-xs text-neon-cyan font-mono">{success}</div>}
 
               {authMode === 'forgot' ? (
                 <div className="space-y-4">
@@ -597,8 +598,8 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
               {/* Plans teaser */}
               <div className="border-t border-zinc-800 pt-4">
-                <div className="flex items-center gap-2 text-white mb-3">
-                  <Crown size={16} />
+                <div className="flex items-center gap-2 text-neon-cyan mb-3">
+                  <Pro size={16} />
                   <label className="text-[10px] font-bold uppercase tracking-widest font-mono">Plans</label>
                 </div>
                 <div className="space-y-2">
