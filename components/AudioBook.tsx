@@ -477,6 +477,18 @@ const isIndexChapterTitle = (value: string): boolean =>
 const isContentsChapterTitle = (value: string): boolean =>
   /^(?:table\s+of\s+)?contents$|^list\s+of\s+(?:figures|tables|illustrations)$/iu.test(value.trim());
 
+// Normalize a heading/title for a robust equality match: drop a leading chapter number, unify
+// quotes/dashes, collapse whitespace, uppercase (mirrors sourceIndex's normalizeHeadingText). Used to
+// match a Contents/TOC entry's label to a chapter title.
+const normalizeChapterTitleForMatch = (value: string): string =>
+  stripInlineFormatSyntax(value || '')
+    .replace(/^\s*\d+[.)\s]+/u, '')
+    .replace(/[’‘`]/gu, "'")
+    .replace(/[‐‑–—]/gu, '-')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toUpperCase();
+
 const normalizeNoteScopeText = (value?: string): string =>
   stripInlineFormatSyntax(value || '')
     .toLowerCase()
@@ -2891,9 +2903,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     return filePart ? anchors['@file:' + filePart] : undefined;
   };
 
-  const handleEpubLinkNavigation = (href: string, event: React.MouseEvent<HTMLElement>) => {
+  const handleEpubLinkNavigation = (href: string, event: React.MouseEvent<HTMLElement>, label?: string) => {
     event.preventDefault();
     event.stopPropagation();
+    // A Contents/TOC entry NAMES a chapter — match its label to a chapter TITLE first. This is immune to
+    // a split heading in the source: this Elon EPUB opens a chapter with a lone "<h2>5</h2>" number and a
+    // divider image BEFORE "<h2>PAYPAL MAFIA BOSS</h2>", so findHeadingOffsetByTitle anchors the chapter
+    // at the TITLE while the entry's target FILE opens at the number — a content-offset resolution then
+    // lands a few chars before the chapter's start and picks the PREVIOUS chapter. Title-matching
+    // sidesteps the offset entirely. (A numeric Index page-locator normalizes to "" here → skipped → it
+    // still resolves by content offset below.)
+    const labelNorm = normalizeChapterTitleForMatch(label || '');
+    if (labelNorm.length >= 3 && /[A-Z]/u.test(labelNorm) && onChapterChange) {
+      const byTitle = allChapters.find(c => c.id !== chapter.id && normalizeChapterTitleForMatch(c.title) === labelNorm);
+      if (byTitle) { onChapterChange(byTitle.id, 'first'); return; }
+    }
     const snippet = epubAnchorSnippetFor(href);
     if (!snippet) return;
     const anchor = wordsOnly(snippet);
@@ -3288,7 +3312,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               style={leafStyle}
               title="Go to referenced location"
               draggable={false}
-              onClick={(event) => handleEpubLinkNavigation(href, event)}
+              onClick={(event) => handleEpubLinkNavigation(href, event, text)}
             >
               {text}
             </button>
