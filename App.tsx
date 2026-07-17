@@ -1113,7 +1113,7 @@ const App: React.FC = () => {
           rawByFile.push([filename, raw]);
           for (const m of raw.matchAll(/<a\b[^>]*\bhref="[^"]*#([^"]+)"/gi)) targetIds.add(decodeURIComponent(m[1]).trim());
         }
-        for (const [, raw] of rawByFile) {
+        for (const [filename, raw] of rawByFile) {
           for (const im of raw.matchAll(/<[a-z][a-z0-9]*\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
             const id = decodeURIComponent(im[1]).trim();
             if (!targetIds.has(id) || epubAnchors[id]) continue;
@@ -1129,6 +1129,22 @@ const App: React.FC = () => {
               .slice(0, 12)
               .join(' ');
             if (snippet.length >= 8) epubAnchors[id] = snippet;
+          }
+          // File-level target: a Contents entry or cross-reference pointing at a WHOLE file
+          // ("text00019.html" / "see Appendix 1", no #fragment) resolves to that file's OPENING text.
+          // Keyed by basename under a "@file:" prefix so it can't collide with a fragment id.
+          const fileKey = '@file:' + (filename.split('/').pop() || filename);
+          if (!epubAnchors[fileKey]) {
+            const bodyAt = raw.search(/<body\b[^>]*>/i);
+            const after = (bodyAt >= 0 ? raw.slice(bodyAt).replace(/^<body\b[^>]*>/i, '') : raw)
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/&#\d+;|&[a-z]+;| /gi, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .split(' ')
+              .slice(0, 12)
+              .join(' ');
+            if (after.length >= 8) epubAnchors[fileKey] = after;
           }
         }
       }

@@ -2765,8 +2765,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // the wrong number in this chapter. An in-chapter footnote keeps its body in THIS chapter, so
     // findChapterContainingKeyedNote returns null and the local (keyed) scan still resolves it. PDF keys
     // ("pdf…") keep the well-tested page-offset path above untouched.
+    // GATE on the body NOT being in THIS chapter: an in-chapter footnote's note body is in the current
+    // chapter, so resolve it locally. Per-chapter footnote keys REPEAT across chapters (this Elon EPUB
+    // restarts at "fn1" every chapter), and findChapterContainingKeyedNote EXCLUDES this chapter — so
+    // without this gate a Ch4 "fn1" click would find Ch5's "fn1" and wrongly route there. Check the
+    // current pages by KEY (a line-leading "[fn1](#fn1)"); unlike pageIndexForNoteTarget's section-scoped
+    // pattern fallback, a keyed line-start can't be fooled by a body numbered list.
+    const keyedBodyInThisChapter = !!noteTarget.noteKey && pages.some(page =>
+      page.text.split(/\n+/).some(line => sentenceStartsWithNoteMarker(line, noteTarget.marker, noteTarget.noteKey)));
     const epubEndnoteChapter =
-      noteTarget.noteKey && !/^pdf/u.test(noteTarget.noteKey) ? findChapterContainingKeyedNote(noteTarget) : null;
+      !keyedBodyInThisChapter && noteTarget.noteKey && !/^pdf/u.test(noteTarget.noteKey)
+        ? findChapterContainingKeyedNote(noteTarget) : null;
 
     if (!keyedEndnote && !epubEndnoteChapter) {
       const localPageIndex = pageIndexForNoteTarget(noteTarget, pages);
@@ -2869,11 +2878,23 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // numbers, so resolve the fragment via the epubAnchors snippet map (fragment id → the readable words
   // just after that anchor), then find the chapter whose SOURCE contains that snippet and land on its
   // page via the pagination-independent {type:'text'} anchor. No return marker (unlike a footnote).
+  // Resolve an internal href to its anchor snippet: prefer the "#fragment" target, else fall back to the
+  // whole-FILE opening ("@file:basename") for a Contents/cross-ref link that points at a file with no
+  // fragment ("text00019.html" / "see Appendix 1"). Returns undefined when the book has no matching anchor.
+  const epubAnchorSnippetFor = (href: string): string | undefined => {
+    const anchors = fileContext.epubAnchors;
+    if (!anchors || !href) return undefined;
+    const hashIdx = href.indexOf('#');
+    const frag = hashIdx >= 0 ? decodeURIComponent(href.slice(hashIdx + 1)).trim() : '';
+    if (frag && anchors[frag]) return anchors[frag];
+    const filePart = (hashIdx >= 0 ? href.slice(0, hashIdx) : href).split('/').pop() || '';
+    return filePart ? anchors['@file:' + filePart] : undefined;
+  };
+
   const handleEpubLinkNavigation = (href: string, event: React.MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const frag = href.includes('#') ? decodeURIComponent(href.slice(href.indexOf('#') + 1)).trim() : '';
-    const snippet = frag ? fileContext.epubAnchors?.[frag] : undefined;
+    const snippet = epubAnchorSnippetFor(href);
     if (!snippet) return;
     const anchor = wordsOnly(snippet);
     if (anchor.length < 4) return;
@@ -3238,9 +3259,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
       if (isInternalEbookHref(href)) {
         // A Contents/TOC entry, Index page-locator, or inline cross-reference the reader can RESOLVE
-        // (its fragment is in epubAnchors) → a clickable one-way jump. Otherwise keep it as inert text.
-        const frag = href.includes('#') ? decodeURIComponent(href.slice(href.indexOf('#') + 1)).trim() : '';
-        if (frag && fileContext.epubAnchors?.[frag]) {
+        // (fragment OR whole-file target in epubAnchors) → a clickable one-way jump. Else inert text.
+        if (epubAnchorSnippetFor(href)) {
           return (
             <button
               key={key}
