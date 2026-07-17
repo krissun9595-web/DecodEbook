@@ -902,23 +902,34 @@ const App: React.FC = () => {
       const noteRefLabels = new Map<string, string>(); // note-body fragment id -> marker label
       {
         const MARKER = /^(?:\d{1,3}|[ivxlcdm]{1,4}|fn\.?\d{1,3})\.?$/i;
-        const links: { src: string; tgt: string; frag: string; label: string }[] = [];
+        // A NOTE anchor (en/fn/note + digit), not a page-break/cross-ref marker — many EPUBs (Sovereign)
+        // emit <a href="#page_213">213</a> for epub:type="pagebreak", which has a numeric label too and
+        // would otherwise be mistaken for a footnote reference.
+        const isNoteFrag = (frag: string): boolean =>
+          /(?:fn|en|ftn|rn|note|fnote|footnote|endnote)[-_]?\d/i.test(frag) && !/pag/i.test(frag);
+        const links: { src: string; tgt: string; frag: string; label: string; srcOffset: number }[] = [];
+        const noteIdOffsets = new Map<string, Map<string, number>>(); // file -> (note-ish anchor id -> its offset)
         for (const filename of sortedFiles) {
           let raw = '';
           try { raw = await zip.files[filename].async('string'); } catch { continue; }
           const dir = filename.slice(0, filename.lastIndexOf('/') + 1);
+          // Record where each note-ish anchor id SITS in this file, so an intra-file reference→body link
+          // can be told from its back-link by document order (below).
+          const ids = new Map<string, number>();
+          for (const im of raw.matchAll(/<[a-z][a-z0-9]*\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
+            const id = decodeURIComponent(im[1]).trim();
+            if (isNoteFrag(id) && !ids.has(id)) ids.set(id, im.index ?? 0);
+          }
+          noteIdOffsets.set(filename, ids);
           for (const m of raw.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
             const hash = m[1].indexOf('#');
             if (hash < 0) continue;
             const label = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().replace(/\.$/, '');
             if (!MARKER.test(label)) continue;
             const frag = decodeURIComponent(m[1].slice(hash + 1)).trim();
-            // The fragment must look like a NOTE anchor (en/fn/note + digit), not a page-break/cross-ref
-            // marker — many EPUBs (Sovereign) emit <a href="#page_213">213</a> for epub:type="pagebreak",
-            // which has a numeric label too and would otherwise be mistaken for a footnote reference.
-            if (!/(?:fn|en|ftn|rn|note|fnote|footnote|endnote)[-_]?\d/i.test(frag) || /pag/i.test(frag)) continue;
+            if (!isNoteFrag(frag)) continue;
             const tgt = hash > 0 ? (resolveZip(m[1].slice(0, hash), dir) || filename) : filename;
-            links.push({ src: filename, tgt, frag, label });
+            links.push({ src: filename, tgt, frag, label, srcOffset: m.index ?? 0 });
           }
         }
         // A reference points FORWARD in spine order (endnotes sit at the back of the book); the note's
@@ -931,6 +942,20 @@ const App: React.FC = () => {
         for (const l of forward) intoCount.set(l.tgt, (intoCount.get(l.tgt) ?? 0) + 1);
         const notesFiles = new Set([...intoCount].filter(([, n]) => n >= 3).map(([f]) => f));
         for (const l of forward) if (notesFiles.has(l.tgt) && !noteRefLabels.has(l.frag)) noteRefLabels.set(l.frag, l.label);
+        // IN-CHAPTER footnotes: the reference AND the note body live in the SAME file, cross-linked
+        // (ref <a id=X href=#Y>…</a> in the prose, body <a id=Y href=#X>…</a> in a chapter-end block —
+        // e.g. this z-library Elon EPUB's fn1↔fnn1). Same file = no spine direction, so use DOCUMENT order:
+        // the reference sits inline earlier and points FORWARD to the body; a link whose target id appears
+        // LATER in its own file is that reference, and its target frag (the body's id) is the shared key —
+        // matching the key the reader derives from the reference's href. The body's own back-link points
+        // EARLIER, so it's skipped and the pair keys to ONE id. Without this the body falls to the generic
+        // link path and is keyed by its back-link (#fnn1), never matching the reference's key (#fn1) → the
+        // note is unreachable in its own chapter and the reader errors SOURCE_REQUIRED.
+        for (const l of links) {
+          if (l.src !== l.tgt || noteRefLabels.has(l.frag)) continue;
+          const targetOffset = noteIdOffsets.get(l.src)?.get(l.frag);
+          if (targetOffset != null && targetOffset > l.srcOffset) noteRefLabels.set(l.frag, l.label);
+        }
       }
 
       // <img>/<image> → a [[FIG id]] marker; the bytes are extracted after the walk and cached like a
