@@ -1170,19 +1170,25 @@ const App: React.FC = () => {
           }
           // File-level target: a Contents entry or cross-reference pointing at a WHOLE file
           // ("text00019.html" / "see Appendix 1", no #fragment) resolves to that file's OPENING text.
-          // Keyed by basename under a "@file:" prefix so it can't collide with a fragment id.
+          // Keyed by basename under a "@file:" prefix so it can't collide with a fragment id. Take the
+          // snippet from the CLEANED fullText at this file's recorded offset (not the raw HTML) — it is
+          // then GUARANTEED to appear verbatim in the content the reader searches, so navigation resolves
+          // (a raw-HTML snippet can diverge from the cleaned text — reordered emphasis, inserted note
+          // markers, stripped decorations — and then match nothing).
           const fileKey = '@file:' + (filename.split('/').pop() || filename);
-          if (!epubAnchors[fileKey]) {
-            const bodyAt = raw.search(/<body\b[^>]*>/i);
-            const after = (bodyAt >= 0 ? raw.slice(bodyAt).replace(/^<body\b[^>]*>/i, '') : raw)
-              .replace(/<[^>]+>/g, ' ')
-              .replace(/&#\d+;|&[a-z]+;| /gi, ' ')
+          const fileOff = fileStartOffset.get(filename);
+          if (!epubAnchors[fileKey] && fileOff != null) {
+            const clean = fullText.slice(fileOff, fileOff + 300)
+              .replace(/[-]/g, ' ')            // block-role / heading / list sentinels (PUA)
+              .replace(/\[\[[^\]]*\]\]/g, ' ')             // [[FIG …]] / [[PAGE …]] markers
+              .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')     // link markup → its label text
+              .replace(/[*_~`#]/g, ' ')                    // markdown emphasis/heading punctuation
               .replace(/\s+/g, ' ')
               .trim()
               .split(' ')
-              .slice(0, 12)
+              .slice(0, 14)
               .join(' ');
-            if (after.length >= 8) epubAnchors[fileKey] = after;
+            if (clean.length >= 8) epubAnchors[fileKey] = clean;
           }
         }
       }

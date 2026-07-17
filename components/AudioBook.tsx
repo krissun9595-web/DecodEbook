@@ -2899,9 +2899,28 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const anchor = wordsOnly(snippet);
     if (anchor.length < 4) return;
     const content = fileContext.content || '';
-    const target = allChapters.find(c =>
-      c.sourceStart != null && c.sourceEnd != null &&
-      wordsOnly(content.slice(c.sourceStart, c.sourceEnd)).includes(anchor));
+    // Locate the snippet's OFFSET in the full content by its word sequence (words separated by any
+    // non-word chars), then map the offset to its chapter by range. This is robust where a per-chapter
+    // substring test is not: the snippet often straddles a heading→body break or a chapter boundary
+    // (a Contents entry's target file opens with its chapter heading), so no single chapter slice
+    // contains it verbatim — which silently no-ops the click.
+    const words = anchor.split(' ').filter(Boolean).slice(0, 8);
+    let at = -1;
+    if (words.length >= 2) {
+      // Find the first occurrence of the word sequence OUTSIDE the current chapter. Skipping the current
+      // chapter is load-bearing: a Contents/TOC entry's own label ("11 THE UNIFIED FIELD THEORY…") also
+      // sits in the Contents list we're clicking from, and it precedes the real chapter — so the first
+      // raw match would resolve back onto the Contents page (a no-op) instead of the destination.
+      const seqRe = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^A-Za-z0-9]+'), 'gi');
+      const inCurrent = (i: number) => chapter.sourceStart != null && i >= chapter.sourceStart
+        && (chapter.sourceEnd == null || i < chapter.sourceEnd);
+      let m: RegExpExecArray | null;
+      while ((m = seqRe.exec(content)) !== null) { if (!inCurrent(m.index)) { at = m.index; break; } }
+    }
+    const target = at >= 0
+      ? allChapters.find(c => c.sourceStart != null && at >= c.sourceStart && (c.sourceEnd == null || at < c.sourceEnd))
+        || [...allChapters].filter(c => c.sourceStart != null && c.sourceStart <= at).sort((a, b) => (b.sourceStart ?? 0) - (a.sourceStart ?? 0))[0]
+      : undefined;
     if (target && target.id !== chapter.id) {
       if (onChapterChange) onChapterChange(target.id, { type: 'text', anchor: snippet });
       return;
