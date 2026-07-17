@@ -19,7 +19,7 @@ import { startSession, trackEvent, trackBookAction, trackNavigation, trackGenera
 import { trackReferralClick, registerReferralSignup } from './services/referral';
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
-import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, findHeadingOffsetByTitle, headingMatchesTitle, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
+import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, findHeadingOffsetByTitle, headingMatchesTitle, isUsableEpubOutline, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION, isStalePdfExtraction } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
@@ -137,9 +137,11 @@ const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
   // one-word "Index" chapter against an "index" string inside the endnotes (Stanford "AI Index"
   // URLs, "…/index.html" links) — starting Index deep in the Notes and swallowing the endnotes. The
   // outline survives the reload on fileContext.pdfOutline, so reload now agrees with fresh upload.
+  // EPUB carries the same authoritative outline (from its nav/NCX, offsets already resolved), so it
+  // takes the same builder — additive, the PDF branch is unchanged.
   const useOutline =
-    fileContext.sourceKind === 'pdf' &&
-    isUsablePdfOutline(fileContext.content, fileContext.pdfOutline);
+    (fileContext.sourceKind === 'pdf' && isUsablePdfOutline(fileContext.content, fileContext.pdfOutline)) ||
+    (fileContext.sourceKind === 'epub' && isUsableEpubOutline(fileContext.pdfOutline));
   const chapters = useOutline
     ? buildChaptersFromOutline(fileContext.content, fileContext.pdfOutline!)
     : fileContext.isText
@@ -264,6 +266,24 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searchActive, setSearchActive] = useState(false); // a query has been run
   const [isIndexing, setIsIndexing] = useState(false);
+  // The page-target size the reader is CURRENTLY paginating with (reported by AudioBook). The search box
+  // is only visible while the sidebar is open (a narrowed reader), so the search must paginate at the
+  // reader's CURRENT width — its "PG.NN" then matches exactly what the reader shows in that state, and a
+  // result click lands on the same page. STATE (not a ref) + a search-effect dep: the reader re-paginates
+  // a couple of times per load (fallback → measured, and on sidebar toggle), so the search MUST rebuild
+  // when this changes, or its numbers go stale relative to what the reader now displays (they'd mismatch,
+  // even swap). When the sidebar closes to full view, the reader recomputes its own pages and the search
+  // UI is gone, so there's never a visible mismatch.
+  const [readerPageSize, setReaderPageSize] = useState<number | null>(null);
+  const readerSizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The reader re-paginates a few times right after a chapter loads (a fallback size before the text
+  // column is measured, then the measured size, then font/layout settling). Commit the size to state only
+  // once it STOPS changing (~500ms stable), so the search doesn't rebuild on every intermediate value and
+  // its result page numbers don't flicker for several seconds.
+  const reportReaderSize = React.useCallback((size: number) => {
+    if (readerSizeTimerRef.current) clearTimeout(readerSizeTimerRef.current);
+    readerSizeTimerRef.current = setTimeout(() => setReaderPageSize(prev => (prev === size ? prev : size)), 500);
+  }, []);
   const searchIndexCache = useRef<Map<string, ChapterPageIndex[]>>(new Map());
   const activeChapterItemRef = useRef<HTMLDivElement | null>(null);
 
@@ -277,11 +297,15 @@ const App: React.FC = () => {
   // Plain function (not useCallback) so it doesn't reference currentUser at render
   // time — currentUser is declared further down; the body runs only on click.
   const handleSearchResultClick = (hit: SearchHit) => {
-    setActiveChapterPageTarget({ type: 'page', pageIndex: hit.pageIndex });
+    // Navigate by the matched TEXT, not a page index: the reader's page count depends on its live width,
+    // so a fixed index lands on the wrong page. The anchor is located in whatever pagination the reader
+    // has and RE-located after re-pagination.
+    setActiveChapterPageTarget({ type: 'text', anchor: hit.anchor });
     setActiveChapterId(hit.chapterId);
     if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, hit.chapterId);
     closeSidebarMobile();
-    // Keep the result list — the user can jump to other results at any time.
+    // Keep the result list open (desktop) — the reader is at the same width the result was labelled for,
+    // so the anchor lands on exactly that page. The user can jump to other results freely.
   };
 
   // Reset search when the open book changes.
@@ -301,9 +325,12 @@ const App: React.FC = () => {
       try {
         // Key the search index on the page target size too: the reader paginates with the responsive
         // computePageTargetSize, so the index must use the SAME size or its "PG.NN" won't match the
-        // reader's page number. A different viewport/text-size makes a fresh index rather than reusing
-        // a stale one built at another size.
-        const pageTargetSize = computePageTargetSize(settings.textSize, settings.lineHeight);
+        // reader's page number. Use the size the reader is CURRENTLY paginating with (readerPageSize,
+        // reported by AudioBook) so the search's "PG.NN" equals what the reader shows in the current
+        // (sidebar-open) state — stable because it's the reader's SETTLED size, not an independent
+        // re-measurement of a transient layout. Fall back to a fresh compute only before the reader has
+        // paginated.
+        const pageTargetSize = readerPageSize ?? computePageTargetSize(settings.textSize, settings.lineHeight);
         const indexKey = `${activeBook.id}:${pageTargetSize}`;
         let index = searchIndexCache.current.get(indexKey);
         if (!index) {
@@ -318,7 +345,7 @@ const App: React.FC = () => {
       }
     }, 220);
     return () => { cancelled = true; clearTimeout(handle); };
-  }, [searchQuery, activeBook, activeFileContext]);
+  }, [searchQuery, activeBook, activeFileContext, readerPageSize]);
 
   // Scroll the TOC so the active chapter is in view after a jump.
   useEffect(() => {
@@ -696,58 +723,89 @@ const App: React.FC = () => {
           .catch(err => console.error('Definition re-fetch failed:', err));
   }, [settings.targetLanguage]);
 
-  const processEpub = async (file: File): Promise<string> => {
+  // EPUB is a STRUCTURED format (OPF spine, EPUB3 nav / EPUB2 NCX table of contents, semantic
+  // HTML). Unlike PDF — where structure is reverse-engineered from geometry — we use the native
+  // structure: chapters from the nav/NCX (authoritative), heading role from <h1>–<h6>, figures from
+  // <img>, centre/right from CSS text-align. All emitted as the SAME sentinels the reader already
+  // renders for PDF (U+E013 heading, U+E010/E011 align, [[FIG]]), so no reader/PDF code changes.
+  const processEpub = async (
+    file: File,
+  ): Promise<{ content: string; outline: PdfOutlineItem[]; figures: ExtractedFigure[] }> => {
     try {
       const zip = await JSZip.loadAsync(file);
-      
+      const zipKeys = Object.keys(zip.files);
+      const parser = new DOMParser();
+
+      // Resolve an href (relative to baseDir) to a zip entry key. Normalises ./ and ../ segments,
+      // strips the #fragment, and falls back to a suffix match when the path can't be normalised.
+      const resolveZip = (href: string, baseDir: string): string | undefined => {
+        const clean = decodeURIComponent((href || '').split('#')[0]).trim();
+        if (!clean) return undefined;
+        const segs = `${baseDir}${clean}`.split('/');
+        const out: string[] = [];
+        for (const s of segs) { if (s === '..') out.pop(); else if (s !== '.' && s !== '') out.push(s); }
+        const norm = out.join('/');
+        if (zip.files[norm]) return norm;
+        return zipKeys.find(k => k === clean || k.endsWith(`/${clean}`) || k.endsWith(clean));
+      };
+
       // Attempt to find the OPF file to determine reading order
       const opfPath = Object.keys(zip.files).find(f => f.toLowerCase().endsWith('.opf'));
       let sortedFiles: string[] = [];
-      const parser = new DOMParser();
+      const manifestMeta: Record<string, { href: string; properties: string; mediaType: string }> = {};
+      let navFullPath: string | undefined; // EPUB3 nav.xhtml
+      let ncxFullPath: string | undefined; // EPUB2 toc.ncx
+      let opfDir = '';
+      let bodyStartFull: string | undefined; // OPF <guide> type="text" — where the reading body begins
+      let coverFull: string | undefined;     // OPF <guide> type="cover" (or a cover-image page)
 
       if (opfPath) {
           // Robust EPUB Parsing via OPF Spine
           const opfContent = await zip.files[opfPath].async("string");
           const opfDoc = parser.parseFromString(opfContent, "text/xml");
-          
-          // 1. Map id -> href (Manifest)
-          const manifest: Record<string, { href: string; properties: string }> = {};
+          opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+
+          // 1. Map id -> {href, properties, media-type} (Manifest). The nav doc (EPUB3) and the NCX
+          //    (EPUB2) are located here so we can build authoritative chapters from the publisher TOC.
           Array.from(opfDoc.getElementsByTagName("item")).forEach(item => {
               const id = item.getAttribute("id");
               const href = item.getAttribute("href");
               if (id && href) {
-                  manifest[id] = {
-                    href,
-                    properties: item.getAttribute("properties") || '',
-                  };
+                  const properties = item.getAttribute("properties") || '';
+                  const mediaType = item.getAttribute("media-type") || '';
+                  manifestMeta[id] = { href, properties, mediaType };
+                  if (/\bnav\b/i.test(properties)) navFullPath = resolveZip(href, opfDir);
+                  if (/ncx/i.test(mediaType) || /\.ncx$/i.test(href)) ncxFullPath = resolveZip(href, opfDir);
               }
           });
 
-          // 2. Get spine order (idref)
+          // 2. Get spine order (idref); the NCX may also be pointed at by <spine toc="...">.
           const spineIds = Array.from(opfDoc.getElementsByTagName("itemref"))
               .map(item => item.getAttribute("idref"))
               .filter(id => id !== null) as string[];
+          const tocId = opfDoc.getElementsByTagName('spine')[0]?.getAttribute('toc');
+          if (!ncxFullPath && tocId && manifestMeta[tocId]) ncxFullPath = resolveZip(manifestMeta[tocId].href, opfDir);
 
-          // 3. Resolve file paths
-          const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
-          
+          // 3. Resolve spine file paths (skipping the nav doc, which is metadata not reading content).
           spineIds.forEach(id => {
-              if (manifest[id]) {
-                  const entry = manifest[id];
-                  const href = entry.href;
-                  const decodedHref = decodeURIComponent(href);
-                  const isNavDoc = /\bnav\b/i.test(entry.properties) || /(?:^|\/)(?:toc|nav)(?:[._-]|$)/i.test(decodedHref);
-                  if (isNavDoc) return;
-                  const fullPath = opfDir + decodedHref;
-                  
-                  if (zip.files[fullPath]) {
-                      sortedFiles.push(fullPath);
-                  } else {
-                      const found = Object.keys(zip.files).find(k => k.endsWith(decodedHref));
-                      if (found) sortedFiles.push(found);
-                  }
-              }
+              const entry = manifestMeta[id];
+              if (!entry) return;
+              const decodedHref = decodeURIComponent(entry.href);
+              const isNavDoc = /\bnav\b/i.test(entry.properties) || /(?:^|\/)(?:toc|nav)(?:[._-]|$)/i.test(decodedHref);
+              if (isNavDoc) return;
+              const full = resolveZip(entry.href, opfDir);
+              if (full) sortedFiles.push(full);
           });
+
+          // 4. OPF <guide> (EPUB2 landmarks): the "text" reference marks where the body begins, so the
+          //    spine files before it are front matter (cover/copyright/contents); "cover" marks the cover.
+          for (const ref of Array.from(opfDoc.getElementsByTagName('reference'))) {
+              const type = (ref.getAttribute('type') || '').toLowerCase();
+              const href = ref.getAttribute('href') || '';
+              if (!href) continue;
+              if ((type === 'text' || type === 'bodymatter') && !bodyStartFull) bodyStartFull = resolveZip(href, opfDir);
+              if ((type === 'cover' || type === 'coverpage') && !coverFull) coverFull = resolveZip(href, opfDir);
+          }
       }
 
       if (sortedFiles.length === 0) {
@@ -759,32 +817,207 @@ const App: React.FC = () => {
           sortedFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
       }
 
-      const nodeToMarkedText = (node: Node): string => {
+      // Build a class → text-align map from the EPUB's CSS so centre/right blocks can be tagged
+      // (mirrors PDF's U+E010/E011). A light regex over the stylesheets — enough for the common
+      // ".center { text-align: center }" idiom without pulling in a full CSS parser.
+      const cssAlign: Record<string, 'center' | 'right'> = {};
+      const cssBlock = new Set<string>();  // display:block — keep line breaks inside a heading
+      const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
+      const cssBold = new Set<string>();   // font-weight:bold/700
+      for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
+        try {
+          const css = await zip.files[key].async('string');
+          for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+            const am = /text-align\s*:\s*(center|right)/i.exec(rule[2]);
+            const isBlock = /display\s*:\s*block/i.test(rule[2]);
+            const isItalic = /font-style\s*:\s*italic/i.test(rule[2]);
+            const isBold = /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(rule[2]);
+            const isNormalWeight = /font-weight\s*:\s*(?:normal|[1-4]00)/i.test(rule[2]);
+            const isNormalStyle = /font-style\s*:\s*normal/i.test(rule[2]);
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle) continue;
+            for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
+              const c = cls[1];
+              if (am) cssAlign[c] = am[1].toLowerCase() as 'center' | 'right';
+              if (isBlock) cssBlock.add(c);
+              if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
+              if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
+            }
+          }
+        } catch { /* skip an unreadable stylesheet */ }
+      }
+      const alignFor = (el: Element): 'center' | 'right' | null => {
+        const inline = (el as HTMLElement).style?.textAlign?.toLowerCase();
+        if (inline === 'center' || inline === 'right') return inline;
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssAlign[c]) return cssAlign[c];
+        return null;
+      };
+      const isBlockChild = (n: Node): boolean => {
+        if (n.nodeType !== Node.ELEMENT_NODE) return false;
+        const el = n as HTMLElement;
+        if ((el.style?.display || '').toLowerCase() === 'block') return true;
+        return (el.getAttribute('class') || '').split(/\s+/).some(c => cssBlock.has(c));
+      };
+      // CSS-driven emphasis: an element italicised/bolded via a class (not <i>/<b>) — wrap its text in
+      // the markdown the reader renders. Guard against double-wrapping when a nested <i>/<em> already did.
+      const emphasize = (text: string, el: Element): string => {
+        // Never wrap a figure marker in emphasis. A decorative image inside <span class="bold">
+        // (chapter-opener rules/ornaments in this EPUB) would become "**[[FIG id]]**"; when the image is
+        // then dropped as decorative, blankMarker blanks only the marker, leaving the "**" bookends as two
+        // stray bold-marker paragraphs — a phantom vertical gap between the heading and the next block.
+        if (!text || /[*_]/u.test(text) || text.includes('[[FIG ')) return text;
+        const style = (el as HTMLElement).style;
+        const classes = (el.getAttribute('class') || '').split(/\s+/);
+        const italic = (style?.fontStyle || '').toLowerCase() === 'italic' || classes.some(c => cssItalic.has(c));
+        const bold = /^(?:bold|[6-9]00)$/.test((style?.fontWeight || '').toLowerCase()) || classes.some(c => cssBold.has(c));
+        if (bold) return `**${text}**`;
+        if (italic) return `*${text}*`;
+        return text;
+      };
+
+      // Heading anchors from the publisher's TOC: any element the nav/NCX points at via "#fragment" is a
+      // heading (chapter or SECTION) — even when the source styles it as <p class="zag1"> rather than an
+      // <h1>–<h6> tag (this EPUB, and many z-library conversions use CSS-class headings). Collect those
+      // fragment ids so the walk can mark such paragraphs as real headings (U+E013). Without this they
+      // extract as plain bold paragraphs and depend on the reader's Title-Case subtitle heuristic, which
+      // drops sentence-case ("You get what you do not want") and single-word ("Guilt", "War") section
+      // titles into the following paragraph as a bold run-in. (A broken NCX whose fragments point at
+      // footnote anchors — e.g. Elon Musk's #fnn2 — is unaffected: those ids sit on inline <a> elements,
+      // which never reach the block-heading path below.)
+      const navAnchorIds = new Set<string>();
+      const navDocPath = (navFullPath && zip.files[navFullPath]) ? navFullPath : ((ncxFullPath && zip.files[ncxFullPath]) ? ncxFullPath : undefined);
+      if (navDocPath) {
+        try {
+          const navRaw = await zip.files[navDocPath].async('string');
+          for (const m of navRaw.matchAll(/(?:href|src)\s*=\s*["'][^"'#]*#([^"']+)["']/gi)) navAnchorIds.add(decodeURIComponent(m[1]).trim());
+        } catch { /* nav unreadable — fall back to <h1>–<h6> only */ }
+      }
+
+      // FOOTNOTE / ENDNOTE references. In EPUB a body reference <a href="notes.html#en5">5</a> and its note
+      // body <a id="en5" …>5.</a> text are NATIVELY linked by href (unlike PDF, which reverse-engineers this
+      // from superscript geometry). Detect them here and emit the SAME "[label](#key)" markers the reader
+      // already renders + navigates for PDF footnotes → no reader changes on the common path. A "notes file"
+      // is one that ≥3 marker-links point INTO — that direction resolves the ref↔note back-link ambiguity
+      // (a reference goes from a chapter INTO the notes file; the note's back-link goes the other way). The
+      // shared key is the note body's fragment id, used identically on both the reference and the body.
+      const noteRefLabels = new Map<string, string>(); // note-body fragment id -> marker label
+      {
+        const MARKER = /^(?:\d{1,3}|[ivxlcdm]{1,4}|fn\.?\d{1,3})\.?$/i;
+        const links: { src: string; tgt: string; frag: string; label: string }[] = [];
+        for (const filename of sortedFiles) {
+          let raw = '';
+          try { raw = await zip.files[filename].async('string'); } catch { continue; }
+          const dir = filename.slice(0, filename.lastIndexOf('/') + 1);
+          for (const m of raw.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+            const hash = m[1].indexOf('#');
+            if (hash < 0) continue;
+            const label = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+            if (!MARKER.test(label)) continue;
+            const frag = decodeURIComponent(m[1].slice(hash + 1)).trim();
+            // The fragment must look like a NOTE anchor (en/fn/note + digit), not a page-break/cross-ref
+            // marker — many EPUBs (Sovereign) emit <a href="#page_213">213</a> for epub:type="pagebreak",
+            // which has a numeric label too and would otherwise be mistaken for a footnote reference.
+            if (!/(?:fn|en|ftn|rn|note|fnote|footnote|endnote)[-_]?\d/i.test(frag) || /pag/i.test(frag)) continue;
+            const tgt = hash > 0 ? (resolveZip(m[1].slice(0, hash), dir) || filename) : filename;
+            links.push({ src: filename, tgt, frag, label });
+          }
+        }
+        // A reference points FORWARD in spine order (endnotes sit at the back of the book); the note's
+        // back-link points backward. Both have note-ish fragments, so direction is what tells them apart —
+        // count only forward links so a chapter targeted by the notes file's back-links isn't itself
+        // mistaken for a notes file. A notes file is one ≥3 forward note-links point into.
+        const spineIdx = new Map<string, number>(sortedFiles.map((f, i) => [f, i]));
+        const forward = links.filter(l => (spineIdx.get(l.src) ?? -1) < (spineIdx.get(l.tgt) ?? -1));
+        const intoCount = new Map<string, number>();
+        for (const l of forward) intoCount.set(l.tgt, (intoCount.get(l.tgt) ?? 0) + 1);
+        const notesFiles = new Set([...intoCount].filter(([, n]) => n >= 3).map(([f]) => f));
+        for (const l of forward) if (notesFiles.has(l.tgt) && !noteRefLabels.has(l.frag)) noteRefLabels.set(l.frag, l.label);
+      }
+
+      // <img>/<image> → a [[FIG id]] marker; the bytes are extracted after the walk and cached like a
+      // PDF figure, so the existing reader figure block renders them. baseDir resolves relative srcs.
+      const figSrc = new Map<string, string>(); // figId -> resolved zip key
+      let figSeq = 0;
+      // The reader's block-role/alignment sentinels (PUA chars), defined via char codes so they can't
+      // be lost in transit: heading U+E013, centre U+E010, right U+E011.
+      const SENT_HEADING = String.fromCharCode(0xE013);
+      const SENT_CENTER = String.fromCharCode(0xE010);
+      const SENT_RIGHT = String.fromCharCode(0xE011);
+
+      const nodeToMarkedText = (node: Node, baseDir: string): string => {
         if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
         if (node.nodeType !== Node.ELEMENT_NODE) return '';
 
         const element = node as HTMLElement;
         const tag = element.tagName.toLowerCase();
-        if (['script', 'style', 'nav', 'svg', 'math'].includes(tag)) return '';
+        if (['script', 'style', 'nav', 'math'].includes(tag)) return '';
         if (tag === 'br') return '\n';
+        // Raster image: <img src> or an SVG <image xlink:href> (covers). Emit a figure marker.
+        if (tag === 'img' || tag === 'image') {
+          const src = element.getAttribute('src') || element.getAttribute('xlink:href') || element.getAttribute('href') || '';
+          const full = src ? resolveZip(src, baseDir) : undefined;
+          if (full && /\.(jpe?g|png|gif|webp|svg)$/i.test(full)) {
+            const id = `epub${++figSeq}`;
+            figSrc.set(id, full);
+            return `\n\n[[FIG ${id}]]\n\n`;
+          }
+          return '';
+        }
+        if (tag === 'svg') return Array.from(element.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
 
-        const childText = Array.from(element.childNodes).map(nodeToMarkedText).join('');
+        const childText = Array.from(element.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
         const trimmed = childText.trim();
         if (!trimmed) return '';
 
-        if (tag === 'blockquote') return `\n\n*${trimmed}*\n\n`;
+        // A blockquote reads as a set-off quote → italic. But wrap in "*" ONLY when the content isn't
+        // ALREADY emphasised (an inner <i>/<em> makes trimmed start/end with "*", and the extra layer
+        // would collapse to "**…**" = bold, or tangle and drop the italic). If it already carries
+        // emphasis, keep it verbatim so the source's own italics render.
+        if (tag === 'blockquote') return /[*_]/.test(trimmed) ? `\n\n${trimmed}\n\n` : `\n\n*${trimmed}*\n\n`;
         if (tag === 'cite') return `\n—— ${trimmed.replace(/^(?:——|--|—|–|-)\s*/u, '')}\n`;
+        // Emphasis via a tag: same figure-marker guard as emphasize() — a decorative image inside
+        // <b>/<i>/<em> must not be wrapped, or a stray "**"/"*" survives when the image is dropped.
+        if (/^(?:strong|b|em|i|u|s|strike|del)$/.test(tag) && trimmed.includes('[[FIG ')) return trimmed;
         if (tag === 'strong' || tag === 'b') return `**${trimmed}**`;
         if (tag === 'em' || tag === 'i') return `*${trimmed}*`;
         if (tag === 'u') return `__${trimmed}__`;
         if (tag === 's' || tag === 'strike' || tag === 'del') return `~~${trimmed}~~`;
         if (tag === 'a') {
           const href = element.getAttribute('href') || '';
+          // Note-BODY anchor: this <a> carries the id a reference points to → emit the reader's note anchor
+          // (key = the id), dropping its own back-link href. (Matches the reference's "[label](#id)".)
+          const aId = element.getAttribute('id');
+          if (aId && noteRefLabels.has(aId)) return `[${noteRefLabels.get(aId)}](#${aId})`;
+          // Note REFERENCE: this <a> points at a note body → emit the reader's note reference marker.
+          const hash = href.indexOf('#');
+          const frag = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)).trim() : '';
+          if (frag && noteRefLabels.has(frag)) {
+            const lbl = (trimmed.replace(/\s+/g, ' ').trim() || noteRefLabels.get(frag)!).replace(/\.$/, '');
+            return `[${lbl}](#${frag})`;
+          }
           const label = trimmed.replace(/\s+/g, ' ').trim();
           return href ? `[${label}](${href})` : label;
         }
-        if (/^h[1-6]$/.test(tag) || ['p', 'div', 'section', 'article'].includes(tag)) {
-          return `\n\n${trimmed}\n\n`;
+        // Semantic heading → the reader's heading role (U+E013), the same sentinel PDF emits. EPUB
+        // headings are authoritative (unlike PDF font-size guessing). Strip inner emphasis markers,
+        // as the reader styles a heading as a whole (matches the PDF heading path).
+        if (/^h[1-6]$/.test(tag)) {
+          const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
+          return clean ? `\n\n${clean}\n\n` : '';
+        }
+        if (['p', 'div', 'section', 'article'].includes(tag)) {
+          // The publisher's TOC points at this styled paragraph (see navAnchorIds) → it IS a heading, so
+          // emit the heading sentinel like an <h1>–<h6>. This renders a CSS-class section heading as a
+          // heading regardless of casing, instead of a bold run-in. Guard: a real heading isn't a full
+          // sentence, so skip when the text ends in terminal punctuation (a footnote/prose paragraph that
+          // happens to carry a TOC-referenced id).
+          const headId = element.getAttribute('id');
+          if (headId && navAnchorIds.has(headId) && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
+            const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
+            if (clean) return `\n\n${SENT_HEADING}${clean}\n\n`;
+          }
+          const a = alignFor(element);
+          const sentinel = a === 'center' ? '' : a === 'right' ? '' : '';
+          return `\n\n${sentinel}${emphasize(trimmed, element)}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -810,30 +1043,201 @@ const App: React.FC = () => {
           }
           return `\n${trimmed}\n`;
         }
-        return childText;
+        // A display:block inline element (e.g. a heading_break span carrying a title line) is a visual
+        // line — put it on its own so a multi-line heading/label keeps its breaks (see the h1 handler).
+        if (isBlockChild(element)) return `\n${emphasize(trimmed, element)}\n`;
+        return emphasize(childText, element);
       };
 
+      const dirOf = (p: string): string => p.slice(0, p.lastIndexOf('/') + 1);
+      const fileStartOffset = new Map<string, number>(); // spine file → offset where its content begins
       let fullText = "";
       for (const filename of sortedFiles) {
         const content = await zip.files[filename].async("string");
-        const processedContent = content
-            .replace(/<\/p>/gi, '\n\n')
-            .replace(/<\/div>/gi, '\n')
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/h[1-6]>/gi, '\n\n')
-            .replace(/<\/li>/gi, '\n');
-
-        const doc = parser.parseFromString(processedContent, "text/html");
-        const text = nodeToMarkedText(doc.body)
+        // Parse the RAW html — DOMParser builds a correct, properly-scoped tree (headings close, blocks
+        // nest right) and nodeToMarkedText derives the \n\n structure. The old pre-strip that turned
+        // closing tags into newlines REMOVED them, which left an <h1> unclosed so it swallowed the whole
+        // chapter body — and the heading handler then flattened + bolded all of it.
+        const doc = parser.parseFromString(content, "text/html");
+        const text = nodeToMarkedText(doc.body, dirOf(filename))
           .replace(/[ \t]+\n/g, '\n')
           .replace(/\n[ \t]+/g, '\n')
           .replace(/\n{3,}/g, '\n\n')
-          .replace(/[ \t]{2,}/g, ' ');
-        fullText += text.trim() + "\n\n";
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim();
+        fileStartOffset.set(filename, fullText.length); // BEFORE appending: where this file starts
+        fullText += text + "\n\n";
+      }
+      if (!fullText.trim()) throw new Error("No readable text found in EPUB.");
+
+      // Extract each referenced image's bytes + intrinsic size; drop decorative (tiny) ones and their
+      // markers. Figures are cached and rendered by the SAME path as PDF figures.
+      const figures: ExtractedFigure[] = [];
+      // Drop a decorative/unreadable figure's marker WITHOUT shifting text — the fileStartOffset values
+      // recorded during the walk are used to anchor chapters, so any length change here would drift every
+      // later chapter boundary (a heading like "NOTES" slipping into the previous chapter). Blank the
+      // marker to same-length spaces (they collapse to an empty, filtered paragraph in the reader).
+      const blankMarker = (id: string) => { const m = `[[FIG ${id}]]`; fullText = fullText.replace(m, ' '.repeat(m.length)); };
+      for (const [id, key] of figSrc) {
+        try {
+          const blob = await zip.files[key].async('blob');
+          let wPx = 0, hPx = 0;
+          try { const bmp = await createImageBitmap(blob); wPx = bmp.width; hPx = bmp.height; (bmp as any).close?.(); } catch { /* dims unknown (e.g. SVG) */ }
+          if (wPx && hPx && Math.min(wPx, hPx) < 48) { blankMarker(id); continue; }
+          const mimeType = blob.type || (/\.png$/i.test(key) ? 'image/png' : /\.gif$/i.test(key) ? 'image/gif' : /\.svg$/i.test(key) ? 'image/svg+xml' : 'image/jpeg');
+          figures.push({ id, page: 0, wPts: 0, hPts: 0, wPx, hPx, mimeType, blob });
+        } catch { blankMarker(id); }
       }
 
-      if (!fullText) throw new Error("No readable text found in EPUB.");
-      return fullText;
+      // Chapters from the publisher's TOC (EPUB3 nav.xhtml or EPUB2 NCX): map each entry's target file
+      // to the offset where that file's content begins. Authoritative, like a PDF bookmark outline.
+      const parseNavXhtml = (html: string): { title: string; href: string; level: number }[] => {
+        let d = parser.parseFromString(html, 'application/xhtml+xml');
+        if (d.getElementsByTagName('parsererror').length) d = parser.parseFromString(html, 'text/html');
+        const navs = Array.from(d.getElementsByTagName('nav'));
+        const toc = navs.find(n => (n.getAttribute('epub:type') || n.getAttribute('type') || '').toLowerCase().includes('toc')) || navs[0];
+        const root = toc?.getElementsByTagName('ol')[0];
+        const out: { title: string; href: string; level: number }[] = [];
+        const walk = (ol: Element, level: number) => {
+          for (const li of Array.from(ol.children).filter(c => c.tagName.toLowerCase() === 'li')) {
+            const a = Array.from(li.children).find(c => c.tagName.toLowerCase() === 'a') as HTMLAnchorElement | undefined;
+            if (a) { const href = a.getAttribute('href') || ''; const title = (a.textContent || '').replace(/\s+/g, ' ').trim(); if (href && title) out.push({ title, href, level }); }
+            const sub = Array.from(li.children).find(c => c.tagName.toLowerCase() === 'ol') as Element | undefined;
+            if (sub) walk(sub, level + 1);
+          }
+        };
+        if (root) walk(root, 0);
+        return out;
+      };
+      const parseNcx = (xml: string): { title: string; href: string; level: number }[] => {
+        const d = parser.parseFromString(xml, 'text/xml');
+        const out: { title: string; href: string; level: number }[] = [];
+        const walk = (np: Element, level: number) => {
+          const title = (np.getElementsByTagName('text')[0]?.textContent || '').replace(/\s+/g, ' ').trim();
+          const href = np.getElementsByTagName('content')[0]?.getAttribute('src') || '';
+          if (title && href) out.push({ title, href, level });
+          for (const child of Array.from(np.children).filter(c => c.tagName.toLowerCase() === 'navpoint')) walk(child, level + 1);
+        };
+        const map = d.getElementsByTagName('navMap')[0];
+        if (map) for (const np of Array.from(map.children).filter(c => c.tagName.toLowerCase() === 'navpoint')) walk(np, 0);
+        return out;
+      };
+
+      let navEntries: { title: string; href: string; level: number }[] = [];
+      let navBaseDir = opfDir;
+      if (navFullPath && zip.files[navFullPath]) { navEntries = parseNavXhtml(await zip.files[navFullPath].async('string')); navBaseDir = dirOf(navFullPath); }
+      else if (ncxFullPath && zip.files[ncxFullPath]) { navEntries = parseNcx(await zip.files[ncxFullPath].async('string')); navBaseDir = dirOf(ncxFullPath); }
+
+      // A CHAPTER is a spine FILE. Many EPUBs list a chapter AND its sections as flat TOC entries that
+      // all point into the SAME file via "#anchor" (this book: Chapter I + "The Rustle…"/"SUMMARY" all
+      // in part0004.html). The sections are content WITHIN the chapter, not separate reading units — so
+      // keep only the FIRST entry per file (the chapter opener) and drop later same-file entries. Map to
+      // the file's start; buildChaptersFromOutline bounds each chapter at the next.
+      const outline: PdfOutlineItem[] = [];
+      const seenFile = new Set<string>();
+
+      // FRONT MATTER: the spine files BEFORE the body start (OPF guide "text", else the first TOC entry's
+      // file) are cover/copyright/contents pages the TOC omits. The files carry no usable title tag
+      // (calibre writes the ISBN filename into <title>), so NAME each from its content and give it its own
+      // catalogue entry — otherwise they all fold into the first chapter. Consecutive same-kind pages merge.
+      const firstNavFile = navEntries.length ? resolveZip(navEntries[0].href, navBaseDir) : undefined;
+      const bodyStartIdx = bodyStartFull && sortedFiles.indexOf(bodyStartFull) > 0
+        ? sortedFiles.indexOf(bodyStartFull)
+        : (firstNavFile ? Math.max(0, sortedFiles.indexOf(firstNavFile)) : 0);
+      const fileOffsetsAsc = [...new Set(fileStartOffset.values())].sort((a, b) => a - b);
+      const navTitles = navEntries.map(e => e.title).filter(t => t.length > 4);
+      let lastFront = '';
+      for (let i = 0; i < bodyStartIdx && i < sortedFiles.length; i++) {
+        const file = sortedFiles[i];
+        const fileOff = fileStartOffset.get(file);
+        if (fileOff == null) continue;
+        const regionEnd = fileOffsetsAsc.find(o => o > fileOff) ?? fullText.length;
+        const text = fullText.slice(fileOff, regionEnd).replace(/[\u{E010}-\u{E013}]/gu, '').replace(/\s+/g, ' ').trim();
+        const low = text.toLowerCase();
+        let title: string;
+        if (file === coverFull || low.length < 30) title = 'Cover';
+        else if (/^(?:table of )?contents\b/u.test(low) || navTitles.filter(t => low.includes(t.toLowerCase())).length >= 3) title = 'Contents';
+        else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)) title = 'Copyright';
+        else title = 'Front Matter';
+        if (title === lastFront) continue; // merge consecutive same-kind pages into one entry
+        lastFront = title;
+        outline.push({ title, page: 0, level: 0, offset: fileOff });
+      }
+
+      // VERIFY THE NAV AGAINST THE CONTENT — do not blindly trust the TOC's file pointer. Mirrors the PDF
+      // outline path (which title-anchors via findHeadingOffsetByTitle instead of trusting a bookmark's
+      // destination): a broken/mangled TOC (z-library Elon Musk EPUB) piles every chapter onto the wrong
+      // spine file and leaves the real chapter files unreferenced, so trusting `src` folds a dozen chapters
+      // into one entry (a 700-page "Acknowledgments"). Per entry, in reading order (titles resolve FORWARD
+      // from the last placed chapter — order is reliable even when `src` isn't):
+      //  • the file's OWN opening heading matches this title → honest opener → use the file start
+      //    (byte-identical to the old behaviour for well-formed EPUBs); a 2nd same-file entry is a section → drop.
+      //  • else, the title's real heading is found elsewhere → misdirected pointer → re-anchor there (Elon).
+      //  • else (title unresolvable): keep at the file start only if the pointer is UNCONTESTED (one entry →
+      //    this file: an OCR-corrupted but honest heading, e.g. Sovereign) or the page is headingless
+      //    (front matter); a title aimed at a CONTESTED file (several chapters collapsed onto it) → drop.
+      // The text of the chapter heading(s) at a spine file's start — collects the first run of consecutive
+      // U+E013 heading lines (so a "2"¶"AFRICA" number-then-title pair reads as "2 AFRICA"), stopping at
+      // the first prose line. '' when the file opens with no heading (a plain front-matter page).
+      const firstHeadingText = (from: number, to: number): string => {
+        const region = fullText.slice(from, Math.min(to, from + 600));
+        const hs: string[] = [];
+        for (const ln of region.split('\n')) {
+          const i = ln.indexOf(SENT_HEADING);
+          if (i >= 0) {
+            hs.push(ln.slice(i + 1).replace(/[\u{E000}-\u{F8FF}*_`~]/gu, '').trim());
+            if (hs.join('').length > 3 && !/^\d+$/.test(hs.join(''))) break; // have a real (non-numeric) title
+          } else if (hs.length && ln.trim()) break;                          // first prose after the heading
+          if (hs.length >= 3) break;
+        }
+        return hs.join(' ').replace(/\s+/g, ' ').trim();
+      };
+      // How many nav entries point at each spine file. A file targeted by ONE entry is "uncontested" — its
+      // pointer is trustworthy even if we can't verify the heading (OCR-corrupted titles, e.g. Sovereign
+      // Individual's "Megapdlitics"). A file targeted by MANY entries is "contested" — a broken/collapsed TOC
+      // that piles several chapters onto one wrong file (Elon Musk), so only a heading/title match is trusted.
+      const fileEntryCount = new Map<string, number>();
+      for (const e of navEntries) { const t = resolveZip(e.href, navBaseDir); if (t) fileEntryCount.set(t, (fileEntryCount.get(t) ?? 0) + 1); }
+      let lastResolvedOffset = 0;
+      const usedOffsets = new Set<number>(outline.map(o => o.offset).filter((o): o is number => o != null));
+      for (const e of navEntries) {
+        const target = resolveZip(e.href, navBaseDir);
+        if (!target || !e.title) continue;
+        const fileOff = fileStartOffset.get(target);
+        const regionEnd = fileOff != null ? (fileOffsetsAsc.find(o => o > fileOff) ?? fullText.length) : undefined;
+        const headingAtFile = fileOff != null ? firstHeadingText(fileOff, regionEnd!) : '';
+
+        let offset: number | undefined;
+        if (fileOff != null && headingMatchesTitle(headingAtFile, e.title)) {
+          // HONEST pointer — the file's own opening heading matches this entry's title (like the PDF path
+          // trusting a destination whose heading matches). Trust the file start; a 2nd same-file entry is a
+          // section → drop. This keeps well-formed EPUBs byte-identical and survives a title that
+          // findHeadingOffsetByTitle's prose-gate can't resolve (e.g. a smart-quoted heading).
+          if (seenFile.has(target)) continue;
+          offset = fileOff;
+        } else {
+          // The pointer's file does NOT open with this title. Locate the title's real heading in the content.
+          const titleOff = findHeadingOffsetByTitle(fullText, e.title, lastResolvedOffset);
+          if (seenFile.has(target) && titleOff != null && fileOff != null && titleOff >= fileOff && titleOff < regionEnd!) {
+            continue;                                                 // section inside an already-added chapter → keep as content
+          } else if (titleOff != null) {
+            offset = titleOff;                                        // misdirected pointer → re-anchor to the real heading (Elon)
+          } else if (fileOff != null && !seenFile.has(target) && (fileEntryCount.get(target) === 1 || headingAtFile === '')) {
+            offset = fileOff;                                         // uncontested pointer / headingless page → trust the file start
+          } else {
+            continue;                                                 // unresolvable entry aimed at a contested chapter file → drop
+          }
+        }
+        if (usedOffsets.has(offset)) continue;
+        usedOffsets.add(offset);
+        seenFile.add(target);
+        outline.push({ title: e.title, page: 0, level: e.level, offset });
+        lastResolvedOffset = Math.max(lastResolvedOffset, offset);
+      }
+      // (buildChaptersFromOutline sorts by offset and collapses non-monotonic entries, so re-anchored
+      // entries that land out of nav order are put back into reading order there.)
+
+      return { content: fullText, outline, figures };
 
     } catch (e) {
       console.error("EPUB processing error", e);
@@ -2877,9 +3281,10 @@ const App: React.FC = () => {
             // chapters directly from it — the page destinations are authoritative, so no
             // heuristic title-to-offset scoring is needed. Any PDF without a usable outline,
             // and all EPUB/text sources, keep the existing pipeline unchanged.
+            // EPUB carries the same authoritative outline (nav/NCX, offsets pre-resolved) → same builder.
             const useOutline =
-              preparedContext.sourceKind === 'pdf' &&
-              isUsablePdfOutline(preparedContext.content, preparedContext.pdfOutline);
+              (preparedContext.sourceKind === 'pdf' && isUsablePdfOutline(preparedContext.content, preparedContext.pdfOutline)) ||
+              (preparedContext.sourceKind === 'epub' && isUsableEpubOutline(preparedContext.pdfOutline));
             const indexedChapters = useOutline
               ? buildChaptersFromOutline(preparedContext.content, preparedContext.pdfOutline!)
               : preparedContext.isText
@@ -2948,13 +3353,14 @@ const App: React.FC = () => {
 
     if (isEpub) {
        try {
-         const textContent = await processEpub(file);
+         const { content: textContent, outline: epubOutline, figures: epubFigures } = await processEpub(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
             isText: true,
             sourceKind: 'epub',
-         });
+            pdfOutline: epubOutline.length ? epubOutline : undefined,
+         }, epubFigures.length ? epubFigures : undefined);
        } catch (err: any) {
          setError(err.message || "Failed to process EPUB.");
          setIsProcessing(false);
@@ -3072,7 +3478,7 @@ const App: React.FC = () => {
     let content;
     switch (activeTab) {
       case Tab.AUDIOBOOK:
-        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} initialPageTarget={activeChapterPageTarget} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
+        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} initialPageTarget={activeChapterPageTarget} onPageSizeComputed={reportReaderSize} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
         break;
       case Tab.PODCAST:
         content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} />;

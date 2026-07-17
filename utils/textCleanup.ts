@@ -17,6 +17,12 @@ const endsWithTerminalPunctuation = (value: string): boolean =>
 const stripBlockSentinels = (value: string): string => value.replace(/[-]/g, '');
 
 const looksLikeHeadingOrStructure = (value: string): boolean => {
+  // A block carrying the heading sentinel (U+E013) IS a heading by construction — an EPUB <h1>–<h6> or
+  // a TOC-anchored section heading, or a PDF geometry heading. Honour it directly and up front: the text
+  // heuristics below only recognise Title-Case / all-caps headings, so a sentence-case heading
+  // ("You get what you do not want") or a single word ("Guilt") would otherwise fail them and be merged
+  // into the following paragraph as a run-in (losing the heading role the sentinel already granted).
+  if (//.test(value)) return true;
   // Strip wrapping emphasis (an italic <h2>/<h3> extracts as "*Title*"), otherwise
   // the leading "*" hides the heading and it gets merged into the next paragraph.
   const trimmed = stripBlockSentinels(value).trim().replace(/^[*_~]+\s*/u, '').replace(/\s*[*_~]+$/u, '').trim();
@@ -112,7 +118,7 @@ const stripDisplayStyleMarkersPreserveLinks = (value: string): string => {
 };
 
 const looksLikeSignatureLine = (value: string): boolean => {
-  const clean = stripDisplayStyleMarkers(value).replace(/\s+/g, ' ').trim();
+  const clean = stripDisplayStyleMarkers(stripBlockSentinels(value)).replace(/\s+/g, ' ').trim();
   if (!clean || clean.length > 120) return false;
   if (/^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/u.test(clean)) return true;
   // A signature is a multi-token person name (initials/particles/suffixes handled by the
@@ -124,7 +130,7 @@ const looksLikeSignatureLine = (value: string): boolean => {
 };
 
 const looksLikeAttributionLine = (value: string): boolean => {
-  const clean = stripDisplayStyleMarkers(value).replace(/\s+/g, ' ').trim();
+  const clean = stripDisplayStyleMarkers(stripBlockSentinels(value)).replace(/\s+/g, ' ').trim();
   if (!/^(?:——|--|—|–|-)\s*\S/u.test(clean)) return false;
   return looksLikeAttributionAuthor(clean.replace(/^(?:——|--|—|–|-)\s*/u, ''));
 };
@@ -143,7 +149,7 @@ const markCitationBody = (value: string): string => {
 };
 
 const looksLikeCitationBody = (value: string): boolean => {
-  const clean = stripDisplayStyleMarkers(value).replace(/\s+/g, ' ').trim();
+  const clean = stripDisplayStyleMarkers(stripBlockSentinels(value)).replace(/\s+/g, ' ').trim();
   if (clean.length < 20 || clean.length > 900) return false;
   if (looksLikeHeadingOrStructure(clean) || looksLikeSubtitleLine(clean)) return false;
   if (/\b(?:asked|said|responded|replied|answered|whispered|shouted|muttered)\b/i.test(clean)) return false;
@@ -175,15 +181,18 @@ const splitAttributionTail = (value: string): string => {
 };
 
 const normalizeAttributionLine = (value: string): string => {
-  // Strip a leading emphasis marker before the dash: an italic credit extracts as
-  // "*—Tom Stoppard,* Arcadia", so the dash isn't at the very start, and stripping only the
-  // dash would leave the original "—" to sit under the "—— " prefix ("—— —Tom Stoppard…").
-  const body = value.replace(/\s+/g, ' ').trim().replace(/^[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
+  // A leading block/alignment sentinel (U+E010–E013, e.g. a right-aligned EPUB "att" credit) must be
+  // PRESERVED and re-emitted at the very start so the reader still aligns the credit — and it must be
+  // stripped BEFORE the dash, else the dash regex fails on it and the source's own "—" survives under
+  // the "—— " prefix ("—— —HENRY…"), while the sentinel gets buried mid-string and the alignment is
+  // lost. Also strip a leading emphasis marker (an italic credit extracts as "*—Tom Stoppard,*").
+  const sentinel = value.match(/^\s*([-]+)/u)?.[1] ?? '';
+  const body = value.replace(/\s+/g, ' ').trim().replace(/^[-]*[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
   const linkedNote = body.match(/^(.*?)\s*(\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))\s*[*_~]*$/iu);
   if (linkedNote) {
-    return `—— ${stripDisplayStyleMarkers(linkedNote[1])}${linkedNote[2]}`;
+    return `${sentinel}—— ${stripDisplayStyleMarkers(linkedNote[1])}${linkedNote[2]}`;
   }
-  return `—— ${stripDisplayStyleMarkers(body)}`;
+  return `${sentinel}—— ${stripDisplayStyleMarkers(body)}`;
 };
 
 const markCitationBlocks = (paragraphs: string[]): string[] => paragraphs.map((paragraph, index) => {

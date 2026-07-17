@@ -944,17 +944,22 @@ const measureAvgCharWidth = (font: string): number => {
 // to a viewport estimate only when the reader isn't mounted (e.g. a search index built before render).
 // SHARED by the reader AND the search index so their "PG.NN" page numbers agree — both call this and,
 // when the reader is on screen, both read the same DOM and get the same size.
+let lastGoodPageTargetSize: number | null = null; // last size from a REAL measurement (survives 0×0 blinks)
 export const computePageTargetSize = (textSize: string, lineHeight: string): number => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return DEFAULT_PAGE_TARGET_SIZE;
   const zone = document.querySelector('[data-reader-zone]') as HTMLElement | null;
-  const textEl = document.querySelector('[data-reader-text]') as HTMLElement | null;
+  // Prefer the always-present, zero-height probe (stable width, present before the page renders); fall back
+  // to a rendered line div only if the probe is missing. The line divs are conditionally rendered and can
+  // be a transient narrow width mid-render, which produced a broken page count that then stuck.
+  const textEl = (document.querySelector('[data-reader-measure]') || document.querySelector('[data-reader-text]')) as HTMLElement | null;
   if (zone && textEl && zone.clientHeight > 0 && textEl.clientWidth > 0) {
     const zcs = getComputedStyle(zone);
     // Usable text height: the scroll viewport minus its top padding and its bottom clearance
     // (pb-32, reserved for the fixed player bar) — i.e. the band a page's text can actually occupy.
     const visibleH = zone.clientHeight - parseFloat(zcs.paddingTop || '0') - parseFloat(zcs.paddingBottom || '0');
     const tcs = getComputedStyle(textEl);
-    const textW = textEl.clientWidth - parseFloat(tcs.paddingLeft || '0') - parseFloat(tcs.paddingRight || '0');
+    const padX = parseFloat(tcs.paddingLeft || '0') + parseFloat(tcs.paddingRight || '0');
+    const textW = textEl.clientWidth - padX;
     const fontSizePx = parseFloat(tcs.fontSize || '16') || 16;
     const lineHeightPx = parseFloat(tcs.lineHeight || '0') || fontSizePx * 1.5;
     const ls = parseFloat(tcs.letterSpacing || '0'); // 'normal' -> NaN
@@ -966,10 +971,18 @@ export const computePageTargetSize = (textSize: string, lineHeight: string): num
       // 0.94: small headroom for inter-paragraph gaps (vertical space the character count can't see)
       // so a full page doesn't spill into a scrollbar. Fills ~94% vs the old ~63%.
       const size = Math.round(charsPerLine * linesPerPage * 0.94);
-      return Math.min(6000, Math.max(500, size));
+      const clamped = Math.min(6000, Math.max(500, size));
+      lastGoodPageTargetSize = clamped;
+      return clamped;
     }
   }
-  // Fallback: viewport estimate (recalibrated to ~2500/700px full width).
+  // The zone/probe couldn't be measured — the reader zone momentarily collapses to 0×0 during a re-render
+  // (chapter switch, view toggle), and the per-line probe fallback can be absent. Reuse the LAST REAL
+  // measurement instead of a full-width viewport estimate: otherwise the pagination (and every page
+  // number, incl. the search results) flips between the measured value and this estimate — e.g. in split
+  // view, half-width 160 pages ↔ full-width 47 pages — every time the zone blinks to 0. Only fall to the
+  // estimate before any measurement has ever succeeded.
+  if (lastGoodPageTargetSize != null) return lastGoodPageTargetSize;
   const readable = Math.max(360, window.innerHeight - 170); // minus header + reader controls chrome
   const sizeFactor: Record<string, number> = { sm: 1.22, base: 1, lg: 0.82, xl: 0.66 };
   const lineFactor: Record<string, number> = { tight: 1.12, normal: 1, relaxed: 0.9, loose: 0.82 };

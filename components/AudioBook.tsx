@@ -40,6 +40,9 @@ interface Props {
   bookId: string;
   initialPageTarget?: ReaderPageTarget;
   onChapterChange?: (chapterId: number, pageTarget?: ReaderPageTarget) => void;
+  // Report the size the reader is CURRENTLY paginating with, so the search index (only shown while the
+  // sidebar is open) paginates identically and its "PG.NN" matches what the reader displays in that state.
+  onPageSizeComputed?: (size: number) => void;
 }
 
 interface QuantumParticle {
@@ -72,7 +75,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v32-contents-index-format';
+const CHAPTER_TEXT_CACHE_VERSION = 'v33-sentinel-heading-nomerge';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v18-dbname-restore';
 
@@ -1323,7 +1326,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
   );
 };
 
-export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, initialPageTarget = 'first', onChapterChange }) => {
+export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, initialPageTarget = 'first', onChapterChange, onPageSizeComputed }) => {
   const [pages, setPages] = useState<ReaderPage[]>([]);
   // The current chapter's cleaned source text, kept so we can RE-paginate on a text-size / viewport
   // change without re-fetching, preserving the reading position.
@@ -1559,6 +1562,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const idx = pageIndexForSourcePage(target.page, readerPages);
       return idx >= 0 ? idx : 0;
     }
+    if (target.type === 'text') {
+      const a = wordsOnly(target.anchor);
+      if (a.length >= 4) {
+        const idx = readerPages.findIndex(p => wordsOnly(p.text).includes(a));
+        if (idx >= 0) return idx;
+        // The anchor may straddle a page boundary in this pagination — retry with its first half.
+        const half = a.slice(0, Math.max(10, Math.floor(a.length / 2))).trim();
+        const idx2 = readerPages.findIndex(p => wordsOnly(p.text).includes(half));
+        if (idx2 >= 0) return idx2;
+      }
+      return 0;
+    }
     const foundIndex = pageIndexForNoteTarget(target, readerPages);
     return foundIndex >= 0 ? foundIndex : 0;
   };
@@ -1573,7 +1588,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
     const isIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
       || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
-    return paginateReaderText(cleanText, computePageTargetSize(settings.textSize, settings.lineHeight), {
+    const size = computePageTargetSize(settings.textSize, settings.lineHeight);
+    onPageSizeComputed?.(size); // report the current size so the search index paginates identically
+    return paginateReaderText(cleanText, size, {
       topicsPerPage: 10,
       leadingHeading: leadingTopicHeadingFor(chapter, fileContext.content, cleanText),
       measureVisibleLength: isIndex, // index is link-dense; size by visible text so pages fill
@@ -1596,7 +1613,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const newPages = paginateChapterText(cleanText);
     if (newPages.length === 0) return;
     let newIdx = 0;
-    if (anchor.length >= 8) {
+    const pend = pendingNavigationTarget;
+    if (pend && typeof pend === 'object' && pend.type === 'text') {
+      // A search navigation is pending — re-locate the matched content in the NEW pagination so a
+      // width change (e.g. the sidebar closing after a result click) still lands on its exact page.
+      newIdx = pageIndexForTarget(pend, newPages);
+    } else if (anchor.length >= 8) {
       const found = newPages.findIndex(p => wordsOnly(p.text).includes(anchor));
       if (found >= 0) newIdx = found;
     }
@@ -1630,6 +1652,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     let primed = false; // the observer's initial callback is the baseline, not a change to react to
     const onZoneResize = () => {
       const w = zone.clientWidth, h = zone.clientHeight;
+      // Ignore a COLLAPSED zone: during a re-render (chapter switch, view toggle) the scroll zone blinks to
+      // 0×0, then back. Re-paginating against 0 (or reacting to the blink) would replace the real page
+      // budget with a bogus one and shift every page number — skip until it has real dimensions again.
+      if (w < 100 || h < 100) { last = { w, h }; return; }
       if (!primed) { primed = true; last = { w, h }; return; }
       if (Math.abs(w - last.w) < 56 && Math.abs(h - last.h) < 120) return;
       last = { w, h };
@@ -2640,6 +2666,35 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     );
   };
 
+  // Additive fallback for EPUB endnotes. An EPUB "notes file" is detected STRUCTURALLY (≥3 forward note
+  // links point into it — see processEpub), NOT by title, so its outline title may not read as
+  // "Notes"/"Endnotes". When it doesn't, findNotesChapter() (title-based) returns null and a keyed
+  // endnote click would silently no-op. Locate the chapter whose SOURCE text actually holds this note's
+  // BODY — a line that STARTS with the keyed marker, e.g. "[5](#en5) …", the exact anchor A emits for
+  // both the reference and the body; only the body starts a line, so that tells the body apart from a
+  // mid-sentence reference to the same note. Keyed-only: a keyless PDF marker has no cross-chapter anchor
+  // to match and keeps its existing geometry/section resolution. Prefer a chapter at/after the current
+  // one (endnotes sit at the back) but accept any, so a mid-book note block still resolves.
+  const findChapterContainingKeyedNote = (
+    target: Extract<ReaderPageTarget, { type: 'note' }>
+  ): Chapter | null => {
+    if (!target.noteKey) return null;
+    const content = fileContext.content || '';
+    const currentIndex = allChapters.findIndex(candidate => candidate.id === chapter.id);
+    const containsBody = (candidate: Chapter): boolean => {
+      if (candidate.id === chapter.id || candidate.sourceStart == null || candidate.sourceEnd == null) return false;
+      return content
+        .slice(candidate.sourceStart, candidate.sourceEnd)
+        .split(/\n+/)
+        .some(line => sentenceStartsWithNoteMarker(line, target.marker, target.noteKey));
+    };
+    return (
+      allChapters.find((candidate, index) => (currentIndex === -1 || index >= currentIndex) && containsBody(candidate)) ||
+      allChapters.find(candidate => containsBody(candidate)) ||
+      null
+    );
+  };
+
   const handleFootnoteNavigation = (
     marker: string,
     globalIndex: number,
@@ -2697,7 +2752,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
     }
 
-    const notesChapter = findNotesChapter();
+    const notesChapter = findNotesChapter() || findChapterContainingKeyedNote(noteTarget);
     if (!notesChapter || !onChapterChange) return;
     onChapterChange(notesChapter.id, noteTarget);
   };
@@ -3663,6 +3718,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-void-1 relative flex flex-col hud-border text-left">
              <div ref={readerScrollRef} data-reader-zone="" className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
+                {/* Zero-height, always-present probe with the EXACT text-column width + font — computePageTargetSize
+                    measures THIS instead of the per-line divs, which are absent before render and can be a
+                    transient narrow width mid-render (→ a broken 160-page count that then sticks). */}
+                <div data-reader-measure="" aria-hidden="true" className={`${viewMode === 'split' ? 'w-1/2' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`} style={{ height: 0, overflow: 'hidden' }} />
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
                   // An extracted PDF figure — inline image loaded from the cache.
                   if (para.figure) {
@@ -3776,7 +3835,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={indexIndentStyle}>
                       {lineRuns.map((line, lineIdx) => {
                         const lineText = line.map(run => run.sentence).join(' ');
-                        const spacingClass = isListRole ? '' : paragraphSpacingClassFor(lineText);
+                        // A heading-role block (U+E013) gets the section-heading spacing directly — the
+                        // sentinel is stripped from lineText, so paragraphSpacingClassFor can't see it, and
+                        // its text heuristic (isPlainSubtitleParagraph) misses sentence-case/single-word
+                        // headings ("You get what you do not want"), leaving them with no blank line above.
+                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div

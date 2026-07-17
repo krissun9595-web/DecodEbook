@@ -971,6 +971,14 @@ export const isUsablePdfOutline = (content: string, outline: PdfOutlineItem[] | 
   return resolved.length >= 3;
 };
 
+// EPUB variant: the nav/NCX entries already carry a resolved content OFFSET (there are no "[[PAGE n]]"
+// markers to resolve against), so usability is just "≥3 titled entries with an offset". Same downstream
+// builder (buildChaptersFromOutline) — it uses item.offset directly when present.
+export const isUsableEpubOutline = (outline: PdfOutlineItem[] | undefined): boolean => {
+  if (!outline || outline.length === 0) return false;
+  return outline.filter(item => item.title.trim().length > 0 && item.offset != null).length >= 3;
+};
+
 // Build the chapter list directly from a PDF's own outline (bookmarks): map each entry's
 // page to its "[[PAGE n]]" offset in the extracted text, in document order, with each
 // chapter running until the next. This replaces heuristic title-to-offset resolution for

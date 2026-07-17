@@ -84,6 +84,7 @@ export interface SearchHit {
   matchStart: number; // offset of the match within `snippet`
   matchLength: number;
   occurrences: number; // total matches on that page
+  anchor: string; // raw text at the match — the reader locates THIS to navigate (pagination-independent)
 }
 
 // Paginate one chapter exactly like the reader does, returning visible page text.
@@ -166,6 +167,10 @@ export const searchBookIndex = (index: ChapterPageIndex[], rawQuery: string): Se
       }
 
       const { snippet, matchStart } = buildSnippet(page.text, firstIndex, query.length);
+      // Anchor = the matched text plus a little following context (~64 chars) — enough to be unique within
+      // the chapter and short enough to sit on one reader page. The reader normalises it (wordsOnly) and
+      // finds the page containing it, so navigation is independent of the reader's live page count.
+      const anchor = page.text.slice(firstIndex, firstIndex + 64);
       hits.push({
         chapterId: chapter.chapterId,
         chapterTitle: chapter.chapterTitle,
@@ -176,6 +181,7 @@ export const searchBookIndex = (index: ChapterPageIndex[], rawQuery: string): Se
         matchStart,
         matchLength: query.length,
         occurrences,
+        anchor,
       });
     });
   }

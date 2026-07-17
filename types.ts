@@ -39,6 +39,14 @@ export type ReaderPageTarget =
       sentenceIndex?: number;
     }
   | {
+      // Jump to the reader page that CONTAINS a given text snippet — pagination-independent. Used by a
+      // search result: the reader's page count depends on its live width (the sidebar narrows it), so a
+      // fixed page index would land wrong; the anchor is located in whatever pagination the reader has and
+      // re-located after a re-pagination, so it always settles on the matched content's page.
+      type: 'text';
+      anchor: string;
+    }
+  | {
       // Jump to the reader page that shows a given SOURCE page (1-based PDF page). Used by a
       // cross-reference to a figure/table so it lands on the figure's page inside the target
       // chapter, not just the chapter start. Resolved by anchoring on the text after "[[PAGE n]]".
