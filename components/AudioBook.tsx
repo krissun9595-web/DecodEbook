@@ -2748,7 +2748,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       if (destOff >= 0) keyedEndnote = destOff < chapter.sourceStart || destOff >= chapter.sourceEnd;
     }
 
-    if (!keyedEndnote) {
+    // EPUB endnote — the SAME endnote-vs-local-scan hazard as the PDF #pdffn case above, but the key is
+    // an EPUB fragment ("ch02en1"), not a "#pdffn-p{page}" the offset check understands. Locate the
+    // chapter whose SOURCE holds the note BODY (findChapterContainingKeyedNote, keyed + excludes THIS
+    // chapter): if it's a DIFFERENT chapter, this is an endnote, so SKIP the local scan and route there.
+    // Why skipping matters: pageIndexForNoteTarget's section-scoped pattern fallback (noteStartPatternFor)
+    // fires here because this chapter's OWN title is "Chapter N" (→ scopedSectionIndex ≥ 0), and it then
+    // matches a body numbered LIST ("1. A shift in the megapolitical…") instead of the note — landing on
+    // the wrong number in this chapter. An in-chapter footnote keeps its body in THIS chapter, so
+    // findChapterContainingKeyedNote returns null and the local (keyed) scan still resolves it. PDF keys
+    // ("pdf…") keep the well-tested page-offset path above untouched.
+    const epubEndnoteChapter =
+      noteTarget.noteKey && !/^pdf/u.test(noteTarget.noteKey) ? findChapterContainingKeyedNote(noteTarget) : null;
+
+    if (!keyedEndnote && !epubEndnoteChapter) {
       const localPageIndex = pageIndexForNoteTarget(noteTarget, pages);
       if (localPageIndex >= 0) {
         setPendingNavigationTarget(noteTarget);
@@ -2758,7 +2771,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
     }
 
-    const notesChapter = findNotesChapter() || findChapterContainingKeyedNote(noteTarget);
+    const notesChapter = epubEndnoteChapter || findNotesChapter() || findChapterContainingKeyedNote(noteTarget);
     if (!notesChapter || !onChapterChange) return;
     onChapterChange(notesChapter.id, noteTarget);
   };
