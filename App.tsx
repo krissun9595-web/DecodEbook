@@ -824,6 +824,23 @@ const App: React.FC = () => {
       const cssBlock = new Set<string>();  // display:block — keep line breaks inside a heading
       const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
       const cssBold = new Set<string>();   // font-weight:bold/700
+      const cssIndent: Record<string, number> = {}; // left indent (px) — for TOC/Contents sub-entries
+      // The effective LEFT indent (px) a declaration block sets, from margin-left/padding-left OR the
+      // `margin`/`padding` SHORTHAND's left value (4 values → 4th; 2–3 values → 2nd = left). Only a
+      // positive BLOCK indent matters (a Contents sub-entry like `.ogl-zag1 { margin: 0 0 0 14px }`); NOT
+      // text-indent, which is a first-line indent on ordinary body paragraphs (`body-text`, etc.).
+      const leftIndentPx = (decls: string): number => {
+        let px = 0;
+        const m = /(?:margin-left|padding-left)\s*:\s*([\d.]+)px/i.exec(decls);
+        if (m) px = Math.max(px, parseFloat(m[1]) || 0);
+        for (const sh of decls.matchAll(/\b(?:margin|padding)\s*:\s*([^;}]+)/gi)) {
+          const parts = sh[1].trim().split(/\s+/);
+          const left = parts.length === 4 ? parts[3] : parts.length >= 2 ? parts[1] : undefined;
+          const v = left && /^([\d.]+)px$/.exec(left);
+          if (v) px = Math.max(px, parseFloat(v[1]) || 0);
+        }
+        return px;
+      };
       for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
         try {
           const css = await zip.files[key].async('string');
@@ -834,13 +851,15 @@ const App: React.FC = () => {
             const isBold = /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(rule[2]);
             const isNormalWeight = /font-weight\s*:\s*(?:normal|[1-4]00)/i.test(rule[2]);
             const isNormalStyle = /font-style\s*:\s*normal/i.test(rule[2]);
-            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle) continue;
+            const li = leftIndentPx(rule[2]);
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
               if (am) cssAlign[c] = am[1].toLowerCase() as 'center' | 'right';
               if (isBlock) cssBlock.add(c);
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
+              if (li > 0) cssIndent[c] = Math.max(cssIndent[c] || 0, li);
             }
           }
         } catch { /* skip an unreadable stylesheet */ }
@@ -850,6 +869,14 @@ const App: React.FC = () => {
         if (inline === 'center' || inline === 'right') return inline;
         for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssAlign[c]) return cssAlign[c];
         return null;
+      };
+      const indentFor = (el: Element): number => {
+        const s = (el as HTMLElement).style;
+        const inline = leftIndentPx(`margin-left:${s?.marginLeft || ''};padding-left:${s?.paddingLeft || ''};text-indent:${s?.textIndent || ''}`);
+        if (inline > 0) return inline;
+        let px = 0;
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssIndent[c]) px = Math.max(px, cssIndent[c]);
+        return px;
       };
       const isBlockChild = (n: Node): boolean => {
         if (n.nodeType !== Node.ELEMENT_NODE) return false;
@@ -1042,7 +1069,18 @@ const App: React.FC = () => {
           }
           const a = alignFor(element);
           const sentinel = a === 'center' ? '' : a === 'right' ? '' : '';
-          return `\n\n${sentinel}${emphasize(trimmed, element)}\n\n`;
+          const body = emphasize(trimmed, element);
+          // A Contents/TOC SUB-entry — a lone internal link whose CSS gives it a left indent (e.g.
+          // Transurfing's `.ogl-zag1 { margin: 0 0 0 14px }`) sits indented under its chapter. Mirror the
+          // index-sub mechanism: prefix leading NBSP (4 per ~14px depth level, which the reader's
+          // index/Contents indent renders as padding). Gated to a lone link so body prose / blockquotes
+          // with a left margin never pick up a stray indent.
+          const indentPx = indentFor(element);
+          if (indentPx >= 8 && /^\[[^\]\n]+\]\([^)\n]+\)$/.test(body.trim())) {
+            const levels = Math.min(4, Math.max(1, Math.round(indentPx / 14)));
+            return `\n\n${sentinel}${' '.repeat(levels * 4)}${body}\n\n`;
+          }
+          return `\n\n${sentinel}${body}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
