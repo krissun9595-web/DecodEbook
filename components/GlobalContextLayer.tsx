@@ -59,7 +59,9 @@ if (typeof window !== 'undefined') {
 }
 const isMobile = () => lastInputWasTouch;
 
-const FOOTNOTE_SELECTION_MARKER_PATTERN = /([.!?。！？,;:][”"’")\]]?|[”"’")\]]|[\p{Ll}])\d{1,3}(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
+// Bare ’ counts as a footnote-preceding closer only after a LETTER (a real word-closing quote,
+// "word’27"), never as a leading elided-year apostrophe ("in ’97") — see FOOTNOTE_MARKER_PATTERN.
+const FOOTNOTE_SELECTION_MARKER_PATTERN = /([.!?。！？,;:][”"’")\]]?|[”")\]]|(?<=\p{L})’|[\p{Ll}])\d{1,3}(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
 const stripSelectionFootnoteMarkers = (value: string): string =>
   value.replace(FOOTNOTE_SELECTION_MARKER_PATTERN, '$1');
 const cleanSelectionText = (value: string): string =>

@@ -343,7 +343,13 @@ interface InlineParseOptions {
 // and misfires on product names and identifiers. Real markers backed by a link annotation
 // are emitted by the extractor as explicit "[N](#pdffn…)" / "[N](#pdfnote…)" links and are
 // handled by the link parser above, not here.
-const FOOTNOTE_MARKER_PATTERN = /((?<!\d)[.!?。！？,;:][”"’")\]]?|[”"’")\]])(\d{1,3})(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
+// The right single quote ’ is AMBIGUOUS: a closing quote ("…word’27") OR the ELIDED-YEAR
+// apostrophe ("in ’97", "the ’90s"). As a BARE closer (no preceding sentence punctuation) it
+// only counts when it follows a LETTER — a real word-closing quote — via (?<=\p{L})’; a leading
+// elision apostrophe (preceded by a space/paren) is NOT a footnote, so "degree in ’97 when"
+// stops being mis-read as footnote 97. (After sentence punctuation, ’ stays a valid optional
+// closer — an elided year never follows a ".,;:" so there's no ambiguity there.)
+const FOOTNOTE_MARKER_PATTERN = /((?<!\d)[.!?。！？,;:][”"’")\]]?|[”")\]]|(?<=\p{L})’)(\d{1,3})(?=(?:\s|$|(?:——|--|—|–|-)))/gu;
 
 const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/\[([^\]]+)\]\s*\(([^)]+)\)/g, '$1')
