@@ -555,8 +555,15 @@ const splitLeadingNoteMarker = (value: string, marker: string, noteKey?: string)
 const isInternalEbookHref = (href: string): boolean =>
   Boolean(href) && !/^(?:https?:|mailto:|tel:|blob:|data:)/iu.test(href);
 
+// A page-locator anchor ("…#page_160") — an Index page number or a "see page N" cross-reference, NOT a
+// footnote. EPUB pagebreak anchors carry a numeric label too, so without this a body cross-ref "[53](#page_53)"
+// would be mis-rendered as footnote 53 (matches processEpub's own `/pag/i` note-detection exclusion).
+const isPageAnchorHref = (href?: string): boolean => {
+  const frag = href && href.includes('#') ? href.slice(href.indexOf('#') + 1) : '';
+  return /pag(?:e|ina)?[-_]?\d/iu.test(frag);
+};
 const isLikelyInternalNoteLink = (text: string, href?: string): boolean =>
-  Boolean(href && href.includes('#') && isInternalEbookHref(href) && isNumericNoteMarkerText(text));
+  Boolean(href && href.includes('#') && isInternalEbookHref(href) && isNumericNoteMarkerText(text) && !isPageAnchorHref(href));
 
 const isLikelyInternalRomanReferenceLink = (text: string, href?: string): boolean =>
   Boolean(href && href.includes('#') && isInternalEbookHref(href) && isRomanNoteMarkerText(text));
@@ -2857,6 +2864,36 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     onChapterChange(target.id, { type: 'source-page', page: destPage });
   };
 
+  // EPUB internal link (Contents/TOC entry, Index page-locator, inline cross-reference) — a ONE-WAY jump
+  // to the fragment's location, the EPUB analog of handleCrossReferenceNavigation. EPUB has no page
+  // numbers, so resolve the fragment via the epubAnchors snippet map (fragment id → the readable words
+  // just after that anchor), then find the chapter whose SOURCE contains that snippet and land on its
+  // page via the pagination-independent {type:'text'} anchor. No return marker (unlike a footnote).
+  const handleEpubLinkNavigation = (href: string, event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const frag = href.includes('#') ? decodeURIComponent(href.slice(href.indexOf('#') + 1)).trim() : '';
+    const snippet = frag ? fileContext.epubAnchors?.[frag] : undefined;
+    if (!snippet) return;
+    const anchor = wordsOnly(snippet);
+    if (anchor.length < 4) return;
+    const content = fileContext.content || '';
+    const target = allChapters.find(c =>
+      c.sourceStart != null && c.sourceEnd != null &&
+      wordsOnly(content.slice(c.sourceStart, c.sourceEnd)).includes(anchor));
+    if (target && target.id !== chapter.id) {
+      if (onChapterChange) onChapterChange(target.id, { type: 'text', anchor: snippet });
+      return;
+    }
+    // Same chapter (or unresolved) — scroll to the snippet's page within the current pages.
+    const idx = pages.findIndex(p => wordsOnly(p.text).includes(anchor));
+    if (idx >= 0 && idx !== currentPage) {
+      setPendingNavigationTarget(null);
+      setNavigationSentenceIndex(-1);
+      setCurrentPage(idx);
+    }
+  };
+
   const readerTextClass = `${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`;
   const noIndentStyle: React.CSSProperties = { textIndent: 0, paddingLeft: 0, marginLeft: 0 };
   const noTextIndentStyle: React.CSSProperties = { textIndent: 0, marginLeft: 0 };
@@ -3200,6 +3237,24 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         );
       }
       if (isInternalEbookHref(href)) {
+        // A Contents/TOC entry, Index page-locator, or inline cross-reference the reader can RESOLVE
+        // (its fragment is in epubAnchors) → a clickable one-way jump. Otherwise keep it as inert text.
+        const frag = href.includes('#') ? decodeURIComponent(href.slice(href.indexOf('#') + 1)).trim() : '';
+        if (frag && fileContext.epubAnchors?.[frag]) {
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`${className} cursor-pointer hover:text-white focus:outline-none focus:text-white`}
+              style={leafStyle}
+              title="Go to referenced location"
+              draggable={false}
+              onClick={(event) => handleEpubLinkNavigation(href, event)}
+            >
+              {text}
+            </button>
+          );
+        }
         return (
           <span
             key={key}

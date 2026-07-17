@@ -730,7 +730,7 @@ const App: React.FC = () => {
   // renders for PDF (U+E013 heading, U+E010/E011 align, [[FIG]]), so no reader/PDF code changes.
   const processEpub = async (
     file: File,
-  ): Promise<{ content: string; outline: PdfOutlineItem[]; figures: ExtractedFigure[] }> => {
+  ): Promise<{ content: string; outline: PdfOutlineItem[]; figures: ExtractedFigure[]; anchors: Record<string, string> }> => {
     try {
       const zip = await JSZip.loadAsync(file);
       const zipKeys = Object.keys(zip.files);
@@ -1095,6 +1095,44 @@ const App: React.FC = () => {
       }
       if (!fullText.trim()) throw new Error("No readable text found in EPUB.");
 
+      // Internal cross-navigation anchors (Contents/TOC entries, Index page-locators, inline
+      // cross-references). Any "<a href='…#frag'>" points at an element in the book — a one-way jump
+      // target. For each such target fragment id, capture a short SNIPPET of the readable words right
+      // AFTER that element; at read time the reader locates the snippet in the content to resolve the
+      // jump to a chapter + page (pagination-independent), mirroring the PDF "[[PAGE n]]"→text-anchor
+      // path but keyed by fragment id (EPUB has no page markers, and reusing "[[PAGE]]" would trip the
+      // isPdfSource gate). A SNIPPET (not a raw offset) survives cleanup and reuses the reader's existing
+      // {type:'text'} anchor navigation, so no new content markers / offset bookkeeping.
+      const epubAnchors: Record<string, string> = {};
+      {
+        const targetIds = new Set<string>();
+        const rawByFile: [string, string][] = [];
+        for (const filename of sortedFiles) {
+          let raw = '';
+          try { raw = await zip.files[filename].async('string'); } catch { continue; }
+          rawByFile.push([filename, raw]);
+          for (const m of raw.matchAll(/<a\b[^>]*\bhref="[^"]*#([^"]+)"/gi)) targetIds.add(decodeURIComponent(m[1]).trim());
+        }
+        for (const [, raw] of rawByFile) {
+          for (const im of raw.matchAll(/<[a-z][a-z0-9]*\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
+            const id = decodeURIComponent(im[1]).trim();
+            if (!targetIds.has(id) || epubAnchors[id]) continue;
+            // Skip this element's own opening tag, strip the following tags, take the first ~12 words —
+            // enough to be unique on a page, short enough to sit on one reader page.
+            const after = raw.slice((im.index ?? 0)).replace(/^<[^>]*>/, '');
+            const snippet = after
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/&#\d+;|&[a-z]+;| /gi, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .split(' ')
+              .slice(0, 12)
+              .join(' ');
+            if (snippet.length >= 8) epubAnchors[id] = snippet;
+          }
+        }
+      }
+
       // Extract each referenced image's bytes + intrinsic size; drop decorative (tiny) ones and their
       // markers. Figures are cached and rendered by the SAME path as PDF figures.
       const figures: ExtractedFigure[] = [];
@@ -1262,7 +1300,7 @@ const App: React.FC = () => {
       // (buildChaptersFromOutline sorts by offset and collapses non-monotonic entries, so re-anchored
       // entries that land out of nav order are put back into reading order there.)
 
-      return { content: fullText, outline, figures };
+      return { content: fullText, outline, figures, anchors: epubAnchors };
 
     } catch (e) {
       console.error("EPUB processing error", e);
@@ -3378,13 +3416,14 @@ const App: React.FC = () => {
 
     if (isEpub) {
        try {
-         const { content: textContent, outline: epubOutline, figures: epubFigures } = await processEpub(file);
+         const { content: textContent, outline: epubOutline, figures: epubFigures, anchors: epubAnchors } = await processEpub(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
             isText: true,
             sourceKind: 'epub',
             pdfOutline: epubOutline.length ? epubOutline : undefined,
+            epubAnchors: Object.keys(epubAnchors).length ? epubAnchors : undefined,
          }, epubFigures.length ? epubFigures : undefined);
        } catch (err: any) {
          setError(err.message || "Failed to process EPUB.");

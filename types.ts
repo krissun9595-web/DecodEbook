@@ -137,6 +137,10 @@ export interface FileContext {
   pdfOutline?: PdfOutlineItem[]; // PDF bookmarks (top-level), if the document has them
   docTitle?: string; // the PDF's own metadata Title, preferred over an inferred one
   pdfFigures?: PdfFigure[]; // figures extracted from the PDF; bytes cached separately
+  // EPUB internal-navigation anchors: fragment id → a short text snippet just after that anchor's
+  // element. Powers one-way jumps for Contents/TOC entries, Index page-locators, and inline
+  // cross-references (the reader locates the snippet to resolve the jump to a chapter + page).
+  epubAnchors?: Record<string, string>;
   sourceJustified?: boolean; // true when the source PDF sets its body text justified (fills the
   //                            right margin); the reader mirrors it (justify + hyphenation) under
   //                            the 'auto' alignment setting, so a ragged-left source stays ragged.
