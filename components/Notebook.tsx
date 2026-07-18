@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NotebookItem, AppSettings, Chapter, MindMapNode } from '../types';
-import { Trash2, Quote, Book, BookOpen, Clock, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Hash, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
+import { Trash2, Book, BookOpen, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Hash, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
+import { Quote } from './ui/icons';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
@@ -1124,14 +1125,14 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-neon-red bg-zinc-900/50 hover:bg-neon-red/10 rounded border border-transparent hover:border-neon-red/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">
-                                   <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-neon-cyan" /> : item.type === 'phrase' ? <Hash size={16} className="text-neon-cyan" /> : <Type size={16} className="text-cyan-400" />}</div>
+                                   <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-neon-cyan" /> : item.type === 'phrase' ? <Hash size={16} className="text-neon-cyan" style={{ transform: 'skewX(-12deg)' }} /> : <Type size={16} className="text-cyan-400" />}</div>
                                    <div className="flex-1 min-w-0 space-y-3">
                                        <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words"><span style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</span></p>
-                                           <div className="flex items-center gap-2 mt-2 flex-wrap text-[10px] font-mono text-white">
+                                           <div className="flex items-center gap-2 mt-2 flex-wrap text-[10px] font-mono text-zinc-500">
                                                {item.bookTitle && <span className="truncate max-w-[150px]">{item.bookTitle}</span>}
                                                {item.sourceChapter && <><span className="text-zinc-600">|</span><span className="truncate max-w-[200px]">{item.sourceChapter}</span></>}
                                                <span className="text-zinc-600">|</span>
-                                               <span className="flex items-center gap-1"><Clock size={10} />{formatDateTime(item.timestamp)}</span>
+                                               <span>{formatDateTime(item.timestamp)}</span>
                                            </div>
                                        </div>
                                        {item.definition && (
