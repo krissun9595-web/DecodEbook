@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save, Share2 } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save, Share2, Languages, File as FileIcon } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
-import { listFiles, deleteFile, getFile, clearAll, clearBook, getTotalSize } from '../services/fileCache';
+import { listFiles, deleteFile, getFile, clearAll, clearBook } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase } from '../utils/filename';
 import JSZip from 'jszip';
@@ -25,7 +25,15 @@ const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; c
   'mind-map-pdf': { icon: <Map size={14} />, label: 'MAP_PDF', color: 'text-sky-400' },
   'mind-map-docx': { icon: <FileDown size={14} />, label: 'MAP_DOCX', color: 'text-blue-400' },
   'mind-map-xmind': { icon: <Map size={14} />, label: 'MAP_XMIND', color: 'text-teal-400' },
+  'translation': { icon: <Languages size={14} />, label: 'TRANSLATION', color: 'text-emerald-400' },
 };
+
+// Fallback for any type without a config — a generic file glyph, NOT the audio headphones.
+const DEFAULT_FILE_CONFIG = { icon: <FileIcon size={14} />, label: 'FILE', color: 'text-zinc-400' };
+
+// Internal caches/extractions, not user-generated outputs — hidden from the panel (the reader's
+// per-chapter extracted text, the uploaded source blob, and auto-extracted figure images).
+const HIDDEN_TYPES = ['chapter-text', 'source-file', 'figure-image'];
 
 const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'ALL' },
@@ -34,6 +42,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'podcast-script', label: 'SCRIPTS' },
   { value: 'video', label: 'VIDEO' },
   { value: 'concept-image', label: 'IMAGES' },
+  { value: 'translation', label: 'TRANSLATION' },
   { value: 'notebook', label: 'NOTEBOOK' },
 ];
 
@@ -43,15 +52,12 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatRelativeTime(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function formatDate(timestamp: number): string {
+  const d = new Date(timestamp);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
 }
 
 export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
@@ -64,23 +70,28 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
   const loadFiles = useCallback(async () => {
     try {
-      const bookId = filterBook === 'all' ? undefined : filterBook;
-      const allFiles = await listFiles(bookId);
-      setFiles(allFiles.sort((a, b) => b.timestamp - a.timestamp));
-      setTotalSize(await getTotalSize());
+      // Load ALL files ONCE (a single cursor); book + type filtering happens client-side below, so
+      // switching either scope is instant with no re-query. Also derive the total size from the list
+      // instead of a SECOND full-store cursor (getTotalSize) — together these were reading every record
+      // (blobs and all) twice per load, which made the panel sit empty for seconds.
+      const allFiles = await listFiles();
+      const visible = allFiles.filter(f => !HIDDEN_TYPES.includes(f.fileType));
+      setFiles(visible.sort((a, b) => b.timestamp - a.timestamp));
+      setTotalSize(visible.reduce((s, f) => s + (f.size || 0), 0));
     } catch (e) {
       console.error('Failed to load cached files:', e);
     }
-  }, [filterBook]);
+  }, []);
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
 
   const NOTEBOOK_TYPES = ['sticky-note', 'notebook-figure', 'mind-map-pdf', 'mind-map-docx', 'mind-map-xmind'];
-  const filteredFiles = filterType === 'all'
-    ? files
-    : filterType === 'notebook'
-      ? files.filter(f => NOTEBOOK_TYPES.includes(f.fileType))
-      : files.filter(f => f.fileType === filterType);
+  const filteredFiles = files.filter(f => {
+    if (filterBook !== 'all' && f.bookId !== filterBook) return false;
+    if (filterType === 'all') return true;
+    if (filterType === 'notebook') return NOTEBOOK_TYPES.includes(f.fileType);
+    return f.fileType === filterType;
+  });
 
   const handleDownload = async (file: CachedFileMetadata) => {
     try {
@@ -217,26 +228,26 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       </div>
 
       {/* File List */}
-      <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
         {filteredFiles.length === 0 ? (
           <EmptyState icon={HardDrive} label="Cache_Empty" sublabel="Generated files will appear here after creation" className="h-full" />
         ) : (
           filteredFiles.map((file, i) => {
-            const config = FILE_TYPE_CONFIG[file.fileType] || FILE_TYPE_CONFIG['audio'];
+            const config = FILE_TYPE_CONFIG[file.fileType] || DEFAULT_FILE_CONFIG;
             return (
               <div
                 key={file.key}
-                style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
-                className="content-panel rounded-lg p-3 md:p-4 flex items-start md:items-center gap-3 md:gap-4 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group animate-fade-in-up"
+                style={{ animationDelay: `${Math.min(i * 12, 120)}ms` }}
+                className="content-panel rounded-sm px-3 py-1.5 flex items-center gap-3 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group animate-fade-in-up"
               >
                 {/* Icon */}
-                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
+                <div className={`w-7 h-7 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
                   {config.icon}
                 </div>
 
                 {/* File Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-xs md:text-sm text-zinc-200 font-medium truncate">{file.filename}</span>
                     <span className={`hidden md:inline text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full border border-zinc-800 shrink-0 ${config.color}`}>
                       {config.label}
@@ -250,7 +261,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     <span className="hidden md:inline text-zinc-500">|</span>
                     <span>CH.{String(file.chapterId).padStart(2, '0')}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
-                    <span>{formatRelativeTime(file.timestamp)}</span>
+                    <span>{formatDate(file.timestamp)}</span>
                   </div>
                 </div>
 
