@@ -102,6 +102,27 @@ export async function deleteFile(key: string): Promise<void> {
   });
 }
 
+// Delete every record whose key satisfies `match`, iterating with a KEY cursor so record VALUES (blobs)
+// are never cloned — cheap even over a large cache. Used to drop a page's stale audio (keyed by the OLD
+// page text) when that page's audio is regenerated, so the panel doesn't accumulate same-filename copies.
+export async function deleteMatchingKeys(match: (key: string) => boolean): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const cursorRequest = store.openKeyCursor();
+    cursorRequest.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursor>).result;
+      if (cursor) {
+        if (typeof cursor.key === 'string' && match(cursor.key)) store.delete(cursor.key);
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
 export async function clearBook(bookId: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {

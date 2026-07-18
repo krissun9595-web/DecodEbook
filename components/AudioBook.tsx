@@ -5,7 +5,7 @@ import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFig
 import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
-import { saveFile, getFile, deleteFile, buildCacheKey } from '../services/fileCache';
+import { saveFile, getFile, deleteFile, deleteMatchingKeys, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -2511,6 +2511,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (isGenerating || !flatSentenceMap.length || !currentPageText) return;
     const genKey = audioCacheKeyFor(currentPage, currentPageText, selectedVoice, audioLanguage);
     audioGenKeyRef.current = genKey;
+    // Any audio previously cached for THIS page + voice + language but a DIFFERENT page text (i.e. a
+    // pre-reflow version of the page) shares the same filename and is now stale. Match it by key so we can
+    // drop it once the fresh audio is saved — regenerating UPDATES the file instead of leaving a duplicate.
+    const staleAudioMatch = (k: string) =>
+      k.startsWith(`${bookId}:${chapter.id}:audio:${AUDIO_CACHE_VERSION}:${sourceFingerprint}:page${currentPage}:`)
+      && k.endsWith(`:${selectedVoice}:${audioLanguage}`)
+      && k !== genKey;
 
     // If already in-flight (e.g. double-click), just attach
     if (inflightAudioMap.has(genKey)) return;
@@ -2642,6 +2649,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           componentSource: 'audiobook',
           fileType: 'audio',
         }).catch(e => console.warn('Cache save failed:', e));
+
+        // Drop the now-superseded pre-reflow audio for this page + voice (same filename, old page text).
+        deleteMatchingKeys(staleAudioMatch).catch(() => {});
 
         // Persist timings at module level so they survive remount
         timingsCache.set(genKey, final.newTimings);
