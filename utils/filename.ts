@@ -15,6 +15,13 @@ export function slugifyFilename(text: string, maxLen = 30): string {
 // a chapter numbered "II" would title-case to "Ii". Anchored + no empty match.
 const ROMAN_NUMERAL = /^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/;
 
+// dd/mm/yy HH:MM:SS in the user's local time — shared so mem_log and gen_files read identically.
+export function formatDateTime(timestamp: number): string {
+  const d = new Date(timestamp);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 export function titleCase(text: string, maxLen = 50): string {
   return text
     .replace(/[-_]+/g, ' ')

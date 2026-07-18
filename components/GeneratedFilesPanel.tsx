@@ -5,7 +5,7 @@ import { CachedFileMetadata, LibraryItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
 import { listFiles, deleteFile, getFile } from '../services/fileCache';
 import { shareFile } from '../utils/share';
-import { titleCase } from '../utils/filename';
+import { titleCase, formatDateTime } from '../utils/filename';
 import JSZip from 'jszip';
 
 interface Props {
@@ -71,13 +71,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDate(timestamp: number): string {
-  const d = new Date(timestamp);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}/${mm}/${yy}`;
-}
 
 export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   const [files, setFiles] = useState<CachedFileMetadata[]>([]);
@@ -272,11 +265,11 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] md:text-[10px] font-mono text-zinc-600">
                     <span className={`md:hidden ${config.color}`}>{moduleLabel(file.componentSource)}</span>
-                    <span>{formatFileSize(file.size)}</span>
-                    <span className="hidden md:inline text-zinc-500">|</span>
                     <span className="truncate max-w-[100px] md:max-w-[150px]">{file.bookTitle || getBookTitle(file.bookId)}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
-                    <span>{formatDate(file.timestamp)}</span>
+                    <span>{formatDateTime(file.timestamp)}</span>
+                    <span className="hidden md:inline text-zinc-500">|</span>
+                    <span>{formatFileSize(file.size)}</span>
                   </div>
                 </div>
 

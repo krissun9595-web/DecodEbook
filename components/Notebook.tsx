@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NotebookItem, AppSettings, Chapter, MindMapNode } from '../types';
-import { Trash2, Quote, Book, BookOpen, Clock, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Zap, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
+import { Trash2, Quote, Book, BookOpen, Clock, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Hash, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
@@ -11,7 +11,7 @@ import { EmptyState } from './ui/EmptyState';
 import { saveFile, buildCacheKey } from '../services/fileCache';
 import { playPronunciationAudio, prefetchPronunciation, stopPronunciationAudio } from '../services/pronunciationAudio';
 import { shareFile } from '../utils/share';
-import { titleCase } from '../utils/filename';
+import { titleCase, formatDateTime } from '../utils/filename';
 import { trackNotebook } from '../utils/analytics';
 import { inkLineStyle } from '../utils/inkLine';
 
@@ -1115,8 +1115,6 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                ) : (
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
                        {filteredItems.map((item, idx) => {
-                           const typeColor = item.type === 'phrase' ? 'text-neon-red' : item.type === 'word' ? 'text-cyan-400' : 'text-neon-cyan';
-                           const inkBadgeClass = INK_BADGE_STYLES[settings.highlightColor] || INK_BADGE_STYLES.indigo;
                            return (
                            <div key={item.id} className="bg-void-2 border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
@@ -1126,15 +1124,14 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 text-zinc-600 hover:text-neon-red bg-zinc-900/50 hover:bg-neon-red/10 rounded border border-transparent hover:border-neon-red/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">
-                                   <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-neon-cyan" /> : item.type === 'phrase' ? <Zap size={16} className="text-neon-red" /> : <Type size={16} className="text-cyan-400" />}</div>
+                                   <div className="mt-1 shrink-0">{item.type === 'sentence' ? <Quote size={16} className="text-neon-cyan" /> : item.type === 'phrase' ? <Hash size={16} className="text-neon-cyan" /> : <Type size={16} className="text-cyan-400" />}</div>
                                    <div className="flex-1 min-w-0 space-y-3">
                                        <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words"><span style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</span></p>
-                                           <div className="flex items-center gap-3 mt-2 flex-wrap">
-                                               <span className={`text-[9px] font-mono uppercase tracking-wide bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 ${typeColor}`}>{item.type}</span>
-                                               {item.inked && <span className={`text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded border ${inkBadgeClass}`}>INKED</span>}
-                                               {item.bookTitle && <span className="text-[10px] font-mono text-cyan-500/60 truncate max-w-[150px]">{item.bookTitle}</span>}
-                                               {item.sourceChapter && <span className="text-[10px] font-mono text-zinc-600 truncate max-w-[200px]">CH: {item.sourceChapter}</span>}
-                                               <span className="text-[10px] font-mono text-zinc-500 flex items-center gap-1"><Clock size={10} />{new Date(item.timestamp).toLocaleDateString()}</span>
+                                           <div className="flex items-center gap-2 mt-2 flex-wrap text-[10px] font-mono text-white">
+                                               {item.bookTitle && <span className="truncate max-w-[150px]">{item.bookTitle}</span>}
+                                               {item.sourceChapter && <><span className="text-zinc-600">|</span><span className="truncate max-w-[200px]">{item.sourceChapter}</span></>}
+                                               <span className="text-zinc-600">|</span>
+                                               <span className="flex items-center gap-1"><Clock size={10} />{formatDateTime(item.timestamp)}</span>
                                            </div>
                                        </div>
                                        {item.definition && (
