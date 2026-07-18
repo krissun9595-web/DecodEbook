@@ -78,7 +78,7 @@ const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
 const CHAPTER_TEXT_CACHE_VERSION = 'v33-sentinel-heading-nomerge';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
-const TRANSLATION_CACHE_VERSION = 'v18-dbname-restore';
+const TRANSLATION_CACHE_VERSION = 'v19-chapter-sentence-map';
 
 // Module-level store for in-flight audio generation.
 // Survives component unmount/remount so generation isn't lost on tab switch.
@@ -143,8 +143,12 @@ const initialVoiceSynthMinimized = (): boolean => {
 
 // Module-level cache for timings (keyed same as audio cache)
 const timingsCache = new Map<string, ChunkTiming[]>();
-const translationJobMap = new Map<string, Promise<string[] | null>>();
-const translationMemoryCache = new Map<string, string[]>();
+// Serializes translation work per chapter+language key so concurrent page/prefetch requests share one
+// accumulating map instead of each re-translating and re-saving.
+const translationJobMap = new Map<string, Promise<unknown>>();
+// Per chapter+language key: a map of normalized-sentence -> translation. Sentence text is the STABLE
+// identity (pagination-independent), so re-flowing a chapter never re-translates or re-saves.
+const translationMemoryCache = new Map<string, Map<string, string>>();
 // Remembers the last playback position per audio (cache key) so leaving the module
 // — e.g. clicking a footnote — and returning resumes where the user left off instead
 // of snapping the progress bar back to the start.
@@ -2020,94 +2024,100 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     return () => { cancelled = true; };
   }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id, pages, currentPageText, sourceFingerprint]);
 
-  const translationCacheKeyFor = (pageIndex: number, pageText: string, sentenceMap: SentenceMap[]): string => {
+  // ONE stable key per chapter + language + source + version — no page index, page text or page
+  // sentence-signature. That's what makes translation caching pagination-independent: re-flowing the
+  // chapter (resize / text-size / split) resolves to the SAME key, so nothing re-translates or re-saves.
+  const translationCacheKeyFor = (): string => {
     return buildCacheKey(
       bookId,
       chapter.id,
       'translation',
       TRANSLATION_CACHE_VERSION,
       sourceFingerprint,
-      `page${pageIndex}`,
-      textFingerprint(pageText),
-      sentenceSignatureFor(sentenceMap),
       settings.targetLanguage
     );
   };
 
   const loadOrGeneratePageTranslation = async (
-    pageIndex: number,
-    pageText: string,
+    _pageIndex: number,
+    _pageText: string,
     sentenceMap: SentenceMap[]
   ): Promise<string[] | null> => {
     if (settings.targetLanguage === 'Original' || sentenceMap.length === 0) return null;
 
-    const allSentences = sentenceMap.map(m => m.text);
-    if (allSentences.length === 0) return null;
+    const pageSentences = sentenceMap.map(m => m.text);
+    if (pageSentences.length === 0) return null;
 
-    const transCacheKey = translationCacheKeyFor(pageIndex, pageText, sentenceMap);
-    const memoryCached = translationMemoryCache.get(transCacheKey);
-    if (memoryCached) return [...memoryCached];
+    const key = translationCacheKeyFor();
+    const norm = (s: string) => normalizeSentenceForCache(s);
 
-    const existingJob = translationJobMap.get(transCacheKey);
-    if (existingJob) return existingJob.then(result => result ? [...result] : result);
+    // Chain all work on this chapter+language key so concurrent page + prefetch requests build ONE
+    // accumulating sentence→translation map, translating only sentences not seen before, and persist
+    // it under the stable key (a single file per chapter+language that overwrites in place — no
+    // duplicate rows, and no repeat model calls when the same page is revisited or re-flowed).
+    const run = (translationJobMap.get(key) || Promise.resolve()).then(async () => {
+      let map = translationMemoryCache.get(key);
+      if (!map) {
+        map = new Map<string, string>();
+        const cached = await getFile(key).catch(() => null);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(await cached.blob.text());
+            const entries = parsed?.sentences;
+            if (entries && typeof entries === 'object') {
+              for (const [k, v] of Object.entries(entries)) {
+                if (typeof v === 'string' && v) map.set(k, stripLeakedTokens(v));
+              }
+            }
+          } catch (cacheError) {
+            console.warn('Ignoring invalid translation cache:', cacheError);
+          }
+        }
+        translationMemoryCache.set(key, map);
+      }
 
-    const job = (async () => {
-      const cached = await getFile(transCacheKey).catch(() => null);
-      let cachedTranslations: string[] | null = null;
-      if (cached) {
-        try {
-          cachedTranslations = parseCachedTranslationPayload(
-            JSON.parse(await cached.blob.text()),
-            allSentences
-          );
-        } catch (cacheError) {
-          console.warn('Ignoring invalid translation cache:', cacheError);
+      // Only translate this page's sentences that aren't already in the map (de-duplicating identical
+      // sentences within the page too).
+      const missing = new Map<string, string>(); // normalized -> original
+      for (const s of pageSentences) {
+        const n = norm(s);
+        if (n && !map.get(n)) missing.set(n, s);
+      }
+
+      if (missing.size > 0) {
+        const originals = [...missing.values()];
+        const translated = normalizeTranslationArray(
+          (await translateSentences(originals, settings.targetLanguage)).map(stripLeakedTokens),
+          originals.length,
+          false
+        );
+        if (translated) {
+          let added = false;
+          originals.forEach((orig, i) => {
+            const t = translated[i];
+            if (t) { map!.set(norm(orig), t); added = true; }
+          });
+          if (added) {
+            const payload = JSON.stringify({ v: 2, sentences: Object.fromEntries(map!) });
+            await saveFile(key, new Blob([payload], { type: 'application/json' }), {
+              filename: `translation-${chapterFileLabel(chapter, allChapters)}-${titleCase(settings.targetLanguage, 20)}.json`,
+              mimeType: 'application/json',
+              timestamp: Date.now(),
+              bookId,
+              bookTitle,
+              chapterId: chapter.id,
+              componentSource: 'audiobook',
+              fileType: 'translation',
+            }).catch(e => console.warn('Translation cache save failed:', e));
+          }
         }
       }
 
-      if (cachedTranslations) {
-        cachedTranslations = cachedTranslations.map(stripLeakedTokens);
-        translationMemoryCache.set(transCacheKey, cachedTranslations);
-        return [...cachedTranslations];
-      }
+      return pageSentences.map(s => map!.get(norm(s)) || '');
+    });
 
-      const generatedTranslations = normalizeTranslationArray(
-        (await translateSentences(allSentences, settings.targetLanguage)).map(stripLeakedTokens),
-        allSentences.length,
-        true
-      );
-      if (!generatedTranslations) {
-        throw new Error('Translation returned no readable content.');
-      }
-
-      const transBlob = new Blob([JSON.stringify({
-        sourceSentences: allSentences,
-        translations: generatedTranslations,
-      })], { type: 'application/json' });
-      translationMemoryCache.set(transCacheKey, generatedTranslations);
-      await saveFile(transCacheKey, transBlob, {
-        filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
-        mimeType: 'application/json',
-        timestamp: Date.now(),
-        bookId,
-        bookTitle,
-        chapterId: chapter.id,
-        componentSource: 'audiobook',
-        fileType: 'translation',
-      }).catch(e => {
-        console.warn('Translation cache save failed:', e);
-        throw e;
-      });
-
-      return [...generatedTranslations];
-    })();
-
-    translationJobMap.set(transCacheKey, job);
-    try {
-      return await job;
-    } finally {
-      translationJobMap.delete(transCacheKey);
-    }
+    translationJobMap.set(key, run.catch(() => {}));
+    return run;
   };
 
   useEffect(() => {
