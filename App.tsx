@@ -3698,13 +3698,13 @@ const App: React.FC = () => {
         content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} bookTitle={activeBook?.title} initialPageTarget={activeChapterPageTarget} onPageSizeComputed={reportReaderSize} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
         break;
       case Tab.PODCAST:
-        content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} bookTitle={activeBook?.title} />;
+        content = <PodcastPlayer chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} bookTitle={activeBook?.title} />;
         break;
       case Tab.CONCEPTS:
-        content = <Visualizer chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} bookTitle={activeBook?.title} />;
+        content = <Visualizer chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} bookId={activeBookId!} bookTitle={activeBook?.title} />;
         break;
       case Tab.ANIMATION:
-        content = <VideoSummary chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} bookTitle={activeBook?.title} />;
+        content = <VideoSummary chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} bookId={activeBookId!} bookTitle={activeBook?.title} />;
         break;
       default:
         content = null;

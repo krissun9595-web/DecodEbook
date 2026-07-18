@@ -6,12 +6,13 @@ import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { shareFile } from '../utils/share';
-import { titleCase } from '../utils/filename';
+import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
+  allChapters?: Chapter[];
   fileContext: FileContext;
   bookId: string;
   bookTitle?: string;
@@ -25,7 +26,7 @@ const STYLES = [
 const RESOLUTIONS: ('720p' | '1080p')[] = ['720p', '1080p'];
 const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId, bookTitle }) => {
+export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContext, bookId, bookTitle }) => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -107,7 +108,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId, bo
         trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', provider: useSeedance ? 'seedance' : 'google', model: videoModel, inputChars: chapter.content?.length || 0 });
         const cacheKey = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
         saveFile(cacheKey, videoBlob, {
-          filename: `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`,
+          filename: `video-${chapterFileLabel(chapter, allChapters)}-${titleCase(selectedStyle, 20)}-${selectedResolution}.mp4`,
           mimeType: 'video/mp4',
           timestamp: Date.now(),
           bookId,

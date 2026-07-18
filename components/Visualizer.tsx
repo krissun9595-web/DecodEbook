@@ -6,13 +6,14 @@ import { extractConcepts, generateConceptImage } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { shareFile } from '../utils/share';
-import { titleCase } from '../utils/filename';
+import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import JSZip from 'jszip';
 import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
 
 interface Props {
   chapter: Chapter;
+  allChapters?: Chapter[];
   fileContext: FileContext;
   bookId: string;
   bookTitle?: string;
@@ -25,7 +26,7 @@ const STYLES = [
 ];
 const RATIOS = ['1:1', '16:9', '4:3', '3:2', '9:16', '3:4', '2:3'];
 
-export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId, bookTitle }) => {
+export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext, bookId, bookTitle }) => {
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [images, setImages] = useState<Record<string, string>>({});
   const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
@@ -84,7 +85,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId, book
         const imgBlob = await imgResp.blob();
         const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
         saveFile(key, imgBlob, {
-          filename: `concept-ch${chapter.id}-${titleCase(concept.term)}.png`,
+          filename: `concept-${chapterFileLabel(chapter, allChapters)}-${titleCase(concept.term)}.png`,
           mimeType: 'image/png',
           timestamp: Date.now(),
           bookId,

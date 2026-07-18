@@ -7,11 +7,12 @@ import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
-import { titleCase } from '../utils/filename';
+import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 
 interface Props {
   chapter: Chapter;
+  allChapters?: Chapter[];
   fileContext: FileContext;
   settings: AppSettings;
   bookId: string;
@@ -112,7 +113,7 @@ const HOST_CONFIG: Record<string, { host1: string, voice1: string, desc1: string
   'Netrunner': { host1: 'Zero', voice1: 'Puck', desc1: 'fast-talking male hacker, excited about data', host2: 'One', voice2: 'Kore', desc2: 'cool female AI companion, responds with smooth precision' },
 };
 
-export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId, bookTitle }) => {
+export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileContext, bookId, bookTitle }) => {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [episodeTitle, setEpisodeTitle] = useState<string>(lastEpisodeTitle || '');
   const [script, setScript] = useState<string | null>(null);
@@ -330,6 +331,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId, b
     // Capture values for the closure (survives unmount)
     const capturedFileContext = fileContext;
     const capturedChapter = chapter;
+    const capturedChapterLabel = chapterFileLabel(chapter, allChapters);
     const capturedTone = selectedTone;
     const capturedHosts = hosts;
     const capturedLanguage = selectedLanguage;
@@ -346,7 +348,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId, b
         // Cache results (runs even if component is unmounted)
         const audioCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-audio', capturedTone, capturedLanguage);
         saveFile(audioCacheKey, audioBlob, {
-          filename: `podcast-ch${capturedChapter.id}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${titleCase(capturedChapter.title)}.wav`,
+          filename: `podcast-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -358,7 +360,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId, b
         const scriptBlob = new Blob([result.script], { type: 'text/plain' });
         const scriptCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-script', capturedTone, capturedLanguage);
         saveFile(scriptCacheKey, scriptBlob, {
-          filename: `script-ch${capturedChapter.id}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${titleCase(capturedChapter.title)}.txt`,
+          filename: `script-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.txt`,
           mimeType: 'text/plain',
           timestamp: Date.now(),
           bookId: capturedBookId,

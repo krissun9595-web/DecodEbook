@@ -7,7 +7,7 @@ import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
-import { titleCase } from '../utils/filename';
+import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { rearrangeAndCleanText } from '../utils/textCleanup';
 import {
@@ -1804,7 +1804,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });
         saveFile(textCacheKey, textBlob, {
-          filename: `text-ch${chapter.id}-${titleCase(chapter.title)}.txt`,
+          filename: `text-${chapterFileLabel(chapter, allChapters)}.txt`,
           mimeType: 'text/plain',
           timestamp: Date.now(),
           bookId,
@@ -2086,7 +2086,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       })], { type: 'application/json' });
       translationMemoryCache.set(transCacheKey, generatedTranslations);
       await saveFile(transCacheKey, transBlob, {
-        filename: `translation-ch${chapter.id}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}-${titleCase(chapter.title)}.json`,
+        filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
         mimeType: 'application/json',
         timestamp: Date.now(),
         bookId,
@@ -2490,7 +2490,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const capturedBookTitle = bookTitle;
     const capturedChapterId = chapter.id;
     const capturedPage = currentPage;
-    const capturedChapterTitle = titleCase(chapter.title);
+    const capturedChapterLabel = chapterFileLabel(chapter, allChapters);
 
     // The core generation runs as a standalone promise stored at module level
     const genPromise = (async (): Promise<{ blob: Blob; timings: ChunkTiming[] } | null> => {
@@ -2548,7 +2548,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
         // Cache the complete result (runs even if component is unmounted)
         saveFile(genKey, blob, {
-          filename: `voice-ch${capturedChapterId}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}-${capturedChapterTitle}.wav`,
+          filename: `voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -3827,7 +3827,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                   <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-${chapterFileLabel(chapter, allChapters)}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                   <button aria-label="Minimize or maximize player" onClick={() => {
                     const nextMinimized = !isModuleMinimized;
                     setIsModuleMinimized(nextMinimized);
@@ -3894,8 +3894,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // The figure's number + name live in its caption (the manifest has neither); the caption is
                     // the adjacent paragraph — prefer the one AFTER the marker, else the one before, and only if
                     // it actually reads like a figure caption. chapterLabel prefixes the saved translation's name.
-                    const chNum = explicitChapterNumberFrom(chapter.sourceHeading, chapter.title);
-                    const chapterLabel = chNum ? `Ch${chNum}` : titleCase(chapter.title, 18);
+                    const chapterLabel = chapterFileLabel(chapter, allChapters);
                     const capRe = /^\s*(figure|fig\.?|table|chart|diagram|plate|exhibit)\b/i;
                     // Scan the few paragraphs on either side (a page marker or a stray blank can sit between the
                     // image and its caption), taking the nearest one that reads like a figure caption.
