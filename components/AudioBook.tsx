@@ -1642,7 +1642,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (newPages.length === 0) return;
     let newIdx = 0;
     const pend = pendingNavigationTarget;
-    if (pend && typeof pend === 'object' && pend.type === 'text') {
+    if (pend === 'last') {
+      // Preserve a "previous chapter → its LAST page" arrival. The one-time post-render re-paginate (and
+      // any resize) fires before the user acts; the anchor path below would reset it to page 0 whenever
+      // the measured pagination differs from the pre-render estimate and the last page's opening words
+      // don't re-locate (a short final page) — the "lands on the first page of the previous chapter" bug.
+      newIdx = newPages.length - 1;
+    } else if (pend === 'first') {
+      newIdx = 0;
+    } else if (pend && typeof pend === 'object' && pend.type === 'text') {
       // A search navigation is pending — re-locate the matched content in the NEW pagination so a
       // width change (e.g. the sidebar closing after a result click) still lands on its exact page.
       newIdx = pageIndexForTarget(pend, newPages);
