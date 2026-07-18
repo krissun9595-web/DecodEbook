@@ -78,7 +78,7 @@ const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
 const CHAPTER_TEXT_CACHE_VERSION = 'v33-sentinel-heading-nomerge';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
-const TRANSLATION_CACHE_VERSION = 'v19-chapter-sentence-map';
+const TRANSLATION_CACHE_VERSION = 'v20-per-page-stable';
 
 // Module-level store for in-flight audio generation.
 // Survives component unmount/remount so generation isn't lost on tab switch.
@@ -2024,22 +2024,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     return () => { cancelled = true; };
   }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id, pages, currentPageText, sourceFingerprint]);
 
-  // ONE stable key per chapter + language + source + version — no page index, page text or page
-  // sentence-signature. That's what makes translation caching pagination-independent: re-flowing the
-  // chapter (resize / text-size / split) resolves to the SAME key, so nothing re-translates or re-saves.
-  const translationCacheKeyFor = (): string => {
-    return buildCacheKey(
-      bookId,
-      chapter.id,
-      'translation',
-      TRANSLATION_CACHE_VERSION,
-      sourceFingerprint,
-      settings.targetLanguage
-    );
-  };
+  // The PERSISTED file is per PAGE, self-contained and in reading order, keyed by page NUMBER only (no
+  // page text / sentence-signature) — so re-flowing the chapter overwrites the same page file instead
+  // of minting a new one (which stacked duplicate rows). Credits are saved separately by an in-memory
+  // per-chapter sentence map, so re-pagination / revisits translate only sentences not seen before.
+  const translationSentenceMapKey = (): string =>
+    buildCacheKey(bookId, chapter.id, 'translation-mem', TRANSLATION_CACHE_VERSION, sourceFingerprint, settings.targetLanguage);
+
+  const translationPageFileKey = (pageIndex: number): string =>
+    buildCacheKey(bookId, chapter.id, 'translation', TRANSLATION_CACHE_VERSION, sourceFingerprint, `pg${pageIndex}`, settings.targetLanguage);
 
   const loadOrGeneratePageTranslation = async (
-    _pageIndex: number,
+    pageIndex: number,
     _pageText: string,
     sentenceMap: SentenceMap[]
   ): Promise<string[] | null> => {
@@ -2048,75 +2044,73 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const pageSentences = sentenceMap.map(m => m.text);
     if (pageSentences.length === 0) return null;
 
-    const key = translationCacheKeyFor();
+    const mapKey = translationSentenceMapKey();
+    const pageKey = translationPageFileKey(pageIndex);
     const norm = (s: string) => normalizeSentenceForCache(s);
 
-    // Chain all work on this chapter+language key so concurrent page + prefetch requests build ONE
-    // accumulating sentence→translation map, translating only sentences not seen before, and persist
-    // it under the stable key (a single file per chapter+language that overwrites in place — no
-    // duplicate rows, and no repeat model calls when the same page is revisited or re-flowed).
-    const run = (translationJobMap.get(key) || Promise.resolve()).then(async () => {
-      let map = translationMemoryCache.get(key);
-      if (!map) {
-        map = new Map<string, string>();
-        const cached = await getFile(key).catch(() => null);
+    // Serialize on the chapter+language key so concurrent page + prefetch requests share one growing
+    // sentence map (each translating only what's new) rather than racing.
+    const run = (translationJobMap.get(mapKey) || Promise.resolve()).then(async () => {
+      let map = translationMemoryCache.get(mapKey);
+      if (!map) { map = new Map<string, string>(); translationMemoryCache.set(mapKey, map); }
+
+      const stillMissing = () => pageSentences.filter(s => { const n = norm(s); return n && !map!.get(n); });
+      let missing = stillMissing();
+
+      // Cross-session reuse: seed the map from this page's already-saved file before spending a call.
+      if (missing.length > 0) {
+        const cached = await getFile(pageKey).catch(() => null);
         if (cached) {
           try {
             const parsed = JSON.parse(await cached.blob.text());
-            const entries = parsed?.sentences;
-            if (entries && typeof entries === 'object') {
-              for (const [k, v] of Object.entries(entries)) {
-                if (typeof v === 'string' && v) map.set(k, stripLeakedTokens(v));
-              }
+            const src = parsed?.sourceSentences, tr = parsed?.translations;
+            if (Array.isArray(src) && Array.isArray(tr)) {
+              src.forEach((s: unknown, i: number) => {
+                const t = tr[i];
+                if (typeof s === 'string' && typeof t === 'string' && t) map!.set(norm(s), stripLeakedTokens(t));
+              });
             }
           } catch (cacheError) {
             console.warn('Ignoring invalid translation cache:', cacheError);
           }
         }
-        translationMemoryCache.set(key, map);
+        missing = stillMissing();
       }
 
-      // Only translate this page's sentences that aren't already in the map (de-duplicating identical
-      // sentences within the page too).
-      const missing = new Map<string, string>(); // normalized -> original
-      for (const s of pageSentences) {
-        const n = norm(s);
-        if (n && !map.get(n)) missing.set(n, s);
-      }
-
-      if (missing.size > 0) {
-        const originals = [...missing.values()];
+      if (missing.length > 0) {
+        const originalByNorm = new Map<string, string>(); // dedupe identical sentences within the page
+        missing.forEach(s => { const n = norm(s); if (!originalByNorm.has(n)) originalByNorm.set(n, s); });
+        const originals = [...originalByNorm.values()];
         const translated = normalizeTranslationArray(
           (await translateSentences(originals, settings.targetLanguage)).map(stripLeakedTokens),
           originals.length,
           false
         );
-        if (translated) {
-          let added = false;
-          originals.forEach((orig, i) => {
-            const t = translated[i];
-            if (t) { map!.set(norm(orig), t); added = true; }
-          });
-          if (added) {
-            const payload = JSON.stringify({ v: 2, sentences: Object.fromEntries(map!) });
-            await saveFile(key, new Blob([payload], { type: 'application/json' }), {
-              filename: `translation-${chapterFileLabel(chapter, allChapters)}-${titleCase(settings.targetLanguage, 20)}.json`,
-              mimeType: 'application/json',
-              timestamp: Date.now(),
-              bookId,
-              bookTitle,
-              chapterId: chapter.id,
-              componentSource: 'audiobook',
-              fileType: 'translation',
-            }).catch(e => console.warn('Translation cache save failed:', e));
-          }
-        }
+        if (translated) originals.forEach((orig, i) => { const t = translated[i]; if (t) map!.set(norm(orig), t); });
       }
 
-      return pageSentences.map(s => map!.get(norm(s)) || '');
+      const pageTranslations = pageSentences.map(s => map!.get(norm(s)) || '');
+
+      // Persist THIS page only, in reading order. Stable page-number key -> overwrites on reflow (no
+      // duplicate rows); another page's content can never leak into this file.
+      if (pageTranslations.some(Boolean)) {
+        const payload = JSON.stringify({ sourceSentences: pageSentences, translations: pageTranslations });
+        await saveFile(pageKey, new Blob([payload], { type: 'application/json' }), {
+          filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
+          mimeType: 'application/json',
+          timestamp: Date.now(),
+          bookId,
+          bookTitle,
+          chapterId: chapter.id,
+          componentSource: 'audiobook',
+          fileType: 'translation',
+        }).catch(e => console.warn('Translation cache save failed:', e));
+      }
+
+      return pageTranslations;
     });
 
-    translationJobMap.set(key, run.catch(() => {}));
+    translationJobMap.set(mapKey, run.catch(() => {}));
     return run;
   };
 
