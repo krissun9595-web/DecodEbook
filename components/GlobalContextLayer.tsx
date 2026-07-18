@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, BookOpen, Volume2, PenLine, MessageSquare } from 'lucide-react';
+import { Search, Loader2, BookOpen, Volume2, PenLine, MessageSquare, Square } from 'lucide-react';
 import { getQuickDefinition } from '../services/gemini';
 import { NotebookItem } from '../types';
 import { playPronunciationAudio, prefetchPronunciation, stopPronunciationAudio } from '../services/pronunciationAudio';
@@ -633,8 +633,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                     {menu.text.length > 20 ? menu.text.substring(0, 20) + '...' : menu.text}
 	                </div>
 	                <div className="p-1">
-	                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Defination</button>
-	                    <button onClick={() => handlePronounce(false)} onPointerEnter={() => prefetchActivePronunciation(false)} onFocus={() => prefetchActivePronunciation(false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}><Volume2 size={14} />{isPlaying ? 'Stop Pronunciation' : 'Pronunciation'}</button>
+	                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Define</button>
+	                    <button onClick={() => handlePronounce(false)} onPointerEnter={() => prefetchActivePronunciation(false)} onFocus={() => prefetchActivePronunciation(false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}>{isPlaying ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}{isPlaying ? 'Stop' : 'Pronounce'}</button>
 	                    <button onClick={() => handleInk()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><PenLine size={14} />{menu.isInked ? 'Remove Ink' : 'Ink'}</button>
 	                    <button onClick={() => openCommentComposer()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><MessageSquare size={14} />Comment</button>
 	                </div>
@@ -677,7 +677,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                 <div className="flex items-start justify-between mb-3 shrink-0">
 	                     <h3 className="text-neon-cyan font-bold font-mono text-sm uppercase tracking-wider flex items-center gap-2">
 	                         <BookOpen size={16} />
-	                         Defination
+	                         Definition
 	                     </h3>
 	                     <button onClick={() => setDefinition(prev => ({ ...prev, visible: false }))} className="text-zinc-600 hover:text-white transition-colors text-xl p-1">×</button>
 	                 </div>
@@ -708,7 +708,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                     className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
 	                >
 	                    <Search size={14} />
-	                    Defination
+	                    Define
 	                </button>
 	                <div className="w-[1px] h-5 bg-zinc-700" />
 	                <button
@@ -716,8 +716,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                    onTouchEnd={(e) => { e.preventDefault(); handlePronounce(true); }}
 	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
 	                >
-	                    <Volume2 size={14} />
-	                    {isPlaying ? 'Stop' : 'Pronunciation'}
+	                    {isPlaying ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}
+	                    {isPlaying ? 'Stop' : 'Pronounce'}
 	                </button>
 	                <div className="w-[1px] h-5 bg-zinc-700" />
 	                <button

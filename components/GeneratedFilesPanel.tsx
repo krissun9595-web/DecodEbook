@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, Notebook as NotebookIcon, Map, FileDown, Save, Share2, Languages, File as FileIcon } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
-import { listFiles, deleteFile, getFile, clearAll, clearBook } from '../services/fileCache';
+import { listFiles, deleteFile, getFile } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase } from '../utils/filename';
 import JSZip from 'jszip';
@@ -143,15 +143,13 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       return;
     }
     try {
-      if (filterBook !== 'all') {
-        await clearBook(filterBook);
-      } else {
-        await clearAll();
-      }
+      // Delete only what's in the currently selected scope (book + type filters), i.e. the visible rows —
+      // not every file of every book.
+      await Promise.all(filteredFiles.map(f => deleteFile(f.key)));
       setConfirmClear(false);
       await loadFiles();
     } catch (e) {
-      console.error('Clear failed:', e);
+      console.error('Delete failed:', e);
     }
   };
 
@@ -238,10 +236,10 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   : 'text-neon-red border-neon-red/30 hover:bg-neon-red/10'
                 : 'text-neon-cyan border-neon-cyan/30 hover:bg-neon-cyan/10'
             }`}
-            title="Right-click to switch between Save and Clear mode"
+            title="Right-click to switch between Save and Delete mode. Both act on the selected book + type scope."
           >
             {actionMode === 'clear' ? <Trash2 size={13} /> : <Save size={13} />}
-            {actionMode === 'clear' ? (confirmClear ? 'CONFIRM?' : 'CLEAR_ALL') : 'SAVE_ALL'}
+            {actionMode === 'clear' ? (confirmClear ? 'CONFIRM?' : 'DELETE') : 'SAVE'}
           </button>
         </div>
       </div>

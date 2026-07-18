@@ -18,7 +18,7 @@ import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, b
 import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
 import { trackReferralClick, registerReferralSignup } from './services/referral';
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
-import { saveFile, getFile, deleteFile, listFiles, buildCacheKey } from './services/fileCache';
+import { saveFile, getFile, deleteFile, listFiles, buildCacheKey, clearBook } from './services/fileCache';
 import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, findHeadingOffsetByTitle, headingMatchesTitle, isUsableEpubOutline, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION, isStalePdfExtraction } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
@@ -3542,7 +3542,10 @@ const App: React.FC = () => {
                 .filter(item => sameBookTitle(item.book.title) === newBookTitle)
                 .forEach(superseded => {
                   if (currentUser) deleteBookFromCloud(currentUser.id, superseded.book.id).catch(() => {});
-                  deleteFile(sourceCacheKey(superseded.book.id)).catch(() => {});
+                  // Purge the WHOLE superseded copy's cache — not just its source file. Otherwise its derived
+                  // files (translations, audio, podcasts, …) orphan under a new bookId on every re-upload and
+                  // pile up as duplicate rows in the Generated Files panel.
+                  clearBook(superseded.book.id).catch(() => {});
                 });
             }
             await saveSourceToCache(newItem);
