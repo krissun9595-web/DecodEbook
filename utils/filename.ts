@@ -33,14 +33,19 @@ export function titleCase(text: string, maxLen = 50): string {
     .substring(0, maxLen);
 }
 
-// A chapter/part's OWN number as written in the source — arabic ("2", "15-1") or Roman ("II"), after an
-// optional leading "Chapter"/"Part"/"Section"/"Book" word. undefined for unnumbered front/back matter
-// (Copyright, Cover, Index…). The trailing look-ahead keeps "Copyright"/"Index" from matching as Roman.
-function leadingChapterNumber(chapter: Pick<Chapter, 'title' | 'sourceHeading'>): string | undefined {
+// A chapter/part's OWN numbering as written in the source: the divider word ("Chapter"/"Part"/…) mapped
+// to a filename prefix, plus the number — arabic ("2", "15-1") or Roman ("II"). undefined for unnumbered
+// front/back matter (Copyright, Cover, Index…); the trailing look-ahead keeps those from matching as Roman.
+// So a Part divider ("Part I: …") yields prefix "Part", NOT "Ch".
+function chapterNumbering(chapter: Pick<Chapter, 'title' | 'sourceHeading'>): { prefix: string; num: string } | undefined {
   for (const s of [chapter.sourceHeading, chapter.title]) {
     if (!s) continue;
-    const m = s.match(/^\s*(?:chapter|part|section|book)?\s*([0-9]+(?:[.\-][0-9]+)*|[IVXLCDM]+)(?=[\s.):\-]|$)/i);
-    if (m && m[1]) return m[1];
+    const m = s.match(/^\s*(chapter|part|section|book)?\s*([0-9]+(?:[.\-][0-9]+)*|[IVXLCDM]+)(?=[\s.):\-]|$)/i);
+    if (m && m[2]) {
+      const w = (m[1] || '').toLowerCase();
+      const prefix = w === 'part' ? 'Part' : w === 'section' ? 'Section' : w === 'book' ? 'Book' : 'Ch';
+      return { prefix, num: m[2] };
+    }
   }
   return undefined;
 }
@@ -62,12 +67,12 @@ export function chapterFileLabel(chapter: Chapter, allChapters?: Chapter[]): str
   if (chapter.parentId != null && allChapters) {
     const parent = allChapters.find(c => c.id === chapter.parentId);
     if (parent) {
-      const pnum = leadingChapterNumber(parent);
-      segs.push(pnum ? `Part${pnum}` : titleCase(parent.title, 18));
+      const pn = chapterNumbering(parent);
+      segs.push(pn ? `${pn.prefix}${pn.num}` : titleCase(parent.title, 18));
     }
   }
-  const cnum = leadingChapterNumber(chapter);
-  if (cnum) segs.push(`Ch${cnum}`);
-  segs.push(titleCase(stripChapterNumber(chapter.title, cnum), 30));
+  const cn = chapterNumbering(chapter);
+  if (cn) segs.push(`${cn.prefix}${cn.num}`);
+  segs.push(titleCase(stripChapterNumber(chapter.title, cn?.num), 30));
   return segs.filter(Boolean).join('-');
 }
