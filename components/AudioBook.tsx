@@ -44,6 +44,9 @@ interface Props {
   // Report the size the reader is CURRENTLY paginating with, so the search index (only shown while the
   // sidebar is open) paginates identically and its "PG.NN" matches what the reader displays in that state.
   onPageSizeComputed?: (size: number) => void;
+  // Report the current in-chapter reading position (as a pagination-independent anchor) so switching
+  // modules and coming back restores the page the reader was on, not page 1.
+  onReadingPositionChange?: (target: ReaderPageTarget) => void;
 }
 
 interface QuantumParticle {
@@ -1373,7 +1376,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
   );
 };
 
-export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, bookTitle, initialPageTarget = 'first', onChapterChange, onPageSizeComputed }) => {
+export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, bookTitle, initialPageTarget = 'first', onChapterChange, onPageSizeComputed, onReadingPositionChange }) => {
   const [pages, setPages] = useState<ReaderPage[]>([]);
   // The current chapter's cleaned source text, kept so we can RE-paginate on a text-size / viewport
   // change without re-fetching, preserving the reading position.
@@ -2466,6 +2469,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       ? audioCacheKeyFor(currentPage, currentPageText, selectedVoice, audioLanguage)
       : '';
   }, [currentPage, currentPageText, selectedVoice, audioLanguage]);
+
+  // Report the current page as a pagination-independent reading position, so leaving the module and
+  // returning restores this page (not page 1). Page 0 reports 'first'; later pages report a text anchor
+  // (their opening words) that re-locates in whatever pagination the reader has on return.
+  useEffect(() => {
+    if (!onReadingPositionChange || pages.length === 0) return;
+    const text = pages[currentPage]?.text;
+    if (!text) return;
+    if (currentPage === 0) { onReadingPositionChange('first'); return; }
+    const anchor = wordsOnly(text).split(' ').slice(0, 8).join(' ');
+    onReadingPositionChange(anchor.length >= 8 ? { type: 'text', anchor } : 'first');
+  }, [currentPage, pages, onReadingPositionChange]);
 
   // On mount, re-attach to any in-flight generation for this page/voice/language
   useEffect(() => {

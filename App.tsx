@@ -254,6 +254,9 @@ const App: React.FC = () => {
 
   const [activeChapterId, setActiveChapterId] = useState<number | null>(null);
   const [activeChapterPageTarget, setActiveChapterPageTarget] = useState<ReaderPageTarget>('first');
+  // Last in-chapter reading position per book:chapter (a pagination-independent anchor), so switching
+  // modules and returning to the reader restores the page you left off on instead of jumping to page 1.
+  const readingPositionRef = useRef<Map<string, ReaderPageTarget>>(new Map());
   // Parts collapsed in the nested TOC (by chapter id). Default expanded.
   const [collapsedParts, setCollapsedParts] = useState<Set<number>>(new Set());
   const activeChapter = activeBook?.chapters.find(c => c.id === activeChapterId) || null;
@@ -3695,7 +3698,7 @@ const App: React.FC = () => {
     let content;
     switch (activeTab) {
       case Tab.AUDIOBOOK:
-        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} bookTitle={activeBook?.title} initialPageTarget={activeChapterPageTarget} onPageSizeComputed={reportReaderSize} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
+        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} bookTitle={activeBook?.title} initialPageTarget={activeChapterPageTarget} onPageSizeComputed={reportReaderSize} onReadingPositionChange={handleReadingPositionChange} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
         break;
       case Tab.PODCAST:
         content = <PodcastPlayer chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} bookTitle={activeBook?.title} />;
@@ -3722,7 +3725,21 @@ const App: React.FC = () => {
   };
 
   const closeSidebarMobile = () => { if (window.innerWidth < 768) setSidebarOpen(false); };
-  const switchTab = (tab: Tab) => { trackNavigation('module_switch', { from_module: activeTab, to_module: tab }); setActiveTab(tab); };
+
+  const handleReadingPositionChange = useCallback((target: ReaderPageTarget) => {
+    if (activeBookId && activeChapterId != null) readingPositionRef.current.set(`${activeBookId}:${activeChapterId}`, target);
+  }, [activeBookId, activeChapterId]);
+
+  const switchTab = (tab: Tab) => {
+    trackNavigation('module_switch', { from_module: activeTab, to_module: tab });
+    // Returning to the reader: restore the page we were reading (the reader remounts on tab switch, so
+    // its internal page state is otherwise lost and it would reopen at page 1).
+    if (tab === Tab.AUDIOBOOK && activeBookId && activeChapterId != null) {
+      const stored = readingPositionRef.current.get(`${activeBookId}:${activeChapterId}`);
+      if (stored) setActiveChapterPageTarget(stored);
+    }
+    setActiveTab(tab);
+  };
   const continueAfterLanguagePrompt = () => {
     setPendingLanguagePromptBookId(null);
     setView(AppView.DASHBOARD);
