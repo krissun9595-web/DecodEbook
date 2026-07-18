@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, StickyNote, Terminal, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -4142,7 +4142,7 @@ const App: React.FC = () => {
                 { id: Tab.PODCAST, icon: Mic2, label: "NET_CAST" },
                 { id: Tab.CONCEPTS, icon: ImageIcon, label: "VISUAL_CORE" },
                 { id: Tab.ANIMATION, icon: Film, label: "CINE_RENDER" },
-                { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "MEM_LOG" },
+                { id: Tab.NOTEBOOK, icon: StickyNote, label: "MEM_LOG" },
                 { id: Tab.GEN_FILES, icon: HardDrive, label: "GEN_FILES" },
               ].map((tab) => (
                 <button
@@ -4168,7 +4168,7 @@ const App: React.FC = () => {
               { id: Tab.PODCAST, icon: Mic2, label: "CAST" },
               { id: Tab.CONCEPTS, icon: ImageIcon, label: "IMAGE" },
               { id: Tab.ANIMATION, icon: Film, label: "VIDEO" },
-              { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "NOTES" },
+              { id: Tab.NOTEBOOK, icon: StickyNote, label: "NOTES" },
               { id: Tab.GEN_FILES, icon: HardDrive, label: "FILES" },
             ].map((tab) => (
               <button
