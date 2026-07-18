@@ -1201,11 +1201,27 @@ const trimBorders = async (blob: Blob): Promise<Blob> => {
   } catch { return blob; }
 };
 
+// Build a descriptive filename base for a translated figure, e.g.
+// "Translation-French-Ch15-Figure15-1-AgenticMeshRoadmap". The figure's number ("Figure 15-1") and
+// name ("Agentic mesh roadmap") are read from the adjacent CAPTION when present — the figure manifest
+// carries neither — so this is a heuristic that falls back to the figure id when no caption is found.
+const buildFigureTranslationBase = (caption: string, figId: string, chapterLabel: string, lang: string): string => {
+  const cap = (caption || '').replace(/\s+/g, ' ').trim();
+  // Leading "Figure 15-1" / "Fig. 3" / "Table 2.1" etc. — keep the number's own separators (15-1).
+  const m = cap.match(/^(figure|fig|table|chart|diagram|plate|exhibit)\.?\s+([0-9ivxlcdm]+(?:[.\-–][0-9]+)*)/i);
+  const label = m ? `${m[1].charAt(0).toUpperCase()}${m[1].slice(1).toLowerCase()}${m[2].replace(/–/g, '-')}` : '';
+  const name = m ? cap.slice(m[0].length).replace(/^[.\s:—–-]+/, '').trim() : '';
+  const parts = ['Translation', titleCase(lang, 20), chapterLabel, label || figId];
+  if (name) parts.push(titleCase(name, 40));
+  return parts.filter(Boolean).join('-');
+};
+
 // An extracted PDF figure rendered inline. Loads the cached blob ('figure-image'), reserves its
-// aspect-ratio box so text doesn't jump on load, and offers Copy / Add to mem_log / Translate figure
-// via a right-click / double-click / long-press menu. In split view it renders in both halves; the
-// right half shows the translated figure (on demand). Carries no text — invisible to TTS/translation.
-const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure; split: boolean; targetLang: string }> = ({ figId, bookId, meta, split, targetLang }) => {
+// aspect-ratio box so text doesn't jump on load, and offers Copy / Translate figure via a right-click /
+// double-click / long-press menu. Translating (redraw or overlay) auto-saves the result to the file
+// cache as a 'translation'. In split view it renders in both halves; the right half shows the
+// translated figure (on demand). Carries no text — invisible to TTS/translation.
+const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string }> = ({ figId, bookId, meta, split, targetLang, chapterLabel, caption }) => {
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1250,7 +1266,6 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
     : 100;
   const openMenu = (x: number, y: number) => setMenu({ x, y });
   const copyImage = async () => { setMenu(null); const b = blobRef.current; if (!b) return; try { await navigator.clipboard.write([new ClipboardItem({ [b.type]: b })]); } catch { /* clipboard image unsupported */ } };
-  const saveToLog = async () => { setMenu(null); const b = blobRef.current; if (!b) return; try { await saveFile(buildCacheKey(bookId, 0, 'notebook-figure', figId), b, { filename: `${figId}.jpg`, mimeType: b.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'notebook-figure' }); } catch { /* ignore */ } };
   // Clicking a translate action again while it's rendering cancels the in-flight model call (aborts
   // the request so no further tokens are spent) and reverts to the original.
   const stopRender = () => { setMenu(null); abortRef.current?.abort(); abortRef.current = null; setTr({ state: 'idle' }); };
@@ -1269,7 +1284,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
         const labels = await translateFigureText(b64, b.type, targetLang, ctrl.signal);
         if (ctrl.signal.aborted) return;
         out = labels.length ? await overlayTranslations(b, labels) : b;
-        if (labels.length) await saveFile(key, out, { filename: `figure-${figId}-${titleCase(targetLang, 20)}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
+        if (labels.length) await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
@@ -1293,7 +1308,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
         if (ctrl.signal.aborted) return;
         if (!dataUrl) { setTr({ state: 'fail' }); return; }
         out = await trimBorders(await (await fetch(dataUrl)).blob()); // trim any margin the model baked in
-        await saveFile(key, out, { filename: `figure-${figId}-${titleCase(targetLang, 20)}-redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
+        await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}-Redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
@@ -1340,7 +1355,6 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
           <div className="fixed z-50 min-w-[160px] rounded-sm border border-zinc-700 bg-[#0f0f12] shadow-2xl py-1 text-xs text-zinc-200 font-mono" style={{ left: Math.min(menu.x, window.innerWidth - 170), top: Math.min(menu.y, window.innerHeight - 110) }}>
             <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={copyImage}>Copy image</button>
-            <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={saveToLog}>Add to mem_log</button>
             {split && tr.state === 'rendering'
               ? <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-amber-400" onClick={stopRender}>Stop rendering</button>
               : split && <>
@@ -3873,7 +3887,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
                   // An extracted PDF figure — inline image loaded from the cache.
                   if (para.figure) {
-                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} />;
+                    // The figure's number + name live in its caption (the manifest has neither); the caption is
+                    // the adjacent paragraph — prefer the one AFTER the marker, else the one before, and only if
+                    // it actually reads like a figure caption. chapterLabel prefixes the saved translation's name.
+                    const chNum = explicitChapterNumberFrom(chapter.sourceHeading, chapter.title);
+                    const chapterLabel = chNum ? `Ch${chNum}` : titleCase(chapter.title, 18);
+                    const capRe = /^\s*(figure|fig\.?|table|chart|diagram|plate|exhibit)\b/i;
+                    const capAfter = paragraphData[pIdx + 1]?.original.join(' ') || '';
+                    const capBefore = paragraphData[pIdx - 1]?.original.join(' ') || '';
+                    const caption = capRe.test(capAfter) ? capAfter : capRe.test(capBefore) ? capBefore : '';
+                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} chapterLabel={chapterLabel} caption={caption} />;
                   }
                   // A side-by-side two-column region. Original columns render side by side; in split
                   // view the TRANSLATED columns render in the right half (original-L | original-R ||
