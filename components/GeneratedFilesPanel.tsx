@@ -14,18 +14,22 @@ interface Props {
 
 type FilterType = 'all' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'notebook' | 'chapter-text' | 'translation';
 
+// Each of the 7 generated-file types is coloured by its position in the Highlight_Hue palette
+// (SettingsModal COLORS): 1 indigo/neon-cyan, 2 emerald, 3 rose/neon-red, 4 amber, 5 violet,
+// 6 pink/neon-pink, 7 yellow/neon-yellow — in the type order Translation, Audio, Podcast,
+// Scripts, Images, Video, Notebook. Notebook's sub-types all share hue 7.
 const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  'audio': { icon: <Headphones size={14} />, label: 'VOICE_SYNTH', color: 'text-cyan-400' },
-  'podcast-audio': { icon: <Mic2 size={14} />, label: 'NET_CAST', color: 'text-purple-400' },
-  'podcast-script': { icon: <FileText size={14} />, label: 'NET_SCRIPT', color: 'text-purple-300' },
-  'video': { icon: <Film size={14} />, label: 'CINE_RENDER', color: 'text-rose-400' },
-  'concept-image': { icon: <ImageIcon size={14} />, label: 'VISUAL_CORE', color: 'text-amber-400' },
-  'sticky-note': { icon: <StickyNote size={14} />, label: 'MEM_LOG', color: 'text-green-400' },
-  'notebook-figure': { icon: <ImageIcon size={14} />, label: 'FIGURE', color: 'text-green-300' },
-  'mind-map-pdf': { icon: <Map size={14} />, label: 'MAP_PDF', color: 'text-sky-400' },
-  'mind-map-docx': { icon: <FileDown size={14} />, label: 'MAP_DOCX', color: 'text-blue-400' },
-  'mind-map-xmind': { icon: <Map size={14} />, label: 'MAP_XMIND', color: 'text-teal-400' },
-  'translation': { icon: <Languages size={14} />, label: 'TRANSLATION', color: 'text-emerald-400' },
+  'translation': { icon: <Languages size={14} />, label: 'TRANSLATION', color: 'text-neon-cyan' },
+  'audio': { icon: <Headphones size={14} />, label: 'VOICE_SYNTH', color: 'text-emerald-400' },
+  'podcast-audio': { icon: <Mic2 size={14} />, label: 'NET_CAST', color: 'text-neon-red' },
+  'podcast-script': { icon: <FileText size={14} />, label: 'NET_SCRIPT', color: 'text-amber-400' },
+  'concept-image': { icon: <ImageIcon size={14} />, label: 'VISUAL_CORE', color: 'text-violet-400' },
+  'video': { icon: <Film size={14} />, label: 'CINE_RENDER', color: 'text-neon-pink' },
+  'sticky-note': { icon: <StickyNote size={14} />, label: 'MEM_LOG', color: 'text-neon-yellow' },
+  'notebook-figure': { icon: <ImageIcon size={14} />, label: 'FIGURE', color: 'text-neon-yellow' },
+  'mind-map-pdf': { icon: <Map size={14} />, label: 'MAP_PDF', color: 'text-neon-yellow' },
+  'mind-map-docx': { icon: <FileDown size={14} />, label: 'MAP_DOCX', color: 'text-neon-yellow' },
+  'mind-map-xmind': { icon: <Map size={14} />, label: 'MAP_XMIND', color: 'text-neon-yellow' },
 };
 
 // Fallback for any type without a config — a generic file glyph, NOT the audio headphones.
@@ -37,12 +41,12 @@ const HIDDEN_TYPES = ['chapter-text', 'source-file', 'figure-image'];
 
 const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'ALL' },
+  { value: 'translation', label: 'TRANSLATION' },
   { value: 'audio', label: 'AUDIO' },
   { value: 'podcast-audio', label: 'PODCAST' },
   { value: 'podcast-script', label: 'SCRIPTS' },
-  { value: 'video', label: 'VIDEO' },
   { value: 'concept-image', label: 'IMAGES' },
-  { value: 'translation', label: 'TRANSLATION' },
+  { value: 'video', label: 'VIDEO' },
   { value: 'notebook', label: 'NOTEBOOK' },
 ];
 
