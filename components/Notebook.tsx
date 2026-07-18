@@ -296,7 +296,8 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   const generateStickyNote = (item: NotebookItem) => {
       const canvas = buildStickyNoteCanvas(item);
       if (!canvas) return;
-      const filename = `note-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`;
+      const chapterSlug = item.sourceChapter ? titleCase(item.sourceChapter, 20) : 'Unfiled';
+      const filename = `note-${chapterSlug}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`;
       const link = document.createElement('a');
       link.download = filename;
       link.href = canvas.toDataURL();

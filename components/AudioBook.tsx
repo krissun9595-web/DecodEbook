@@ -1269,7 +1269,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
         const labels = await translateFigureText(b64, b.type, targetLang, ctrl.signal);
         if (ctrl.signal.aborted) return;
         out = labels.length ? await overlayTranslations(b, labels) : b;
-        if (labels.length) await saveFile(key, out, { filename: `${figId}-${targetLang}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'figure-image' }).catch(() => {});
+        if (labels.length) await saveFile(key, out, { filename: `figure-${figId}-${titleCase(targetLang, 20)}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
@@ -1293,7 +1293,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
         if (ctrl.signal.aborted) return;
         if (!dataUrl) { setTr({ state: 'fail' }); return; }
         out = await trimBorders(await (await fetch(dataUrl)).blob()); // trim any margin the model baked in
-        await saveFile(key, out, { filename: `${figId}-${targetLang}-redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'figure-image' }).catch(() => {});
+        await saveFile(key, out, { filename: `figure-${figId}-${titleCase(targetLang, 20)}-redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });

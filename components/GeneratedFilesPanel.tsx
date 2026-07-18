@@ -36,8 +36,23 @@ const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; c
 const DEFAULT_FILE_CONFIG = { icon: <FileIcon size={14} />, label: 'FILE', color: 'text-zinc-400' };
 
 // Internal caches/extractions, not user-generated outputs — hidden from the panel (the reader's
-// per-chapter extracted text, the uploaded source blob, and auto-extracted figure images).
+// per-chapter extracted text, the uploaded source blob, and auto-extracted source figure images).
 const HIDDEN_TYPES = ['chapter-text', 'source-file', 'figure-image'];
+
+// The badge on each item names the MODULE that produced the file (its componentSource), not the file
+// type — e.g. a translation JSON made inside the reader shows VOICE_SYNTH, not TRANSLATION. The file
+// type is already conveyed by the icon (colour + glyph) and the type filter.
+const MODULE_LABELS: Record<string, string> = {
+  'audiobook': 'VOICE_SYNTH',
+  'Reader_Figure': 'VOICE_SYNTH',   // figures translated/redrawn inside the reader
+  'podcast': 'NET_CAST',
+  'video': 'CINE_RENDER',
+  'visualizer': 'VISUAL_CORE',
+  'notebook': 'MEM_LOG',
+  'PDF_Extraction': 'SOURCE',
+  'source-cache': 'SOURCE',
+};
+const moduleLabel = (src?: string) => (src && MODULE_LABELS[src]) || (src || 'FILE').toUpperCase();
 
 const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'ALL' },
@@ -254,16 +269,14 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-xs md:text-sm text-zinc-200 font-medium truncate">{file.filename}</span>
                     <span className={`hidden md:inline text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full border border-zinc-800 shrink-0 ${config.color}`}>
-                      {config.label}
+                      {moduleLabel(file.componentSource)}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] md:text-[10px] font-mono text-zinc-600">
-                    <span className={`md:hidden ${config.color}`}>{config.label}</span>
+                    <span className={`md:hidden ${config.color}`}>{moduleLabel(file.componentSource)}</span>
                     <span>{formatFileSize(file.size)}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
                     <span className="truncate max-w-[100px] md:max-w-[150px]">{getBookTitle(file.bookId)}</span>
-                    <span className="hidden md:inline text-zinc-500">|</span>
-                    <span>CH.{String(file.chapterId).padStart(2, '0')}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
                     <span>{formatDate(file.timestamp)}</span>
                   </div>
