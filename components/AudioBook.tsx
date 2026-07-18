@@ -2084,6 +2084,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         missing = stillMissing();
       }
 
+      let didTranslate = false;
       if (missing.length > 0) {
         const originalByNorm = new Map<string, string>(); // dedupe identical sentences within the page
         missing.forEach(s => { const n = norm(s); if (!originalByNorm.has(n)) originalByNorm.set(n, s); });
@@ -2093,14 +2094,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           originals.length,
           false
         );
-        if (translated) originals.forEach((orig, i) => { const t = translated[i]; if (t) map!.set(norm(orig), t); });
+        if (translated) originals.forEach((orig, i) => { const t = translated[i]; if (t) { map!.set(norm(orig), t); didTranslate = true; } });
       }
 
       const pageTranslations = pageSentences.map(s => map!.get(norm(s)) || '');
 
-      // Persist THIS page only, in reading order. Stable page-number key -> overwrites on reflow (no
-      // duplicate rows); another page's content can never leak into this file.
-      if (pageTranslations.some(Boolean)) {
+      // Persist THIS page only when we actually translated NEW sentences this call. When every sentence
+      // came from the in-memory map or the existing file (e.g. returning to the module after a switch),
+      // nothing changed — so no model call happened and there's nothing to re-save. That keeps returning
+      // to a page from burning credits or churning the file's timestamp.
+      if (didTranslate && pageTranslations.some(Boolean)) {
         const payload = JSON.stringify({ sourceSentences: pageSentences, translations: pageTranslations });
         await saveFile(pageKey, new Blob([payload], { type: 'application/json' }), {
           filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
