@@ -931,10 +931,14 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
   // match would land on the title line and ORPHAN the lone number line at the END of the previous
   // chapter (e.g. a stray bold "2" tail). When the title carries a leading number, let the match also
   // absorb THAT EXACT number sitting on its own line (+ sentinels/blank line) just before the title —
-  // matching the specific number avoids grabbing an unrelated page/footer number.
+  // matching the specific number avoids grabbing an unrelated page/footer number. Allow SEVERAL
+  // blank-line groups between the number and the title (`{1,3}`): an EPUB chapter opener often puts a
+  // decorative divider image between them ("<h2>2</h2><div><img></div><h2>AFRICA</h2>"), and the image's
+  // marker is blanked to an offset-preserving SPACES line — a second blank line a single `\n+` can't
+  // cross, which was re-orphaning the number (and leaving a blank divider page) at the chapter end.
   const numMatch = title.match(/^\s*(\d{1,3})[.)]?\s+\S/u);
   const numLine = numMatch
-    ? `(?:[ \\t\\u00A0${junk}]*${numMatch[1]}[.)]?[ \\t\\u00A0${junk}]*\\n+[ \\t\\u00A0${junk}]*)?`
+    ? `(?:[ \\t\\u00A0${junk}]*${numMatch[1]}[.)]?[ \\t\\u00A0${junk}]*(?:\\n+[ \\t\\u00A0${junk}]*){1,3})?`
     : '';
   let pat: RegExp;
   try {
