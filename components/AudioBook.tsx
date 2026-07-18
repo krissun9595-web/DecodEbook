@@ -3955,6 +3955,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const indexIndentStyle = (isIndexChapter || isListRole) && para.indent
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
                     : undefined;
+                  // Index HANGING indent: a wrapped multi-locator entry ("agriculture, 15, … 333, 394")
+                  // continues on lines that sit DEEPER than the first, like the source's `text-indent:-Xem`
+                  // on index entries. Applied to the text element (which wraps): pull the first line back
+                  // by `hang` and pad the block by `hang`, so the entry's opening stays at its computed
+                  // indent while continuation lines hang under it. Skip the "INDEX" heading.
+                  const indexHangStyle: React.CSSProperties | undefined =
+                    isIndexChapter && !isHeadingRole ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
                   // A display block (title page, "also by" list, dedication) keeps its
                   // original right/centre alignment, captured upstream as para.align. A display
                   // block's FIRST line can lose its alignment sentinel upstream (the chapter slice
@@ -3994,7 +4001,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...alignStyle, ...justifyStyle }}
+                            style={{ ...paragraphStyle, ...indexHangStyle, ...alignStyle, ...justifyStyle }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
