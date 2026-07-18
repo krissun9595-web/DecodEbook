@@ -1034,8 +1034,11 @@ const buildPageSentenceData = (pageText: string): {
     // rawParagraph still maps to exactly ONE rendered paragraph, keeping sentence/translation/highlight
     // indexing aligned (pushing two paragraphs from one iteration would shift everything after it).
     .flatMap(p => {
-      const m = p.trimStart().match(/^(\[\[FIG\s+[^\]]+\]\])\s*([\s\S]+)$/i);
-      return m && m[2].trim() ? [m[1], m[2]] : [p];
+      // Tolerate a leading block-alignment sentinel (U+E010–E013): a CENTERED figure (e.g. this EPUB's
+      // `.img_style{text-align:center}`) extracts as "‹E010›[[FIG id]]", and the caption keeps its own
+      // sentinel. Pull the marker out as its own (unaligned — the figure centres itself) paragraph.
+      const m = p.trimStart().match(/^([-]*)(\[\[FIG\s+[^\]]+\]\])\s*([\s\S]+)$/i);
+      return m && m[3].trim() ? [m[2], `${m[1]}${m[3]}`] : [p];
     });
 
   const paragraphData: ParagraphData[] = [];
@@ -1048,13 +1051,13 @@ const buildPageSentenceData = (pageText: string): {
     // split into its own paragraph upstream (splitFigureMarkerParagraphs), preserving the 1
     // rawParagraph : 1 paragraph mapping the sentence/translation indexing relies on; this only catches
     // a stray mid-paragraph one. (Don't touch a paragraph that IS just the marker — handled next.)
-    if (!/^\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
+    if (!/^\s*[-]*\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
       rawPText = rawPText.replace(/\[\[FIG\s+[^\]]+\]\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
       if (!rawPText) return;
     }
     // An extracted figure marker "[[FIG id]]" — its own paragraph. No sentences (so it's invisible to
     // TTS/translation/highlighting); the renderer swaps it for the cached image.
-    const figMatch = rawPText.trim().match(/^\[\[FIG\s+([^\]]+)\]\]$/i);
+    const figMatch = rawPText.trim().replace(/^[-]+/u, '').match(/^\[\[FIG\s+([^\]]+)\]\]$/i);
     if (figMatch) {
       paragraphData.push({ original: [], translated: [], figure: { id: figMatch[1].trim() } });
       return;
