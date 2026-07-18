@@ -2230,19 +2230,63 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     settings.targetLanguage,
   ]);
 
-  // When the chapter re-paginates to FEWER pages (e.g. bigger font / more line spacing packs more words
-  // per page), delete the translation files for the pages that no longer exist so the Generated Files
-  // panel doesn't keep showing stale, outdated .json for this chapter + language.
+  // Keep the per-page translation files in sync with the CURRENT pagination whenever it changes (bigger
+  // font / more line spacing repacks words per page). The reader's live translation only touches the
+  // current page + a forward prefetch, so pages BEHIND the cursor would otherwise keep their old, larger
+  // slice — producing stale files whose content overlaps the neighbouring page. Here we:
+  //   - re-write the file of every page whose sentences are ALL already translated, rebuilt from the
+  //     current page text. This ONLY re-emits from the in-memory map — it never calls the model, so it
+  //     costs no credits and never touches pages the user hasn't translated yet.
+  //   - delete files for pages that no longer exist (page count shrank), so no orphans linger.
   useEffect(() => {
+    if (settings.targetLanguage === 'Original') return;
     const newCount = pages.length;
     if (newCount === 0) return;
     const prev = paginatedPageCountRef.current;
-    if (prev > newCount && settings.targetLanguage !== 'Original') {
-      for (let i = newCount; i < prev; i++) {
-        deleteFile(translationPageFileKey(i)).catch(() => {});
-      }
-    }
     paginatedPageCountRef.current = newCount;
+
+    const mapKey = translationSentenceMapKey();
+    const map = translationMemoryCache.get(mapKey);
+    const norm = (s: string) => normalizeSentenceForCache(s);
+    const pagesSnapshot = pages;
+    let cancelled = false;
+
+    const run = (translationJobMap.get(mapKey) || Promise.resolve()).then(async () => {
+      if (prev > newCount) {
+        for (let i = newCount; i < prev; i++) deleteFile(translationPageFileKey(i)).catch(() => {});
+      }
+      if (!map) return;
+      for (let i = 0; i < pagesSnapshot.length; i++) {
+        if (cancelled) return;
+        const text = pagesSnapshot[i]?.text;
+        if (!text) continue;
+        const { flatSentenceMap: sm } = buildPageSentenceData(text);
+        const sents = sm.map(m => m.text);
+        if (sents.length === 0) continue;
+        // Only rewrite pages that are FULLY translated already — never translate here (no eager credits).
+        if (!sents.every(s => { const n = norm(s); return !n || map.get(n); })) continue;
+        const translations = sents.map(s => map.get(norm(s)) || '');
+        if (!translations.some(Boolean)) continue;
+        const key = translationPageFileKey(i);
+        const payload = JSON.stringify({ sourceSentences: sents, translations });
+        const existing = await getFile(key).catch(() => null);
+        const existingText = existing ? await existing.blob.text() : null;
+        if (payload !== existingText) {
+          await saveFile(key, new Blob([payload], { type: 'application/json' }), {
+            filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${i + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
+            mimeType: 'application/json',
+            timestamp: Date.now(),
+            bookId,
+            bookTitle,
+            chapterId: chapter.id,
+            componentSource: 'audiobook',
+            fileType: 'translation',
+          }).catch(e => console.warn('Translation re-sync save failed:', e));
+        }
+      }
+    });
+    translationJobMap.set(mapKey, run.catch(() => {}));
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, settings.targetLanguage]);
 
