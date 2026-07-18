@@ -5,7 +5,7 @@ import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFig
 import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
-import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
+import { saveFile, getFile, deleteFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -1384,6 +1384,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // currentPage/pages change, so during re-pagination it briefly belongs to the PREVIOUS page — this ref
   // lets the translation effect skip that transient and only act when the map matches the current page.
   const flatMapTextRef = useRef('');
+  // Page count of the last pagination, so when a chapter re-paginates to FEWER pages (font/line-spacing
+  // change) we can delete the now-orphan higher-page translation files instead of leaving them stale.
+  const paginatedPageCountRef = useRef(0);
   const [translationState, setTranslationState] = useState<{ identity: string; byIndex: Record<number, string> }>({ identity: '', byIndex: {} });
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [translationError, setTranslationError] = useState<string | null>(null);
@@ -2226,6 +2229,22 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     pages,
     settings.targetLanguage,
   ]);
+
+  // When the chapter re-paginates to FEWER pages (e.g. bigger font / more line spacing packs more words
+  // per page), delete the translation files for the pages that no longer exist so the Generated Files
+  // panel doesn't keep showing stale, outdated .json for this chapter + language.
+  useEffect(() => {
+    const newCount = pages.length;
+    if (newCount === 0) return;
+    const prev = paginatedPageCountRef.current;
+    if (prev > newCount && settings.targetLanguage !== 'Original') {
+      for (let i = newCount; i < prev; i++) {
+        deleteFile(translationPageFileKey(i)).catch(() => {});
+      }
+    }
+    paginatedPageCountRef.current = newCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, settings.targetLanguage]);
 
   const initAudioVisualizer = () => {
     if (!audioRef.current || audioContextRef.current) return;
