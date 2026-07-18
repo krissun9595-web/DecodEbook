@@ -238,7 +238,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       </div>
 
       {/* File List */}
-      <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
         {filteredFiles.length === 0 ? (
           <EmptyState icon={HardDrive} label="Cache_Empty" sublabel="Generated files will appear here after creation" className="h-full" />
         ) : (

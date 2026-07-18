@@ -1114,10 +1114,10 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                ) : filteredItems.length === 0 ? (
                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 font-mono gap-2 animate-fade-in"><p className="text-xs uppercase tracking-widest opacity-50">BUFFER_EMPTY_FOR_{activeFilter === 'all' ? 'ALL_ITEMS' : activeFilter.toUpperCase() + 'S'}</p></div>
                ) : (
-                   <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-4 content-font">
+                   <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-2 content-font">
                        {filteredItems.map((item, idx) => {
                            return (
-                           <div key={item.id} className="bg-void-2 border rounded-lg p-5 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
+                           <div key={item.id} className="bg-void-2 border rounded-lg px-5 py-3 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
 	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId && playingId !== item.id} className={`p-1.5 rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title={playingId === item.id ? 'Stop' : 'Pronounce'}>{playingId === item.id ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}</button>
                                    <button onClick={() => generateStickyNote(item)} className="p-1.5 text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>

@@ -1388,6 +1388,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const [isTranslating, setIsTranslating] = useState(false);
   const [viewMode, setViewMode] = useState<'single' | 'split'>(initialViewMode);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  // The cache key of the audio currently attached to audioSrc. A ref (not the racy audioSrc state) so the
+  // "load cached audio" effect can tell whether THIS page's audio is already showing — fixing audio not
+  // re-attaching when returning to a page after the first pagination/measure churn on mount.
+  const attachedAudioKeyRef = useRef<string>('');
   const [timings, setTimings] = useState<ChunkTiming[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasInitiated, setHasInitiated] = useState(false);
@@ -1427,6 +1431,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     
     if (audioSrc) URL.revokeObjectURL(audioSrc);
     setAudioSrc(null);
+    attachedAudioKeyRef.current = '';
     setTimings([]);
     setIsPlaying(false);
     setPlaybackProgress(0);
@@ -2003,13 +2008,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   useEffect(() => {
     let cancelled = false;
     const loadCached = async () => {
-      if (!currentPageText) return;
+      if (!currentPageText || pages.length === 0 || isGenerating) return;
       const key = audioCacheKeyFor(currentPage, currentPageText, selectedVoice, audioLanguage);
+      // Compare against the ATTACHED key (a ref, always current) rather than the audioSrc state, which
+      // can be transiently stale during the first-mount pagination/measure churn — that stale read was
+      // why cached audio failed to re-attach until a page change forced a clean reset.
+      if (attachedAudioKeyRef.current === key) return;
       try {
         const cached = await getFile(key);
         if (cached && !cancelled) {
-          const url = URL.createObjectURL(cached.blob);
-          setAudioSrc(url);
+          setAudioSrc(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(cached.blob); });
+          attachedAudioKeyRef.current = key;
           setHasInitiated(true);
           // Restore timings from memory or localStorage; older cached audio may not have persisted timings.
           const cachedTimings = timingsCache.get(key) || readStoredTimings(key);
@@ -2018,11 +2027,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         }
       } catch (e) { /* cache miss is fine */ }
     };
-    // Wait for pages to be loaded before attempting cache load,
-    // otherwise resetAudioState() in the pages effect will clear audioSrc
-    if (!isGenerating && !audioSrc && pages.length > 0) loadCached();
+    loadCached();
     return () => { cancelled = true; };
-  }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id, pages, currentPageText, sourceFingerprint]);
+  }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id, pages, currentPageText, sourceFingerprint, isGenerating]);
 
   // The PERSISTED file is per PAGE, self-contained and in reading order, keyed by page NUMBER only (no
   // page text / sentence-signature) — so re-flowing the chapter overwrites the same page file instead
@@ -2403,6 +2410,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           const url = URL.createObjectURL(result.blob);
           setTimings(result.timings);
           setAudioSrc(url);
+          attachedAudioKeyRef.current = key;
         }
       }).catch(() => {
         setGenerationProgress("ERR_LINK_FAILED");
@@ -2587,6 +2595,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         const url = URL.createObjectURL(result.blob);
         setTimings(result.timings);
         setAudioSrc(url);
+        attachedAudioKeyRef.current = genKey;
       }
     } catch (e: any) {
       setGenerationProgress(`ERR: ${e.message || 'Unknown error'}`);
