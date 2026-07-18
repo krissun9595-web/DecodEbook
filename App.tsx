@@ -1321,11 +1321,30 @@ const App: React.FC = () => {
       // that piles several chapters onto one wrong file (Elon Musk), so only a heading/title match is trusted.
       const fileEntryCount = new Map<string, number>();
       for (const e of navEntries) { const t = resolveZip(e.href, navBaseDir); if (t) fileEntryCount.set(t, (fileEntryCount.get(t) ?? 0) + 1); }
+      // In-content Contents/TOC page → a RELIABLE title→file map the broken NCX lacks. A spine file whose
+      // body is mostly links to OTHER spine files IS the contents page; use it to place a nav entry the NCX
+      // misdirects to a HEADING-LESS section — e.g. an image-plate "Picture Section" the NCX points at the
+      // wrong chapter file and which has no heading text for findHeadingOffsetByTitle to anchor.
+      const normNavTitle = (s: string): string =>
+        s.replace(/^\s*\d+[.)\s]+/u, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toUpperCase();
+      const tocPageFileFor = new Map<string, string>();
+      for (const filename of sortedFiles) {
+        let raw = '';
+        try { raw = await zip.files[filename].async('string'); } catch { continue; }
+        const dir = dirOf(filename);
+        const spineLinks = [...raw.matchAll(/<a\b[^>]*\bhref="([^"#]+)(?:#[^"]*)?"[^>]*>([\s\S]*?)<\/a>/gi)]
+          .map(m => ({ file: resolveZip(m[1], dir), label: m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() }))
+          .filter(l => l.file && fileStartOffset.has(l.file) && l.label.length > 2);
+        if (spineLinks.length < 5) continue; // not a contents page
+        for (const l of spineLinks) { const k = normNavTitle(l.label); if (k.length >= 3 && !tocPageFileFor.has(k)) tocPageFileFor.set(k, l.file!); }
+        break; // the first contents-like page
+      }
       let lastResolvedOffset = 0;
       const usedOffsets = new Set<number>(outline.map(o => o.offset).filter((o): o is number => o != null));
       for (const e of navEntries) {
         const target = resolveZip(e.href, navBaseDir);
         if (!target || !e.title) continue;
+        let anchoredFile = target; // the file that ends up holding this entry's offset (may be re-pointed below)
         const fileOff = fileStartOffset.get(target);
         const regionEnd = fileOff != null ? (fileOffsetsAsc.find(o => o > fileOff) ?? fullText.length) : undefined;
         const headingAtFile = fileOff != null ? firstHeadingText(fileOff, regionEnd!) : '';
@@ -1348,12 +1367,23 @@ const App: React.FC = () => {
           } else if (fileOff != null && !seenFile.has(target) && (fileEntryCount.get(target) === 1 || headingAtFile === '')) {
             offset = fileOff;                                         // uncontested pointer / headingless page → trust the file start
           } else {
-            continue;                                                 // unresolvable entry aimed at a contested chapter file → drop
+            // Last resort — the in-content Contents page maps this title to a DISTINCT, unclaimed,
+            // HEADING-LESS file (an image-plate section the NCX misdirects). Anchor there. Else drop.
+            const tocFile = tocPageFileFor.get(normNavTitle(e.title));
+            const tocOff = tocFile ? fileStartOffset.get(tocFile) : undefined;
+            const tocRegionEnd = tocOff != null ? (fileOffsetsAsc.find(o => o > tocOff) ?? fullText.length) : undefined;
+            if (tocFile && tocOff != null && !seenFile.has(tocFile) && !usedOffsets.has(tocOff)
+                && firstHeadingText(tocOff, tocRegionEnd!) === '') {
+              offset = tocOff;
+              anchoredFile = tocFile;
+            } else {
+              continue;                                               // unresolvable entry aimed at a contested chapter file → drop
+            }
           }
         }
         if (usedOffsets.has(offset)) continue;
         usedOffsets.add(offset);
-        seenFile.add(target);
+        seenFile.add(anchoredFile);
         outline.push({ title: e.title, page: 0, level: e.level, offset });
         lastResolvedOffset = Math.max(lastResolvedOffset, offset);
       }
