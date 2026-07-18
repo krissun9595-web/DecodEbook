@@ -1380,6 +1380,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const cleanTextRef = useRef<string>('');
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
+  // The exact page text that flatSentenceMap was built from. flatSentenceMap is rebuilt one render AFTER
+  // currentPage/pages change, so during re-pagination it briefly belongs to the PREVIOUS page — this ref
+  // lets the translation effect skip that transient and only act when the map matches the current page.
+  const flatMapTextRef = useRef('');
   const [translationState, setTranslationState] = useState<{ identity: string; byIndex: Record<number, string> }>({ identity: '', byIndex: {} });
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [translationError, setTranslationError] = useState<string | null>(null);
@@ -1981,6 +1985,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
      setParagraphData(newParagraphData);
      setFlatSentenceMap(newSentenceMap);
+     flatMapTextRef.current = pages[currentPage].text;
      resetAudioState();
      setActiveSentenceIndex(-1);
      abortGenerationRef.current = true;
@@ -2062,29 +2067,28 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       if (!map) { map = new Map<string, string>(); translationMemoryCache.set(mapKey, map); }
 
       const stillMissing = () => pageSentences.filter(s => { const n = norm(s); return n && !map!.get(n); });
-      let missing = stillMissing();
 
-      // Cross-session reuse: seed the map from this page's already-saved file before spending a call.
-      if (missing.length > 0) {
-        const cached = await getFile(pageKey).catch(() => null);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(await cached.blob.text());
-            const src = parsed?.sourceSentences, tr = parsed?.translations;
-            if (Array.isArray(src) && Array.isArray(tr)) {
-              src.forEach((s: unknown, i: number) => {
-                const t = tr[i];
-                if (typeof s === 'string' && typeof t === 'string' && t) map!.set(norm(s), stripLeakedTokens(t));
-              });
-            }
-          } catch (cacheError) {
-            console.warn('Ignoring invalid translation cache:', cacheError);
+      // Read this page's already-saved file ONCE — to seed the map (cross-session reuse, no model call)
+      // AND to know its current stored content so we only re-save when it would actually change.
+      let existingText: string | null = null;
+      const cached = await getFile(pageKey).catch(() => null);
+      if (cached) {
+        try {
+          existingText = await cached.blob.text();
+          const parsed = JSON.parse(existingText);
+          const src = parsed?.sourceSentences, tr = parsed?.translations;
+          if (Array.isArray(src) && Array.isArray(tr)) {
+            src.forEach((s: unknown, i: number) => {
+              const t = tr[i];
+              if (typeof s === 'string' && typeof t === 'string' && t) map!.set(norm(s), stripLeakedTokens(t));
+            });
           }
+        } catch (cacheError) {
+          console.warn('Ignoring invalid translation cache:', cacheError);
         }
-        missing = stillMissing();
       }
 
-      let didTranslate = false;
+      const missing = stillMissing();
       if (missing.length > 0) {
         const originalByNorm = new Map<string, string>(); // dedupe identical sentences within the page
         missing.forEach(s => { const n = norm(s); if (!originalByNorm.has(n)) originalByNorm.set(n, s); });
@@ -2094,17 +2098,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           originals.length,
           false
         );
-        if (translated) originals.forEach((orig, i) => { const t = translated[i]; if (t) { map!.set(norm(orig), t); didTranslate = true; } });
+        if (translated) originals.forEach((orig, i) => { const t = translated[i]; if (t) map!.set(norm(orig), t); });
       }
 
       const pageTranslations = pageSentences.map(s => map!.get(norm(s)) || '');
 
-      // Persist THIS page only when we actually translated NEW sentences this call. When every sentence
-      // came from the in-memory map or the existing file (e.g. returning to the module after a switch),
-      // nothing changed — so no model call happened and there's nothing to re-save. That keeps returning
-      // to a page from burning credits or churning the file's timestamp.
-      if (didTranslate && pageTranslations.some(Boolean)) {
-        const payload = JSON.stringify({ sourceSentences: pageSentences, translations: pageTranslations });
+      // Save only when the file's content would actually change. This both CORRECTS a stale file left by
+      // a previous pagination (its sentences no longer match this page) and avoids re-writing an identical
+      // file — so returning to a page (all sentences already in the map) does nothing: no model call, no
+      // timestamp churn.
+      const payload = JSON.stringify({ sourceSentences: pageSentences, translations: pageTranslations });
+      if (payload !== existingText && pageTranslations.some(Boolean)) {
         await saveFile(pageKey, new Blob([payload], { type: 'application/json' }), {
           filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
           mimeType: 'application/json',
@@ -2127,7 +2131,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   useEffect(() => {
     let ignore = false;
     const loadTranslation = async () => {
-      if (settings.targetLanguage === 'Original' || flatSentenceMap.length === 0) {
+      const pageText = pages[currentPage]?.text || '';
+      // Only act when flatSentenceMap belongs to the CURRENT page. During re-pagination it lags by a
+      // render, and translating/saving then would write the new page number's file with the previous
+      // pagination's sentence slice (content that starts and ends mid-page).
+      if (settings.targetLanguage === 'Original' || flatSentenceMap.length === 0 || flatMapTextRef.current !== pageText) {
         setIsTranslating(false);
         return;
       }
@@ -2138,7 +2146,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       setIsTranslating(true);
       setTranslationError(null);
       try {
-        const pageText = pages[currentPage]?.text || allSentences.join('\n');
         const requestSentenceMap = [...flatSentenceMap];
         const requestIdentity = translationIdentityFor(
           currentPage,

@@ -259,13 +259,13 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
           </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-start relative min-h-0 bg-void-0 rounded-lg border border-zinc-900 shadow-inner overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-start relative min-h-0 bg-void-2 rounded-lg border border-zinc-900 shadow-inner overflow-hidden">
         <div className="absolute inset-0 bg-grid opacity-[0.05] pointer-events-none"></div>
 
-        <div 
-          ref={containerRef} 
+        <div
+          ref={containerRef}
           onMouseMove={resetControlsTimeout}
-          className="relative w-full h-full flex flex-col bg-black shadow-2xl transition-all duration-500 group overflow-hidden shrink-0"
+          className="relative w-full h-full flex flex-col bg-void-2 shadow-2xl transition-all duration-500 group overflow-hidden shrink-0"
         >
             <div className="flex-1 relative flex items-center justify-center overflow-hidden border-b border-zinc-900" onClick={() => videoUrl && togglePlay()}>
                 {!videoUrl && !isGenerating && (

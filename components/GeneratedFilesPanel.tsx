@@ -248,7 +248,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
               <div
                 key={file.key}
                 style={{ animationDelay: `${Math.min(i * 12, 120)}ms` }}
-                className="content-panel rounded-sm px-3 py-1.5 flex items-center gap-3 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group animate-fade-in-up"
+                className="content-panel rounded-lg px-3 py-1.5 flex items-center gap-3 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group animate-fade-in-up"
               >
                 {/* Icon */}
                 <div className={`w-7 h-7 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>

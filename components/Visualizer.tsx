@@ -205,12 +205,12 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                 </div>
             ) : concepts.length === 0 ? (
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
-                    <EmptyState icon={ImageIcon} label="Visual_Core_Idle" sublabel="Click INITIATE to extract and visualize concepts" className="flex-1 min-h-0 bg-black" />
+                    <EmptyState icon={ImageIcon} label="Visual_Core_Idle" sublabel="Click INITIATE to extract and visualize concepts" className="flex-1 min-h-0 bg-void-2" />
                 </div>
             ) : currentConcept ? (
                 <div className="flex-1 h-full w-full relative group/container content-panel rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
                     
-                    <div className="relative bg-black group/image flex-1 min-h-0 flex items-center justify-center w-full overflow-hidden">
+                    <div className="relative bg-void-2 group/image flex-1 min-h-0 flex items-center justify-center w-full overflow-hidden">
                         
                         {/* Information Overlay: Top Center (Title + Definition) */}
                         <div className="absolute top-6 left-0 w-full flex flex-col items-center gap-2 z-30 pointer-events-none px-4">
