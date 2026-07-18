@@ -15,6 +15,7 @@ interface Props {
   chapter: Chapter;
   fileContext: FileContext;
   bookId: string;
+  bookTitle?: string;
 }
 
 const STYLES = [
@@ -24,7 +25,7 @@ const STYLES = [
 ];
 const RATIOS = ['1:1', '16:9', '4:3', '3:2', '9:16', '3:4', '2:3'];
 
-export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) => {
+export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId, bookTitle }) => {
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [images, setImages] = useState<Record<string, string>>({});
   const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
@@ -87,6 +88,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, fileContext, bookId }) =>
           mimeType: 'image/png',
           timestamp: Date.now(),
           bookId,
+          bookTitle,
           chapterId: chapter.id,
           componentSource: 'visualizer',
           fileType: 'concept-image',

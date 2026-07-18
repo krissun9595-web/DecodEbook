@@ -15,6 +15,7 @@ interface Props {
   fileContext: FileContext;
   settings: AppSettings;
   bookId: string;
+  bookTitle?: string;
 }
 
 interface ScriptSegment {
@@ -111,7 +112,7 @@ const HOST_CONFIG: Record<string, { host1: string, voice1: string, desc1: string
   'Netrunner': { host1: 'Zero', voice1: 'Puck', desc1: 'fast-talking male hacker, excited about data', host2: 'One', voice2: 'Kore', desc2: 'cool female AI companion, responds with smooth precision' },
 };
 
-export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId }) => {
+export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId, bookTitle }) => {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [episodeTitle, setEpisodeTitle] = useState<string>(lastEpisodeTitle || '');
   const [script, setScript] = useState<string | null>(null);
@@ -333,6 +334,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
     const capturedHosts = hosts;
     const capturedLanguage = selectedLanguage;
     const capturedBookId = bookId;
+    const capturedBookTitle = bookTitle;
 
     const genPromise = (async (): Promise<{ audioBlob: Blob; script: string; episodeTitle: string } | null> => {
       try {
@@ -348,6 +350,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
+          bookTitle: capturedBookTitle,
           chapterId: capturedChapter.id,
           componentSource: 'podcast',
           fileType: 'podcast-audio',
@@ -359,6 +362,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, fileContext, bookId })
           mimeType: 'text/plain',
           timestamp: Date.now(),
           bookId: capturedBookId,
+          bookTitle: capturedBookTitle,
           chapterId: capturedChapter.id,
           componentSource: 'podcast',
           fileType: 'podcast-script',

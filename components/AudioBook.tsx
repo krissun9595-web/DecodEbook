@@ -38,6 +38,7 @@ interface Props {
   settings: AppSettings;
   onSettingsUpdate: (settings: AppSettings) => void;
   bookId: string;
+  bookTitle?: string;
   initialPageTarget?: ReaderPageTarget;
   onChapterChange?: (chapterId: number, pageTarget?: ReaderPageTarget) => void;
   // Report the size the reader is CURRENTLY paginating with, so the search index (only shown while the
@@ -1221,7 +1222,7 @@ const buildFigureTranslationBase = (caption: string, figId: string, chapterLabel
 // double-click / long-press menu. Translating (redraw or overlay) auto-saves the result to the file
 // cache as a 'translation'. In split view it renders in both halves; the right half shows the
 // translated figure (on demand). Carries no text — invisible to TTS/translation.
-const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string }> = ({ figId, bookId, meta, split, targetLang, chapterLabel, caption }) => {
+const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string }> = ({ figId, bookId, bookTitle, meta, split, targetLang, chapterLabel, caption }) => {
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1284,7 +1285,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
         const labels = await translateFigureText(b64, b.type, targetLang, ctrl.signal);
         if (ctrl.signal.aborted) return;
         out = labels.length ? await overlayTranslations(b, labels) : b;
-        if (labels.length) await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
+        if (labels.length) await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, bookTitle, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
@@ -1308,7 +1309,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
         if (ctrl.signal.aborted) return;
         if (!dataUrl) { setTr({ state: 'fail' }); return; }
         out = await trimBorders(await (await fetch(dataUrl)).blob()); // trim any margin the model baked in
-        await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}-Redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
+        await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}-Redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, bookTitle, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
@@ -1368,7 +1369,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; meta?: PdfFigure
   );
 };
 
-export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, initialPageTarget = 'first', onChapterChange, onPageSizeComputed }) => {
+export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, settings, onSettingsUpdate, bookId, bookTitle, initialPageTarget = 'first', onChapterChange, onPageSizeComputed }) => {
   const [pages, setPages] = useState<ReaderPage[]>([]);
   // The current chapter's cleaned source text, kept so we can RE-paginate on a text-size / viewport
   // change without re-fetching, preserving the reading position.
@@ -2089,6 +2090,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         mimeType: 'application/json',
         timestamp: Date.now(),
         bookId,
+        bookTitle,
         chapterId: chapter.id,
         componentSource: 'audiobook',
         fileType: 'translation',
@@ -2485,6 +2487,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const capturedVoice = selectedVoice;
     const capturedTargetLanguage = settings.targetLanguage;
     const capturedBookId = bookId;
+    const capturedBookTitle = bookTitle;
     const capturedChapterId = chapter.id;
     const capturedPage = currentPage;
     const capturedChapterTitle = titleCase(chapter.title);
@@ -2545,10 +2548,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
         // Cache the complete result (runs even if component is unmounted)
         saveFile(genKey, blob, {
-          filename: `voice-ch${capturedChapterId}-pg${capturedPage + 1}-${capturedChapterTitle}.wav`,
+          filename: `voice-ch${capturedChapterId}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}-${capturedChapterTitle}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
+          bookTitle: capturedBookTitle,
           chapterId: capturedChapterId,
           componentSource: 'audiobook',
           fileType: 'audio',
@@ -3823,7 +3827,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                   <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-ch${chapter.id}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                   <button aria-label="Minimize or maximize player" onClick={() => {
                     const nextMinimized = !isModuleMinimized;
                     setIsModuleMinimized(nextMinimized);
@@ -3893,10 +3897,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     const chNum = explicitChapterNumberFrom(chapter.sourceHeading, chapter.title);
                     const chapterLabel = chNum ? `Ch${chNum}` : titleCase(chapter.title, 18);
                     const capRe = /^\s*(figure|fig\.?|table|chart|diagram|plate|exhibit)\b/i;
-                    const capAfter = paragraphData[pIdx + 1]?.original.join(' ') || '';
-                    const capBefore = paragraphData[pIdx - 1]?.original.join(' ') || '';
-                    const caption = capRe.test(capAfter) ? capAfter : capRe.test(capBefore) ? capBefore : '';
-                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} chapterLabel={chapterLabel} caption={caption} />;
+                    // Scan the few paragraphs on either side (a page marker or a stray blank can sit between the
+                    // image and its caption), taking the nearest one that reads like a figure caption.
+                    const capText = (j: number) => paragraphData[j]?.original.join(' ') || '';
+                    const caption = [pIdx + 1, pIdx + 2, pIdx - 1, pIdx + 3]
+                      .map(capText).find(t => capRe.test(t)) || '';
+                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} bookTitle={bookTitle} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} chapterLabel={chapterLabel} caption={caption} />;
                   }
                   // A side-by-side two-column region. Original columns render side by side; in split
                   // view the TRANSLATED columns render in the right half (original-L | original-R ||

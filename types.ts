@@ -220,6 +220,7 @@ export interface CachedFileMetadata {
   size: number;
   timestamp: number;
   bookId: string;
+  bookTitle?: string;   // captured at save time so the panel can name the book even after it leaves the library
   chapterId: number;
   componentSource: string;
   fileType: CachedFileType;

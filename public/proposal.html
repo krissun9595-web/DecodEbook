@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>DecodΞbook — Cyberpunk Visual System Proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan:#00f3ff; --red:#ff003c; --amber:#f59e0b; --violet:#a78bfa; --pink:#ff4fd8;
+    --emerald:#10b981; --sky:#38bdf8; --hazard:#FCEE0A;
+    --void0:#030305; --void1:#08080b; --void2:#0e0e14; --surface:#12121a;
+    --fg-hi:#f4f4f5; --fg-mid:#a8a8b3; --fg-dim:#6b6b78;
+    --line:rgba(255,255,255,.08); --line2:rgba(0,243,255,.16);
+    --mono:'Share Tech Mono',monospace; --disp:'Orbitron',sans-serif; --sub:'Rajdhani',sans-serif; --body:'Inter',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--void0);color:var(--fg-hi);font-family:var(--body);line-height:1.6;
+    background-image:
+      radial-gradient(circle at 15% -5%, rgba(0,243,255,.06), transparent 40%),
+      radial-gradient(circle at 90% 8%, rgba(255,0,60,.05), transparent 42%),
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size:auto,auto,44px 44px,44px 44px;}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.35;
+    background:repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0,0,0,.14) 2px 4px);}
+  a{color:var(--cyan);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  /* ── top HUD bar ── */
+  .hud{position:sticky;top:0;z-index:50;background:rgba(3,3,5,.86);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);}
+  .hud .row{display:flex;align-items:center;justify-content:space-between;height:46px}
+  .brand{display:flex;align-items:center;gap:8px;font-family:var(--mono);letter-spacing:.14em}
+  .brand b{color:var(--cyan)} .brand .w{color:#fff} .brand .n{color:var(--cyan)}
+  .tag{font-family:var(--mono);font-size:11px;color:var(--fg-dim);letter-spacing:.24em;text-transform:uppercase}
+  .tag .live{color:var(--hazard)}
+
+  /* ── section scaffolding ── */
+  section{padding:70px 0;border-bottom:1px solid var(--line)}
+  .kick{font-family:var(--mono);font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--cyan);
+    display:flex;align-items:center;gap:10px;margin:0 0 14px}
+  .kick::before{content:"";width:22px;height:1px;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+  .kick .idx{color:var(--fg-dim)}
+  h1{font-family:var(--disp);font-weight:900;font-size:clamp(34px,6vw,68px);line-height:1.02;margin:0 0 18px;letter-spacing:.01em}
+  h2{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,36px);margin:0 0 10px;letter-spacing:.02em}
+  h3{font-family:var(--sub);font-weight:700;font-size:19px;letter-spacing:.04em;margin:0 0 6px;text-transform:uppercase}
+  p{color:var(--fg-mid);margin:0 0 14px}
+  .lead{font-size:19px;color:var(--fg-hi);max-width:64ch}
+  .muted{color:var(--fg-dim)}
+  .mono{font-family:var(--mono)}
+
+  /* ── angular / HUD primitives (the proposed language) ── */
+  .clip{--c:14px;clip-path:polygon(var(--c) 0,100% 0,100% calc(100% - var(--c)),calc(100% - var(--c)) 100%,0 100%,0 var(--c))}
+  .slate{position:relative;background:linear-gradient(180deg,var(--void2),var(--void1));border:1px solid var(--line);padding:22px}
+  .slate.accent{border-color:color-mix(in srgb,var(--ac,var(--cyan)) 34%,transparent);
+    box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 24px -8px var(--ac,var(--cyan))}
+  .bracket{position:relative}
+  .bracket::before,.bracket::after{content:"";position:absolute;width:12px;height:12px;pointer-events:none}
+  .bracket::before{top:-1px;left:-1px;border-top:2px solid var(--ac,var(--cyan));border-left:2px solid var(--ac,var(--cyan))}
+  .bracket::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--ac,var(--cyan));border-right:2px solid var(--ac,var(--cyan))}
+  .led{width:7px;height:7px;border-radius:50%;background:var(--ac,var(--cyan));box-shadow:0 0 8px var(--ac,var(--cyan))}
+  .hazard{height:8px;background:repeating-linear-gradient(45deg,var(--hazard) 0 9px,#0b0b0b 9px 18px);opacity:.9}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;padding:4px 8px;border:1px solid var(--line);color:var(--fg-mid);background:rgba(255,255,255,.02)}
+
+  /* ── grids ── */
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:820px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+  /* icons */
+  .ic{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .ic.lg{width:34px;height:34px}
+  .iconcell{display:flex;flex-direction:column;gap:10px;align-items:flex-start;padding:16px;border:1px solid var(--line);background:var(--void1)}
+  .iconcell .top{display:flex;align-items:center;gap:12px}
+  .iconcell .badge{width:46px;height:46px;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--ac,var(--cyan)) 40%,transparent);
+    color:var(--ac,var(--cyan));background:color-mix(in srgb,var(--ac,var(--cyan)) 8%,transparent);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+  .iconcell h4{margin:0;font-family:var(--sub);font-weight:700;letter-spacing:.05em;text-transform:uppercase;font-size:15px}
+  .iconcell .sub{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--fg-dim);text-transform:uppercase}
+  .iconcell p{font-size:13px;margin:0}
+  .swap{font-family:var(--mono);font-size:10px;color:var(--fg-dim);letter-spacing:.1em}
+  .swap s{color:var(--red);opacity:.7} .swap b{color:var(--ac,var(--cyan))}
+
+  /* value narrative */
+  .feat{display:grid;grid-template-columns:64px 1fr;gap:18px;padding:22px;border:1px solid var(--line);background:var(--void1);position:relative;overflow:hidden}
+  .feat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ac);box-shadow:0 0 14px var(--ac)}
+  .feat .num{font-family:var(--disp);font-weight:900;font-size:30px;color:var(--ac);opacity:.9;line-height:1}
+  .feat .code{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--fg-dim);text-transform:uppercase;margin-top:6px}
+  .feat .label{font-family:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:20px;color:var(--fg-hi)}
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+  @media(max-width:820px){.ba{grid-template-columns:1fr}}
+  .ba .b,.ba .a{font-size:13.5px;padding:10px 12px;border:1px solid var(--line)}
+  .ba .b{color:var(--fg-dim)} .ba .b .t{color:var(--red)}
+  .ba .a{color:var(--fg-mid);border-color:color-mix(in srgb,var(--ac) 30%,transparent);background:color-mix(in srgb,var(--ac) 6%,transparent)}
+  .ba .a .t{color:var(--ac)}
+  .ba .lab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:5px;color:var(--fg-dim)}
+
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;
+    font-size:12px;padding:11px 20px;cursor:pointer;border:1px solid transparent;transition:.16s;
+    clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+  .btn:active{transform:scale(.97)}
+  .btn-exec{background:var(--cyan);color:#04121a;font-weight:700;box-shadow:0 0 18px -4px var(--cyan)}
+  .btn-exec:hover{background:#5cf7ff;box-shadow:0 0 26px -2px var(--cyan)}
+  .btn-ghost{background:transparent;color:var(--cyan);border-color:color-mix(in srgb,var(--cyan) 45%,transparent)}
+  .btn-ghost:hover{background:rgba(0,243,255,.08)}
+  .btn-breach{background:transparent;color:var(--red);border-color:color-mix(in srgb,var(--red) 50%,transparent)}
+  .btn-breach:hover{background:rgba(255,0,60,.1)}
+  .btn-icon{width:40px;height:40px;padding:0;justify-content:center;background:var(--void2);border-color:var(--line);color:var(--fg-mid)}
+  .btn-icon:hover{color:var(--cyan);border-color:var(--line2)}
+
+  /* applied mockup */
+  .mock{background:var(--void1);border:1px solid var(--line);padding:14px}
+  .mock .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;background:rgba(0,243,255,.03);
+    border:1px solid var(--line2);clip-path:polygon(11px 0,100% 0,100% 100%,0 100%,0 11px)}
+  .mock .bar .l{display:flex;align-items:center;gap:9px;color:var(--cyan);font-family:var(--mono);font-size:12px;letter-spacing:.12em}
+  .mock .bar .r{display:flex;gap:6px}
+  .selchip{font-family:var(--mono);font-size:10px;color:var(--cyan);padding:5px 8px;border:1px solid var(--line);background:#04060a}
+  .before{opacity:.55;filter:grayscale(.4)}
+  .col-h{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--fg-dim);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+
+  .principle{padding:20px;border:1px solid var(--line);background:var(--void1);position:relative}
+  .principle .n{font-family:var(--mono);font-size:11px;color:var(--cyan);letter-spacing:.2em}
+  .principle h3{margin:8px 0 6px} .principle p{font-size:13.5px;margin:0}
+
+  .sw{height:60px;display:flex;align-items:flex-end;padding:8px;font-family:var(--mono);font-size:10px;color:#000;font-weight:700;letter-spacing:.08em}
+  .rollout li{margin:0 0 10px;color:var(--fg-mid)} .rollout b{color:var(--fg-hi);font-family:var(--sub);letter-spacing:.03em}
+  footer{padding:40px 0 80px;color:var(--fg-dim);font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-align:center}
+  .glow{color:var(--cyan);text-shadow:0 0 14px rgba(0,243,255,.6)}
+  .libcat{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--fg-dim);margin:28px 0 12px;display:flex;align-items:center;gap:10px}
+  .libcat::before{content:"";width:16px;height:1px;background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+  .libcat b{color:var(--fg-mid)}
+  .libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(94px,1fr));gap:9px}
+  .itile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border:1px solid var(--line);background:var(--void1);color:var(--cyan);text-align:center;transition:.14s}
+  .itile:hover{border-color:var(--line2);background:#0a0f15;transform:translateY(-1px)}
+  .itile .ic{width:25px;height:25px}
+  .itile span{font-family:var(--mono);font-size:9px;letter-spacing:.05em;color:var(--fg-mid);text-transform:uppercase;line-height:1.25}
+  /* ── glassmorphism + neon glow ── */
+  .stage{position:relative;overflow:hidden;padding:30px;border:1px solid var(--line);
+    background:
+      radial-gradient(42% 60% at 16% 18%, rgba(0,243,255,.24), transparent 60%),
+      radial-gradient(46% 56% at 86% 26%, rgba(255,79,216,.20), transparent 60%),
+      radial-gradient(52% 62% at 60% 98%, rgba(167,139,250,.22), transparent 60%),
+      linear-gradient(160deg,#0a0a14,#050509);}
+  .stage::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:32px 32px}
+  .stage>*{position:relative}
+  .glass{background:rgba(16,20,32,.42);-webkit-backdrop-filter:blur(16px) saturate(140%);backdrop-filter:blur(16px) saturate(140%);
+    border:1px solid rgba(255,255,255,.12);box-shadow:0 10px 40px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.07)}
+  .neon-edge{border:1px solid color-mix(in srgb,var(--ac,var(--cyan)) 60%,transparent);
+    box-shadow:0 0 22px -3px var(--ac,var(--cyan)),0 10px 40px rgba(0,0,0,.5),inset 0 0 20px -9px var(--ac,var(--cyan))}
+  /* Consistent control tiers: STANDARD = 40px tall, COMPACT(.sm) = 32px tall.
+     Same-tier buttons + chips share exact height/padding/clip so rows align. */
+  .gchip{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:32px;box-sizing:border-box;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--cyan);
+    padding:0 11px;background:rgba(0,243,255,.07);border:1px solid rgba(0,243,255,.24);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  .gbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;box-sizing:border-box;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:12px;
+    padding:0 20px;cursor:pointer;transition:.16s;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+  .gbtn.sm{height:32px;padding:0 13px;font-size:11px;gap:6px;letter-spacing:.1em;clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+  .gbtn:active,.gicon:active{transform:scale(.97)}
+  .gbtn-exec{background:rgba(0,243,255,.16);color:#eafeff;border:1px solid rgba(0,243,255,.6);box-shadow:0 0 20px -3px var(--cyan),inset 0 0 16px -8px var(--cyan);font-weight:700}
+  .gbtn-exec:hover{background:rgba(0,243,255,.26);box-shadow:0 0 30px -2px var(--cyan)}
+  .gbtn-ghost{background:rgba(255,255,255,.04);color:var(--fg-hi);border:1px solid rgba(255,255,255,.16)}
+  .gbtn-ghost:hover{border-color:rgba(0,243,255,.5);color:var(--cyan)}
+  .gicon{width:40px;height:40px;box-sizing:border-box;padding:0;justify-content:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:var(--fg-mid);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);cursor:pointer;transition:.16s;display:inline-flex;align-items:center}
+  .gicon.sm{width:32px;height:32px;clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+  .gicon:hover{color:var(--cyan);border-color:rgba(0,243,255,.45);box-shadow:0 0 16px -4px var(--cyan)}
+  /* app mockup */
+  .app-frame{display:flex;flex-direction:column;height:560px;max-height:78vh}
+  .navchip{display:inline-flex;align-items:center;gap:6px;height:30px;box-sizing:border-box;padding:0 11px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--fg-mid);border:1px solid transparent;cursor:pointer}
+  .navchip.on{color:var(--cyan);border-color:rgba(0,243,255,.4);background:rgba(0,243,255,.08);box-shadow:0 0 14px -4px var(--cyan)}
+  .bookrow{display:flex;align-items:center;gap:9px;padding:9px;border:1px solid transparent;font-family:var(--mono);cursor:pointer}
+  .bookrow.on{border-color:rgba(0,243,255,.35);background:rgba(0,243,255,.06);box-shadow:0 0 14px -6px var(--cyan)}
+  .readpane{flex:1;min-height:0;overflow:hidden;background:#070709;border:1px solid var(--line);padding:16px 18px}
+  .readpane .o{color:#e9e9ee;font-size:14px;line-height:1.75;margin:0 0 3px}
+  .readpane .t{color:#8a8a95;font-size:12.5px;line-height:1.7;margin:0 0 13px;font-style:italic}
+  .readpane .ink{border-bottom:2px solid var(--cyan);padding-bottom:1px}
+  @media print{body::before{display:none}.hud{position:static}section{break-inside:avoid}.glass,.gchip,.gbtn,.gicon{backdrop-filter:none;-webkit-backdrop-filter:none}}
+</style>
+</head>
+<body>
+
+<!-- icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-voicesynth" viewBox="0 0 24 24"><path d="M4 6.5h9"/><path d="M4 10h13"/><path d="M4 15.5h1.4l1.1-4 2 8 2-8 1.3 5 1-3h5.2"/></symbol>
+  <symbol id="i-netcast" viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.3"/><path d="M4.3 17.5a3.7 3.7 0 0 1 7.4 0"/><circle cx="16" cy="9" r="2.3"/><path d="M12.3 17.5a3.7 3.7 0 0 1 7.4 0"/><path d="M12 3.2v2.4M10.2 4.1h3.6"/></symbol>
+  <symbol id="i-visualcore" viewBox="0 0 24 24"><path d="M12 3.2l7.6 4.4v8.8L12 20.8 4.4 16.4V7.6z"/><circle cx="12" cy="12" r="2.3"/><path d="M12 5.4V3.6M18.1 8.6l1.5-.9M18.1 15.4l1.5.9M12 18.6v1.8M5.9 15.4l-1.5.9M5.9 8.6l-1.5-.9"/></symbol>
+  <symbol id="i-cinerender" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.4"/><path d="M4 8.3h2.2M4 12h2.2M4 15.7h2.2M17.8 8.3H20M17.8 12H20M17.8 15.7H20"/><path d="M10.8 9.4l4.2 2.6-4.2 2.6z"/></symbol>
+  <symbol id="i-memlog" viewBox="0 0 24 24"><path d="M6 3.5h9l3 3v14l-6-3.6L6 20.5z" opacity=".55"/><circle cx="12" cy="9" r="1.7"/><circle cx="9" cy="14.5" r="1.3"/><circle cx="15" cy="14.5" r="1.3"/><path d="M12 10.7l-2.2 2.5M12 10.7l2.2 2.5"/></symbol>
+  <symbol id="i-genfiles" viewBox="0 0 24 24"><path d="M9 4h6l3 3" opacity=".5"/><path d="M7 7.5h7l3 3v3" opacity=".7"/><path d="M5 11h7l3 3v6H5z"/></symbol>
+  <symbol id="i-neural" viewBox="0 0 24 24"><path d="M5 5.5h14v9.5H10.5L6.5 18v-3H5z"/><circle cx="12" cy="10.2" r="1.7"/><circle cx="8" cy="10.2" r=".9"/><circle cx="16" cy="10.2" r=".9"/><path d="M9.7 10.2h.6M13.7 10.2h.6"/></symbol>
+  <symbol id="i-translate" viewBox="0 0 24 24"><rect x="3.4" y="5" width="7.2" height="7.2" rx="1"/><path d="M7 6.4v4.4M5.2 8h3.6M5.6 10.4l2.8-1.8"/><rect x="13.4" y="11.8" width="7.2" height="7.2" rx="1"/><path d="M15.4 17.2l1.6-3.4 1.6 3.4M15.9 15.9h2.2"/><path d="M11 11l2.4 2.4M13.4 11.2v2.2h-2.2" opacity=".85"/></symbol>
+  <symbol id="i-define" viewBox="0 0 24 24"><path d="M5 8h8M5 11h5.5"/><path d="M4 6.6V6h1.2M11.8 6H13v.6M4 12.4V13h1.2"/><path d="M13.6 12.8l1 5.4 1.6-2.1 2.4 2.4 1.1-1.1-2.4-2.4 2.5-1z"/></symbol>
+  <symbol id="i-tts" viewBox="0 0 24 24"><rect x="3.5" y="7" width="6.4" height="6.4" rx="1"/><path d="M5.4 11.6l1.3-3.2 1.3 3.2M5.9 10.5h1.6"/><path d="M13 8.4a4.4 4.4 0 0 1 0 7.2M15.7 6.2a7.4 7.4 0 0 1 0 11.6"/></symbol>
+  <symbol id="i-ink" viewBox="0 0 24 24"><path d="M4 17.6c3.2 0 5-1.3 8-1.3s4.8 1.3 8 1.3"/><path d="M14.6 5.3l3.6 3.6-7.4 7.4-3.6.4.4-3.6z"/><path d="M13 6.9l3.6 3.6" opacity=".6"/></symbol>
+  <symbol id="i-bilingual" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.4"/><path d="M12 5.4v13.2" stroke-dasharray="2 2.4"/><path d="M6.6 9h3.2M6.6 12h3.6M6.6 15h2.6"/><path d="M14.4 9h3.2M14.4 12h3.6M14.4 15h2.6" opacity=".5"/></symbol>
+  <!-- transport / media -->
+  <symbol id="u-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></symbol>
+  <symbol id="u-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+  <symbol id="u-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1.2"/></symbol>
+  <symbol id="u-rewind" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 1 3 6.2"/><path d="M4 8v4h4"/></symbol>
+  <symbol id="u-forward" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 0-3 6.2"/><path d="M20 8v4h-4"/></symbol>
+  <symbol id="u-vol" viewBox="0 0 24 24"><path d="M4 9.5v5h3l4.5 3.5v-12L7 9.5z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M17.5 7a7.5 7.5 0 0 1 0 10"/></symbol>
+  <symbol id="u-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h3l4.5 3.5v-12L7 9.5z"/><path d="M15 10l4 4M19 10l-4 4"/></symbol>
+  <symbol id="u-eq" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 9v6M16 6v12M20 11v2"/></symbol>
+  <symbol id="u-monitorplay" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="1.2"/><path d="M10.5 8.5l4 2.5-4 2.5z"/><path d="M8.5 20h7M12 16.5V20"/></symbol>
+  <symbol id="u-gauge" viewBox="0 0 24 24"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 15l4.5-3.5"/><circle cx="12" cy="15" r="1.3"/></symbol>
+  <symbol id="u-radio" viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="9" rx="1.2"/><path d="M7 10l10-5"/><circle cx="8" cy="14.5" r="1.6"/><path d="M13 13h4M13 16h2"/></symbol>
+  <symbol id="u-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3M9 20h6"/></symbol>
+  <!-- file / data -->
+  <symbol id="u-download" viewBox="0 0 24 24"><path d="M12 4v10M8 10.5l4 4 4-4"/><path d="M5 19h14"/></symbol>
+  <symbol id="u-upload" viewBox="0 0 24 24"><path d="M12 15V5M8 8.5l4-4 4 4"/><path d="M5 19h14"/></symbol>
+  <symbol id="u-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.2"/><circle cx="17" cy="6" r="2.2"/><circle cx="17" cy="18" r="2.2"/><path d="M8 11l7-4M8 13l7 4"/></symbol>
+  <symbol id="u-save" viewBox="0 0 24 24"><path d="M5 5h11l3 3v11H5z"/><path d="M8 5v5h6V6M8 19v-5h8v5"/></symbol>
+  <symbol id="u-filedown" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M12 10.5v5.5M9.5 13.5l2.5 2.5 2.5-2.5"/></symbol>
+  <symbol id="u-filetext" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 15.5h6M9 8.5h2"/></symbol>
+  <symbol id="u-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="12" rx="1.2"/><path d="M5 16V4h10"/></symbol>
+  <symbol id="u-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7l.5-3h4l.5 3M6.5 7l1 13h9l1-13"/><path d="M10 11v6M14 11v6"/></symbol>
+  <symbol id="u-archive" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="4" rx="1"/><path d="M5.5 9v10h13V9"/><path d="M10 13h4"/></symbol>
+  <symbol id="u-package" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+  <symbol id="u-database" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v12c0 1.6 3.1 2.8 7 2.8s7-1.2 7-2.8V6"/><path d="M5 12c0 1.6 3.1 2.8 7 2.8s7-1.2 7-2.8"/></symbol>
+  <symbol id="u-imagedown" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="11" rx="1.2"/><circle cx="8.5" cy="8" r="1.4"/><path d="M4 12l4-3 4 3"/><path d="M15 15v5M12.5 17.5l2.5 2.5 2.5-2.5"/></symbol>
+  <symbol id="u-note" viewBox="0 0 24 24"><path d="M5 4h9l5 5v11H5z"/><path d="M14 4v5h5"/><path d="M8 12h6M8 15h4"/></symbol>
+  <!-- navigation / window -->
+  <symbol id="u-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="u-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="u-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M20 20l-5-5"/></symbol>
+  <symbol id="u-chevL" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="u-chevR" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="u-chevU" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+  <symbol id="u-chevD" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="u-arrowR" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+  <symbol id="u-movehz" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M4 12h16"/></symbol>
+  <symbol id="u-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></symbol>
+  <symbol id="u-expand" viewBox="0 0 24 24"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4"/></symbol>
+  <symbol id="u-collapse" viewBox="0 0 24 24"><path d="M4 8h4V4M20 8h-4V4M4 16h4v4M20 16h-4v4"/></symbol>
+  <symbol id="u-zoomin" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M20 20l-5-5M10.5 7.5v6M7.5 10.5h6"/></symbol>
+  <symbol id="u-zoomout" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M20 20l-5-5M7.5 10.5h6"/></symbol>
+  <symbol id="u-align" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h12"/></symbol>
+  <symbol id="u-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="u-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <!-- system / chrome -->
+  <symbol id="u-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></symbol>
+  <symbol id="u-sliders" viewBox="0 0 24 24"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2.2"/><circle cx="9" cy="16" r="2.2"/></symbol>
+  <symbol id="u-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M3.8 12h16.4"/><path d="M12 3.8c3 3 3 13.4 0 16.4M12 3.8c-3 3-3 13.4 0 16.4"/></symbol>
+  <symbol id="u-network" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.8M11 11l-4.5 5M13 11l4.5 5"/></symbol>
+  <symbol id="u-hexagon" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></symbol>
+  <symbol id="u-terminal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="1.2"/><path d="M7 9.5l3 2.5-3 2.5M13 14.5h4"/></symbol>
+  <symbol id="u-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/><rect x="10" y="10" width="4" height="4"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
+  <symbol id="u-activity" viewBox="0 0 24 24"><path d="M3 12h4l3 7 4-15 3 8h4"/></symbol>
+  <symbol id="u-crown" viewBox="0 0 24 24"><path d="M4 15.5L6.2 8.5 9.6 11.9 12 4.4 14.4 11.9 17.8 8.5 20 15.5Z"/><rect x="4.6" y="15.5" width="14.8" height="4" rx=".7"/><circle cx="12" cy="3.7" r=".95"/><circle cx="6.2" cy="8.3" r=".8"/><circle cx="17.8" cy="8.3" r=".8"/><circle cx="12" cy="17.5" r="1.05"/></symbol>
+  <symbol id="u-diamond" viewBox="0 0 24 24"><path d="M6 3.4h12l3.6 5.7L12 20.6 2.4 9.1z"/><path d="M2.4 9.1h19.2"/><path d="M6 3.4l2.4 5.7L12 3.4l3.6 5.7L18 3.4M8.4 9.1L12 20.6l3.6-11.5"/></symbol>
+  <symbol id="u-shield" viewBox="0 0 24 24"><path d="M12 3l6.8 2.4v6.1c0 4.3-2.9 7.4-6.8 8.9-3.9-1.5-6.8-4.6-6.8-8.9V5.4z"/><path d="M8.2 6.4L12 5.1l3.8 1.3" opacity=".45"/><circle cx="12" cy="10.6" r="1.7"/><path d="M12 12.3v3"/></symbol>
+  <!-- status / feedback -->
+  <symbol id="u-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="u-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5v5"/><circle cx="12" cy="16.2" r=".9"/></symbol>
+  <symbol id="u-warn" viewBox="0 0 24 24"><path d="M12 4l8.5 15H3.5z"/><path d="M12 10v4"/><circle cx="12" cy="16.6" r=".9"/></symbol>
+  <symbol id="u-loader" viewBox="0 0 24 24"><path d="M12 4v3.5M12 16.5V20M4 12h3.5M16.5 12H20M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/></symbol>
+  <symbol id="u-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M20 4.5v4h-4"/></symbol>
+  <symbol id="u-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  <symbol id="u-eyeoff" viewBox="0 0 24 24"><path d="M4 5l16 14"/><path d="M9.6 9.7a2.6 2.6 0 0 0 3.4 3.7"/><path d="M6.3 7.4C4 9 2.5 12 2.5 12s3.6 6 9.5 6c1.5 0 2.9-.4 4.1-1M10.8 6.2C11.2 6.1 11.6 6 12 6c5.9 0 9.5 6 9.5 6s-.8 1.3-2.2 2.7"/></symbol>
+  <symbol id="u-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5V12l3.2 2"/></symbol>
+  <symbol id="u-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="1.2"/><path d="M4 9.5h16M8.5 3v4M15.5 3v4"/></symbol>
+  <symbol id="u-barchart" viewBox="0 0 24 24"><path d="M4 20h16M7 20v-7M12 20V6M17 20v-9"/></symbol>
+  <symbol id="u-zap" viewBox="0 0 24 24"><path d="M13 3L5.5 13H11l-1 8 8-10.5H12z"/></symbol>
+  <symbol id="u-gift" viewBox="0 0 24 24"><rect x="4" y="9.5" width="16" height="10.5" rx="1"/><path d="M4 13.5h16M12 9.5V20"/><path d="M12 9.5c-1-2-4-3-4.5-1s2 2.5 4.5 1c2.5 1.5 5 .5 4.5-1s-3.5-1-4.5 1z"/></symbol>
+  <!-- reading / learning -->
+  <symbol id="u-book" viewBox="0 0 24 24"><path d="M6 4h11a1 1 0 0 1 1 1v13H8a2 2 0 0 0-2 2z"/><path d="M6 18a2 2 0 0 1 2-2h10"/></symbol>
+  <symbol id="u-bookopen" viewBox="0 0 24 24"><path d="M12 6.5C10 5 6.5 5 4.5 5.8V18c2-.8 5.5-.8 7.5.7 2-1.5 5.5-1.5 7.5-.7V5.8C17.5 5 14 5 12 6.5z"/><path d="M12 6.5V19"/></symbol>
+  <symbol id="u-booka" viewBox="0 0 24 24"><path d="M6 4h11a1 1 0 0 1 1 1v13H8a2 2 0 0 0-2 2z"/><path d="M9.5 14l2-6 2 6M10 12.2h3"/></symbol>
+  <symbol id="u-library" viewBox="0 0 24 24"><path d="M6 5v14M10 5v14"/><path d="M13.5 5.5l4 13.5"/><path d="M4 19h16"/></symbol>
+  <symbol id="u-bookmark" viewBox="0 0 24 24"><path d="M7 4h10v16l-5-3.5L7 20z"/></symbol>
+  <symbol id="u-tag" viewBox="0 0 24 24"><path d="M4 4h7.5l8.5 8.5-7.5 7.5L4 11.5z"/><circle cx="8" cy="8" r="1.4"/></symbol>
+  <symbol id="u-quote" viewBox="0 0 24 24"><path d="M5 8.5C5 7 6 6 7.5 6H10v5c0 2.5-1.5 4-4 4.5M14 8.5C14 7 15 6 16.5 6H19v5c0 2.5-1.5 4-4 4.5"/></symbol>
+  <symbol id="u-type" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></symbol>
+  <symbol id="u-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6 1.5A3 3 0 0 0 5 12a3 3 0 0 0 2 4.7A2.6 2.6 0 0 0 12 18zM12 5a3 3 0 0 1 5.6 1.5A3 3 0 0 1 19 12a3 3 0 0 1-2 4.7A2.6 2.6 0 0 1 12 18z"/><path d="M12 5v13"/></symbol>
+  <symbol id="u-sparkles" viewBox="0 0 24 24"><path d="M12 3.5l1.6 4.9 4.9 1.6-4.9 1.6L12 16.5l-1.6-4.9L5.5 10l4.9-1.6z"/><path d="M18 15l.7 2 2 .7-2 .7L18 20.4l-.7-2-2-.7 2-.7z"/></symbol>
+  <symbol id="u-bulb" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.7.6 1.3 1.4 1.3 2.4h5c0-1 .6-1.8 1.3-2.4A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="u-message" viewBox="0 0 24 24"><path d="M4.5 5.5h15v10H10l-4 3.2V15.5H4.5z"/><path d="M8.5 10h7M8.5 12.8h4"/></symbol>
+  <symbol id="u-send" viewBox="0 0 24 24"><path d="M4.5 12L20 5l-6.5 15-2.3-6.2z"/><path d="M11.2 13.8L20 5"/></symbol>
+  <symbol id="u-scan" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M20 8V6a2 2 0 0 0-2-2h-2M4 16v2a2 2 0 0 0 2 2h2M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M4 12h16"/></symbol>
+  <symbol id="u-pen" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M14.5 4.5l4 4L9 18l-4.5.5L5 14z"/><path d="M12.5 6.5l4 4"/></symbol>
+  <!-- account / auth -->
+  <symbol id="u-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="u-userplus" viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3.5 20a6 6 0 0 1 12 0"/><path d="M18 8v6M15 11h6"/></symbol>
+  <symbol id="u-login" viewBox="0 0 24 24"><path d="M13 4h6v16h-6"/><path d="M4 12h9M9.5 8l4 4-4 4"/></symbol>
+  <symbol id="u-logout" viewBox="0 0 24 24"><path d="M11 4H5v16h6"/><path d="M20 12h-9M15.5 8l4.5 4-4.5 4"/></symbol>
+  <symbol id="u-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1.2"/><path d="M3.5 6.5l8.5 6 8.5-6"/></symbol>
+  <symbol id="u-key" viewBox="0 0 24 24"><circle cx="8" cy="9" r="3.3"/><path d="M10.3 11.3L20 21M16.5 17.5l2-2M13.5 14.5l2-2"/></symbol>
+</defs></svg>
+
+<div class="hud"><div class="wrap row">
+  <div class="brand"><span class="mono"><b>&gt;_</b></span><span class="mono"><span class="w">Decod</span><span class="n">Ebook</span></span></div>
+  <div class="tag">Visual System · Proposal <span class="live">v2.0-DRAFT</span></div>
+</div></div>
+
+<!-- COVER -->
+<section style="padding-top:64px">
+  <div class="wrap">
+    <p class="kick"><span class="idx">00</span> Design Direction</p>
+    <h1>NETRUNNER'S<br><span class="glow">READING DECK</span></h1>
+    <p class="lead">A cyberpunk visual identity for a bilingual reading &amp; language‑learning engine. The chrome looks like a hacker's HUD — angular frames, corner brackets, tech readouts. The <b style="color:#fff">content stays calm and legible</b>, because the whole point is to make hard books readable.</p>
+    <p class="lead muted" style="margin-top:8px">Every icon, frame, and control speaks the same language: <b style="color:var(--cyan)">read · listen · translate · learn</b>. Reference tone: Cyberpunk 2077 UI art — HUD glyphs, hazard accents, monospaced data labels — retuned to DecodΞbook's neon palette.</p>
+    <div style="display:flex;gap:12px;margin-top:26px;flex-wrap:wrap">
+      <button class="btn btn-exec"><svg class="ic" style="width:16px;height:16px"><use href="#i-bilingual"/></svg> Enter The Deck</button>
+      <button class="btn btn-ghost">View System ▸</button>
+    </div>
+  </div>
+</section>
+
+<!-- PRINCIPLES -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">01</span> Principles</p>
+  <h2>Cyberpunk chrome, calm content</h2>
+  <p class="lead">Six rules that keep the style bold without hurting reading.</p>
+  <div class="grid g3" style="margin-top:22px">
+    <div class="principle bracket"><div class="n">P.01</div><h3>Chrome vs. Content</h3><p>HUD styling lives on toolbars, frames, buttons, chrome. The reading surface stays quiet — high contrast, generous spacing, no glow behind text.</p></div>
+    <div class="principle"><div class="n">P.02</div><h3>Angular, not round</h3><p>Boxes get chamfered corners (clip‑path), corner brackets, and notches — the 2077 "cut metal" feel — instead of soft radii.</p></div>
+    <div class="principle"><div class="n">P.03</div><h3>Data readouts</h3><p>Labels are monospaced, uppercase, tracked out — like scanner output. Numbers use tabular figures. Everything reads as telemetry.</p></div>
+    <div class="principle"><div class="n">P.04</div><h3>Accent per system</h3><p>Each module keeps its signature color (from the landing narrative) so the app feels like 7 subsystems of one deck.</p></div>
+    <div class="principle"><div class="n">P.05</div><h3>Hazard = danger only</h3><p>Yellow‑black hazard stripes are reserved for destructive / irreversible actions. Scarcity keeps them meaningful.</p></div>
+    <div class="principle"><div class="n">P.06</div><h3>Language‑first icons</h3><p>Every glyph encodes reading, listening, or translation — never generic media icons. The theme is the brand.</p></div>
+  </div>
+</div></section>
+
+<!-- PALETTE -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">02</span> Signal Palette</p>
+  <h2>One deck, seven systems</h2>
+  <p class="lead">The existing neon set, now mapped 1:1 to the modules from the landing story — so color itself becomes wayfinding.</p>
+  <div class="grid g4" style="margin-top:22px">
+    <div class="slate clip"><div class="sw" style="background:var(--cyan)">#00F3FF</div><div style="padding-top:10px"><b class="mono" style="color:var(--cyan);font-size:12px">CYAN</b><p style="font-size:12px;margin:4px 0 0">Primary · Voice_Synth · Read&amp;Listen</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--amber)">#F59E0B</div><div style="padding-top:10px"><b class="mono" style="color:var(--amber);font-size:12px">AMBER</b><p style="font-size:12px;margin:4px 0 0">Net_Cast · Discussion</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--violet)">#A78BFA</div><div style="padding-top:10px"><b class="mono" style="color:var(--violet);font-size:12px">VIOLET</b><p style="font-size:12px;margin:4px 0 0">Visual_Core · Concept</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--red)">#FF003C</div><div style="padding-top:10px"><b class="mono" style="color:var(--red);font-size:12px">RED</b><p style="font-size:12px;margin:4px 0 0">Cine_Render · Danger</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--emerald)">#10B981</div><div style="padding-top:10px"><b class="mono" style="color:var(--emerald);font-size:12px">EMERALD</b><p style="font-size:12px;margin:4px 0 0">Mem_Log · Thoughts</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--sky)">#38BDF8</div><div style="padding-top:10px"><b class="mono" style="color:var(--sky);font-size:12px">SKY</b><p style="font-size:12px;margin:4px 0 0">Gen_Files · Order</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--pink)">#FF4FD8</div><div style="padding-top:10px"><b class="mono" style="color:var(--pink);font-size:12px">PINK</b><p style="font-size:12px;margin:4px 0 0">Neural · Ask Expert</p></div></div>
+    <div class="slate clip"><div class="sw" style="background:var(--hazard);color:#111">#FCEE0A</div><div style="padding-top:10px"><b class="mono" style="color:var(--hazard);font-size:12px">HAZARD</b><p style="font-size:12px;margin:4px 0 0">Destructive actions only</p></div></div>
+  </div>
+</div></section>
+
+<!-- ICON SYSTEM -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">03</span> Icon System · Custom SVG</p>
+  <h2>Glyphs that read like language</h2>
+  <p class="lead">Today the app borrows generic media icons (Headphones, Mic, Film, HardDrive…). The proposal replaces them with a bespoke, hand‑drawn set where every mark is about reading, sound, or translation.</p>
+
+  <h3 style="margin:30px 0 12px;color:var(--fg-dim);font-size:13px;letter-spacing:.2em">— MODULE ICONS</h3>
+  <div class="grid g3">
+    <div class="iconcell" style="--ac:var(--cyan)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-voicesynth"/></svg></div><div><h4>Voice_Synth</h4><div class="sub">Read &amp; Listen</div></div></div><p>Text lines resolving into a waveform — read and hear, synced.</p><div class="swap">replaces <s>Headphones</s> → <b>text+wave</b></div></div>
+    <div class="iconcell" style="--ac:var(--amber)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-netcast"/></svg></div><div><h4>Net_Cast</h4><div class="sub">Follow Discussion</div></div></div><p>Two hosts under a broadcast pulse — the chapter, debated.</p><div class="swap">replaces <s>Mic2</s> → <b>two‑host cast</b></div></div>
+    <div class="iconcell" style="--ac:var(--violet)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-visualcore"/></svg></div><div><h4>Visual_Core</h4><div class="sub">Visualize Concept</div></div></div><p>An aperture locking onto an idea — concepts made visible.</p><div class="swap">replaces <s>Image</s> → <b>concept lens</b></div></div>
+    <div class="iconcell" style="--ac:var(--red)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-cinerender"/></svg></div><div><h4>Cine_Render</h4><div class="sub">Summarize In Scenes</div></div></div><p>A film cell with data perforations — chapters as memory.</p><div class="swap">replaces <s>Film</s> → <b>data‑film</b></div></div>
+    <div class="iconcell" style="--ac:var(--emerald)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-memlog"/></svg></div><div><h4>Mem_Log</h4><div class="sub">Share Thoughts</div></div></div><p>A bookmark holding a thought‑graph — notes and mindmaps.</p><div class="swap">replaces <s>Notebook</s> → <b>tag+node</b></div></div>
+    <div class="iconcell" style="--ac:var(--sky)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-genfiles"/></svg></div><div><h4>Gen_Files</h4><div class="sub">Keep In Order</div></div></div><p>Stacked data shards — everything filed by book and type.</p><div class="swap">replaces <s>HardDrive</s> → <b>data shards</b></div></div>
+    <div class="iconcell" style="--ac:var(--pink)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-neural"/></svg></div><div><h4>Neural_Assistant</h4><div class="sub">Ask The Expert</div></div></div><p>A speech frame around a neural node — grounded answers.</p><div class="swap">replaces <s>Bot</s> → <b>neural chat</b></div></div>
+  </div>
+
+  <h3 style="margin:34px 0 12px;color:var(--fg-dim);font-size:13px;letter-spacing:.2em">— READING PRIMITIVES (the language toolkit)</h3>
+  <div class="grid g4">
+    <div class="iconcell" style="--ac:var(--cyan)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-translate"/></svg></div><div><h4>Translate</h4><div class="sub">文 → A</div></div></div><p style="font-size:12px">The signature mark: two scripts bridged.</p></div>
+    <div class="iconcell" style="--ac:var(--cyan)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-bilingual"/></svg></div><div><h4>Split View</h4><div class="sub">Original ‖ Trans</div></div></div><p style="font-size:12px">Bilingual columns, synced.</p></div>
+    <div class="iconcell" style="--ac:var(--cyan)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-define"/></svg></div><div><h4>Tap‑Define</h4><div class="sub">Scan Word</div></div></div><p style="font-size:12px">Select a word, read its meaning.</p></div>
+    <div class="iconcell" style="--ac:var(--cyan)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-tts"/></svg></div><div><h4>Pronounce</h4><div class="sub">TTS</div></div></div><p style="font-size:12px">Hear any word or line.</p></div>
+    <div class="iconcell" style="--ac:var(--emerald)"><div class="top"><div class="badge"><svg class="ic lg"><use href="#i-ink"/></svg></div><div><h4>Ink</h4><div class="sub">Highlight</div></div></div><p style="font-size:12px">The signature ink underline.</p></div>
+  </div>
+</div></section>
+
+<!-- FULL ICON LIBRARY -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">03·B</span> Complete Icon Library · 100+ glyphs, all original</p>
+  <h2>The whole set, redrawn</h2>
+  <p class="lead">Every icon in the app — transport, file actions, navigation, status, reading tools, account — rebuilt as one consistent custom family: 24px grid, 1.6 stroke, round joins, subtle angular signatures. Below are the full utility glyphs (the 7 system + 5 reading‑primitive icons live in the section above).</p>
+
+  <div class="libcat"><b>Transport &amp; Media</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-play"/></svg><span>Play</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-pause"/></svg><span>Pause</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-stop"/></svg><span>Stop</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-rewind"/></svg><span>Rewind 15</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-forward"/></svg><span>Fwd 15</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-vol"/></svg><span>Volume</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-mute"/></svg><span>Mute</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-eq"/></svg><span>Equalizer</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-gauge"/></svg><span>Speed</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-monitorplay"/></svg><span>Preview</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-radio"/></svg><span>Radio</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-mic"/></svg><span>Mic</span></div>
+  </div>
+
+  <div class="libcat"><b>File &amp; Data</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-download"/></svg><span>Download</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-upload"/></svg><span>Upload</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-share"/></svg><span>Share</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-save"/></svg><span>Save</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-copy"/></svg><span>Copy</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-trash"/></svg><span>Delete</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-filetext"/></svg><span>Text File</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-filedown"/></svg><span>Export</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-imagedown"/></svg><span>Img Save</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-note"/></svg><span>Sticky</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-archive"/></svg><span>Archive</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-package"/></svg><span>Pack</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-database"/></svg><span>Cache</span></div>
+  </div>
+
+  <div class="libcat"><b>Navigation &amp; Window</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-menu"/></svg><span>Menu</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-close"/></svg><span>Close</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-search"/></svg><span>Search</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-chevL"/></svg><span>Prev</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-chevR"/></svg><span>Next</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-chevU"/></svg><span>Up</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-chevD"/></svg><span>Down</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-arrowR"/></svg><span>Go</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-expand"/></svg><span>Expand</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-collapse"/></svg><span>Collapse</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-zoomin"/></svg><span>Zoom In</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-zoomout"/></svg><span>Zoom Out</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-move"/></svg><span>Move</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-movehz"/></svg><span>Drag X</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-align"/></svg><span>Align</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-plus"/></svg><span>Add</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-minus"/></svg><span>Remove</span></div>
+  </div>
+
+  <div class="libcat"><b>System &amp; Chrome</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-settings"/></svg><span>Settings</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-sliders"/></svg><span>Adjust</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-globe"/></svg><span>Language</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-network"/></svg><span>Network</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-hexagon"/></svg><span>Node</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-terminal"/></svg><span>Console</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-cpu"/></svg><span>Engine</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-activity"/></svg><span>Status</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-shield"/></svg><span>Privacy</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-diamond"/></svg><span>Pro</span></div>
+  </div>
+
+  <div class="libcat"><b>Status &amp; Feedback</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-check"/></svg><span>Done</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-alert"/></svg><span>Info</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-warn"/></svg><span>Warning</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-loader"/></svg><span>Loading</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-refresh"/></svg><span>Refresh</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-eye"/></svg><span>Show</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-eyeoff"/></svg><span>Hide</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-clock"/></svg><span>Recent</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-calendar"/></svg><span>Date</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-barchart"/></svg><span>Usage</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-zap"/></svg><span>Credits</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-gift"/></svg><span>Reward</span></div>
+  </div>
+
+  <div class="libcat"><b>Reading &amp; Learning</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-book"/></svg><span>Book</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-bookopen"/></svg><span>Reading</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-booka"/></svg><span>Dictionary</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-library"/></svg><span>Library</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-bookmark"/></svg><span>Bookmark</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-tag"/></svg><span>Tag</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-quote"/></svg><span>Quote</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-type"/></svg><span>Text</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-pen"/></svg><span>Annotate</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-scan"/></svg><span>Scan</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-brain"/></svg><span>Concept</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-bulb"/></svg><span>Insight</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-sparkles"/></svg><span>Generate</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-message"/></svg><span>Ask</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-send"/></svg><span>Send</span></div>
+  </div>
+
+  <div class="libcat"><b>Account &amp; Auth</b></div>
+  <div class="libgrid">
+    <div class="itile"><svg class="ic"><use href="#u-user"/></svg><span>Account</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-userplus"/></svg><span>Sign Up</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-login"/></svg><span>Sign In</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-logout"/></svg><span>Sign Out</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-mail"/></svg><span>Email</span></div>
+    <div class="itile"><svg class="ic"><use href="#u-key"/></svg><span>Password</span></div>
+  </div>
+
+  <p class="muted" style="font-size:12.5px;margin-top:22px;border-left:2px solid var(--line2);padding-left:12px">
+    <b style="color:var(--fg-mid)">Exception — brand marks stay official.</b> OAuth logos (Google, GitHub, X, Discord) are <i>not</i> redrawn; redesigning a third‑party logo breaks recognition and their brand guidelines. Everything else is bespoke.
+  </p>
+</div></section>
+
+<!-- VALUE NARRATIVE -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">04</span> The Value · from landing v=E</p>
+  <h2>What the deck actually does</h2>
+  <p class="lead">The visual system exists to sell one story: turn any book you <i>can't quite read</i> into one you can read, hear, and understand. Each system, in its own words.</p>
+  <div class="grid" style="gap:14px;margin-top:22px">
+    <div class="feat" style="--ac:var(--cyan)"><div><div class="num">01</div><div class="code">Voice_Synth</div></div><div><div class="label">Read &amp; Listen</div><div class="ba"><div class="b"><span class="lab">Before</span>The original used to mean reading line by line with a <span class="t">dictionary</span> always open.</div><div class="a"><span class="lab">After</span>Now the <span class="t">original, translation, and narration</span> stay synced, with contextual meaning on tap.</div></div></div></div>
+    <div class="feat" style="--ac:var(--amber)"><div><div class="num">02</div><div class="code">Net_Cast</div></div><div><div class="label">Follow The Discussion</div><div class="ba"><div class="b"><span class="lab">Before</span>Dense <span class="t">chapters</span> used to demand a desk, silence, and an hour of focus.</div><div class="a"><span class="lab">After</span>Now <span class="t">two hosts unpack</span> the chapter in the tone and language you choose. Listen anywhere.</div></div></div></div>
+    <div class="feat" style="--ac:var(--violet)"><div><div class="num">03</div><div class="code">Visual_Core</div></div><div><div class="label">Visualize The Concept</div><div class="ba"><div class="b"><span class="lab">Before</span>Abstract scenes and <span class="t">ideas</span> used to stay vague.</div><div class="a"><span class="lab">After</span>Now key concepts become <span class="t">reference images</span> in the style and ratio you choose.</div></div></div></div>
+    <div class="feat" style="--ac:var(--red)"><div><div class="num">04</div><div class="code">Cine_Render</div></div><div><div class="label">Summarize With Scenes</div><div class="ba"><div class="b"><span class="lab">Before</span>Some <span class="t">chapters</span> stay with you.</div><div class="a"><span class="lab">After</span>Now more can: short <span class="t">summary videos</span> give each chapter a memorable shape.</div></div></div></div>
+    <div class="feat" style="--ac:var(--emerald)"><div><div class="num">05</div><div class="code">Mem_Log</div></div><div><div class="label">Share Your Thoughts</div><div class="ba"><div class="b"><span class="lab">Before</span><span class="t">Highlights</span> used to scatter across screenshots, notes, and downloads.</div><div class="a"><span class="lab">After</span>Now share a <span class="t">card with your thought</span> or a mindmap of your thinking path.</div></div></div></div>
+    <div class="feat" style="--ac:var(--sky)"><div><div class="num">06</div><div class="code">Gen_Files</div></div><div><div class="label">Keep In Order</div><div class="ba"><div class="b"><span class="lab">Before</span>You looked around for what you just <span class="t">saved</span>.</div><div class="a"><span class="lab">After</span>Now everything stays <span class="t">organized by book</span>, filtered by type.</div></div></div></div>
+    <div class="feat" style="--ac:var(--pink)"><div><div class="num">07</div><div class="code">Neural_Assistant</div></div><div><div class="label">Ask The Expert</div><div class="ba"><div class="b"><span class="lab">Before</span>Your <span class="t">questions</span> used to outlive the reading session.</div><div class="a"><span class="lab">After</span>Now you ask about grammar, nuance, and context — and get <span class="t">answers grounded in the chapter</span>.</div></div></div></div>
+  </div>
+</div></section>
+
+<!-- FRAMES -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">05</span> Frames &amp; Boxes</p>
+  <h2>Four surfaces, one HUD</h2>
+  <p class="lead">A small kit replaces today's plain bordered boxes — each with a clear job.</p>
+  <div class="grid g2" style="margin-top:22px">
+    <div class="slate clip"><div class="chip">01 · Data Slate</div><h3 style="margin:12px 0 6px">Chamfered content panel</h3><p style="font-size:14px">Default surface for cards, players, panels. Cut corners + faint inner gradient. Replaces flat <span class="mono" style="color:var(--fg-dim)">.content-panel</span>.</p></div>
+    <div class="slate bracket" style="--ac:var(--cyan)"><div class="chip">02 · Bracket Frame</div><h3 style="margin:12px 0 6px">HUD corner target</h3><p style="font-size:14px">For the active / focused module toolbar. Four accent brackets that adopt the system color. Evolves today's 2‑corner <span class="mono" style="color:var(--fg-dim)">.hud-border</span>.</p></div>
+    <div class="slate" style="padding:0;overflow:hidden"><div class="hazard"></div><div style="padding:22px"><div class="chip" style="border-color:var(--hazard);color:var(--hazard)">03 · Hazard Header</div><h3 style="margin:12px 0 6px">Destructive zone</h3><p style="font-size:14px">Yellow‑black stripe caps panels for irreversible actions (Clear cache, Delete book). Used sparingly.</p></div></div>
+    <div class="slate accent clip" style="--ac:var(--emerald)"><div style="display:flex;align-items:center;gap:8px"><span class="led" style="--ac:var(--emerald)"></span><div class="chip" style="border-color:color-mix(in srgb,var(--emerald) 40%,transparent);color:var(--emerald)">04 · Status Slate</div></div><h3 style="margin:12px 0 6px">Live / stateful card</h3><p style="font-size:14px">Glowing edge + status LED for anything "running" or "active" — generation in progress, the active book, live sessions.</p></div>
+  </div>
+</div></section>
+
+<!-- GLASS DIRECTION -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">05·B</span> Surface Direction · Glass + Neon Glow</p>
+  <h2>Frosted glass, glowing edges</h2>
+  <p class="lead">An alternate (or layerable) treatment: translucent <b style="color:#fff">frosted‑glass</b> panels that blur whatever's behind them, wrapped in a <b style="color:var(--cyan)">neon glow border</b>. It reads as holographic HUD glass floating over the content — and it composes with the angular clips from the section above (chamfered frosted glass). Everything below is live, rendered over a neon stage so you can see the blur working.</p>
+
+  <div class="stage clip" style="margin-top:22px">
+    <!-- glass toolbar -->
+    <div class="glass neon-edge clip" style="--ac:var(--cyan);padding:11px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px;color:var(--cyan);font-family:var(--mono);font-size:12px;letter-spacing:.12em"><svg class="ic" style="width:18px;height:18px"><use href="#i-voicesynth"/></svg> VOICE_SYNTH</div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <span class="gchip"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px"><use href="#u-vol"/></svg> PUCK</span>
+        <span class="gchip"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px"><use href="#i-translate"/></svg> EN</span>
+        <button class="gbtn gbtn-exec sm"><svg class="ic" style="width:13px;height:13px"><use href="#i-voicesynth"/></svg> INITIATE</button>
+      </div>
+    </div>
+
+    <!-- glass cards -->
+    <div class="grid g2" style="margin-top:18px">
+      <div class="glass neon-edge clip" style="--ac:var(--cyan);padding:18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="led"></span><span class="mono" style="font-size:10px;letter-spacing:.2em;color:var(--cyan)">STATUS · LIVE</span></div>
+        <h3 style="margin:0 0 6px">Data Glass</h3>
+        <p style="font-size:13.5px;margin:0">Panels blur the grid + neon orbs behind them. Cyan edge glow marks the active system. Use for toolbars, players, floating popovers.</p>
+      </div>
+      <div class="glass neon-edge clip" style="--ac:var(--violet);padding:18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="led" style="--ac:var(--violet)"></span><span class="mono" style="font-size:10px;letter-spacing:.2em;color:var(--violet)">VISUAL_CORE</span></div>
+        <h3 style="margin:0 0 6px">Accent Per System</h3>
+        <p style="font-size:13.5px;margin:0">The glow border adopts each module's signature color — the whole app feels like tinted holo‑glass, one system per hue.</p>
+      </div>
+    </div>
+
+    <!-- glass controls -->
+    <div class="glass clip" style="margin-top:18px;padding:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="mono" style="font-size:10px;letter-spacing:.2em;color:var(--fg-dim)">CONTROLS ·</span>
+      <button class="gbtn gbtn-exec"><svg class="ic" style="width:15px;height:15px"><use href="#u-play"/></svg> Execute</button>
+      <button class="gbtn gbtn-ghost">Regenerate</button>
+      <button class="gicon"><svg class="ic" style="width:18px;height:18px"><use href="#i-translate"/></svg></button>
+      <button class="gicon"><svg class="ic" style="width:18px;height:18px"><use href="#u-download"/></svg></button>
+      <button class="gicon"><svg class="ic" style="width:18px;height:18px"><use href="#u-share"/></svg></button>
+      <button class="gicon"><svg class="ic" style="width:18px;height:18px"><use href="#u-trash"/></svg></button>
+    </div>
+
+    <!-- glass dialog -->
+    <div style="margin-top:18px;display:flex;justify-content:center">
+      <div class="glass neon-edge clip" style="--ac:var(--cyan);width:min(340px,100%);padding:0;overflow:hidden">
+        <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span class="mono" style="font-size:13px;letter-spacing:.14em;color:#fff">MY_ACCOUNT</span>
+          <svg class="ic" style="width:16px;height:16px;color:var(--fg-mid)"><use href="#u-close"/></svg>
+        </div>
+        <div style="padding:16px">
+          <div class="gchip" style="margin-bottom:12px"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px"><use href="#u-diamond"/></svg> PRO</div>
+          <p style="font-size:13px;margin:0 0 14px">Frosted dialogs float above a dimmed, blurred app — depth without a hard modal wall.</p>
+          <div style="display:flex;gap:8px"><button class="gbtn gbtn-exec" style="flex:1"><svg class="ic" style="width:14px;height:14px"><use href="#u-login"/></svg> Sign In</button><button class="gbtn gbtn-ghost">Cancel</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="slate clip"><div class="chip" style="border-color:var(--line2);color:var(--cyan)">Where it works</div><p style="font-size:13.5px;margin-top:10px">Toolbars, players, popovers, the account modal, floating context menus, tooltips, the sidebar over the reader — anything that sits <i>on top of</i> content and benefits from depth.</p></div>
+    <div class="slate clip" style="border-color:color-mix(in srgb,var(--hazard) 30%,transparent)"><div class="chip" style="border-color:var(--hazard);color:var(--hazard)">Reading guard</div><p style="font-size:13.5px;margin-top:10px">The <b>reading surface stays solid &amp; opaque</b> — blur + glow behind body text hurts legibility and battery. Glass is for chrome; the page you read is calm. (Also: a non‑blur fallback for reduced‑transparency / older browsers.)</p></div>
+  </div>
+</div></section>
+
+<!-- FULL APP PREVIEW -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">05·C</span> Full Interface Preview · Glass Applied</p>
+  <h2>The whole deck, in glass</h2>
+  <p class="lead">Here's the overall effect across a real screen: glass chrome floating on the neon field, the <b style="color:var(--cyan)">active system glowing in its color</b>, and the <b style="color:#fff">reading surface kept solid &amp; opaque</b>. Same‑tier controls share exact size (toolbar buttons 32px, standalone 40px).</p>
+
+  <div class="stage clip" style="margin-top:22px;padding:16px">
+    <div class="app-frame clip" style="background:rgba(6,8,14,.5);border:1px solid rgba(255,255,255,.10);box-shadow:0 24px 70px rgba(0,0,0,.55);overflow:hidden">
+
+      <!-- top nav -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 14px;height:50px;border-bottom:1px solid rgba(255,255,255,.08);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);background:rgba(10,12,20,.4)">
+        <div style="display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:15px"><b style="color:var(--cyan)">&gt;_</b><span style="color:#fff">Decod</span><span style="color:var(--cyan)">Ebook</span></div>
+        <div style="display:flex;gap:3px">
+          <span class="navchip on"><svg class="ic" style="width:14px;height:14px"><use href="#i-voicesynth"/></svg> VOICE</span>
+          <span class="navchip"><svg class="ic" style="width:14px;height:14px"><use href="#i-netcast"/></svg> CAST</span>
+          <span class="navchip"><svg class="ic" style="width:14px;height:14px"><use href="#i-visualcore"/></svg> VISUAL</span>
+          <span class="navchip"><svg class="ic" style="width:14px;height:14px"><use href="#i-cinerender"/></svg> CINE</span>
+          <span class="navchip"><svg class="ic" style="width:14px;height:14px"><use href="#i-memlog"/></svg> MEM</span>
+        </div>
+        <button class="gicon sm"><svg class="ic" style="width:16px;height:16px"><use href="#u-user"/></svg></button>
+      </div>
+
+      <!-- body -->
+      <div style="display:flex;flex:1;min-height:0">
+        <!-- sidebar -->
+        <div style="width:224px;flex-shrink:0;padding:12px;display:flex;flex-direction:column;gap:10px;border-right:1px solid rgba(255,255,255,.08);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);background:rgba(9,11,18,.32)">
+          <div class="glass neon-edge clip" style="--ac:var(--cyan);padding:10px 12px">
+            <div style="font-family:var(--mono);color:#fff;font-size:11px;letter-spacing:.05em">ELON MUSK: TESLA…</div>
+            <div style="font-family:var(--mono);color:var(--fg-dim);font-size:9px;margin-top:3px">ASHLEE VANCE</div>
+          </div>
+          <div class="glass clip" style="display:flex;align-items:center;gap:8px;height:40px;padding:0 12px"><svg class="ic" style="width:14px;height:14px;color:var(--fg-dim)"><use href="#u-search"/></svg><span style="font-family:var(--mono);font-size:10px;color:var(--fg-dim);letter-spacing:.1em">SEARCH_FULLTEXT</span></div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px">
+            <div class="bookrow on"><span style="width:4px;height:26px;background:var(--cyan);box-shadow:0 0 8px var(--cyan)"></span><div><div style="color:var(--cyan);font-size:10px;letter-spacing:.05em">ELON MUSK</div><div style="color:var(--fg-dim);font-size:8px">42 DATA_BLOCKS</div></div></div>
+            <div class="bookrow"><span style="width:4px;height:26px;background:#2a2a33"></span><div><div style="color:var(--fg-mid);font-size:10px;letter-spacing:.05em">SAPIENS</div><div style="color:var(--fg-dim);font-size:8px">20 DATA_BLOCKS</div></div></div>
+            <div class="bookrow"><span style="width:4px;height:26px;background:#2a2a33"></span><div><div style="color:var(--fg-mid);font-size:10px;letter-spacing:.05em">DUNE</div><div style="color:var(--fg-dim);font-size:8px">48 DATA_BLOCKS</div></div></div>
+          </div>
+        </div>
+
+        <!-- main -->
+        <div style="flex:1;min-width:0;padding:12px;display:flex;flex-direction:column;gap:10px">
+          <div class="glass neon-edge clip" style="--ac:var(--cyan);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px;color:var(--cyan);font-family:var(--mono);font-size:11px;letter-spacing:.12em"><svg class="ic" style="width:16px;height:16px"><use href="#i-voicesynth"/></svg> VOICE_SYNTH</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="gchip"><svg class="ic" style="width:11px;height:11px"><use href="#u-vol"/></svg> PUCK</span>
+              <span class="gchip"><svg class="ic" style="width:11px;height:11px"><use href="#i-translate"/></svg> EN</span>
+              <button class="gbtn gbtn-exec sm"><svg class="ic" style="width:12px;height:12px"><use href="#i-voicesynth"/></svg> INITIATE</button>
+            </div>
+          </div>
+          <div class="glass clip" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px">
+            <div style="display:flex;gap:8px;font-family:var(--mono);font-size:10px;color:var(--fg-dim)"><span style="color:var(--cyan)">1.00x</span> 0.75x 1.50x</div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <svg class="ic" style="width:16px;height:16px;color:var(--fg-mid)"><use href="#u-rewind"/></svg>
+              <button class="gicon sm" style="border-color:rgba(0,243,255,.5);color:var(--cyan);box-shadow:0 0 14px -4px var(--cyan)"><svg class="ic" style="width:14px;height:14px"><use href="#u-play"/></svg></button>
+              <svg class="ic" style="width:16px;height:16px;color:var(--fg-mid)"><use href="#u-forward"/></svg>
+            </div>
+            <div style="display:flex;gap:11px">
+              <svg class="ic" style="width:15px;height:15px;color:var(--fg-dim)"><use href="#u-download"/></svg>
+              <svg class="ic" style="width:15px;height:15px;color:var(--fg-dim)"><use href="#u-share"/></svg>
+            </div>
+          </div>
+          <div class="readpane">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--cyan)">SEC.01 · ELON'S WORLD</span>
+              <span style="font-family:var(--mono);font-size:9px;color:var(--fg-dim)">▪ SOLID · READING GUARD</span>
+            </div>
+            <p class="o">"Do you think I'm <span class="ink">insane</span>?" Musk asked, near the end of dinner.</p>
+            <p class="t">"你觉得我疯了吗?" 马斯克在晚餐快结束时问道。</p>
+            <p class="o">The question was sincere. He had spent the evening laying out his <span class="ink">vision</span>.</p>
+            <p class="t">这个问题是真诚的。他花了整晚阐述自己的愿景。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:13px;display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--fg-dim)">
+      <span><span class="led" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>glass chrome</span>
+      <span style="color:var(--cyan)">▸ active system glows cyan</span>
+      <span>▪ reader stays solid (guard)</span>
+      <span>controls: toolbar 32px · standalone 40px</span>
+    </div>
+  </div>
+</div></section>
+
+<!-- BUTTONS -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">06</span> Controls</p>
+  <h2>Buttons as commands</h2>
+  <p class="lead">Angular, monospaced, with a real press response. Three intents + an icon chip.</p>
+  <div class="slate clip" style="margin-top:20px">
+    <div class="grid g4" style="align-items:center">
+      <div><div class="col-h">Execute</div><button class="btn btn-exec"><svg class="ic" style="width:15px;height:15px"><use href="#i-tts"/></svg> Initiate</button><p style="font-size:12px;margin-top:10px">Primary action per screen. Neon fill, chamfer, glow, active‑dip.</p></div>
+      <div><div class="col-h">Ghost</div><button class="btn btn-ghost">Regenerate</button><p style="font-size:12px;margin-top:10px">Secondary. Outline in the system accent.</p></div>
+      <div><div class="col-h">Breach</div><button class="btn btn-breach"><svg class="ic" style="width:15px;height:15px"><use href="#i-cinerender"/></svg> Clear All</button><p style="font-size:12px;margin-top:10px">Destructive. Red, pairs with a confirm + hazard header.</p></div>
+      <div><div class="col-h">Icon Chip</div><div style="display:flex;gap:8px"><button class="btn btn-icon"><svg class="ic" style="width:18px;height:18px"><use href="#i-translate"/></svg></button><button class="btn btn-icon"><svg class="ic" style="width:18px;height:18px"><use href="#i-ink"/></svg></button><button class="btn btn-icon"><svg class="ic" style="width:18px;height:18px"><use href="#i-define"/></svg></button></div><p style="font-size:12px;margin-top:10px">Square, corner tick, hover‑to‑accent.</p></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- APPLIED -->
+<section><div class="wrap">
+  <p class="kick"><span class="idx">07</span> Applied</p>
+  <h2>A module toolbar, retuned</h2>
+  <p class="lead">Same layout you have now — new skin. Left: current. Right: proposed.</p>
+  <div class="grid g2" style="margin-top:20px;align-items:start">
+    <div>
+      <div class="col-h">▸ Current</div>
+      <div class="mock before">
+        <div class="bar" style="clip-path:none;border-radius:6px">
+          <div class="l" style="font-family:var(--mono)">🎧 VOICE_SYNTH</div>
+          <div class="r"><span class="selchip" style="border-radius:3px">Puck ▾</span><span class="selchip" style="border-radius:3px">EN ▾</span><button class="btn btn-exec" style="clip-path:none;border-radius:3px;padding:8px 14px">▶ Initiate</button></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="col-h" style="color:var(--cyan)"><span class="led"></span> Proposed</div>
+      <div class="mock">
+        <div class="bar">
+          <div class="l"><svg class="ic" style="width:17px;height:17px"><use href="#i-voicesynth"/></svg> VOICE_SYNTH</div>
+          <div class="r"><span class="selchip"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px"><use href="#i-tts"/></svg> PUCK</span><span class="selchip"><svg class="ic" style="width:12px;height:12px;vertical-align:-2px"><use href="#i-translate"/></svg> EN</span><button class="btn btn-exec" style="padding:8px 16px"><svg class="ic" style="width:14px;height:14px"><use href="#i-voicesynth"/></svg> INITIATE</button></div>
+        </div>
+        <p style="font-size:12px;margin:12px 4px 0;color:var(--fg-dim)">Chamfered bar · bracketed accent · language‑true icons · tabular selectors · press‑dip on Initiate.</p>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ROLLOUT -->
+<section style="border-bottom:none"><div class="wrap">
+  <p class="kick"><span class="idx">08</span> Rollout</p>
+  <h2>How I'd ship it</h2>
+  <p class="lead">Incrementally, one reviewable slice at a time — same cadence as Phases 0–6, no big‑bang rewrite.</p>
+  <ul class="rollout" style="margin-top:18px;list-style:none;padding:0">
+    <li><span class="chip" style="border-color:var(--line2);color:var(--cyan)">V2.1</span> &nbsp;<b>Icon set</b> — ship the 12 custom SVGs as a component, swap module + primitive icons app‑wide (pure asset change, zero layout risk).</li>
+    <li><span class="chip" style="border-color:var(--line2);color:var(--cyan)">V2.2</span> &nbsp;<b>Frame kit</b> — add <span class="mono muted">.slate / .bracket-frame / .hazard / .status-slate</span> recipes; migrate <span class="mono muted">.hud-panel</span> &amp; <span class="mono muted">.content-panel</span> to chamfered variants.</li>
+    <li><span class="chip" style="border-color:var(--line2);color:var(--cyan)">V2.3</span> &nbsp;<b>Controls</b> — extend <span class="mono muted">.btn-action</span> with the angular clip + breach/hazard for destructive actions; apply confirm patterns.</li>
+    <li><span class="chip" style="border-color:var(--line2);color:var(--cyan)">V2.4</span> &nbsp;<b>Per‑module accenting</b> — wire each system's signature color through its toolbar, then a landing‑page refresh to match.</li>
+    <li><span class="chip" style="border-color:var(--hazard);color:var(--hazard)">GUARD</span> &nbsp;Reading surface untouched throughout — all changes are chrome. Reduced‑motion + contrast held to the Phase‑1 standard.</li>
+  </ul>
+  <div style="display:flex;gap:12px;margin-top:26px;flex-wrap:wrap">
+    <button class="btn btn-exec">Approve Direction ▸</button>
+    <button class="btn btn-ghost">Request Changes</button>
+  </div>
+</div></section>
+
+<footer><div class="wrap">DECODΞBOOK · VISUAL SYSTEM v2 · PROPOSAL · CHROME‑ONLY · READING SURFACE PROTECTED</div></footer>
+</body>
+</html>

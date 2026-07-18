@@ -3692,16 +3692,16 @@ const App: React.FC = () => {
     let content;
     switch (activeTab) {
       case Tab.AUDIOBOOK:
-        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} initialPageTarget={activeChapterPageTarget} onPageSizeComputed={reportReaderSize} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
+        content = <AudioBook chapter={activeChapter} allChapters={activeBook?.chapters || []} fileContext={activeFileContext} settings={settings} onSettingsUpdate={setSettings} bookId={activeBookId!} bookTitle={activeBook?.title} initialPageTarget={activeChapterPageTarget} onPageSizeComputed={reportReaderSize} onChapterChange={(chapterId, pageTarget = 'first') => { setActiveChapterPageTarget(pageTarget); setActiveChapterId(chapterId); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapterId); }} />;
         break;
       case Tab.PODCAST:
-        content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} />;
+        content = <PodcastPlayer chapter={activeChapter} fileContext={activeFileContext} settings={settings} bookId={activeBookId!} bookTitle={activeBook?.title} />;
         break;
       case Tab.CONCEPTS:
-        content = <Visualizer chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} />;
+        content = <Visualizer chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} bookTitle={activeBook?.title} />;
         break;
       case Tab.ANIMATION:
-        content = <VideoSummary chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} />;
+        content = <VideoSummary chapter={activeChapter} fileContext={activeFileContext} bookId={activeBookId!} bookTitle={activeBook?.title} />;
         break;
       default:
         content = null;

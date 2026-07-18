@@ -276,7 +276,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     <span className={`md:hidden ${config.color}`}>{moduleLabel(file.componentSource)}</span>
                     <span>{formatFileSize(file.size)}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
-                    <span className="truncate max-w-[100px] md:max-w-[150px]">{getBookTitle(file.bookId)}</span>
+                    <span className="truncate max-w-[100px] md:max-w-[150px]">{file.bookTitle || getBookTitle(file.bookId)}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
                     <span>{formatDate(file.timestamp)}</span>
                   </div>

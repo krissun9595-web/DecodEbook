@@ -14,6 +14,7 @@ interface Props {
   chapter: Chapter;
   fileContext: FileContext;
   bookId: string;
+  bookTitle?: string;
 }
 
 const STYLES = [
@@ -24,7 +25,7 @@ const STYLES = [
 const RESOLUTIONS: ('720p' | '1080p')[] = ['720p', '1080p'];
 const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) => {
+export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId, bookTitle }) => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -110,6 +111,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, fileContext, bookId }) 
           mimeType: 'video/mp4',
           timestamp: Date.now(),
           bookId,
+          bookTitle,
           chapterId: chapter.id,
           componentSource: 'video',
           fileType: 'video',

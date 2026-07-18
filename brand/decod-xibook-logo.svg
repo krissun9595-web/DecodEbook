@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-labelledby="title desc">
+  <title id="title">DecodΞbook logo</title>
+  <desc id="desc">DecodΞbook wordmark with cyan terminal glyph and stacked-book Xi symbol.</desc>
+  <rect width="1024" height="1024" fill="#020202"/>
+
+  <defs>
+    <filter id="cyanGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0 0 0 0.952941  0 0 0 0 1  0 0 0 0.75 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Terminal glyph: keep the original cyan command-line figure, using the requested <_ orientation. -->
+  <g fill="none" stroke="#00f3ff" stroke-width="38" stroke-linecap="butt" stroke-linejoin="miter" filter="url(#cyanGlow)">
+    <polyline points="430 232 326 336 430 440"/>
+    <line x1="472" y1="440" x2="654" y2="440"/>
+  </g>
+
+  <!-- Wordmark: DecodΞbook. The Xi is drawn as three stacked book bars. -->
+  <g font-family="'Courier New', 'Roboto Mono', 'DejaVu Sans Mono', monospace" font-weight="700" font-size="110" letter-spacing="4">
+    <text x="152" y="790" fill="#ffffff">Decod</text>
+    <text x="620" y="790" fill="#00f3ff">book</text>
+  </g>
+
+  <g filter="url(#cyanGlow)" stroke="#00f3ff" stroke-linecap="round">
+    <line x1="540" y1="714" x2="602" y2="714" stroke-width="14"/>
+    <line x1="528" y1="752" x2="614" y2="752" stroke-width="14"/>
+    <line x1="540" y1="790" x2="602" y2="790" stroke-width="14"/>
+    <line x1="602" y1="705" x2="602" y2="723" stroke-width="4" opacity="0.8"/>
+    <line x1="614" y1="743" x2="614" y2="761" stroke-width="4" opacity="0.8"/>
+    <line x1="602" y1="781" x2="602" y2="799" stroke-width="4" opacity="0.8"/>
+  </g>
+</svg>
