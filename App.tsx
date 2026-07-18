@@ -996,7 +996,12 @@ const App: React.FC = () => {
       const SENT_RIGHT = String.fromCharCode(0xE011);
 
       const nodeToMarkedText = (node: Node, baseDir: string): string => {
-        if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+        // Collapse a text node's whitespace to single spaces, as HTML does in normal flow. Source markup
+        // wraps lines mid-paragraph ("<span class=small>DO YOU THINK</span>\n I'm insane?"), and keeping
+        // that raw newline made a small-caps chapter LEAD-IN split onto its own line — where its all-caps
+        // shape then read as a heading. Block structure comes from the block-tag handlers (\n\n) and <br>
+        // (\n), never from a text node's own newlines, so this can't merge real blocks.
+        if (node.nodeType === Node.TEXT_NODE) return (node.textContent || '').replace(/\s+/gu, ' ');
         if (node.nodeType !== Node.ELEMENT_NODE) return '';
 
         const element = node as HTMLElement;
