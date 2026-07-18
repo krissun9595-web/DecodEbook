@@ -841,6 +841,23 @@ const App: React.FC = () => {
         }
         return px;
       };
+      // A CSS length → EM (px→em at 16px/em; em/rem ≈ base em; "0" → 0). Used to compute an INDEX entry's
+      // rendered left indent, which the reader represents as leading NBSP.
+      const lenToEm = (value: string): number | null => {
+        const m = /(-?[\d.]+)\s*(em|rem|px)/i.exec(value);
+        if (m) { const n = parseFloat(m[1]) || 0; return m[2].toLowerCase() === 'px' ? n / 16 : n; }
+        return /^\s*0/.test(value) ? 0 : null;
+      };
+      // The margin-left / padding-left / text-indent (em) a declaration sets — explicit prop, else the
+      // margin/padding shorthand's left value (4 → 4th, 2–3 → 2nd, 1 → all).
+      const sideLeftEm = (decls: string, prop: 'margin' | 'padding'): number | null => {
+        const explicit = new RegExp(`${prop}-left\\s*:\\s*([^;}]+)`, 'i').exec(decls);
+        if (explicit) return lenToEm(explicit[1]);
+        const sh = new RegExp(`\\b${prop}\\s*:\\s*([^;}]+)`, 'i').exec(decls);
+        if (sh) { const p = sh[1].trim().split(/\s+/); const left = p.length === 4 ? p[3] : p.length >= 2 ? p[1] : p[0]; return left ? lenToEm(left) : null; }
+        return null;
+      };
+      const cssBoxLeftEm: Record<string, { m: number; p: number; ti: number }> = {}; // class → left margin/padding/text-indent (em)
       for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
         try {
           const css = await zip.files[key].async('string');
@@ -852,7 +869,9 @@ const App: React.FC = () => {
             const isNormalWeight = /font-weight\s*:\s*(?:normal|[1-4]00)/i.test(rule[2]);
             const isNormalStyle = /font-style\s*:\s*normal/i.test(rule[2]);
             const li = leftIndentPx(rule[2]);
-            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li) continue;
+            const mE = sideLeftEm(rule[2], 'margin'), pE = sideLeftEm(rule[2], 'padding');
+            const tiM = /text-indent\s*:\s*([^;}]+)/i.exec(rule[2]); const tiE = tiM ? lenToEm(tiM[1]) : null;
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
               if (am) cssAlign[c] = am[1].toLowerCase() as 'center' | 'right';
@@ -860,6 +879,7 @@ const App: React.FC = () => {
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
               if (li > 0) cssIndent[c] = Math.max(cssIndent[c] || 0, li);
+              if (mE != null || pE != null || tiE != null) { const cur = cssBoxLeftEm[c] || { m: 0, p: 0, ti: 0 }; cssBoxLeftEm[c] = { m: mE ?? cur.m, p: pE ?? cur.p, ti: tiE ?? cur.ti }; }
             }
           }
         } catch { /* skip an unreadable stylesheet */ }
@@ -883,6 +903,36 @@ const App: React.FC = () => {
         const el = n as HTMLElement;
         if ((el.style?.display || '').toLowerCase() === 'block') return true;
         return (el.getAttribute('class') || '').split(/\s+/).some(c => cssBlock.has(c));
+      };
+      // The rendered LEFT indent (em) where an INDEX entry's text starts, relative to the top-level index
+      // list. Walk up summing each ancestor's margin-left + padding-left (em) — INCLUDING the browser
+      // default ~2.5em a bare nested <ul>/<ol> carries (which the old fixed 4-NBSP ignored, so sub-entries
+      // sat ~half as deep as the source) — plus the entry's OWN text-indent (its hanging first-line
+      // offset). Stops at the top-level list (its indent is the reader's container reference), so a main
+      // entry nets ~0 (padding cancels its negative text-indent) and stays flush.
+      const boxLeftEm = (el: Element): { m: number; p: number; ti: number } => {
+        const acc = { m: 0, p: 0, ti: 0 };
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b) { if (b.m) acc.m = b.m; if (b.p) acc.p = b.p; if (b.ti) acc.ti = b.ti; } }
+        const s = (el as HTMLElement).style;
+        if (s?.marginLeft) { const e = lenToEm(s.marginLeft); if (e != null) acc.m = e; }
+        if (s?.paddingLeft) { const e = lenToEm(s.paddingLeft); if (e != null) acc.p = e; }
+        if (s?.textIndent) { const e = lenToEm(s.textIndent); if (e != null) acc.ti = e; }
+        return acc;
+      };
+      const renderedIndentEm = (el: Element): number => {
+        let em = 0; let node: Element | null = el; let first = true;
+        while (node) {
+          const tag = node.tagName?.toLowerCase();
+          if (!tag || tag === 'body') break;
+          // A top-level list (parent is not an <li>) is the container reference — stop before counting it.
+          if ((tag === 'ul' || tag === 'ol') && node.parentElement?.tagName.toLowerCase() !== 'li') break;
+          const b = boxLeftEm(node);
+          em += b.m + b.p;
+          if ((tag === 'ul' || tag === 'ol') && b.p === 0) em += 2.5; // UA default list padding-inline-start
+          if (first) { em += b.ti; first = false; }
+          node = node.parentElement;
+        }
+        return Math.max(0, em);
       };
       // CSS-driven emphasis: an element italicised/bolded via a class (not <i>/<b>) — wrap its text in
       // the markdown the reader renders. Guard against double-wrapping when a nested <i>/<em> already did.
@@ -1093,8 +1143,13 @@ const App: React.FC = () => {
           // downstream prose-reflow can't merge them, and prefix sub-entries with
           // non-breaking spaces (which survive whitespace collapsing) to preserve
           // their indentation under the parent term.
-          if (liClass.includes('indexsub')) return `\n\n    ${trimmed}\n\n`;
-          if (liClass.includes('indexmain')) return `\n\n${trimmed}\n\n`;
+          if (liClass.includes('indexsub') || liClass.includes('indexmain')) {
+            // CSS-derived index indent: reader renders (nbsp/4)*1.5em = nbsp*0.375em, so map the entry's
+            // rendered em indent to leading NBSP. A main entry nets ~0 (flush); a sub-entry gets its real
+            // margin + the nested list's UA padding (~2.2-4em) instead of a flat single level.
+            const nbsp = Math.round(renderedIndentEm(element) / 0.375);
+            return `\n\n${'\u00a0'.repeat(Math.max(0, nbsp))}${trimmed}\n\n`;
+          }
           // Reveal list structure: bullets for <ul>, numbers for <ol>. Skip when the
           // item already carries its own marker (e.g. endnote backlinks "[2](...)"),
           // so notes aren't double-numbered.
