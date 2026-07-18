@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, StickyNote, Map, FileDown, Save, Share2, Languages, File as FileIcon } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, Notebook as NotebookIcon, Map, FileDown, Save, Share2, Languages, File as FileIcon } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
 import { listFiles, deleteFile, getFile, clearAll, clearBook } from '../services/fileCache';
@@ -25,7 +25,7 @@ const FILE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; c
   'podcast-script': { icon: <FileText size={14} />, label: 'NET_SCRIPT', color: 'text-amber-400' },
   'concept-image': { icon: <ImageIcon size={14} />, label: 'VISUAL_CORE', color: 'text-violet-400' },
   'video': { icon: <Film size={14} />, label: 'CINE_RENDER', color: 'text-neon-pink' },
-  'sticky-note': { icon: <StickyNote size={14} />, label: 'MEM_LOG', color: 'text-neon-yellow' },
+  'sticky-note': { icon: <NotebookIcon size={14} />, label: 'MEM_LOG', color: 'text-neon-yellow' },
   'notebook-figure': { icon: <ImageIcon size={14} />, label: 'FIGURE', color: 'text-neon-yellow' },
   'mind-map-pdf': { icon: <Map size={14} />, label: 'MAP_PDF', color: 'text-neon-yellow' },
   'mind-map-docx': { icon: <FileDown size={14} />, label: 'MAP_DOCX', color: 'text-neon-yellow' },
