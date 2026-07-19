@@ -2725,6 +2725,16 @@ const App: React.FC = () => {
         const { pageNum, lines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers } = buf;
         const proseLines = lines.filter(line => !isHeadingLine(line));
         const rightMargin = proseLines.length ? Math.max(...proseLines.map(line => line.rightX)) : 0;
+        // PER-PAGE justification (robust when ONE file mixes justified and ragged sections): a page is
+        // justified when its LONG lines share a HARD right margin — several reach the exact max edge. A
+        // definition list has many short lines yet its full lines still hit the margin exactly (justified);
+        // a ragged page's long lines scatter, so few reach the max. The short-line block-boundary rule is
+        // gated on THIS, not the document flag, so a ragged page inside a justified book isn't shattered,
+        // and a justified list inside a ragged book is still split.
+        const pageMeasure = rightMargin - bodyLeft;
+        const longLines = pageMeasure > 0 ? proseLines.filter(l => (l.rightX - l.x) > pageMeasure * 0.55) : [];
+        const linesAtMargin = longLines.filter(l => rightMargin - l.rightX <= 3).length;
+        const pageJustified = longLines.length >= 5 && linesAtMargin >= Math.max(4, longLines.length * 0.4);
         const indentDepthFor = (x: number): number => {
           const tier = indentTiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL);
           return tier >= 1 ? Math.min(tier, 3) : 0;
@@ -3068,7 +3078,7 @@ const App: React.FC = () => {
               // definition list whose flush italic term ("Endpoints") and its indented description are
               // otherwise glued into a run-on. Gated to justified sources so ragged text (short lines
               // everywhere) is untouched; not applied across a same-tier continuation attribution.
-              const prevEndsShort = sourceJustified === true && rightMargin > 0
+              const prevEndsShort = pageJustified && rightMargin > 0
                 && !fillsMeasure(previous.rightX, rightMargin) && !attributionContinuation;
               endsBlock =
                 bothShort ||
