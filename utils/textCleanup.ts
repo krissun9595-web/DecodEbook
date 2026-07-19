@@ -234,6 +234,10 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
     // previous ends with a colon introducing the list ("…patterns:" + "• Prompt chaining…"). The
     // bullet may be bold ("**•** …"), so skip a leading emphasis wrapper before the marker.
     /^\s*(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(cur) ||
+    // A labeled entry (an email header "Date: …" / "To: …", an address field, a spec row) is its own
+    // line — never absorb it into the previous, even one that ends in a name/word (the name-continuation
+    // rule below) or a colon. Short "Label:" at line start: a capitalised word (≤24 chars) then a colon.
+    /^["'“]?[A-Z][^:\n]{0,24}:(?:\s|$)/u.test(cur) ||
     endsWithTerminalPunctuation(prev) ||
     looksLikeAttributionLine(prev) ||
     looksLikeAttributionLine(prevLastLine) ||
@@ -253,9 +257,16 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   if (/^[a-z]/u.test(cur)) return true;
   if (/^\d+(?:[.,/]\d+)*\.?\b/u.test(cur) && /\b(?:at|on|in|was|were|is|are|be|been|being|of|to|from|by|with|and|or|plus|minus|equals?|until|since|after|before|around|between|circa|near|stood at|amounted to|rose to|fell to)$/iu.test(prev)) return true;
   if (/^(?:and|or|but|nor|for|yet|so|to|of|in|on|at|by|from|with|without|into|through|over|under|than|as|that|which|who|whom|whose)\b/iu.test(cur)) return true;
-  if (/[,;:—–-]\s*$/u.test(prev)) return true;
+  // A comma / semicolon / dash at line end is a mid-sentence wrap → merge. A COLON is different: it
+  // INTRODUCES a following block (a list, a definition, a set-off term/quote), so it must NOT pull that
+  // block back in ("…key components:" + italic "Endpoints", "…thinking:" + "Agentic"). A genuine
+  // lowercase continuation after a colon is already merged by the /^[a-z]/ rule above.
+  if (/[,;—–-]\s*$/u.test(prev)) return true;
   if (/;[^.!?。！？]*$/u.test(prev) && (/;/.test(cur) || /^[A-Z][\p{L}.'-]*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|V?I{0,3}))?;/u.test(cur))) return true;
-  if (/\b[A-Z][\p{L}'-]*$/u.test(prevTail) && /^[A-Z][\p{L}'-]*(?:[,;:]|$)/u.test(firstToken)) return true;
+  // Name split across a line break ("James Dale" / "Davidson"). NOT when the previous line is a BULLET
+  // item (a short "• Simon Torrance") — that's a complete list entry, and the next capitalised word
+  // ("Also, …") begins a new paragraph, not a name continuation.
+  if (!/^(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(prev) && /\b[A-Z][\p{L}'-]*$/u.test(prevTail) && /^[A-Z][\p{L}'-]*(?:[,;:]|$)/u.test(firstToken)) return true;
   if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Sir|Dame|St|Gen|Gov|Rev|Hon)\.?$/u.test(prevTail) && /^[A-Z]/u.test(cur)) return true;
 
   return false;

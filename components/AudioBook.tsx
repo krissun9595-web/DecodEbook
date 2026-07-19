@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v35-no-merge-indented-setoff';
+const CHAPTER_TEXT_CACHE_VERSION = 'v36-colon-label-bullet-nomerge';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v20-per-page-stable';
 
@@ -4148,7 +4148,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // sentinel is stripped from lineText, so paragraphSpacingClassFor can't see it, and
                         // its text heuristic (isPlainSubtitleParagraph) misses sentence-case/single-word
                         // headings ("You get what you do not want"), leaving them with no blank line above.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : paragraphSpacingClassFor(lineText);
+                        // A definition-list term that introduces an indented block is not a section
+                        // subtitle — don't give it the subtitle's big top margin (an unwanted blank line
+                        // above e.g. "Agentic AI").
+                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : introducesIndentedBlock ? '' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
