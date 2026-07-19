@@ -3087,9 +3087,18 @@ const App: React.FC = () => {
               // everywhere) is untouched; not applied across a same-tier continuation attribution.
               const prevEndsShort = pageJustified && rightMargin > 0
                 && !fillsMeasure(previous.rightX, rightMargin) && !attributionContinuation;
+              // A FLUSH labeled list — consecutive lines that BOTH open with a short "Label:" (an email
+              // header From:/Date:/To:/Subject:, an address, a spec sheet) — has each entry as its own
+              // line, but with no hanging indent detectLabeledHangingList misses it and the splitter
+              // merges them into a run-on. Requiring BOTH neighbours to be labels keeps prose (a lone
+              // "Note: …" mid-paragraph has no label line before it) from splitting. Validated: 3 splits
+              // on the Elon email header, 0 on Elon/Kurzweil prose pages.
+              const labelPair = labelStart.test(previous.text.replace(/[*_~]/gu, '').trimStart())
+                && labelStart.test(current.text.replace(/[*_~]/gu, '').trimStart());
               endsBlock =
                 bothShort ||
                 prevEndsShort ||
+                labelPair ||
                 startsFootnoteEntry(current) ||
                 startsBulletLine(current.text) ||
                 (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||

@@ -452,7 +452,11 @@
 //       document `sourceFirstLineIndent` flag; when it's block-style the reader stops forcing its fixed
 //       1.75em first-line indent, so block-paragraph books (e.g. Agentic Mesh) render flush like the
 //       source. Conservative: only 'false' fires, over enough justified samples; ragged/unknown → default.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v101-block-indent';
+// v102: a FLUSH labeled list (email header From:/Date:/To:/Subject:, an address block) has each entry on
+//       its own line, but with no hanging indent the splitter merged them into a run-on. Split when two
+//       CONSECUTIVE lines both open with a short "Label:" (labelStart). Requiring BOTH neighbours keeps
+//       prose from splitting (validated: 3 splits on the Elon email header, 0 on Elon/Kurzweil prose).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v102-flush-label-list';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
