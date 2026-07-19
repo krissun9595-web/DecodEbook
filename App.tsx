@@ -2702,6 +2702,19 @@ const App: React.FC = () => {
         return Boolean(m && markerLabelOf(m[1]));
       };
 
+      // Justified vs ragged (computed HERE so the per-page splitter can use it too, not only the reader):
+      // full body lines reach a common right margin on a high fraction of lines. In justified text a line
+      // that ENDS SHORT of that margin is a block boundary (a paragraph/term/heading end) — the signal the
+      // punctuation/first-line-indent heuristics miss on block-paragraph books (e.g. a definition list
+      // whose italic term sits flush at the margin and whose description is indented under it).
+      let sourceJustified: boolean | undefined;
+      if (lineRightEdges.length >= 30) {
+        const sortedRE = [...lineRightEdges].sort((a, b) => a - b);
+        const topRE = sortedRE.slice(Math.floor(sortedRE.length * 0.6));
+        const jMargin = topRE[Math.floor(topRE.length / 2)];
+        sourceJustified = sortedRE.filter(e => e >= jMargin - 6).length / sortedRE.length > 0.7;
+      }
+
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
@@ -3048,8 +3061,18 @@ const App: React.FC = () => {
               const bothShort = isShortColLine(previous) && isShortColLine(current)
                 && !labelStart.test(current.text.replace(/[*_~]/gu, '').trim())
                 && !attributionContinuation;
+              // JUSTIFIED-TEXT block boundary: in justified prose every line is stretched to the right
+              // margin EXCEPT the last line of a block, so a previous line that ends short of the margin
+              // (doesn't fill the measure) marks a paragraph/term/heading end and the current line begins
+              // a new block. Catches block-paragraph layouts the indent/punctuation rules miss — e.g. a
+              // definition list whose flush italic term ("Endpoints") and its indented description are
+              // otherwise glued into a run-on. Gated to justified sources so ragged text (short lines
+              // everywhere) is untouched; not applied across a same-tier continuation attribution.
+              const prevEndsShort = sourceJustified === true && rightMargin > 0
+                && !fillsMeasure(previous.rightX, rightMargin) && !attributionContinuation;
               endsBlock =
                 bothShort ||
+                prevEndsShort ||
                 startsFootnoteEntry(current) ||
                 startsBulletLine(current.text) ||
                 (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||
@@ -3439,18 +3462,9 @@ const App: React.FC = () => {
         if (missing.length) console.warn(`[DecodEbook figure-check] ${missing.length} page(s) have a figure/table caption with no captured image:\n${missing.join('\n')}`);
       } catch { /* diagnostic only — never block extraction */ }
 
-      // Justified vs ragged: with the body-line right edges gathered across pages, take the right
-      // margin as the median of the top 40% of edges (the full-line target), then measure how many
-      // lines reach it (within 6pt). Justified books fill it on ~85–98% of lines; a ragged-left book
-      // (e.g. Elon Musk) on ~40%. Threshold 0.7. Too few samples → leave undefined (reader falls back).
-      let sourceJustified: boolean | undefined;
-      if (lineRightEdges.length >= 30) {
-        const sorted = [...lineRightEdges].sort((a, b) => a - b);
-        const top = sorted.slice(Math.floor(sorted.length * 0.6));
-        const margin = top[Math.floor(top.length / 2)];
-        const filled = sorted.filter(e => e >= margin - 6).length;
-        sourceJustified = filled / sorted.length > 0.7;
-      }
+      // Justified vs ragged is computed earlier (before the per-page splitter) so both the splitter and
+      // the reader use the same verdict; sourceJustified holds it. Justified books fill the margin on
+      // ~85–98% of lines; a ragged-left book (e.g. Elon Musk) on ~40%; too few samples → undefined.
       return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified };
     } catch (e) {
       console.error('PDF processing error', e);

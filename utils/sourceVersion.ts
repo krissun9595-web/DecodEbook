@@ -439,7 +439,13 @@
 //      offset landed on the title line and orphaned the number line. Now the match optionally absorbs
 //      the title's EXACT leading number sitting on its own line just before the title, so the chapter
 //      starts at its number (specific-number match avoids grabbing an unrelated page/footer number).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v99-chapter-number-line';
+// v100: block-paragraph layouts on JUSTIFIED pages (e.g. a definition list — an italic term flush at the
+//       margin with an indented description under it) were glued into one run-on paragraph. The geometry
+//       splitter keyed on the NEXT line's first-line indent + punctuation, both absent here. Add a
+//       principled justified-text signal: a previous line that ends SHORT of the right margin (doesn't
+//       fill the measure) is a block boundary, so the next line starts a new paragraph. Gated to justified
+//       sources; ragged text (short lines everywhere) is untouched. Validated on Agentic Mesh p41.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v100-justified-block-split';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
