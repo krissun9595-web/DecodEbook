@@ -4083,7 +4083,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // doesn't read as a spurious new paragraph.
                   const isParagraphContinuation = pIdx === 0 && !!currentReaderPage?.continuesParagraph;
                   const paragraphStyle = (isListRole || isHeadingRole || isParagraphContinuation) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align);
-                  const paragraphTextClass = !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
+                  // A short Title-Case line that INTRODUCES an indented set-off block (its next paragraph is
+                  // block-indented) is a definition-list TERM, not a section subtitle — keep its own
+                  // emphasis (usually italic) instead of bolding it. (e.g. "Agentic AI" above its indented
+                  // definition, which isPlainSubtitleParagraph would otherwise promote to a bold heading.)
+                  const introducesIndentedBlock = (paragraphData[pIdx + 1]?.indent || 0) > 0;
+                  const paragraphTextClass = !isListRole && !isHeadingRole && introducesIndentedBlock
+                    ? 'text-zinc-300 font-medium'
+                    : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';
                   const hasParagraphTranslation = para.original.some((_, sIdx) => {
