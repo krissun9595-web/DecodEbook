@@ -259,7 +259,10 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
 const normalizeParagraphLines = (paragraph: string): string[] => {
   const lines = paragraph
     .split('\n')
-    .map(line => line.trim())
+    // Trim ordinary surrounding whitespace but KEEP a leading NBSP run — it encodes a geometry-derived
+    // block indent (e.g. a definition-list description sitting deeper than the body margin) that the
+    // reader turns into left padding. Plain .trim() removes NBSP and would flatten the indent.
+    .map(line => line.replace(/^[^\S\u00a0]+/u, '').replace(/[ \t\f\v]+$/u, ''))
     .filter(Boolean);
   const blocks: string[] = [];
   let buffer: string[] = [];
