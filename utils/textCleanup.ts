@@ -207,6 +207,11 @@ const markCitationBlocks = (paragraphs: string[]): string[] => paragraphs.map((p
 // them already merged — so this text-only heuristic only handles the seams geometry can't
 // decide (e.g. a page-number footer between the prose) and EPUB, which has no page markers.
 const looksLikeContinuationAfterArtificialBreak = (previous: string, current: string): boolean => {
+  // A block that opens with a leading NBSP indent is a deliberately SET-OFF block from the PDF geometry
+  // (a definition description, an indented set-off definition/quote) — never merge it back into the
+  // previous paragraph, even when that paragraph ends with a colon introducing it. (Checked before the
+  // .trim() below, which would drop the NBSP and hide the indent.)
+  if (/^[^\S ]* /u.test(current)) return false;
   const prev = previous.trim();
   // A PDF page boundary injects a "[[PAGE n]]" marker at the start of the next block, so
   // a sentence that runs across the page break ("…is rapidly" / "[[PAGE 15]] eroding.")
