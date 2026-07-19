@@ -144,6 +144,9 @@ export interface FileContext {
   sourceJustified?: boolean; // true when the source PDF sets its body text justified (fills the
   //                            right margin); the reader mirrors it (justify + hyphenation) under
   //                            the 'auto' alignment setting, so a ragged-left source stays ragged.
+  sourceFirstLineIndent?: boolean; // false when the source is BLOCK-style (paragraphs flush, no
+  //                            first-line indent — many technical books); the reader then renders prose
+  //                            flush instead of forcing its default first-line indent. undefined → default.
 }
 
 export interface NotebookItem {

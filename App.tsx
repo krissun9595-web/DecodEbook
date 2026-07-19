@@ -1462,7 +1462,7 @@ const App: React.FC = () => {
   };
 
   type ExtractedFigure = { id: string; page: number; wPts: number; hPts: number; wPx: number; hPx: number; mimeType: string; colFrac?: number; blob: Blob };
-  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string; figures: ExtractedFigure[]; justified?: boolean }> => {
+  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string; figures: ExtractedFigure[]; justified?: boolean; firstLineIndent?: boolean }> => {
     try {
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
@@ -2715,6 +2715,13 @@ const App: React.FC = () => {
         sourceJustified = sortedRE.filter(e => e >= jMargin - 6).length / sortedRE.length > 0.7;
       }
 
+      // Whether the book uses a typographic FIRST-LINE indent on paragraphs (novels) vs BLOCK paragraphs
+      // (flush, separated by space — many technical books). Measured on justified pages from the geometry:
+      // a paragraph's first line sitting deeper than its continuation lines. Lets the reader stop forcing
+      // its fixed first-line indent on block-style sources (which the source doesn't have). Conservative:
+      // only decided with enough samples, else undefined → reader keeps its default.
+      let bodyBlkTotal = 0, bodyBlkFirstLineIndented = 0;
+
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
@@ -3169,8 +3176,21 @@ const App: React.FC = () => {
             const groupMaxRight = Math.max(...group.map(l => l.rightX));
             const isRightAttribution = !groupIsHeading && /^\s*(?:[*_~`]+\s*)?[\u2014\u2013]/u.test(text)
               && groupMinX > bodyLeft + bodyFont * 4 && groupMaxRight >= rightMargin - Math.max(6, bodyFont);
+            // Geometry-faithful indent (only trusted on justified pages, where a block's lines share one
+            // left tier). first-line indent = the FIRST line sits deeper than the block's continuation
+            // lines (novels); block left-indent = ALL lines sit deeper than the body margin (a definition
+            // description). Carry the block left-indent as leading NBSP (reader \u2192 padding); count first-line
+            // indents so the reader can drop its fixed indent on block-style books.
+            const firstLineExtra = group[0].x - groupMinX;             // first line vs continuation
+            const blockLeftPx = groupMinX - bodyLeft;                  // whole block vs body margin
+            if (pageJustified && !groupIsHeading && !isRightAttribution) {
+              bodyBlkTotal++;
+              if (firstLineExtra > bodyFont * 0.6) bodyBlkFirstLineIndented++;
+            }
+            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && bodyFont > 0 && blockLeftPx > bodyFont * 0.9)
+              ? Math.min(12, Math.round((blockLeftPx / bodyFont) / 1.5 * 4)) : 0;
             blocks.push({
-              text: isRightAttribution ? '\uE011' + text : text,
+              text: isRightAttribution ? '\uE011' + text : '\u00A0'.repeat(blockNbsp) + text,
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,
@@ -3475,7 +3495,14 @@ const App: React.FC = () => {
       // Justified vs ragged is computed earlier (before the per-page splitter) so both the splitter and
       // the reader use the same verdict; sourceJustified holds it. Justified books fill the margin on
       // ~85–98% of lines; a ragged-left book (e.g. Elon Musk) on ~40%; too few samples → undefined.
-      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified };
+      // First-line-indent vs block style (from justified-page paragraph geometry). CONSERVATIVE: only
+      // 'false' (block style → reader renders flush) fires, and only with a clear majority of flush
+      // paragraphs over enough samples; anything ragged/uncertain stays undefined so the reader keeps its
+      // default first-line indent (a real first-line-indent novel is never mis-flagged as block style).
+      const sourceFirstLineIndent = bodyBlkTotal >= 20
+        ? bodyBlkFirstLineIndented / bodyBlkTotal > 0.4
+        : undefined;
+      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified, firstLineIndent: sourceFirstLineIndent };
     } catch (e) {
       console.error('PDF processing error', e);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
@@ -3614,7 +3641,7 @@ const App: React.FC = () => {
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
        try {
-         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified } = await processPdf(file);
+         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified, firstLineIndent } = await processPdf(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -3624,6 +3651,7 @@ const App: React.FC = () => {
             pdfOutline,
             docTitle,
             sourceJustified: justified,
+            sourceFirstLineIndent: firstLineIndent,
          }, figures);
        } catch (err: any) {
          setError(err.message || "Failed to process PDF.");

@@ -445,7 +445,14 @@
 //       principled justified-text signal: a previous line that ends SHORT of the right margin (doesn't
 //       fill the measure) is a block boundary, so the next line starts a new paragraph. Gated to justified
 //       sources; ragged text (short lines everywhere) is untouched. Validated on Agentic Mesh p41.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v100-justified-block-split';
+// v101: preserve indentation on justified pages. (a) A body block whose WHOLE text sits indented under
+//       the body margin (a definition description) now carries that left indent as leading NBSP →
+//       reader padding. (b) Detect first-line-indent vs BLOCK style from justified-page paragraph
+//       geometry (does a paragraph's first line sit deeper than its continuation lines?) and emit a
+//       document `sourceFirstLineIndent` flag; when it's block-style the reader stops forcing its fixed
+//       1.75em first-line indent, so block-paragraph books (e.g. Agentic Mesh) render flush like the
+//       source. Conservative: only 'false' fires, over enough justified samples; ragged/unknown → default.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v101-block-indent';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

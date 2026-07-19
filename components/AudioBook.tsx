@@ -3135,6 +3135,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
   const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center'): React.CSSProperties => {
     const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
+    // The source is BLOCK-style (paragraphs flush, separated by space — detected at extraction): render
+    // prose flush instead of forcing the default first-line indent the source doesn't have. Any real
+    // per-block left indent (a definition description) still comes through as padding from para.indent.
+    if (fileContext.sourceFirstLineIndent === false) return noTextIndentStyle;
     // Index entries are list items, not prose — no first-line indent.
     if (isIndexChapter) return noTextIndentStyle;
     if (isNotesSectionHeadingParagraph(sentences)) return noTextIndentStyle;
@@ -4091,7 +4095,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // Index and table-of-contents entries carry an indent depth (4 non-breaking
                   // spaces per level, captured upstream from the PDF x-position); render it as
                   // left padding.
-                  const indexIndentStyle = (isIndexChapter || isListRole) && para.indent
+                  // para.indent (leading NBSP tiers) → left padding. Set for index/list entries AND, from
+                  // the PDF geometry, for a body block whose whole text is indented under the margin (a
+                  // definition description). para.indent is 0 for ordinary flush prose, so this only ever
+                  // pads genuinely-indented blocks.
+                  const indexIndentStyle = para.indent && !isHeadingRole
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
                     : undefined;
                   // Index HANGING indent: a wrapped multi-locator entry ("agriculture, 15, … 333, 394")
