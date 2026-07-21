@@ -2928,7 +2928,7 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
       // ── Unify TOC indent tiers across the whole run ──
@@ -3315,7 +3315,7 @@ __audit('disp', outBlocks);
               const last = entry[entry.length - 1];
               const carryover = entry[0].x > groupLeft + 4;
               const hang = !carryover && hangNbsp > 0 ? '' + ' '.repeat(hangNbsp) : '';
-              blocks.push({ text: hang + etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover, topY: Math.max(...entry.map(l => l.pageY)) });
+              blocks.push({ text: hang + etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover, topY: Math.max(...entry.map(l => l.pageY)), bodyX: mode((entry.length > 1 ? entry.slice(1) : entry).map(l => Math.round(l.x))) });
             }
             entry = [];
           };
@@ -3388,7 +3388,12 @@ __audit('disp', outBlocks);
               // turns broke via bothShort, long ones didn't). Measured against paraLeftMargin so the
               // indent is detected even when short turns make the indent the modal left. A wrapped
               // continuation sits at the margin, not the indent, so it is never caught.
-              const isIndentedBodyLine = current.x > paraLeftMargin + 8;
+              // A first-line indent must be deeper than the PREVIOUS line too, not just the page margin:
+              // inside a BLOCK-indented paragraph (a "By domain" explanation at x=90 vs margin 72) every
+              // line reads as "indented" against the margin, so a sentence that ends exactly at a line
+              // boundary would split the block into two paragraphs. Requiring current deeper than previous
+              // keeps a same-tier continuation joined while a genuine new indented opener still splits.
+              const isIndentedBodyLine = current.x > paraLeftMargin + 8 && current.x > previous.x + 4;
               // Two consecutive lines that each occupy less than half the measure are
               // line-structured data (a catalog/CIP block, address, code list), not flowing
               // prose — keep them one per line. Prose has at most one short line per
@@ -3447,6 +3452,10 @@ __audit('disp', outBlocks);
               // inline detectLabeledHangingList fallback below. An earlier per-line "label at the outdent
               // tier" break was removed — it false-fired on a wrapped person's name in prose ("…engineer
               // Daniel Feldman:"), the classic v26 over-fire; the region gate is the safe, label-checked path.)
+              // A numbered/lettered/IF-THEN list item DOES open a new paragraph after a completed
+              // sentence even at the SAME tier as the previous item — the isIndentedBodyLine "deeper than
+              // previous" guard would otherwise merge consecutive items (MYCIN "1.…" / "2.…" at x=133).
+              const currentOpensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(current.text.replace(/^[*_~]+/u, '').trimStart());
               endsBlock =
                 bothShort ||
                 prevEndsShort ||
@@ -3454,7 +3463,7 @@ __audit('disp', outBlocks);
                 startsFootnoteEntry(current) ||
                 startsBulletLine(current.text) ||
                 (bodyLineGap > 0 && verticalGap > bodyLineGap * 1.35) ||
-                (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || startsParagraphTransitionLine(current.text)));
+                (endsWithTerminalPunctuation(previous.text) && (isIndentedBodyLine || currentOpensListMarker || startsParagraphTransitionLine(current.text)));
             }
             if (endsBlock) break;
             group.push(current);
@@ -3543,8 +3552,16 @@ __audit('disp', outBlocks);
             // indented paragraph masquerading as a block) then drops its indent, so it renders flush while
             // its multi-line siblings stay indented (the MYCIN rule's one-line conditions 2 & 4). A line
             // that OPENS with a list marker is unambiguously a list item, so allow it single-line too.
-            const opensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])\s/u.test(text.replace(/^[*_~]+/u, ''));
-            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && (group.length >= 2 || opensListMarker) && bodyFont > 0 && blockLeftPx > bodyFont * 0.9)
+            // A single line that FILLS the measure is also a genuine block line, not a stray first-line
+            // indent (which is SHORT): keep its indent so one full-width sentence in an indented block
+            // ("Some fleets align…, HR, or compliance.") isn't rendered flush while its multi-line
+            // sibling stays indented — the inconsistent-indent bug on a labeled explanation block.
+            // A marker at END OF LINE (a standalone "IF:" with the rule's conditions on the following
+            // lines) counts too — else "IF:" alone gets no block indent while "THEN: …text" does, so a
+            // MYCIN rule's IF:/THEN: (both at x=130 in the source) render mis-aligned (IF: flush).
+            const opensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(text.replace(/^[*_~]+/u, ''));
+            const blockFillsMeasure = rightMargin > 0 && fillsMeasure(Math.max(...group.map(l => l.rightX)), rightMargin);
+            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && (group.length >= 2 || opensListMarker || blockFillsMeasure) && bodyFont > 0 && blockLeftPx > bodyFont * 0.9)
               ? Math.min(12, Math.round((blockLeftPx / bodyFont) / 1.5 * 4)) : 0;
             if (blockNbsp > 0) console.log(`[blk-indent] p${pageNum} nbsp=${blockNbsp} lpx=${blockLeftPx.toFixed(0)} minX=${groupMinX.toFixed(0)} pMargin=${paraLeftMargin.toFixed(0)} | ${text.replace(/[-]/gu, '').slice(0, 46)}`);
             // Geometry-faithful first-line indent: a paragraph whose FIRST line sits at the body margin
@@ -3577,6 +3594,10 @@ __audit('disp', outBlocks);
               lastText: last.text,
               col: group.find(l => l.col !== undefined)?.col,
               topY: Math.max(...group.map(l => l.pageY)),
+              // continuation/indent tier (where wraps + a page-continuation sit), for the cross-page seam
+              // merge. Use the CONTINUATION lines, not line 1 — a bullet/hanging item's first line sits at
+              // the outdent (the "•" at x=90) which would skew the tier off the real text column (x=102).
+              bodyX: mode((group.length > 1 ? group.slice(1) : group).map(l => Math.round(l.x))),
             });
           }
           i = j;
@@ -3587,7 +3608,7 @@ __audit('disp', outBlocks);
         // its own block; the reader swaps it for the cached image, text consumers strip it.
         const pageFigs = figuresByPage.get(pageNum);
         if (pageFigs) for (const f of pageFigs) {
-          const fb: EmitBlock = { text: `[[FIG ${f.id}]]`, role: 'body', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '', topY: f.yTop };
+          const fb: EmitBlock = { text: `[[FIG ${f.id}]]`, role: 'body', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '', topY: f.yTop, bodyX: bodyLeft };
           let at = blocks.findIndex(b => (b.topY ?? -Infinity) < f.yTop);
           if (at < 0) at = blocks.length;
           blocks.splice(at, 0, fb);
@@ -3624,7 +3645,12 @@ __audit('disp', outBlocks);
           (first.carryover ||
             (fillsMeasure(prevBlock.lastRightX, prevRightMargin) &&
               !endsWithTerminalPunctuation(prevBlock.lastText) &&
-              first.firstX <= bodyLeft + 8 &&
+              // The continuation opens EITHER at the body margin (ordinary prose) OR at the previous
+              // block's own continuation/indent tier (a bullet or block-indented item that wrapped
+              // across the page break — its tail on this page sits at the indent, not the margin, so
+              // the bodyLeft test alone dropped it and the tail rendered as a stray indented paragraph).
+              (first.firstX <= bodyLeft + 8 ||
+                (prevBlock.bodyX !== undefined && Math.abs(first.firstX - prevBlock.bodyX) <= 4)) &&
               fillsMeasure(first.firstRightX, rightMargin)));
         // Carry each block's geometry-decided role to the reader as a private-use sentinel
         // (U+E012 list, U+E013 heading; the reader strips them). A run of LEFT-column (col 0) blocks
@@ -3652,7 +3678,9 @@ __audit('disp', outBlocks);
           }
           const text = enc(unit.block);
           if (unitIndex === 0 && continues) {
-            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${unit.block.text}`;
+            // Merged continuation: drop its own leading block-indent NBSP run (it inherits the opener's
+            // indent) so an indented item's page-wrapped tail doesn't leak an NBSP gap mid-sentence.
+            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${unit.block.text.replace(/^ +/u, '')}`;
           } else if (unitIndex === 0) {
             pages.push(`${marker}\n${text}`);
           } else {

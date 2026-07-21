@@ -4300,7 +4300,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // merely opens with a number isn't caught). Fold the block indent into paddingLeft (a
                   // later paddingLeft in the spread would otherwise override bodyBlockPadStyle's and drop it).
                   const isRuleItem = !isHeadingRole && (para.indent ?? 0) > 0
-                    && /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])\s/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
+                    && /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
                   const ruleHangStyle: React.CSSProperties | undefined =
                     isRuleItem ? { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em)` } : undefined;
                   // A NOTE entry HANGS: the "N" marker sits at the left margin and continuation lines

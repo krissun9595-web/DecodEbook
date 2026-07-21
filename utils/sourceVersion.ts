@@ -479,7 +479,22 @@
 //       is tagged U+E01A + an NBSP run encoding the source outdent→continuation gap; the reader drops
 //       the 1.75em first-line indent (para.indent>0), pads left by the tier, and adds a matching
 //       negative text-indent so the label hangs at the margin and wraps indent under the text.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v132-dialogue-hanging-indent';
+// v133: two block-indent/merge fixes surfaced by v132 review — (a) a single-line block-indented
+//       paragraph that FILLS the measure keeps its indent (was dropped by the group.length>=2 guard,
+//       so one full sentence rendered flush while its multi-line sibling stayed indented); (b) the
+//       cross-page seam-merge rejoins a bullet/indented item whose tail wraps onto the next page at the
+//       INDENT tier (bodyX), not only a margin continuation — and strips the tail's leading NBSP so no
+//       gap leaks mid-sentence.
+// v134: refine the two v133 fixes after review — (a) a first-line-indent split now requires the line be
+//       deeper than the PREVIOUS line (not just the page margin) OR open a list marker, so a block-indented
+//       explanation whose sentence ends at a line boundary stays ONE paragraph ("Some fleets…" + "These
+//       fleets…") while MYCIN "1./2." items still split; (b) a block's bodyX (seam-merge tier) is taken
+//       from its CONTINUATION lines, not line 1 — a bullet's first line sits at the outdent (x=90) and
+//       skewed the tier off the text column (x=102), so the cross-page bullet tail still didn't merge.
+// v135: a list marker at END OF LINE (a standalone "IF:" whose conditions are on following lines) now
+//       counts as opensListMarker — so a MYCIN rule's "IF:" keeps its block indent and aligns with
+//       "THEN: …" (both at x=130 in the source) instead of rendering flush at the margin.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v135-standalone-if-marker';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
