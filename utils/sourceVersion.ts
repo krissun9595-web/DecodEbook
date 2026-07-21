@@ -456,7 +456,30 @@
 //       its own line, but with no hanging indent the splitter merged them into a run-on. Split when two
 //       CONSECUTIVE lines both open with a short "Label:" (labelStart). Requiring BOTH neighbours keeps
 //       prose from splitting (validated: 3 splits on the Elon email header, 0 on Elon/Kurzweil prose).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v102-flush-label-list';
+// v128: detect VECTOR-drawn list bullets (a small filled dot path getTextContent can't see) — track the
+//       CTM over the op stream, keep small square/round FILLED paths that form a column of ≥2 aligned
+//       markers, match each to the text line it hangs beside, and inject a "•" glyph so the existing
+//       bullet-paragraph rendering takes over (parity with the same book's EPUB <ul>). Live audit:
+//       window.__dbgVectorBullets + a per-page console log of the matched line content.
+// v129: split a hanging-list entry (dialogue speaker turn / CIP field) on the LABEL at the block's
+//       outdent tier, not on the previous line's justification — Ch 8 "…give us meaning? RAY: Well…"
+//       merged because the "?" line ended only ~8pt short (read as filling the measure) so prevEndsShort
+//       missed it. Gated: fires only when the block already has a deeper continuation tier + the current
+//       margin line opens with "Label:". Live audit window.__dbgDlgSplit + a [dlg-split] console log.
+// v130: keep a whole labeled hanging-list REGION (dialogue/CIP) intact as one group so it splits
+//       per-entry on the LABEL (emitHangingEntries), instead of the justified short-line / terminal-
+//       indent rules fragmenting a turn whose continuation sits at the indent tier — fixes (a) a turn
+//       truncated at an internal sentence end ("…early 2030s. / So the in-between…"), (b) NBSP indent
+//       leaking mid-turn as blank gaps ("our  computers"). Live audit window.__dbgHangRegion +
+//       [hang-region] console log. (Hanging-indent VISUAL is a follow-up; entries render flush for now.)
+// v131: remove the per-line "label at outdent tier" dialogue break (v129) — the v130 region gate now
+//       owns genuine dialogue/CIP, and the per-line rule false-fired on a wrapped person's name in prose
+//       ("…engineer Daniel Feldman:"), the classic v26 over-fire.
+// v132: HANGING-INDENT visual for speaker labels — a region-gated hanging-list entry (dialogue/CIP)
+//       is tagged U+E01A + an NBSP run encoding the source outdent→continuation gap; the reader drops
+//       the 1.75em first-line indent (para.indent>0), pads left by the tier, and adds a matching
+//       negative text-indent so the label hangs at the margin and wraps indent under the text.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v132-dialogue-hanging-indent';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

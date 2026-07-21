@@ -79,9 +79,9 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v36-colon-label-bullet-nomerge';
+const CHAPTER_TEXT_CACHE_VERSION = 'v41-notes-sentinel-strip';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
-const TRANSLATION_CACHE_VERSION = 'v20-per-page-stable';
+const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
 // Module-level store for in-flight audio generation.
 // Survives component unmount/remount so generation isn't lost on tab switch.
@@ -229,6 +229,13 @@ interface ParagraphData {
     indent?: number;
     align?: 'right' | 'center';
     role?: 'list' | 'heading';
+    // The source paragraph's FIRST line is flush (no first-line indent) — a section's opening
+    // paragraph in a first-line-indent book (U+E018 from extraction). Reader drops its fixed indent.
+    flushFirstLine?: boolean;
+    blockQuote?: boolean;
+    // A hanging-list entry (dialogue speaker turn / CIP field, U+E01A from extraction): the label hangs
+    // at the outdent and wrapped lines indent to `indent` (the NBSP tier). Reader renders it hanging.
+    hangingEntry?: boolean;
     // A side-by-side two-column region (from a two-column PDF page): each column an array of
     // paragraphs, each paragraph its sentences with a global index (so the sentences translate and
     // highlight like any other). Rendered as side-by-side columns; in split view the translated
@@ -417,7 +424,10 @@ const stripInternalFootnoteLinks = (value: string): string =>
     // sentence and the inherited reference marker latches onto it, rendering ".¹" with the
     // period before the numeral instead of after it.
     .replace(/^([ \t ]*)\[\s*(?:fn\s*)?[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)[.)]?[ \t ]*/iu, '$1')
-    .replace(/\[\s*(?:fn\s*)?[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)\n]*#[^)\n]*\)/giu, '');
+    // An index PAGE reference ("[330](#pdfref-p360)") is CONTENT — the page number must survive into
+    // translation/audio/matching (else "330-332" becomes "-332"). Only a footnote/note marker
+    // ("[2](#pdffn-…)", "[i](#en1)") is a label to strip. Keep the label for a #pdfref-p page link.
+    .replace(/\[\s*(?:fn\s*)?([0-9ivxlcdm]{1,8}[.)]?)\s*\]\s*\(([^)\n]*#[^)\n]*)\)/giu, (_m, label, url) => /#pdfref-p/i.test(url) ? label : '');
 
 // Drop orphan emphasis markers (e.g. a lone "*" left by a blockquote's tangled
 // emphasis) before stripping footnote markers, otherwise a stray "*" between the
@@ -1035,7 +1045,10 @@ const buildPageSentenceData = (pageText: string): {
   // at display-prep — after pagination is done — collapsing the surrounding spaces so an
   // inline marker ("…update on [[PAGE 54]] 01/04/00") closes up cleanly. (Notes and index
   // strip their own markers upstream; this covers the main reading body.)
-  const cleanedPageText = pageText.replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
+  // U+E017 marks a two-column index page (drives the reader's 2-col grid); strip it from display text.
+  { const m = pageText.match(/.{0,8}The study is to proceed/); if (m) console.log(`[bq-pageText] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(",")}`); }
+  const cleanedPageText = pageText.replace(//gu, '').replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
+  { const m = cleanedPageText.match(/.{0,8}The study is to proceed/); if (m) console.log(`[bq-cleanedPT] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(",")}`); }
   const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0)
     // A figure marker can arrive GLUED to its caption ("[[FIG p14n1]] To maximize comparability…").
     // Split it into two paragraphs — the marker (→ figure) and the caption (→ text) — so every
@@ -1076,7 +1089,7 @@ const buildPageSentenceData = (pageText: string): {
     if (rawPText.includes('\uE014')) {
       const [leftRaw, rightRaw = ''] = rawPText.replace(/\uE014/gu, '').split('\uE015');
       const toCol = (s: string): ColumnPara[] => s.split('\uE016')
-        .map(p => p.replace(/[\uE010-\uE016]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
+        .map(p => p.replace(/[\uE010-\uE019]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
         .filter(Boolean)
         .map(pText => ({ sentences: splitIntoSentences(pText).map(sent => { const gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: gi, globalIndex: gi, text: stripInlineFormatSyntax(sent) }); return { text: sent, gi }; }) }));
       const left = toCol(leftRaw), right = toCol(rightRaw);
@@ -1087,13 +1100,20 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[\uE010-\uE013]+/);
+    if (/The study is to proceed|An attempt will be made to find|every aspect of learning/.test(rawPText)) console.log(`[bq-R] leadCodes=${[...rawPText.slice(0, 6)].map(c => c.charCodeAt(0).toString(16)).join(',')} | ${rawPText.replace(/\u00A0/g, '\u00B7').slice(0, 44)}`);
+    const ctrl = rawPText.match(/^\s*[\uE010-\uE013\uE018-\uE01A]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
     const role: 'list' | 'heading' | undefined =
       ctrlChars.includes('\uE013') ? 'heading' : ctrlChars.includes('\uE012') ? 'list' : undefined;
-    const alignStripped = rawPText.replace(/[\uE010-\uE013]/g, '');
+    // U+E018 \u2014 the source paragraph's first line is flush (no first-line indent).
+    const flushFirstLine = ctrlChars.includes('\uE018');
+    const blockQuote = ctrlChars.includes('\uE019');
+    // U+E01A \u2014 a hanging-list entry (dialogue speaker turn / CIP field): the label hangs at the
+    // outdent, wraps indent to the tier encoded by the following NBSP run (\u2192 `indent`, below).
+    const hangingEntry = ctrlChars.includes('\uE01A');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE01A]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1125,9 +1145,13 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry });
   });
 
+  if (/excellent overview of mechanistic|machine learning with imperfect|Neel Nanda/.test(pageText)) {
+    console.log(`[notes-R] paras=${paragraphData.length}`);
+    paragraphData.slice(0, 14).forEach((p, i) => console.log(`  [${i}] role=${p.role || '-'} indent=${p.indent ?? 0} bq=${p.blockQuote ? 1 : 0} | ${JSON.stringify(p.original.join(' ').slice(0, 56))}`));
+  }
   return { paragraphData, flatSentenceMap };
 };
 
@@ -1498,7 +1522,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE01A]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -1650,7 +1674,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
     const isIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
       || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
-    const size = computePageTargetSize(settings.textSize, settings.lineHeight);
+    const baseSize = computePageTargetSize(settings.textSize, settings.lineHeight);
+    // The index renders as TWO side-by-side columns (reproducing the source layout), so a reader page
+    // holds ~2× a single column's worth of entries — double the per-page budget so both columns fill.
+    const size = isIndex ? Math.round(baseSize * 2) : baseSize;
     onPageSizeComputed?.(size); // report the current size so the search index paginates identically
     return paginateReaderText(cleanText, size, {
       topicsPerPage: 10,
@@ -1815,11 +1842,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // it needs its own entry-per-paragraph formatting; EPUB indexes keep the existing
         // light cleanup untouched.
         const isPdfSource = fileContext.content.includes('[[PAGE ');
+        { const m = rawText.match(/.{0,6}The study is to proceed/); if (m) console.log(`[bq-raw] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(',')}`); }
         cleanText = isIndexChapterSource
           ? isPdfSource
             ? formatPdfIndexEntries(rawText)
             : normalizeInternalLinkMarkup(normalizeInternalLinkMarkup(rawText).replace(/\n{3,}/g, '\n\n').trim())
           : normalizeInternalLinkMarkup(rearrangeAndCleanText(normalizeInternalLinkMarkup(rawText)));
+        { const m = cleanText.match(/.{0,6}The study is to proceed/); if (m) console.log(`[bq-clean] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(',')}`); }
+        { const vis = (s: string) => [...s].map(c => { const n = c.charCodeAt(0); return n < 32 ? '<' + n.toString(16) + '>' : (n >= 0xe000 && n <= 0xf8ff) ? '«' + n.toString(16) + '»' : c; }).join('');
+          const mr = rawText.match(/NOTES[\s\S]{0,60}See the appendix/); if (mr) console.log(`[notes-raw] ${vis(mr[0]).slice(0, 100)}`);
+          const mc = cleanText.match(/NOTES[\s\S]{0,60}See the appendix/); if (mc) console.log(`[notes-clean] ${vis(mc[0]).slice(0, 100)}`); }
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });
         saveFile(textCacheKey, textBlob, {
@@ -2739,6 +2771,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // parsed as a reference marker and broken onto its own line. (Mirrors the extraction-side gate.)
   const isIndexChapter = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
     || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
+  // ── READER AUDIT (TOC/index) — remove after fix. Fires ONLY when the problem entries are present.
+  {
+    const G: any = globalThis as any;
+    const hasProblem = paragraphData?.some((p: any) => /Short Term|Medium Term|Long Term/.test(p.original?.join(' ') || ''));
+    if (hasProblem && G.__raKey2 !== `${chapter.id}`) {
+      G.__raKey2 = `${chapter.id}`;
+      console.log(`[reader-audit2] title="${chapter.title}" isIndexChapter=${isIndexChapter} viewMode=${viewMode} paras=${paragraphData.length}`);
+      paragraphData.forEach((p: any) => {
+        const t = (p.original?.join(' ') || '');
+        if (/Short Term|Medium Term|Long Term|Agents|Summary|Ecosystem|26|28|29/.test(t)) console.log(`  role=${p.role || '-'} align=${p.align || '-'} indent=${p.indent || 0} | ${t.slice(0, 52)}`);
+      });
+    }
+  }
   const activeNoteTarget =
     typeof pendingNavigationTarget === 'object' && pendingNavigationTarget?.type === 'note'
       ? pendingNavigationTarget
@@ -3123,6 +3168,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (/\s/.test(clean) && looksLikePersonName(clean)) return true;
     return /^(?:Los Angeles|New York|London|Paris|Berlin|Beijing|Shanghai|Tokyo|Hong Kong|Singapore|San Francisco|Washington(?:,\s*D\.C\.)?)$/u.test(clean);
   };
+  // An email/memo header field line — "From: …", "Date: …", "To: …", "Subject: …" — as reproduced in
+  // an appendix (e.g. Elon Musk App. 3). In the source these sit as a uniform block: all flush at the
+  // body margin, one line each, same weight, no blank lines between. Left to the generic prose
+  // heuristics each line is classified differently (From:/Subject: read as Title-Case subtitles → bold;
+  // Date: reads as a dateline signature; To:/… fall through to indented body prose), shattering the
+  // block. Detect the header lines so the reader can render them uniformly (flush, un-bold, tight).
+  const EMAIL_HEADER_LABEL = /^(?:From|To|Cc|Bcc|Date|Sent|Subject|Reply-To)\s*:\s/iu;
+  const isEmailHeaderLine = (sentences: string[]): boolean => {
+    if (sentences.length !== 1) return false;
+    const clean = stripInlineFormatSyntax(sentences[0]).replace(/\s+/g, ' ').trim();
+    return clean.length <= 100 && EMAIL_HEADER_LABEL.test(clean);
+  };
   const looksLikeNotesSectionHeading = (value: string): boolean => {
     const clean = stripInlineFormatSyntax(value)
       .replace(/^(?:[*_~]\s*)+/, '')
@@ -3133,15 +3190,22 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
   const isNotesSectionHeadingParagraph = (sentences: string[]): boolean =>
     isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
-  const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center'): React.CSSProperties => {
+  const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center', flushFirstLine?: boolean): React.CSSProperties => {
     const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
     // The source is BLOCK-style (paragraphs flush, separated by space — detected at extraction): render
     // prose flush instead of forcing the default first-line indent the source doesn't have. Any real
     // per-block left indent (a definition description) still comes through as padding from para.indent.
     if (fileContext.sourceFirstLineIndent === false) return noTextIndentStyle;
+    // GEOMETRY (per-paragraph, from extraction U+E018): THIS paragraph's first line is flush in the
+    // source — the opening paragraph of a section in an otherwise first-line-indent book ("Premonitions"
+    // → "The coming of the year 2000…"). Drop the fixed indent for it only; sibling paragraphs keep it.
+    if (flushFirstLine) return noTextIndentStyle;
     // Index entries are list items, not prose — no first-line indent.
     if (isIndexChapter) return noTextIndentStyle;
     if (isNotesSectionHeadingParagraph(sentences)) return noTextIndentStyle;
+    // Email/memo header fields are flush at the margin, never first-line indented (the "To:" line
+    // would otherwise fall through to indented body prose while its siblings stay flush).
+    if (isEmailHeaderLine(sentences)) return noTextIndentStyle;
     // PRIOR (geometry): a right/centre-aligned block — carried from extraction as an alignment
     // sentinel, e.g. a right-aligned epigraph credit "—NORMAN COHN" — is set off, so no first-line
     // indent. Authoritative typographic signal; runs BEFORE the text heuristics below.
@@ -4003,7 +4067,64 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     measures THIS instead of the per-line divs, which are absent before render and can be a
                     transient narrow width mid-render (→ a broken 160-page count that then sticks). */}
                 <div data-reader-measure="" aria-hidden="true" className={`${viewMode === 'split' ? 'w-1/2' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`} style={{ height: 0, overflow: 'hidden' }} />
-                {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : paragraphData.map((para, pIdx) => {
+                {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : isIndexChapter && !!currentReaderPage?.text?.includes(String.fromCharCode(0xE017)) ? (() => {
+                  // A two-column index rendered with a CSS GRID: the source's left column is the first
+                  // half of the (column-major) entries, the right column the second half. In split view
+                  // the grid has 4 columns — original-left, original-right | translation-left,
+                  // translation-right — so each entry-row shares ONE grid row track: its height is the
+                  // max of its cells, forcing original and its translation onto the SAME row (per-entry
+                  // alignment) while ORIGINAL stays in the left window and TRANSLATION in the right.
+                  // Single-window: 2 columns (original only). Reading order stays column-major.
+                  const N = paragraphData.length;
+                  const mid = Math.ceil(N / 2);
+                  const split = viewMode === 'split';
+                  const renderCell = (pIdx: number, translated: boolean, rightWindowStart: boolean): React.ReactNode => {
+                    if (pIdx >= N) return <div key={`c-${translated}-${pIdx}`} />;
+                    const para = paragraphData[pIdx];
+                    if (!para.original.length) return <div key={`c-${translated}-${pIdx}`} />;
+                    const isHeadingRole = para.role === 'heading';
+                    const tierPad = para.indent && !isHeadingRole ? (para.indent / 4) * 1.5 : 0;
+                    const lineRuns = paragraphLineRunsFor(pIdx, para.original);
+                    return (
+                      <div
+                        key={`c-${translated}-${pIdx}`}
+                        className={`${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${isHeadingRole ? 'text-zinc-100 font-bold' : 'text-zinc-300 font-medium'} break-words min-w-0 ${rightWindowStart ? 'border-l border-zinc-800/20 pl-3 md:pl-5' : ''}`}
+                        style={{ paddingLeft: `${tierPad}em` }}
+                      >
+                        {lineRuns.map((line, li) => (
+                          <div key={li} style={isHeadingRole ? undefined : { textIndent: '-1em', paddingLeft: '1em' }}>
+                            {line.map(({ sentence, sIdx, globalIndex }) => {
+                              const active = autoScroll && globalIndex === activeSentenceIndex;
+                              const cls = `transition-all duration-300 px-[2px] ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`;
+                              if (translated) {
+                                const t = translationByIndex.get(globalIndex) || '';
+                                return <span key={sIdx} data-source="Translated_Layer" data-sentence-index={globalIndex} className={cls} onPointerDown={handleSentencePointerDown} onClick={(e) => handleSentenceClick(globalIndex, e)}>{t ? renderInkableText(t, globalIndex, active) : ''}{' '}</span>;
+                              }
+                              return <span key={sIdx} id={globalIndex >= 0 ? `original-sent-${globalIndex}` : undefined} data-source="Original_Layer" data-sentence-index={globalIndex} className={cls} onPointerDown={handleSentencePointerDown} onClick={(e) => handleSentenceClick(globalIndex, e)}>{renderInkableText(sentence, globalIndex, active)}{' '}</span>;
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  };
+                  return (
+                    <div
+                      className={split ? 'w-full' : 'w-full max-w-3xl mx-auto'}
+                      style={{ display: 'grid', gridTemplateColumns: split ? '1fr 1fr 1fr 1fr' : '1fr 1fr', columnGap: '1rem', rowGap: '0.15rem', alignItems: 'start' } as React.CSSProperties}
+                    >
+                      {Array.from({ length: mid }).map((_, r) => (
+                        <React.Fragment key={r}>
+                          {renderCell(r, false, false)}
+                          {renderCell(mid + r, false, false)}
+                          {split && renderCell(r, true, true)}
+                          {split && renderCell(mid + r, true, false)}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  );
+                })() : (
+                <div style={{ display: 'contents' }}>
+                {paragraphData.map((para, pIdx) => {
                   // An extracted PDF figure — inline image loaded from the cache.
                   if (para.figure) {
                     // The figure's number + name live in its caption (the manifest has neither); the caption is
@@ -4023,35 +4144,43 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // translated-L | translated-R). Sentences carry a global index so they highlight
                   // and translate like any other.
                   if (para.columns) {
+                    // Two-column block (back-cover bullets|bio, colophon Role:Name). Render with a CSS GRID
+                    // sharing row tracks — in split view 4 columns (orig-left, orig-right | trans-left,
+                    // trans-right) so each entry-row's height is the max of its cells, forcing the original
+                    // and its translation onto the SAME row (per-entry alignment), original in the left
+                    // window and translation in the right. Single-window: 2 columns (original only).
                     const colClass = `${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 font-medium break-words min-w-0`;
-                    const renderCol = (col: ColumnPara[], translated: boolean) => (
-                      <div className="flex-1 min-w-0 space-y-2">
-                        {col.map((cp, i) => (
-                          <div key={i} className={colClass}>
-                            {cp.sentences.map(({ text, gi }) => {
-                              const active = autoScroll && gi === activeSentenceIndex;
-                              if (translated) return <span key={gi} className={`px-[2px] ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : ''}`}>{translationByIndex.get(gi) || ''}{' '}</span>;
-                              return (
-                                <span key={gi} id={`original-sent-${gi}`} data-sentence-index={gi} onClick={(e) => handleSentenceClick(gi, e)} className={`transition-all duration-300 px-[2px] ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}>{renderInkableText(text, gi, active)}{' '}</span>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                    const twoCols = (translated: boolean) => (
-                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-5">{renderCol(para.columns!.left, translated)}{renderCol(para.columns!.right, translated)}</div>
-                    );
-                    if (viewMode === 'split') {
+                    const left = para.columns.left, right = para.columns.right;
+                    const split = viewMode === 'split';
+                    const rowCount = Math.max(left.length, right.length);
+                    const renderCell = (cp: ColumnPara | undefined, translated: boolean, rightWindowStart: boolean): React.ReactNode => {
+                      if (!cp) return <div />;
                       return (
-                        <div key={`cols-${pIdx}`} className="w-full flex items-start my-2">
-                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20 min-w-0">{twoCols(false)}</div>
-                          <div className="w-1/2 pl-2 md:pl-6 min-w-0">{twoCols(true)}</div>
+                        <div className={`${colClass} ${rightWindowStart ? 'border-l border-zinc-800/20 pl-3 md:pl-5' : ''}`}>
+                          {cp.sentences.map(({ text, gi }) => {
+                            const active = autoScroll && gi === activeSentenceIndex;
+                            const cls = `transition-all duration-300 px-[2px] ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`;
+                            if (translated) return <span key={gi} data-sentence-index={gi} onClick={(e) => handleSentenceClick(gi, e)} className={cls}>{translationByIndex.get(gi) || ''}{' '}</span>;
+                            return <span key={gi} id={`original-sent-${gi}`} data-sentence-index={gi} onClick={(e) => handleSentenceClick(gi, e)} className={cls}>{renderInkableText(text, gi, active)}{' '}</span>;
+                          })}
                         </div>
                       );
-                    }
+                    };
                     return (
-                      <div key={`cols-${pIdx}`} className="w-full max-w-3xl mx-auto my-2">{twoCols(false)}</div>
+                      <div
+                        key={`cols-${pIdx}`}
+                        className={split ? 'w-full my-2' : 'w-full max-w-3xl mx-auto my-2'}
+                        style={{ display: 'grid', gridTemplateColumns: split ? '1fr 1fr 1fr 1fr' : '1fr 1fr', columnGap: '1rem', rowGap: '0.5rem', alignItems: 'start' } as React.CSSProperties}
+                      >
+                        {Array.from({ length: rowCount }).map((_, r) => (
+                          <React.Fragment key={r}>
+                            {renderCell(left[r], false, false)}
+                            {renderCell(right[r], false, false)}
+                            {split && renderCell(left[r], true, true)}
+                            {split && renderCell(right[r], true, false)}
+                          </React.Fragment>
+                        ))}
+                      </div>
                     );
                   }
                   const lineRuns = paragraphLineRunsFor(pIdx, para.original);
@@ -4082,13 +4211,26 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // of the previous page's last paragraph — render it flush (no first-line indent) so it
                   // doesn't read as a spurious new paragraph.
                   const isParagraphContinuation = pIdx === 0 && !!currentReaderPage?.continuesParagraph;
-                  const paragraphStyle = (isListRole || isHeadingRole || isParagraphContinuation) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align);
+                  // A block-indented paragraph (definition description, block quote — para.indent>0) is a
+                  // SET-OFF block: it must NOT also get the body's first-line indent (that stacked a stray
+                  // 1.75em textIndent on top of the block's left padding).
+                  const paragraphStyle = (isListRole || isHeadingRole || isParagraphContinuation || (para.indent ?? 0) > 0) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
+                  if (/angry farmer|When the state finds|committed expenditure|Revenge of Nations|The study is to proceed|An attempt will be made to find/.test(para.original.join(' '))) console.log(`[flush-audit-R] flushFirstLine=${para.flushFirstLine} role=${para.role || '-'} srcFLI=${fileContext.sourceFirstLineIndent} indent=${para.indent ?? 0} textIndent=${(paragraphStyle as any).textIndent ?? 'none'} | ${para.original.join(' ').slice(0, 40)}`);
                   // A short Title-Case line that INTRODUCES an indented set-off block (its next paragraph is
                   // block-indented) is a definition-list TERM, not a section subtitle — keep its own
                   // emphasis (usually italic) instead of bolding it. (e.g. "Agentic AI" above its indented
                   // definition, which isPlainSubtitleParagraph would otherwise promote to a bold heading.)
                   const introducesIndentedBlock = (paragraphData[pIdx + 1]?.indent || 0) > 0;
-                  const paragraphTextClass = !isListRole && !isHeadingRole && introducesIndentedBlock
+                  // An email/memo header field ("From:", "Subject:", …) is regular-weight body text, not a
+                  // heading — keep the generic subtitle/heading heuristics from bolding "From: Elon Musk".
+                  const isEmailHeader = isEmailHeaderLine(para.original);
+                  // The body that follows an email/memo header block is set off from it by a blank line
+                  // in the source (the header fields stack tight, then a gap, then the message). The
+                  // reader otherwise separates prose paragraphs by first-line indent alone, so add an
+                  // explicit top margin to reinstate that blank line on the first body paragraph.
+                  const followsEmailHeader = !isEmailHeader && pIdx > 0
+                    && isEmailHeaderLine(paragraphData[pIdx - 1]?.original || []);
+                  const paragraphTextClass = !isListRole && !isHeadingRole && (introducesIndentedBlock || isEmailHeader)
                     ? 'text-zinc-300 font-medium'
                     : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
                     ? 'text-zinc-100 font-bold'
@@ -4106,8 +4248,33 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // the PDF geometry, for a body block whose whole text is indented under the margin (a
                   // definition description). para.indent is 0 for ordinary flush prose, so this only ever
                   // pads genuinely-indented blocks.
-                  const indexIndentStyle = para.indent && !isHeadingRole
+                  // A true block quote (U+E019: indented on BOTH margins in the source) gets a matching
+                  // RIGHT padding so the whole paragraph is narrower than the body, not just left-indented.
+                  // INDEX/TOC chapters: the padding goes on the OUTER wrapper (their text div is w-full, so
+                  // it insets correctly). A BODY block-indent must NOT use the wrapper (see bodyBlockPadStyle).
+                  const indexIndentStyle = isIndexChapter && para.indent && !isHeadingRole
                     ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
+                    : undefined;
+                  // A BODY block-indent (definition description / block quote) must pad the TEXT element, not
+                  // the outer wrapper: in single view the text is max-w-3xl and CENTRED (wrapper padding is
+                  // swallowed by the centring); in split view the wrapper holds BOTH the original and its
+                  // translation, so its right padding shrinks the whole row rather than the original's right
+                  // edge. Padding the text div insets the paragraph within its OWN column — left AND right —
+                  // in both views. Right padding only for a true block quote (U+E019); a left-only definition
+                  // description keeps its right edge at the body margin.
+                  // In SPLIT view the original text div already carries a pr-2/md:pr-6 (~1.5rem) gutter to the
+                  // divider border; an inline paddingRight would OVERRIDE it (1.5em ≈ 1.5rem), leaving the
+                  // block quote's right edge equal to the body's — no visible right inset. Fold the gutter in
+                  // so the quote sits INSIDE it, matching the left inset. Single view has no gutter (the text
+                  // div is max-w-3xl), so a plain em there.
+                  const blockPadEm = ((para.indent ?? 0) / 4) * 1.5;
+                  const bodyBlockPadStyle = !isIndexChapter && !isHeadingRole && para.indent
+                    ? {
+                        paddingLeft: `${blockPadEm}em`,
+                        ...(para.blockQuote
+                          ? { paddingRight: viewMode === 'split' ? `calc(${blockPadEm}em + 1.5rem)` : `${blockPadEm}em` }
+                          : {}),
+                      }
                     : undefined;
                   // Index HANGING indent: a wrapped multi-locator entry ("agriculture, 15, … 333, 394")
                   // continues on lines that sit DEEPER than the first, like the source's `text-indent:-Xem`
@@ -4116,6 +4283,47 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // indent while continuation lines hang under it. Skip the "INDEX" heading.
                   const indexHangStyle: React.CSSProperties | undefined =
                     isIndexChapter && !isHeadingRole ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
+                  // A bullet-list item ("• Simon Torrance …") arrives as a plain body paragraph whose
+                  // text opens with a bullet glyph — role='list' is reserved for whole list PAGES
+                  // (index/TOC), not for individual bullets embedded in prose. The source indents such
+                  // items with a HANGING indent: the marker sits in a left gutter and wrapped lines
+                  // align under the text, not under the bullet. Reproduce it — pad the block (gutter)
+                  // and pull the first line (the bullet) back by the same amount so it hangs.
+                  const isBulletParagraph = !isHeadingRole
+                    && /^[•‣▪●◦⁃∙○■]/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
+                  const bulletBlockStyle = isBulletParagraph ? { paddingLeft: '1.5em' } : undefined;
+                  const bulletHangStyle: React.CSSProperties | undefined =
+                    isBulletParagraph ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
+                  // A block-indented rule / numbered-list item ("1. …", "IF:", "THEN:") hangs: the marker
+                  // or label sits at the block's left margin and wrapped lines align under the text. Gated
+                  // on para.indent>0 so it only fires inside a block-indented rule (a normal paragraph that
+                  // merely opens with a number isn't caught). Fold the block indent into paddingLeft (a
+                  // later paddingLeft in the spread would otherwise override bodyBlockPadStyle's and drop it).
+                  const isRuleItem = !isHeadingRole && (para.indent ?? 0) > 0
+                    && /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])\s/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
+                  const ruleHangStyle: React.CSSProperties | undefined =
+                    isRuleItem ? { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em)` } : undefined;
+                  // A NOTE entry HANGS: the "N" marker sits at the left margin and continuation lines
+                  // indent under the citation (the source outdents the marker: marker x=89 < text x=103).
+                  // The reader was instead applying its first-line indent inconsistently (some notes flush,
+                  // some marker-indented). Give every note entry the same hanging indent so the notes read
+                  // as a clean numbered list. Matches a leading "N."/"N)"/"[N]"/roman marker + space.
+                  // Test the RAW text, NOT stripInlineFormatSyntax — the latter DELETES the footnote
+                  // marker "[25](#pdffn…)" entirely (leaving "For an excellent…"), so the number is gone
+                  // and no note ever matched. Match the bracketed-link marker "[N](href)"/"[N]" OR a bare
+                  // "N."/"N)" (Sovereign notes).
+                  const isNoteEntry = isNotesChapter && !isHeadingRole && !isNotesSectionHeadingParagraph(para.original)
+                    && /^["'“]?\s*(?:\[\s*[0-9ivxlcdm]{1,8}\s*\](?:\s*\([^)\n]*\))?|[0-9]{1,3}[.)])/iu.test(para.original.join(' ').replace(/^[\s ]+/u, ''));
+                  const notesHangStyle: React.CSSProperties | undefined =
+                    isNoteEntry ? { textIndent: '-1.5em', paddingLeft: '1.5em' } : undefined;
+                  // A hanging-list entry (dialogue speaker turn / CIP field, para.hangingEntry from the
+                  // U+E01A sentinel): the label HANGS at the outdent, wrapped lines indent to the tier.
+                  // para.indent (the NBSP tier) already gives noTextIndent (drops the 1.75em) + the left
+                  // padding via bodyBlockPadStyle; add the matching NEGATIVE text-indent so the first line
+                  // (the label) pulls back to the margin while continuations stay at blockPadEm — hanging.
+                  const dialogueHangStyle: React.CSSProperties | undefined =
+                    para.hangingEntry && !isHeadingRole && blockPadEm > 0 ? { textIndent: `-${blockPadEm}em` } : undefined;
+                  if (isNotesChapter && /excellent overview of mechanistic|machine learning with imperfect|Marshall, .Timeline|Freberg, .Discovering|Kaas, .Evolution|Northcutt/.test(para.original.join(' '))) console.log(`[hang-R] noteEntry=${isNoteEntry} rule=${isRuleItem} indent=${para.indent ?? 0} bodyPad=${bodyBlockPadStyle ? JSON.stringify(bodyBlockPadStyle) : '-'} pStyle=${JSON.stringify(paragraphStyle)} | ${JSON.stringify(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, '').slice(0, 40))}`);
                   // A display block (title page, "also by" list, dedication) keeps its
                   // original right/centre alignment, captured upstream as para.align. A display
                   // block's FIRST line can lose its alignment sentinel upstream (the chapter slice
@@ -4133,7 +4341,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // is justified, else the default left); 'justify'/'left' force it. Never applied to a
                   // heading, list, index, or an explicitly aligned display block.
                   const alignPref = settings.textAlign ?? 'auto';
-                  const justifyBody = !isListRole && !isHeadingRole && !isIndexChapter && !effectiveAlign
+                  const justifyBody = !isListRole && !isHeadingRole && !isIndexChapter && !effectiveAlign && !isBulletParagraph
                     && !isNotesSectionHeadingParagraph(para.original)
                     && (alignPref === 'justify' || (alignPref === 'auto' && fileContext.sourceJustified === true));
                   const justifyStyle: React.CSSProperties = justifyBody
@@ -4141,7 +4349,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     : (alignPref === 'left' && !effectiveAlign ? { textAlign: 'left' } : {});
 
                   return (
-                    <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={indexIndentStyle}>
+                    <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={{ ...bulletBlockStyle, ...indexIndentStyle, ...(isIndexChapter ? { breakInside: 'avoid' } : {}) }}>
                       {lineRuns.map((line, lineIdx) => {
                         const lineText = line.map(run => run.sentence).join(' ');
                         // A heading-role block (U+E013) gets the section-heading spacing directly — the
@@ -4151,14 +4359,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // A definition-list term that introduces an indented block is not a section
                         // subtitle — don't give it the subtitle's big top margin (an unwanted blank line
                         // above e.g. "Agentic AI").
-                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : introducesIndentedBlock ? '' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...indexHangStyle, ...alignStyle, ...justifyStyle }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -4235,6 +4443,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     </div>
                   );
                 })}
+                </div>
+                )}
              </div>
           </div>
         </>

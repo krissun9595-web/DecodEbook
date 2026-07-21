@@ -256,7 +256,11 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
 
   if (/^[a-z]/u.test(cur)) return true;
   if (/^\d+(?:[.,/]\d+)*\.?\b/u.test(cur) && /\b(?:at|on|in|was|were|is|are|be|been|being|of|to|from|by|with|and|or|plus|minus|equals?|until|since|after|before|around|between|circa|near|stood at|amounted to|rose to|fell to)$/iu.test(prev)) return true;
-  if (/^(?:and|or|but|nor|for|yet|so|to|of|in|on|at|by|from|with|without|into|through|over|under|than|as|that|which|who|whom|whose)\b/iu.test(cur)) return true;
+  // Only a LOWERCASE conjunction/preposition continues a wrapped sentence. A CAPITALISED one begins a
+  // new sentence — merging it glued a figure caption ("…roadmap") to the body below ("Without a
+  // roadmap…"). (Lowercase starts are already merged by the /^[a-z]/ rule above; this stays for symmetry
+  // and the rare capitalised-but-continuing case is not worth the caption/heading false merges.)
+  if (/^(?:and|or|but|nor|for|yet|so|to|of|in|on|at|by|from|with|without|into|through|over|under|than|as|that|which|who|whom|whose)\b/u.test(cur)) return true;
   // A comma / semicolon / dash at line end is a mid-sentence wrap → merge. A COLON is different: it
   // INTRODUCES a following block (a list, a definition, a set-off term/quote), so it must NOT pull that
   // block back in ("…key components:" + italic "Endpoints", "…thinking:" + "Agentic"). A genuine

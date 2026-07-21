@@ -1047,6 +1047,15 @@ const App: React.FC = () => {
       const SENT_HEADING = String.fromCharCode(0xE013);
       const SENT_CENTER = String.fromCharCode(0xE010);
       const SENT_RIGHT = String.fromCharCode(0xE011);
+      // An email/memo header field line ("From: …", "Date: …", "To: …", "Subject: …"). Such a header
+      // is authored as one <p> with <br>-separated fields; those <br> become soft \n breaks, leaving
+      // the fields in one paragraph. Promote them to SEPARATE paragraphs (\n\n) so the reader styles
+      // each field uniformly (flush, un-bold, tight) — the same result the PDF path produces.
+      const EPUB_EMAIL_HDR = /^(?:[*_~`]*)(?:From|To|Cc|Bcc|Date|Sent|Subject|Reply-To)\s*:\s/i;
+      const isEmailHeaderBlock = (raw: string): boolean => {
+        const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+        return lines.length >= 2 && lines.every(l => EPUB_EMAIL_HDR.test(l));
+      };
 
       const nodeToMarkedText = (node: Node, baseDir: string): string => {
         // Collapse a text node's whitespace to single spaces, as HTML does in normal flow. Source markup
@@ -1128,6 +1137,14 @@ const App: React.FC = () => {
           const a = alignFor(element);
           const sentinel = a === 'center' ? '' : a === 'right' ? '' : '';
           const body = emphasize(trimmed, element);
+          // Email/memo header block: split its <br>-joined fields into their own paragraphs so the
+          // reader renders each field flush + un-bold + tight (matches the PDF appendix path).
+          if (isEmailHeaderBlock(trimmed)) {
+            // A <br/>'s \n is followed by the next line's leading whitespace (the source newline after
+            // <br/> collapses to a space), so consume that whitespace before the label or the split misses.
+            const perField = body.replace(/\n[^\S\n]*(?=(?:[*_~`]*)(?:From|To|Cc|Bcc|Date|Sent|Subject|Reply-To)\s*:\s)/gi, '\n\n');
+            return `\n\n${sentinel}${perField}\n\n`;
+          }
           // A Contents/TOC SUB-entry — a lone internal link whose CSS gives it a left indent (e.g.
           // Transurfing's `.ogl-zag1 { margin: 0 0 0 14px }`) sits indented under its chapter. Mirror the
           // index-sub mechanism: prefix leading NBSP (4 per ~14px depth level, which the reader's
@@ -1710,7 +1727,7 @@ const App: React.FC = () => {
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
       type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
-      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number }[] = [];
+      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
 
@@ -1900,6 +1917,42 @@ const App: React.FC = () => {
             }
           } catch { /* op-list parse failed — fall back to the uniform estimate below */ }
         }
+        // Vector-drawn list bullets: some PDFs (this book's list on p39) draw the bullet as a small
+        // FILLED path (a round/square dot) rather than a text glyph, so getTextContent never sees it and
+        // the list renders with no markers — while the same book's EPUB, carrying real <li> markup, DOES
+        // show them. Scan the op stream (tracking the CTM) for small filled dots. A genuine list is a
+        // COLUMN of ≥2 dots sharing an x, so that gate keeps this from firing on a stray filled
+        // rule/underline/icon. Matched to their text lines and injected as "•" glyphs below, they flow
+        // through the same isBulletParagraph path as text-glyph / EPUB <ul> bullets.
+        const vectorBullets: { cx: number; cy: number; size: number }[] = [];
+        if (opList) {
+          try {
+            const OPS = pdfjsLib.OPS;
+            const FILL_OP = new Set([OPS.fill, OPS.eoFill, OPS.fillStroke, OPS.eoFillStroke]);
+            const apply = (m: number[], px: number, py: number): number[] => [m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]];
+            let ctm = [1, 0, 0, 1, 0, 0]; const gstack: number[][] = [];
+            const dots: { cx: number; cy: number; size: number }[] = [];
+            for (let i = 0; i < opList.fnArray.length; i++) {
+              const fn = opList.fnArray[i]; const a = opList.argsArray[i];
+              if (fn === OPS.save) gstack.push(ctm.slice());
+              else if (fn === OPS.restore) { const s = gstack.pop(); if (s) ctm = s; }
+              else if (fn === OPS.transform) ctm = mulMat(ctm, a);
+              else if (fn === OPS.constructPath) {
+                const op = a[0], mm = a[2]; // args = [paintOp, drawOps, [xMin,yMin,xMax,yMax]] in user space
+                if (!FILL_OP.has(op) || !mm) continue; // only FILLED paths; a bullet is a filled dot, not a stroke/clip
+                const [x0, y0] = apply(ctm, mm[0], mm[1]); const [x1, y1] = apply(ctm, mm[2], mm[3]);
+                const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+                // A bullet dot is SMALL and roughly SQUARE (a filled circle/square). This excludes the
+                // page-clip rect, wide rules/underlines (w ≫ h), and figures (large either side).
+                if (w < 1.5 || h < 1.5 || w > 12 || h > 12 || Math.abs(w - h) > Math.max(w, h) * 0.5) continue;
+                dots.push({ cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, size: Math.max(w, h) });
+              }
+            }
+            // Keep only dots that form a COLUMN — ≥2 dots sharing an x (±2pt). A real list hangs its
+            // markers at one indent; a single isolated filled dot is more likely a decorative mark.
+            for (const d of dots) if (dots.filter(o => Math.abs(o.cx - d.cx) <= 2).length >= 2) vectorBullets.push(d);
+          } catch { /* best-effort — a parse failure just means no vector bullets are detected on this page */ }
+        }
         type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean; mcRole?: string; paraOrder?: number };
         const glyphs: PdfGlyph[] = [];
         // Marked-content role stack (only populated for tagged PDFs). The structural role of a
@@ -2002,6 +2055,25 @@ const App: React.FC = () => {
               runLink = cl;
             }
           }
+        }
+        // Inject a "•" glyph for each vector-drawn bullet detected above, at the baseline of the text
+        // line it marks (the nearest glyph baseline just below the dot centre, with body text to its
+        // right — a hanging marker). Downstream line-clustering + isBulletParagraph then render it
+        // exactly like a text-glyph or EPUB <ul> bullet.
+        for (const b of vectorBullets) {
+          // The line this bullet marks: the nearest glyph baseline just below the dot centre whose x
+          // is to the RIGHT of the dot. (The dot centre sits a few points above the baseline.)
+          let bestY: number | null = null, bestDy = Infinity;
+          for (const g of glyphs) {
+            if (g.x <= b.cx + 1) continue;               // marker hangs to the left of the text
+            const dy = b.cy - g.y;                        // dot centre is above the baseline
+            if (dy < -2 || dy > b.size * 3) continue;     // same line only, not the line above/below
+            if (dy < bestDy) { bestDy = dy; bestY = g.y; }
+          }
+          if (bestY === null) continue;                  // no body text to the right — inject nothing
+          // Leftmost glyph on that line — copy its style + reading order so the "•" joins its block.
+          const ref = glyphs.filter(g => Math.abs(g.y - bestY!) < 3 && g.x > b.cx + 1).sort((a, c) => a.x - c.x)[0];
+          glyphs.push({ x: b.cx, y: bestY, h: ref ? ref.h : b.size, w: b.size, str: '•', italic: false, bold: false, family: ref ? ref.family : '', mcRole: ref?.mcRole, paraOrder: ref?.paraOrder });
         }
         // De-duplicate list bullets: some PDF generators emit a list item's bullet BOTH as a
         // standalone glyph AND at the start of the item's text run (a lone "•" and "• An AI agent…"
@@ -2145,14 +2217,14 @@ const App: React.FC = () => {
         // Cluster a set of glyphs into baseline "lines": sort top→bottom, then join each glyph to the
         // nearest existing line within tolerance (anchoring the line on its tallest glyph so a raised
         // superscript doesn't pull the baseline up).
-        const clusterLines = (gs: PdfGlyph[]): LineGroup[] => {
+        const clusterLines = (gs: PdfGlyph[], tol: number = lineTolerance): LineGroup[] => {
           const out: LineGroup[] = [];
           for (const g of [...gs].sort((a, b) => b.y - a.y || a.x - b.x)) {
             let best: LineGroup | null = null;
             let bestDist = Infinity;
             for (const group of out) {
               const dist = Math.abs(group.baseY - g.y);
-              if (dist <= lineTolerance && dist < bestDist) { bestDist = dist; best = group; }
+              if (dist <= tol && dist < bestDist) { bestDist = dist; best = group; }
             }
             if (!best) { best = { baseY: g.y, baseH: g.h, items: [] }; out.push(best); }
             best.items.push(g);
@@ -2169,7 +2241,15 @@ const App: React.FC = () => {
         // no gutter/midpoint heuristics. Only takes over when real columns exist; every other page
         // (single-column, tagged or not) keeps the geometry path unchanged.
         let structPlan: { lines: LineGroup[]; col?: 0 | 1 }[] | null = null;
+        // True only for a GENUINE two-column region (real central gutter) via the struct-tag or
+        // geometry-BAND path — NOT the row-major path, which false-fires on a single-column TOC by
+        // mistaking the title→page-number gap ("Explainable and Traceable  81") for a column gutter.
+        // Drives the reader's two-column index/TOC grid (a U+E017 marker on the list page's text).
+        let pageTwoColumn = false;
+        // ── DIAGNOSTIC (two-column) ── remove after the index issue is resolved.
+        const __dbg: any = { pageNum, path: 'geo-single', gut0: -1, band: null, rowMajorRun: 0 };
         const structKeys = [...new Set(bodyGlyphs.map(g => g.paraOrder).filter((v): v is number => v !== undefined))].sort((a, b) => a - b);
+        __dbg.structKeys = structKeys.length;
         if (structKeys.length >= 2) {
           const byPara = new Map<number, PdfGlyph[]>();
           for (const g of bodyGlyphs) { if (g.paraOrder === undefined) continue; const a = byPara.get(g.paraOrder) || []; a.push(g); byPara.set(g.paraOrder, a); }
@@ -2187,6 +2267,9 @@ const App: React.FC = () => {
           if (cols.some(c => c !== undefined)) structPlan = paras.map((p, i) => ({ lines: p.lines, col: cols[i] }));
         }
         if (structPlan) {
+          pageTwoColumn = true;
+          __dbg.path = 'struct-plan';
+          __dbg.structCols = structPlan.filter(p => p.col !== undefined).length;
           // Emit struct paragraphs in reading order; re-stamp baseY so the downstream y-sort preserves
           // it (left column, then right column, then the full-width blocks around them).
           let cursor = pageHeight;
@@ -2212,13 +2295,48 @@ const App: React.FC = () => {
         const gMaxX = (g: LineGroup): number => Math.max(...g.items.map(it => it.x + (it.w || 0)));
         const gMinX = (g: LineGroup): number => Math.min(...g.items.map(it => it.x));
         const bandGutterMin = Math.max(28, bodyHeight * 2.5);
-        const sortedGroups = clusterLines(bodyGlyphs).sort((a, b) => b.baseY - a.baseY); // top → bottom
+        // Cluster with a TIGHTER baseline tolerance than the document-wide `lineTolerance` for column
+        // detection. The band test needs OFFSET evidence — ≥2 pure-left AND ≥2 pure-right lines — to
+        // tell a column-major two-column INDEX (independent left/right rhythms, so their baselines
+        // drift apart by a few pt) from a row-major aligned TABLE (every row's two cells share one
+        // baseline exactly). The normal tolerance (~half the line height) merged an index's small
+        // (~4pt) baseline offsets into "aligned" split lines, hiding the evidence so the band was
+        // never found and both columns glued into one line. A true aligned table has 0pt offset, so it
+        // stays merged (no pure-left/right lines) at the tighter tolerance too → still routes to the
+        // row-major path. Validated across the test PDFs: only the index pages change; the aligned
+        // tables (Sovereign p297 dice frequencies, etc.) are untouched.
+        const colTolerance = Math.max(1, bodyHeight * 0.25);
+        const sortedGroups = clusterLines(bodyGlyphs, colTolerance).sort((a, b) => b.baseY - a.baseY); // top → bottom
         // The RIGHT column's left edge (if any): the leftmost x of lines starting well right of centre,
         // taken as a robust low percentile so an outlier doesn't move it. Classifying against THIS, not
         // the page midpoint, keeps a long left-column bullet (which can extend past mid) as LEFT rather
         // than full-width — the misclassification that stopped the band from ever being detected.
         const rightStarts = sortedGroups.map(gMinX).filter(x => x > pageMid + span * 0.05).sort((a, b) => a - b);
-        const gut0 = rightStarts.length >= 3 ? rightStarts[Math.floor(rightStarts.length * 0.15)] - 4 : pageMid;
+        // Prefer the GUTTER — the widest empty vertical strip in the central band of the page — as the
+        // column boundary. On a narrow, multi-indent two-column INDEX the right column starts just right
+        // of centre and the per-entry start-x scatters (two indent levels, wrapped continuations), so the
+        // right-start percentile lands too far right and misfiles right-column headers as left. The empty
+        // strip is unambiguous: no glyph covers it. Use its RIGHT edge (the right column's left edge) as
+        // gut0; require a real strip (≥ ~0.6× line height) so a page with no clean central gutter (a title
+        // page, offset art) falls back to the right-start percentile, unchanged.
+        const gutterFromStrip = (): number | null => {
+          const width = Math.ceil(contentMaxX - contentMinX) + 1;
+          const cover = new Float32Array(width);
+          for (const g of bodyGlyphs) {
+            const a = Math.floor(g.x - contentMinX), b = Math.ceil(g.x + (g.w || 0) - contentMinX);
+            for (let i = Math.max(0, a); i < Math.min(width, b); i++) cover[i]++;
+          }
+          const lo = Math.floor((contentMaxX - contentMinX) * 0.25), hi = Math.ceil((contentMaxX - contentMinX) * 0.75);
+          let bestRun = 0, bestStart = -1, run = 0, runStart = -1;
+          for (let i = lo; i <= hi; i++) {
+            if (cover[i] === 0) { if (run === 0) runStart = i; run++; if (run > bestRun) { bestRun = run; bestStart = runStart; } }
+            else run = 0;
+          }
+          return bestRun >= Math.max(6, bodyHeight * 0.6) ? bestStart + bestRun + contentMinX : null;
+        };
+        const gutStrip = gutterFromStrip();
+        const gut0 = gutStrip !== null ? gutStrip
+          : rightStarts.length >= 3 ? rightStarts[Math.floor(rightStarts.length * 0.15)] - 4 : pageMid;
         const colClass = (g: LineGroup): 'left' | 'right' | 'split' | 'full' => {
           const mn = gMinX(g), mx = gMaxX(g);
           if (mn >= gut0) return 'right';
@@ -2241,7 +2359,14 @@ const App: React.FC = () => {
           if (lo >= 2 && ro >= 2 && lo + sp >= 3 && ro + sp >= 3 && (bStart < 0 || (j - i) > (bEnd - bStart))) { bStart = i; bEnd = j; }
           i = j;
         }
+        __dbg.path = 'geo-band';
+        __dbg.gut0 = Math.round(gut0);
+        __dbg.gutStrip = gutStrip !== null ? Math.round(gutStrip) : null;
+        __dbg.nLines = sortedGroups.length;
+        __dbg.clsCounts = cls.reduce((a: any, c: string) => { a[c] = (a[c] || 0) + 1; return a; }, {});
+        __dbg.band = bStart >= 0 ? [bStart, bEnd] : null;
         if (bStart >= 0) {
+          pageTwoColumn = true;
           // Cut the whole band at the same gutter used to classify — the right column's left edge — so
           // every row (offset or aligned, short or long) splits identically into a left and right cell.
           const gutter = gut0;
@@ -2299,7 +2424,15 @@ const App: React.FC = () => {
             if (Math.max(...centres) - Math.min(...centres) <= bodyHeight * 3 && j - i > runLen) { runLen = j - i; runStart = i; }
             i = j;
           }
-          if (runLen >= 3) {
+          __dbg.rowMajorRun = runLen;
+          // A TOC / index is NOT a row-major table: "Short Term … 26" has an aligned gutter too (before
+          // the right-aligned page number), and cutting it splits the page number onto its own line and
+          // shatters the entry. Such a page has many lines ENDING IN A PAGE NUMBER; a real colophon
+          // table ("Editor: Jane Smith") does not. Skip the row-major cut for a list-like page. (A
+          // genuinely two-column index is handled by the geometry BAND above, not here.)
+          const isListLikePage = flowGroups.filter(g => /\d[.)]?\s*$/u.test([...g.items].sort((a, b) => a.x - b.x).map(it => it.str).join('').trim())).length >= 6;
+          if (runLen >= 3 && !isListLikePage) {
+            __dbg.path = 'geo-rowmajor';
             const cs = rowInfo.slice(runStart, runStart + runLen).map(r => r.at).sort((a, b) => a - b);
             const gutterX = cs[cs.length >> 1];
             flowGroups.forEach((g, idx) => {
@@ -2330,6 +2463,20 @@ const App: React.FC = () => {
         }
 
         const MARK = { italic: '*', bold: '**' } as const;
+        // ── DIAGNOSTIC dump: record every page's column-detection outcome to a global the user can
+        // read in the browser console (window.__dbgTwoCol). Also console.log a compact line for pages
+        // that either detected columns OR look like an undetected multi-line list (the failure case).
+        {
+          const colDist = { left: 0, right: 0, full: 0 };
+          for (const g of groups) { if (g.col === 0) colDist.left++; else if (g.col === 1) colDist.right++; else colDist.full++; }
+          __dbg.cols = colDist;
+          __dbg.sample = groups.slice(0, 2).map(g => g.items.map((i: any) => i.str).join('')).join(' ¦ ').slice(0, 70);
+          const G: any = globalThis as any;
+          (G.__dbgTwoCol = G.__dbgTwoCol || []).push(__dbg);
+          const suspect = colDist.right === 0 && colDist.full >= 24; // many lines, no columns found
+          if (colDist.right > 0 || __dbg.structKeys >= 2 || suspect) {
+          }
+        }
         const pageLines = groups
           .map(group => {
             const items = group.items.sort((a, b) => a.x - b.x);
@@ -2376,7 +2523,23 @@ const App: React.FC = () => {
                 // leads its line, so it fails the mid-line test and stays plain text for anchoring.
                 let p = i - 1;
                 while (p >= 0 && !items[p].str.trim()) p--;
-                return p >= 0 && /[\p{L}\d,]$/u.test(items[p].str.replace(/\s+$/u, ''));
+                // Allow a trailing hyphen/dash too: the SECOND number in a page RANGE ("284-287",
+                // "330-332") is a real index link whose previous run is the "-" separator — without
+                // this it fails the letter/digit/comma test and its link is dropped.
+                if (p >= 0) return /[\p{L}\d,–—-]$/u.test(items[p].str.replace(/\s+$/u, ''));
+                // The number LEADS its line. An index entry that wraps can push a page-ref range/list
+                // onto its own physical line ("…access control, 194,⏎283–287, 355") — the FIRST number
+                // (283) then has no previous glyph on the line and its link was dropped. It is a genuine
+                // index ref when it heads a page-number SEQUENCE: the next glyph is a range dash or a
+                // comma/number. A note's own leading back-number is followed by the note PROSE (a word
+                // or "."), so it still fails this and stays plain text for the note anchor.
+                let q = j;
+                while (q < items.length && !items[q].str.trim()) q++;
+                const nextStr = q < items.length ? items[q].str.trim() : '';
+                const leadsPageSeq = /^[–—-]/u.test(nextStr) || /^,\s*\d/u.test(nextStr) || nextStr === ',';
+                // ── REF-LINK AUDIT (index leading-line refs) — remove after fix.
+                if (/^[–—,-]/u.test(nextStr) || /^\d/u.test(nextStr)) console.log(`[ref-audit] p${pageNum} lead="${label}"->p${destPage} next="${nextStr}" seq=${leadsPageSeq} line="${items.map(it => it.str).join('').trim().slice(0, 52)}"`);
+                return leadsPageSeq;
               })()) {
                 for (let k = i; k < j; k++) { items[k].linkUrl = `#pdfref-p${destPage}`; items[k].noteKey = undefined; }
               }
@@ -2531,6 +2694,22 @@ const App: React.FC = () => {
         // to its label before testing — otherwise the line ends in ")" and index detection misses it.
         const endsWithPageRef = (value: string): boolean => /[\d](?:[–—-]\d+)?\s*$/u.test(value.replace(/\[([^\]\n]+)\]\([^)\n]*\)\s*$/u, '$1'));
         const isListPage = pageLines.filter(line => endsWithPageRef(line.text)).length >= 6;
+        // A GENUINELY two-column index reflowed by band detection keeps each right-column (col 1) entry
+        // at the RIGHT column's x. The index indent logic below measures depth against the page margin,
+        // so a right entry (x≈260) would render as a deep sub-entry of the left column. Shift every col-1
+        // line onto the left column's origin so entryBaseLeft / indentTiers / indentDepthFor are
+        // column-relative. GATED on pageTwoColumn: on a single-column TOC the row-major detector
+        // false-sets col 1 on some lines (title→page-number gap mistaken for a gutter), and shifting
+        // those flattened a sub-entry's indent ("Medium Term" x=100 → flush while "Long Term" x=100 kept
+        // its indent). Reading order (baseY: all left, then all right) is untouched.
+        if (isListPage && pageTwoColumn) {
+          const leftMin = Math.min(...pageLines.filter(l => l.col !== 1).map(l => l.x), Infinity);
+          const rightCol = pageLines.filter(l => l.col === 1);
+          if (rightCol.length && leftMin !== Infinity) {
+            const shift = Math.min(...rightCol.map(l => l.x)) - leftMin;
+            if (shift > INDENT_TOL) for (const l of rightCol) { l.x -= shift; l.rightX -= shift; }
+          }
+        }
         const indentTiers: number[] = [];
         if (isListPage) {
           const entryBaseLeft = Math.min(...pageLines.filter(line => endsWithPageRef(line.text)).map(line => line.x));
@@ -2541,6 +2720,30 @@ const App: React.FC = () => {
             if (cluster) cluster.count++; else clusters.push({ x: line.x, count: 1 });
           }
           indentTiers.push(...clusters.filter(c => c.count >= 2).map(c => c.x).sort((a, b) => a - b));
+        }
+        // A footnote marker annotates PRECEDING text, so it never legitimately begins a body line: when
+        // one leads a line it WRAPPED from the end of the previous (full) line — "…around 2060." then
+        // "[11] But the latest…" (marker+text), or a lone "[12]" on its own line. Left there it splits the
+        // one flowing paragraph in two (the leading marker trips startsFootnoteEntry) AND, leading a block,
+        // the marker loses its link. Move it back to the end of the previous line so the paragraph stays
+        // whole and the marker sits at its sentence end, clickable. Prose pages only — a NOTES page is a
+        // list page (its entries genuinely start with "[N] …") and never reaches this branch.
+        if (!isListPage) {
+          const fnLead = /^(\[[0-9ivxlcdm]{1,8}\]\(#pdffn[^)\n]*\))(?:\s+(?=\S)|\s*$)/iu;
+          for (let li = 1; li < pageLines.length; li++) {
+            const m = pageLines[li].text.match(fnLead);
+            if (!m || !pageLines[li - 1].text.trim()) continue;
+            // A NOTE's own anchor marker legitimately BEGINS its entry in the notes section and must NOT
+            // be moved (doing so strips every note's marker, so startsFootnoteEntry can't split them and
+            // the whole notes section merges into a run-on — INTRODUCTION notes here are on short, <6-entry
+            // pages that fall to the PROSE path, past the isListPage gate). A note anchor targets the
+            // CURRENT page ("#pdffn-p398" on page 398); only a WRAPPED BODY marker targets a DIFFERENT
+            // (later notes) page ("#pdffn-p401" on page 25) — move that one.
+            const targetPage = Number(m[1].match(/#pdffn-p(\d+)/i)?.[1] || 0);
+            if (targetPage === pageNum) continue;
+            pageLines[li - 1].text = pageLines[li - 1].text.replace(/\s+$/u, '') + m[1];
+            pageLines[li].text = pageLines[li].text.slice(m[0].length);
+          }
         }
         // Retain this page's line geometry (baseline Y + text) when an outline bookmark
         // points at it, so chapter starts can be anchored to the exact heading line.
@@ -2553,7 +2756,7 @@ const App: React.FC = () => {
           allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
           allRightEdges.push(...pageLines.map(line => line.rightX).filter(Boolean));
         }
-        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers, pageHeight });
+        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers, pageHeight, pageTwoColumn });
       }
 
       // Running head/footer removal (untagged PDFs; a tagged PDF already dropped its Artifact
@@ -2728,8 +2931,40 @@ const App: React.FC = () => {
       type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
 
+      // ── Unify TOC indent tiers across the whole run ──
+      // A multi-page TOC carries its "Contents" heading only on the FIRST page; continuation pages are
+      // detected as generic list pages and routed through the index emit, whose tiers derive from a
+      // per-page ref-ending base (count>=2). A page that starts mid-chapter lacks the outer Part/chapter
+      // levels, so the SAME source indent (a subsection at x=100) came out depth 3 on the heading page
+      // (contents path, distinct-x tiers) but depth 1 on a continuation. Mark the contiguous TOC run and
+      // give every page ONE run-wide contents tier scale, so one source indent = one depth across the TOC.
+      const isContentsHeadingPage = (buf: (typeof pageBuffers)[number]): boolean =>
+        buf.lines.length >= 6 && buf.lines.slice(0, 3).some(l => /^(?:contents|table of contents)$/iu.test(l.text.replace(/[*_~]/gu, '').trim()));
+      for (let i = 0; i < pageBuffers.length; i++) {
+        if (!isContentsHeadingPage(pageBuffers[i])) continue;
+        let j = i + 1;
+        while (j < pageBuffers.length && pageBuffers[j].isListPage && !isContentsHeadingPage(pageBuffers[j])) j++;
+        const freq: { x: number; count: number }[] = [];
+        for (let k = i; k < j; k++) for (const l of pageBuffers[k].lines) {
+          if (isHeadingLine(l) || !l.text.trim()) continue;
+          const c = freq.find(f => Math.abs(f.x - l.x) <= INDENT_TOL);
+          if (c) c.count++; else freq.push({ x: l.x, count: 1 });
+        }
+        const tocTiers = freq.filter(f => f.count >= 2).map(f => f.x).sort((a, b) => a - b);
+        for (let k = i; k < j; k++) { (pageBuffers[k] as any).tocTiers = tocTiers; (pageBuffers[k] as any).isTocPage = true; }
+        i = j - 1;
+      }
       for (const buf of pageBuffers) {
-        const { pageNum, lines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers } = buf;
+        const { pageNum, lines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers, pageTwoColumn } = buf;
+        const tocPage = !!(buf as any).isTocPage;
+        const tocTiers: number[] = (buf as any).tocTiers || [];
+        // ── AUDIT (TOC/index) — remove after fix. Logs which emit path each TOC page takes + its output.
+        const __isTocAudit = lines.some(l => /Medium Term|Short Term|Long Term|Table of Contents|Foreword|Reflection|The Agentic Future|Thank you for downloading|SIGN UP|See the appendix for the sources|black box problem and AI|Nordhaus, .Two Centuries/.test(l.text));
+        const __audit = (path: string, blocks: { text?: string; role?: string }[]) => {
+          if (!__isTocAudit) return;
+          const dump = blocks.map(b => (b.role ? `[${b.role}]` : '') + (b.text || '').replace(/\u00a0/g, '·').replace(/\n/g, ' ⏎ ').replace(//gu, '«C»').replace(//gu, '«R»').replace(//gu, '«H»').replace(/[\ue000-\uf8ff]/gu, '§')).join(' ‖ ');
+          console.log(`[toc-audit] p${pageNum} path=${path} isListPage=${isListPage} twoCol=${pageTwoColumn}\n  cols(line.col): ${lines.filter(l => l.col !== undefined).length}/${lines.length}\n  OUT: ${dump.slice(0, 700)}`);
+        };
         const proseLines = lines.filter(line => !isHeadingLine(line));
         const rightMargin = proseLines.length ? Math.max(...proseLines.map(line => line.rightX)) : 0;
         // PER-PAGE justification (robust when ONE file mixes justified and ragged sections): a page is
@@ -2751,17 +2986,15 @@ const App: React.FC = () => {
         // ending in a page number) misses it and its entries reflow into one run-on
         // paragraph. Detect it by a "Contents" heading near the top and emit one entry per
         // line (the entries are short titles, not prose).
-        const isContentsPage = lines.length >= 6 &&
-          lines.slice(0, 3).some(line => /^(?:contents|table of contents)$/iu.test(line.text.replace(/[*_~]/gu, '').trim()));
+        // Every page of the TOC run (heading page + continuations) takes the contents path with the
+        // run-wide tier scale, so a source indent maps to one depth across all TOC pages.
+        const isContentsPage = tocPage;
         if (isContentsPage) {
           // The TOC has its own structure, already decided by the page geometry and font:
           // KEEP each entry's emphasis (the bold chapter title) and encode its left-indent
           // tier as leading non-breaking spaces (4 per level, like the index), so the reader
           // reproduces the original bold + indentation instead of a flat uniform list.
-          const entryLefts = lines.filter(line => !isHeadingLine(line) && line.text.trim()).map(line => line.x).sort((a, b) => a - b);
-          const tiers: number[] = [];
-          for (const x of entryLefts) { if (!tiers.some(t => Math.abs(t - x) <= INDENT_TOL)) tiers.push(x); }
-          tiers.sort((a, b) => a - b);
+          const tiers: number[] = tocTiers;
           const tierOf = (x: number): number => { const i = tiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL); return i >= 1 ? Math.min(i, 3) : 0; };
           const blocks = lines
             .filter(line => line.text.replace(/[*_~]/gu, '').trim())
@@ -2769,6 +3002,7 @@ const App: React.FC = () => {
               text: '\u00a0'.repeat(4 * tierOf(line.x)) + line.text.replace(/\s+/gu, ' ').trim(),
               role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '',
             }));
+__audit('contents', blocks);
           pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
           continue;
         }
@@ -2816,8 +3050,10 @@ const App: React.FC = () => {
             ii = jj;
           }
 
+          if (__isTocAudit) console.log(`[list-emit] p${pageNum} entryBaseLeft=${entryBaseLeft.toFixed(0)} tiers=${JSON.stringify(indentTiers.map(t => Math.round(t)))} firstEntryIdx=${firstEntryIdx} bodyLeft=${bodyLeft.toFixed(0)}`);
           // The entries themselves: one indented entry per line.
           entryLines.forEach((line, index) => {
+            if (__isTocAudit) console.log(`  x=${line.x.toFixed(0)} col=${line.col === undefined ? '-' : line.col} depth=${indentDepthFor(line.x)} | ${line.text.slice(0, 42)}`);
             const previous = entryLines[index - 1];
             if (previous) {
               const verticalGap = previous.y - line.y;
@@ -2830,13 +3066,22 @@ const App: React.FC = () => {
             formattedLines.push('\u00a0'.repeat(4 * indentDepthFor(line.x)) + line.text);
           });
           for (let i = 0; i < formattedLines.length - 1; i++) {
-            if (/[A-Za-z]-$/.test(formattedLines[i]) && formattedLines[i + 1] && /^[a-z]/.test(formattedLines[i + 1])) {
-              formattedLines[i] = formattedLines[i] + formattedLines.splice(i + 1, 1)[0];
+            // Join a hyphenated wrap ("supervi‐" / "sors, 316"): the entry hangs its continuation on the
+            // next line. Match ASCII '-' AND the Unicode hyphens the typesetter may use (U+2010 ‐,
+            // U+2011 ‑, U+00AD soft hyphen); the continuation carries a leading NBSP indent, so skip it
+            // before the lowercase test.
+            if (/[A-Za-z][-‐‑­]$/.test(formattedLines[i]) && formattedLines[i + 1] && /^ *[a-z]/.test(formattedLines[i + 1])) {
+              formattedLines[i] = formattedLines[i].replace(/[-‐‑­]$/, '') + formattedLines.splice(i + 1, 1)[0].replace(/^ +/, '');
               i--;
             }
           }
-          const pageText = formattedLines.join('\n').trim();
+          // Mark a genuinely TWO-COLUMN list page (band reflow assigned right-column cells → col 1) with
+          // a leading U+E017 sentinel so the reader shows two side-by-side columns ONLY for these; a
+          // single-column index/TOC (no col-1 lines: Sovereign, Elon Musk) has no sentinel → one column.
+          const isTwoColumnListPage = pageTwoColumn;
+          const pageText = (isTwoColumnListPage ? '\uE017' : '') + formattedLines.join('\n').replace(/^[ \t\r\n]+/u, '').replace(/[ \t\r\n]+$/u, '');
           // A list page is never a seam-join candidate (its entries are their own lines).
+__audit('list', pageText ? [{ text: pageText, role: 'list' }] : []);
           pageEmit.push({ pageNum, blocks: pageText ? [{ text: pageText, role: 'list', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }] : [], rightMargin, bodyLeft });
           continue;
         }
@@ -2872,15 +3117,16 @@ const App: React.FC = () => {
                 : null;
           if (align) {
             const sentinel = align === 'right' ? '\uE011' : '\uE010'; // U+E011 right, U+E010 centre — stripped by the reader
-            // A right-aligned block can be WRAPPED PROSE (a "Praise for…" page: multi-line quotes each
-            // set flush-right) rather than a line-list. Emitting one item per line then shatters every
-            // quote/attribution into separate lines and — since a long right-aligned line starts near
-            // the left — reads as chaotic mixed alignment. If the lines are long (fill most of the
-            // measure), JOIN the wrapped lines into paragraphs (breaking on a larger vertical gap) so
-            // each quote and its attribution is one right-aligned paragraph. (Centre stays one-per-line
-            // — title pages are genuine line-lists.)
+            // A right- OR centre-aligned block can be WRAPPED PROSE (a "Praise for…" page: multi-line
+            // quotes set flush-right; a centred promo/notice paragraph like Sovereign p3 "Get a FREE
+            // ebook … terms and conditions.") rather than a line-list. Emitting one item per line then
+            // shatters the paragraph into its physical source lines (each separately centred/flush-right).
+            // If the lines are long (fill most of the measure — i.e. they WRAPPED at the margin), JOIN
+            // them into paragraphs (breaking on a larger vertical gap or a credit dash). A genuine
+            // line-list — a title page, a centred epigraph/poem, an "also by" list — has SHORT lines
+            // (distinct phrases, not wrapped), so median width < 55% of the measure keeps it one-per-line.
             const measure = Math.max(...alignSrc.map(l => l.rightX)) - Math.min(...alignSrc.map(l => l.x));
-            const proseLike = align === 'right' && measure > 0 && (median(alignSrc.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
+            const proseLike = (align === 'right' || align === 'center') && measure > 0 && (median(alignSrc.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
             // Turn a contiguous run of display lines into blocks: JOIN wrapped prose into paragraphs
             // (breaking on a larger vertical gap or a leading credit dash) when proseLike, else one
             // item per line (a genuine line-list).
@@ -2912,24 +3158,51 @@ const App: React.FC = () => {
             };
             let outBlocks: EmitBlock[];
             if (useBody) {
-              // Classified from the body: walk the display lines in reading order, emit each heading
-              // as its own heading block and each maximal run of body lines through bodyToBlocks — the
-              // heading keeps its role while the flush-right body is joined into quote paragraphs.
+              // Classified from the body: walk the display lines in reading order, emit each maximal run
+              // of consecutive HEADING lines as one heading block and each run of body lines through
+              // bodyToBlocks. A display page's alignment (centre/right) is a property of ALL its lines,
+              // the heading included — but the reader renders a heading flush-left unless it carries an
+              // align sentinel. So a centred promo/title heading (Sovereign p3 "Thank you for downloading
+              // / this Simon & Schuster / ebook.") lost its centring AND, emitted one-per-line, split into
+              // three separate blocks. Join a tight run of heading lines into ONE block and tag it with
+              // the page's alignment sentinel when the heading itself shares that alignment (its centre or
+              // right edge matches the body's). A heading that doesn't match the page alignment, or a
+              // ragged page (align null), stays flush-left as before.
               outBlocks = [];
               let run: PdfLine[] = [];
+              let hrun: PdfLine[] = [];
               const flushRun = () => { if (run.length) { outBlocks.push(...bodyToBlocks(run)); run = []; } };
+              const bodyCentre = median(alignSrc.map(l => (l.x + l.rightX) / 2));
+              const bodyRight = median(alignSrc.map(l => l.rightX));
+              const flushHead = () => {
+                if (!hrun.length) return;
+                let t = hrun[0].text;
+                for (let k = 1; k < hrun.length; k++) t = /[A-Za-z]-$/.test(t) && /^[a-z]/.test(hrun[k].text) ? t + hrun[k].text : `${t} ${hrun[k].text}`;
+                t = t.replace(/[*_~]/gu, '').replace(/\s+/gu, ' ').trim();
+                const hCentre = (Math.min(...hrun.map(l => l.x)) + Math.max(...hrun.map(l => l.rightX))) / 2;
+                const hRight = Math.max(...hrun.map(l => l.rightX));
+                const headSentinel = align === 'center' && Math.abs(hCentre - bodyCentre) <= tol ? ''
+                  : align === 'right' && Math.abs(hRight - bodyRight) <= tol ? '' : '';
+                if (t) outBlocks.push({ text: headSentinel + t, role: 'heading', firstX: Math.min(...hrun.map(l => l.x)), firstRightX: hrun[0].rightX, lastRightX: hrun[hrun.length - 1].rightX, lastText: hrun[hrun.length - 1].text, topY: Math.max(...hrun.map(l => l.pageY)) });
+                hrun = [];
+              };
               for (const line of dispLines) {
                 if (isHeadingLine(line)) {
                   flushRun();
-                  outBlocks.push({ text: line.text.replace(/[*_~]/gu, '').replace(/\s+/gu, ' ').trim(), role: 'heading', firstX: line.x, firstRightX: line.rightX, lastRightX: line.rightX, lastText: line.text, topY: line.pageY });
+                  // A larger vertical gap ends the heading run (a title above a distinct subtitle/author).
+                  if (hrun.length && (hrun[hrun.length - 1].y - line.y) > Math.max(hrun[hrun.length - 1].h, line.h) * 1.35) flushHead();
+                  hrun.push(line);
                 } else {
+                  flushHead();
                   run.push(line);
                 }
               }
               flushRun();
+              flushHead();
             } else {
               outBlocks = bodyToBlocks(dispLines);
             }
+__audit('disp', outBlocks);
             pageEmit.push({ pageNum, blocks: outBlocks, rightMargin, bodyLeft });
             continue;
           }
@@ -3016,8 +3289,73 @@ const App: React.FC = () => {
         // wrapper (and the bullet may glue to the word, "•Understand") before matching the marker.
         const startsBulletLine = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(t);
         const blocks: EmitBlock[] = [];
+        // Emit a labeled hanging-indent list (dialogue speaker turns, CIP fields, a glossary) as ONE
+        // body block per entry — a margin (outdent-tier) line plus its indented continuations, joined
+        // with NO block-indent NBSP so a wrapped turn stays whole and no stray indent leaks mid-text.
+        // A genuine entry (opens with its own label at the outdent tier) is tagged U+E01A + an NBSP run
+        // encoding the source's outdent→continuation gap (the same NBSP→padding scale the reader uses for
+        // block indents), so the reader HANGS the label: first line at the outdent, wraps at the indent
+        // tier. Only entries from this REGION-gated path are tagged (not arbitrary "Label:" prose). An
+        // entry that opens at the indent tier (its label is on the PREVIOUS page) is flagged carryover —
+        // it renders flush and the read-time page-seam merge reunites it with its opener.
+        const emitHangingEntries = (group: PdfLine[]): void => {
+          const groupLeft = Math.min(...group.map(l => l.x));
+          const deepXs = group.filter(l => l.x > groupLeft + 4).map(l => l.x);
+          const indentDelta = deepXs.length ? Math.min(...deepXs) - groupLeft : 0;
+          const hangNbsp = bodyFont > 0 && indentDelta > bodyFont * 0.9 ? Math.min(12, Math.max(4, Math.round((indentDelta / bodyFont) / 1.5 * 4))) : 0;
+          let entry: PdfLine[] = [];
+          const flushEntry = () => {
+            if (!entry.length) return;
+            let etext = entry[0].text;
+            for (let k = 1; k < entry.length; k++) {
+              etext = /[A-Za-z]-$/.test(etext) && /^[a-z]/.test(entry[k].text) ? etext + entry[k].text : `${etext} ${entry[k].text}`;
+            }
+            etext = etext.replace(/\s+/g, ' ').trim();
+            if (etext) {
+              const last = entry[entry.length - 1];
+              const carryover = entry[0].x > groupLeft + 4;
+              const hang = !carryover && hangNbsp > 0 ? '' + ' '.repeat(hangNbsp) : '';
+              blocks.push({ text: hang + etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover, topY: Math.max(...entry.map(l => l.pageY)) });
+            }
+            entry = [];
+          };
+          for (const line of group) {
+            if (line.x <= groupLeft + 4 && entry.length) flushEntry();
+            entry.push(line);
+          }
+          flushEntry();
+        };
+        // A hanging-list region (a run of dialogue turns / CIP fields) must be kept INTACT as one group
+        // so emitHangingEntries splits it per-entry on the LABEL. Otherwise the justified short-line /
+        // terminal-indent rules fragment a turn whose continuation sits at the indent tier — that tier
+        // reads as a first-line indent against the label margin (Ch 8 "…give us meaning? RAY: Well…"
+        // merge, and "…early 2030s. / So the in-between…" truncation). Given a start index, extend the
+        // maximal same-column, not-physically-far, non-heading run and return its end IFF that run is a
+        // labeled hanging list (detectLabeledHangingList) — the same proven gate, just fed the whole run.
+        const hangingRegionEnd = (start: number): number => {
+          if (isHeadingLine(lines[start])) return start - 1;
+          let end = start;
+          while (end + 1 < lines.length) {
+            const a = lines[end], b = lines[end + 1];
+            if (isHeadingLine(b)) break;
+            if (a.col !== b.col) break;
+            if (Math.abs(a.pageY - b.pageY) > Math.max(a.h, b.h) * 3) break; // physically far / column jump
+            end++;
+          }
+          if (end - start + 1 < 4) return start - 1;
+          return detectLabeledHangingList(lines.slice(start, end + 1)) ? end : start - 1;
+        };
         let i = 0;
         while (i < lines.length) {
+          // Consume a whole hanging-list region up front so it isn't fragmented by the prose rules below.
+          if (!isHeadingLine(lines[i])) {
+            const hEnd = hangingRegionEnd(i);
+            if (hEnd >= i) {
+              emitHangingEntries(lines.slice(i, hEnd + 1));
+              i = hEnd + 1;
+              continue;
+            }
+          }
           const groupIsHeading = isHeadingLine(lines[i]);
           const group: PdfLine[] = [lines[i]];
           let j = i + 1;
@@ -3085,8 +3423,17 @@ const App: React.FC = () => {
               // definition list whose flush italic term ("Endpoints") and its indented description are
               // otherwise glued into a run-on. Gated to justified sources so ragged text (short lines
               // everywhere) is untouched; not applied across a same-tier continuation attribution.
+              // `previous` ends short (a block boundary) only if it doesn't reach the body margin AND it
+              // isn't a line of a JUSTIFIED RUN — ≥3 CONSECUTIVE body lines sharing one right edge. A block
+              // justified to a NARROWER right margin than the body (an epigraph, a set-off quote) forms
+              // such a run at its shorter edge, so its lines aren't "short" and it reflows whole; a
+              // paragraph's/note's LAST line ends short and its full neighbours sit at the body margin (no
+              // ≥3 run at that short edge), so it still marks a boundary — notes stay one entry per line.
+              let runLen = 1;
+              for (let k = j - 2; k >= 0 && !isHeadingLine(lines[k]) && lines[k].rightX > 0 && Math.abs(lines[k].rightX - previous.rightX) <= bodyFont; k--) runLen++;
+              for (let k = j; k < lines.length && !isHeadingLine(lines[k]) && lines[k].rightX > 0 && Math.abs(lines[k].rightX - previous.rightX) <= bodyFont; k++) runLen++;
               const prevEndsShort = pageJustified && rightMargin > 0
-                && !fillsMeasure(previous.rightX, rightMargin) && !attributionContinuation;
+                && !fillsMeasure(previous.rightX, rightMargin) && runLen < 3 && !attributionContinuation;
               // A FLUSH labeled list — consecutive lines that BOTH open with a short "Label:" (an email
               // header From:/Date:/To:/Subject:, an address, a spec sheet) — has each entry as its own
               // line, but with no hanging indent detectLabeledHangingList misses it and the splitter
@@ -3095,6 +3442,11 @@ const App: React.FC = () => {
               // on the Elon email header, 0 on Elon/Kurzweil prose pages.
               const labelPair = labelStart.test(previous.text.replace(/[*_~]/gu, '').trimStart())
                 && labelStart.test(current.text.replace(/[*_~]/gu, '').trimStart());
+              // (A genuine multi-turn dialogue / CIP is now consumed whole by hangingRegionEnd above and
+              // split per-entry by emitHangingEntries; a single-group hanging list still routes through the
+              // inline detectLabeledHangingList fallback below. An earlier per-line "label at the outdent
+              // tier" break was removed — it false-fired on a wrapped person's name in prose ("…engineer
+              // Daniel Feldman:"), the classic v26 over-fire; the region gate is the safe, label-checked path.)
               endsBlock =
                 bothShort ||
                 prevEndsShort ||
@@ -3108,36 +3460,11 @@ const App: React.FC = () => {
             group.push(current);
             j++;
           }
-          // A labeled hanging-indent list (dialogue, CIP, glossary): the splitter merged its
-          // entries (each entry-start sits at the margin, reading as a prose continuation).
-          // Re-split into ONE body paragraph per entry — a margin line plus its indented
-          // continuations — so speaker turns / fields don't run together. (Plain body blocks;
-          // no hanging-indent visual, to keep the change small and safe.)
+          // A labeled hanging-indent list (dialogue, CIP, glossary) that the group loop did NOT already
+          // consume as a whole region above (e.g. a short list, or one the region gate just missed):
+          // re-split it per-entry via the same helper so speaker turns / fields don't run together.
           if (!groupIsHeading && detectLabeledHangingList(group)) {
-            const groupLeft = Math.min(...group.map(l => l.x));
-            let entry: PdfLine[] = [];
-            const flushEntry = () => {
-              if (!entry.length) return;
-              let etext = entry[0].text;
-              for (let k = 1; k < entry.length; k++) {
-                etext = /[A-Za-z]-$/.test(etext) && /^[a-z]/.test(entry[k].text) ? etext + entry[k].text : `${etext} ${entry[k].text}`;
-              }
-              etext = etext.replace(/\s+/g, ' ').trim();
-              if (etext) {
-                const last = entry[entry.length - 1];
-                // An entry that OPENS at the indented (continuation) tier — not the entry margin —
-                // is a turn/field whose start is on the PREVIOUS page: a hanging-list entry (dialogue
-                // turn, CIP field) that wrapped across the page break. Flag it so the cross-page join
-                // reunites it with its opener even though the previous page's tail ends a sentence.
-                blocks.push({ text: etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover: entry[0].x > groupLeft + 4, topY: Math.max(...entry.map(l => l.pageY)) });
-              }
-              entry = [];
-            };
-            for (const line of group) {
-              if (line.x <= groupLeft + 4 && entry.length) flushEntry();
-              entry.push(line);
-            }
-            flushEntry();
+            emitHangingEntries(group);
             i = j;
             continue;
           }
@@ -3191,15 +3518,58 @@ const App: React.FC = () => {
             // description). Carry the block left-indent as leading NBSP (reader \u2192 padding); count first-line
             // indents so the reader can drop its fixed indent on block-style books.
             const firstLineExtra = group[0].x - groupMinX;             // first line vs continuation
-            const blockLeftPx = groupMinX - bodyLeft;                  // whole block vs body margin
-            if (pageJustified && !groupIsHeading && !isRightAttribution) {
+            // Measure the block indent against paraLeftMargin (the LEFTMOST frequent left = the true
+            // body margin), NOT bodyLeft (the page MODE). On a definition-list page ("Layer 1:" term +
+            // its indented explanation) the indented description lines OUTNUMBER the flush term/heading
+            // lines, so bodyLeft = the description tier (x=90) and every description measured as flush
+            // (0 indent). paraLeftMargin stays at the real margin (x=72), so the +18pt block indent is
+            // seen. A multi-line normal paragraph always has a continuation at the true margin (so
+            // groupMinX == paraLeftMargin → 0 here); require group.length>=2 so a lone first-line-
+            // indented one-liner isn't mistaken for a left-indented block.
+            const blockLeftPx = groupMinX - paraLeftMargin;            // whole block vs true body margin
+            // Sample ONLY normal body paragraphs (at the true margin) for the first-line-indent ratio.
+            // A block-indented paragraph — a block quote/epigraph, a numbered/lettered list — has its
+            // first line flush WITHIN its own indented block (firstLineExtra=0), so counting it drags the
+            // ratio down as if the book had no first-line indent. The Sovereign Individual is saturated
+            // with epigraph block quotes; including them pushed the ratio to 0.39 (<0.40) → the whole
+            // book was flagged block-style and EVERY paragraph rendered flush, defeating the per-paragraph
+            // first-line indent. Exclude blocks that sit deeper than the margin (blockLeftPx > ~0.9em).
+            if (pageJustified && !groupIsHeading && !isRightAttribution && blockLeftPx <= bodyFont * 0.9) {
               bodyBlkTotal++;
               if (firstLineExtra > bodyFont * 0.6) bodyBlkFirstLineIndented++;
             }
-            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && bodyFont > 0 && blockLeftPx > bodyFont * 0.9)
+            // A block-indented list ITEM (a numbered/lettered rule condition "1. …", an "IF:"/"THEN:"
+            // label) can be a SINGLE line — the group.length>=2 guard (which stops a lone first-line-
+            // indented paragraph masquerading as a block) then drops its indent, so it renders flush while
+            // its multi-line siblings stay indented (the MYCIN rule's one-line conditions 2 & 4). A line
+            // that OPENS with a list marker is unambiguously a list item, so allow it single-line too.
+            const opensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])\s/u.test(text.replace(/^[*_~]+/u, ''));
+            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && (group.length >= 2 || opensListMarker) && bodyFont > 0 && blockLeftPx > bodyFont * 0.9)
               ? Math.min(12, Math.round((blockLeftPx / bodyFont) / 1.5 * 4)) : 0;
+            if (blockNbsp > 0) console.log(`[blk-indent] p${pageNum} nbsp=${blockNbsp} lpx=${blockLeftPx.toFixed(0)} minX=${groupMinX.toFixed(0)} pMargin=${paraLeftMargin.toFixed(0)} | ${text.replace(/[-]/gu, '').slice(0, 46)}`);
+            // Geometry-faithful first-line indent: a paragraph whose FIRST line sits at the body margin
+            // (not indented) is FLUSH \u2014 the section's opening paragraph in a first-line-indent book
+            // ("Premonitions" \u2192 "The coming of the year 2000\u2026"), a chapter's first paragraph, a cross-
+            // page continuation. Tag it with U+E018 so the reader drops its fixed 1.75em first-line
+            // indent for THIS paragraph only, reproducing the source instead of indenting every
+            // paragraph uniformly. Measured against paraLeftMargin (the true margin) so it works for a
+            // one-line paragraph too. Only a normal flowing body block (not a heading, right-attribution,
+            // or left-indented definition block) carries it; a book that indents every paragraph has no
+            // flush paragraphs \u2192 no tag \u2192 unchanged, and a block-style book (no indent anywhere) ignores it.
+            const firstLineFlush = !groupIsHeading && !isRightAttribution && blockNbsp === 0
+              && bodyFont > 0 && group[0].x <= paraLeftMargin + bodyFont * 0.6;
+            // A TRUE block quote (a set-off quotation) is indented on BOTH margins — its lines end SHORT
+            // of the body's right edge, unlike a left-only definition description (which fills the right
+            // margin). Detect it (left block indent AND the block's widest line falls short of rightMargin)
+            // and tag it U+E019 so the reader adds a matching RIGHT padding (narrower paragraph) and drops
+            // the first-line indent, instead of only padding the left.
+            const blockMaxRight = Math.max(...group.map(l => l.rightX));
+            const isBlockQuote = blockNbsp > 0 && rightMargin > 0 && (rightMargin - blockMaxRight) > bodyFont * 0.9;
+            if (/The study is to proceed|An attempt will be made to find|form abstractions and concepts|every aspect of learning/.test(text)) console.log(`[bq-audit] p${pageNum} just=${pageJustified} glen=${group.length} minX=${groupMinX.toFixed(0)} x0=${group[0].x.toFixed(0)} pMargin=${paraLeftMargin.toFixed(0)} bLeft=${bodyLeft.toFixed(0)} lpx=${blockLeftPx.toFixed(0)} bf=${bodyFont.toFixed(1)} nbsp=${blockNbsp} bMaxR=${blockMaxRight.toFixed(0)} rMargin=${rightMargin.toFixed(0)} isBQ=${isBlockQuote} | ${text.slice(0, 36)}`);
+            if (/Revenge of Nations|angry farmer|When the state finds|committed expenditure/.test(text)) console.log(`[flush-audit] p${pageNum} x0=${group[0].x.toFixed(0)} pMargin=${paraLeftMargin.toFixed(0)} bLeft=${bodyLeft.toFixed(0)} bf=${bodyFont.toFixed(1)} just=${pageJustified} flush=${firstLineFlush} role=${groupIsHeading ? 'H' : 'b'} | ${text.slice(0, 40)}`);
+            if (/around 2060|latest advances in large language|shifted expectations/.test(text)) console.log(`[fn-audit] p${pageNum} x0=${group[0].x.toFixed(0)} minX=${groupMinX.toFixed(0)} glen=${group.length} | ${text.slice(0, 80)}`);
             blocks.push({
-              text: isRightAttribution ? '\uE011' + text : '\u00A0'.repeat(blockNbsp) + text,
+              text: isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text,
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,
@@ -3223,6 +3593,7 @@ const App: React.FC = () => {
           blocks.splice(at, 0, fb);
         }
 
+        __audit('prose', blocks);
         pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
       }
 
@@ -3511,6 +3882,7 @@ const App: React.FC = () => {
       const sourceFirstLineIndent = bodyBlkTotal >= 20
         ? bodyBlkFirstLineIndented / bodyBlkTotal > 0.4
         : undefined;
+      console.log(`[flush-audit] sourceFirstLineIndent=${sourceFirstLineIndent} bodyBlkTotal=${bodyBlkTotal} indented=${bodyBlkFirstLineIndented} ratio=${bodyBlkTotal ? (bodyBlkFirstLineIndented / bodyBlkTotal).toFixed(2) : 'n/a'}`);
       return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified, firstLineIndent: sourceFirstLineIndent };
     } catch (e) {
       console.error('PDF processing error', e);
@@ -3593,16 +3965,20 @@ const App: React.FC = () => {
                 }).catch(() => {})
               ));
             }
-            // Re-upload replaces any existing copy of the same book (matched by title) so a
-            // stale entry — chapters built by an older extraction engine — can't linger
-            // beside the fresh one. (structure.id is a random UUID per upload, so it can't
-            // match; title is the stable identity across re-uploads.) Purge the superseded
-            // copy's cache and cloud rows too, not just the in-memory list.
-            const sameBookTitle = (title?: string) => (title || '').trim().toLowerCase();
-            const newBookTitle = sameBookTitle(structure.title);
+            // Re-upload replaces any existing copy of the same book (matched by title AND source
+            // format) so a stale entry — chapters built by an older extraction engine — can't linger
+            // beside the fresh one. (structure.id is a random UUID per upload, so it can't match;
+            // title+format is the stable identity across re-uploads.) The format is part of the
+            // identity so a PDF and an EPUB of the same title are DIFFERENT files that coexist —
+            // re-uploading the PDF replaces the PDF, uploading the EPUB adds a second entry. Purge the
+            // superseded copy's cache and cloud rows too, not just the in-memory list.
+            const bookIdentity = (title?: string, kind?: string) =>
+              `${(title || '').trim().toLowerCase()} ${kind || ''}`;
+            const newBookTitle = (structure.title || '').trim().toLowerCase();
+            const newBookIdentity = bookIdentity(structure.title, preparedContext.sourceKind);
             if (newBookTitle) {
               library
-                .filter(item => sameBookTitle(item.book.title) === newBookTitle)
+                .filter(item => bookIdentity(item.book.title, item.fileContext.sourceKind) === newBookIdentity)
                 .forEach(superseded => {
                   if (currentUser) deleteBookFromCloud(currentUser.id, superseded.book.id).catch(() => {});
                   // Purge the WHOLE superseded copy's cache — not just its source file. Otherwise its derived
@@ -3612,7 +3988,7 @@ const App: React.FC = () => {
                 });
             }
             await saveSourceToCache(newItem);
-            setLibrary(prev => [newItem, ...prev.filter(item => !newBookTitle || sameBookTitle(item.book.title) !== newBookTitle)]);
+            setLibrary(prev => [newItem, ...prev.filter(item => !newBookTitle || bookIdentity(item.book.title, item.fileContext.sourceKind) !== newBookIdentity)]);
             setActiveBookId(structure.id);
             if (structure.chapters.length > 0) {
               setActiveChapterPageTarget('first');
@@ -3939,7 +4315,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-void-0 bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
-      <a href="#main-content" className="skip-to-content">Skip to content</a>
       <GlobalContextLayer onAddToNotebook={handleAddToNotebook} activeLanguage={settings.targetLanguage} />
       <AIAssistant
         fileContext={activeFileContext}

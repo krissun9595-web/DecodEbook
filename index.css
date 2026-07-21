@@ -288,27 +288,6 @@ body {
   border-radius: 2px;
 }
 
-/* Skip-to-content link: off-screen until focused, then a neon HUD chip. */
-.skip-to-content {
-  position: fixed;
-  top: 0.5rem;
-  left: 0.5rem;
-  z-index: 10000;
-  transform: translateY(-150%);
-  padding: 0.5rem 0.9rem;
-  background: var(--void-0);
-  color: var(--neon-cyan);
-  border: 1px solid var(--neon-cyan);
-  border-radius: 4px;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  transition: transform 0.15s ease-out;
-}
-.skip-to-content:focus {
-  transform: translateY(0);
-}
 
 /* Respect the OS "reduce motion" setting: neutralise CSS animations/transitions,
    drop the CRT scanline sweep, and let JS-driven effects (DecryptedText,
