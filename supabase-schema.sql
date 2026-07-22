@@ -10,6 +10,10 @@ create table if not exists user_settings (
   line_height text default 'normal',
   letter_spacing text default 'normal',
   font text default 'Inter',
+  llm_model text,
+  tts_model text,
+  image_model text,
+  video_model text,
   updated_at timestamptz default now()
 );
 
