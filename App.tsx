@@ -1917,6 +1917,12 @@ const App: React.FC = () => {
             }
           } catch { /* op-list parse failed — fall back to the uniform estimate below */ }
         }
+        // An INDEX alphabet-nav bar: a row of standalone single uppercase letters (A B C … Z), each a
+        // go-to link to that letter's section. Detected by ≥5 single-letter go-to links on the page so a
+        // stray uppercase-roman body footnote marker never trips it. Used below to route each nav letter
+        // as a plain clickable cross-reference instead of the footnote-marker path — a roman letter (I/V/X,
+        // value ≤40) would otherwise be mis-read by markerLabelOf as a marker and render inert.
+        const isAlphaNavPage = links.filter(l => (l as LinkAnn).key && /^[A-Z]$/u.test(((l as LinkAnn).text || '').trim())).length >= 5;
         // Vector-drawn list bullets: some PDFs (this book's list on p39) draw the bullet as a small
         // FILLED path (a round/square dot) rather than a text glyph, so getTextContent never sees it and
         // the list renders with no markers — while the same book's EPUB, carrying real <li> markup, DOES
@@ -2504,6 +2510,20 @@ const App: React.FC = () => {
               // back-navigation. Cross-references stay text too. The label may be a number or
               // a Roman numeral (this book's chapter-end footnotes are Roman).
               const destPage = Number(key.match(/^pdffn-p(\d+)-/)?.[1] || 0);
+              // An index alphabet-nav letter (a standalone single uppercase letter linking to its section):
+              // route it as a plain clickable cross-reference. This runs BEFORE markerLabelOf so a roman
+              // letter (I=1, V=5, X=10 — value ≤40) isn't mis-classified as a footnote marker and rendered
+              // inert. Apply the link only to the LETTER glyph, not the trailing space that shares its run
+              // (the space sits inside the letter's link rect), so adjacent letters ("Q R") don't fuse.
+              if (isAlphaNavPage && destPage > 0 && /^[A-Z]$/u.test(txt)) {
+                // Carry the annotation's Y (from the gotoLink key) in the href so the reader can land at
+                // the letter's SECTION, not just the page top — a letter section can start mid-page (U on
+                // p651 sits below the tail of T), so page-level navigation misses it.
+                const destY = Number(key.match(/-y(\d+)/)?.[1] || 0);
+                const href = destY > 0 ? `#pdfref-p${destPage}-y${destY}` : `#pdfref-p${destPage}`;
+                for (let k = i; k < j; k++) { if (items[k].str.trim()) items[k].linkUrl = href; items[k].noteKey = undefined; }
+                i = j; continue;
+              }
               const label = markerLabelOf(txt);
               const markerLike = destPage > pageNum && label !== '';
               if (markerLike) { markerEmit[i] = { label, key }; for (let k = i + 1; k < j; k++) skip[k] = true; }

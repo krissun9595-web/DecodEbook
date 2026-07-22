@@ -3018,12 +3018,42 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // corrected chapter offsets.
   const handleCrossReferenceNavigation = (
     destPage: number,
-    event: React.MouseEvent<HTMLElement>
+    event: React.MouseEvent<HTMLElement>,
+    navLetter?: string
   ) => {
     event.preventDefault();
     event.stopPropagation();
     if (!onChapterChange) return;
     const content = fileContext.content || '';
+    // Index alphabet-nav letter: land on the letter's SECTION heading (a lone capital on its own line
+    // within the destination page's span), not the page top — U's section starts mid-page below the tail
+    // of T, so page-level navigation lands on T. Search the destination page's content span for the lone
+    // letter and navigate to that reader page by its text anchor.
+    if (navLetter) {
+      const marker = `[[PAGE ${destPage}]]`;
+      const at = content.indexOf(marker);
+      if (at >= 0) {
+        const nextRel = content.slice(at + marker.length).search(/\[\[PAGE\s+\d+\]\]/);
+        const span = content.slice(at + marker.length, nextRel < 0 ? undefined : at + marker.length + nextRel);
+        // The section heading is the letter on its own line, bold-wrapped ("**U**"), followed by the first
+        // index entry ("uncanny valley, …"). Anchor on that first ENTRY, not the lone letter: the entry text
+        // is distinctive and survives into the rendered page, whereas a lone "U" is ambiguous. Strip the
+        // "[label](url)" link markup and emphasis so the anchor matches the rendered (markup-free) page text.
+        const m = span.match(new RegExp(`(?:^|\\n)[ \\t]*\\*{0,2}${navLetter}\\*{0,2}[ \\t]*\\n+[ \\t]*([^\\n]{3,})`, 'u'));
+        const firstEntry = m
+          ? m[1].replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1').replace(/[*_~`]/gu, '').replace(/^\s+/u, '')
+          : '';
+        // Take the leading term (up to the first page-number/comma) — enough to be distinctive.
+        const anchorText = firstEntry.replace(/,.*$/u, '').slice(0, 30).trim();
+        const idx = anchorText.length >= 3 ? pageIndexForTarget({ type: 'text', anchor: anchorText }, pages) : -1;
+        if (idx >= 0) {
+          setPendingNavigationTarget({ type: 'text', anchor: anchorText });
+          setNavigationSentenceIndex(-1);
+          if (idx !== currentPage) setCurrentPage(idx);
+          return;
+        }
+      }
+    }
     let pageStart = content.indexOf(`[[PAGE ${destPage}]]`);
     if (pageStart < 0) {
       const re = /\[\[PAGE\s+(\d+)\]\]/g;
@@ -3491,9 +3521,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           </sup>
         );
       }
-      const crossRefPage = href.match(/^#pdfref-p(\d+)$/iu);
+      const crossRefPage = href.match(/^#pdfref-p(\d+)(?:-y(\d+))?$/iu);
       if (crossRefPage) {
         const destPage = Number(crossRefPage[1]);
+        const destY = crossRefPage[2] ? Number(crossRefPage[2]) : undefined;
+        // An index alphabet-nav letter carries a destY (its section start) and its own single-letter text
+        // → land at the SECTION (a letter's section can begin mid-page), not just the page top.
+        const navLetter = destY != null && /^[A-Z]$/u.test((text || '').trim()) ? (text || '').trim() : undefined;
         return (
           <button
             key={key}
@@ -3502,7 +3536,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             style={leafStyle}
             title="Go to referenced section"
             draggable={false}
-            onClick={(event) => handleCrossReferenceNavigation(destPage, event)}
+            onClick={(event) => handleCrossReferenceNavigation(destPage, event, navLetter)}
           >
             {text}
           </button>

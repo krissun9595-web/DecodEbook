@@ -512,7 +512,15 @@
 //       caption "Century (Princeton, NJ: …" carries an early colon too, so the loose test paired it with
 //       the "Principal sources:" line above and split the caption there even after prevEndsShort was
 //       suppressed. isFieldLabel requires letters/spaces/hyphens before the colon.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v144-labelpair-clean-field';
+// v145: an index alphabet-nav letter (a standalone single uppercase letter linking to its section, on a
+//       page with ≥5 such single-letter go-to links) is routed as a plain clickable cross-reference —
+//       BEFORE markerLabelOf, so a roman letter (I/V/X, value ≤40) isn't mis-read as a footnote marker and
+//       rendered inert. The trailing space that shares the letter's link run is left plain so adjacent
+//       same-page letters ("Q R", "Y Z") don't fuse into one link.
+// v146: an index alphabet-nav letter carries its section Y in the href (#pdfref-p{page}-y{destY}) so the
+//       reader can land on the letter's SECTION heading (a letter's section can start mid-page — U on p651
+//       sits below the tail of T), not just the page top.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v146-index-alpha-nav-sectionY';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
