@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v41-notes-sentinel-strip';
+const CHAPTER_TEXT_CACHE_VERSION = 'v43-caption-semicolon-merge-seam-gate';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -755,7 +755,7 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
     if (last < inner.length) segments.push({ text: inner.slice(last), format });
   };
   const leadingRomanReference = options.romanMarkersAsReferences
-    ? value.match(/^\s*([ivxlcdm]{1,8})([.)])(?:\s|\u00a0)+(?=[\p{Lu}"“‘《])/iu)
+    ? value.match(/^\s*([ivxlcdm]{1,8})([.)])(?:\s|\u00a0)+(?=[\p{Lu}"“‘《])/u)
     : null;
   let cursor = 0;
   if (leadingRomanReference) {
@@ -4299,10 +4299,22 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // on para.indent>0 so it only fires inside a block-indented rule (a normal paragraph that
                   // merely opens with a number isn't caught). Fold the block indent into paddingLeft (a
                   // later paddingLeft in the spread would otherwise override bodyBlockPadStyle's and drop it).
-                  const isRuleItem = !isHeadingRole && (para.indent ?? 0) > 0
+                  // A list item hangs its marker: a block-indented sub-item (para.indent>0) at its tier,
+                  // and a top-level item (flush at the margin, para.flushFirstLine — its number aligns with
+                  // the body, blockPadEm=0) at the margin. Both keep their marker outdented with wraps
+                  // tucked under the text.
+                  const isRuleItem = !isHeadingRole && ((para.indent ?? 0) > 0 || !!para.flushFirstLine)
                     && /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
+                  // In a first-line-indent book, a set-off list "starts" like a paragraph: its top-level
+                  // marker sits at the paragraph first-line-indent tier (aligned with the "W" that opens the
+                  // preceding paragraph), not flush at the body margin — and the whole item hangs under that,
+                  // sub-items nesting one hang deeper. Add the book's first-line-indent (1.75em, the same
+                  // value bodyParagraphStyle applies) as a uniform list-start offset so top and sub keep
+                  // their geometric gap while the list as a whole aligns with the paragraph indent. A block-
+                  // style book (no first-line indent) keeps its lists flush at the margin (offset 0).
+                  const listStartOffsetEm = fileContext.sourceFirstLineIndent ? 1.75 : 0;
                   const ruleHangStyle: React.CSSProperties | undefined =
-                    isRuleItem ? { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em)` } : undefined;
+                    isRuleItem ? { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em + ${listStartOffsetEm}em)` } : undefined;
                   // A NOTE entry HANGS: the "N" marker sits at the left margin and continuation lines
                   // indent under the citation (the source outdents the marker: marker x=89 < text x=103).
                   // The reader was instead applying its first-line indent inconsistently (some notes flush,

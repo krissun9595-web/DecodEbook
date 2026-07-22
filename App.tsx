@@ -1727,7 +1727,7 @@ const App: React.FC = () => {
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
       type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
-      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean }[] = [];
+      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
 
@@ -2679,6 +2679,25 @@ const App: React.FC = () => {
         const leftMinCount = Math.max(2, pageLines.length * 0.1);
         const frequentLefts = [...leftFreq].filter(([, c]) => c >= leftMinCount).map(([x]) => x);
         const paraLeftMargin = frequentLefts.length ? Math.min(bodyLeft, ...frequentLefts) : bodyLeft;
+        // The list's own top-level margin, from its NUMBERED markers ("1."–"10."). paraLeftMargin is
+        // sampled per page and wobbles when a page carries only a couple of top-level openers at the true
+        // margin — the page of a hierarchical list where most lines are the continuation/sub-item tiers
+        // (Sovereign p338: only "8."/"9." at x=84, so x=84 falls below leftMinCount and the margin collapses
+        // to the continuation tier x=102) — which then measures the lettered SUB-items (a.–d. at x=113) as
+        // nearly flush, so they lose their nested indent while the same items on the previous page keep it.
+        // A numbered marker is an unambiguous top-level list item; the leftmost tier holding ≥2 of them is
+        // the list's real margin. Used ONLY to anchor a list item's block indent (below), never the page
+        // margin itself. Undefined on non-list pages → no effect.
+        const numMarkerLefts = pageLines
+          .filter(line => /^\s*\d{1,2}[.)](?:\s|$)/u.test(line.text))
+          .map(line => Math.round(line.x));
+        // The leftmost tier holding >=2 numbered markers is the list's top-level margin. Scan candidates
+        // left-to-right so a lone stray marker further left (a footnote digit, a page-spanning "10.") can't
+        // hijack it (Sovereign p338 has a single x=77 token beside the real x=84 top-level tier).
+        let listMarginLeft: number | undefined;
+        for (const cand of [...numMarkerLefts].sort((a, b) => a - b)) {
+          if (numMarkerLefts.filter(x => Math.abs(x - cand) <= 4).length >= 2) { listMarginLeft = cand; break; }
+        }
         const lineGap = median(pageLines.slice(1).map((line, index) => pageLines[index].y - line.y).filter(gap => gap > 0));
 
         // Index/contents pages: encode each entry's left-indent depth as leading
@@ -2756,7 +2775,7 @@ const App: React.FC = () => {
           allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
           allRightEdges.push(...pageLines.map(line => line.rightX).filter(Boolean));
         }
-        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers, pageHeight, pageTwoColumn });
+        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, listMarginLeft, lineGap, isListPage, indentTiers, pageHeight, pageTwoColumn });
       }
 
       // Running head/footer removal (untagged PDFs; a tagged PDF already dropped its Artifact
@@ -2955,7 +2974,7 @@ const App: React.FC = () => {
         i = j - 1;
       }
       for (const buf of pageBuffers) {
-        const { pageNum, lines, bodyLeft, paraLeftMargin, lineGap, isListPage, indentTiers, pageTwoColumn } = buf;
+        const { pageNum, lines, bodyLeft, paraLeftMargin, listMarginLeft, lineGap, isListPage, indentTiers, pageTwoColumn } = buf;
         const tocPage = !!(buf as any).isTocPage;
         const tocTiers: number[] = (buf as any).tocTiers || [];
         // ── AUDIT (TOC/index) — remove after fix. Logs which emit path each TOC page takes + its output.
@@ -3437,16 +3456,43 @@ __audit('disp', outBlocks);
               let runLen = 1;
               for (let k = j - 2; k >= 0 && !isHeadingLine(lines[k]) && lines[k].rightX > 0 && Math.abs(lines[k].rightX - previous.rightX) <= bodyFont; k--) runLen++;
               for (let k = j; k < lines.length && !isHeadingLine(lines[k]) && lines[k].rightX > 0 && Math.abs(lines[k].rightX - previous.rightX) <= bodyFont; k++) runLen++;
+              // A short line only marks a justified paragraph boundary when it actually ENDS the paragraph —
+              // i.e. it ends with terminal punctuation. A left-aligned RAGGED block on a justified page (a
+              // figure caption / source line / address) wraps MID-PHRASE: its short line ends with no
+              // terminal punctuation and the next line continues at the SAME left margin (Singularity p165:
+              // "…in the Twentieth" / "Century (Princeton…", both at x=77). Treating that wrap as a boundary
+              // shatters the caption one line per paragraph so it can no longer reflow. Suppress prevEndsShort
+              // for a same-margin mid-phrase wrap. Prose boundaries are unaffected (a paragraph's last line
+              // ends with "." / "?" / "!"); a definition term / note marker boundary changes the left margin
+              // (indented description, outdented marker), so it still splits.
+              // …unless the current line OPENS a new block itself — a numbered/lettered/IF-THEN list item
+              // (MYCIN's conditions end mid-clause with "and", no terminal punctuation, at the same margin,
+              // so without this they merge into their neighbour and the rule's list collapses), a bullet, or
+              // a footnote entry. Those legitimately begin a new paragraph even after a non-terminal line.
+              const currentStartsNewBlock =
+                /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(current.text.replace(/^[*_~]+/u, '').trimStart())
+                || startsBulletLine(current.text) || startsFootnoteEntry(current);
+              const raggedWrapSameMargin =
+                !endsWithTerminalPunctuation(previous.text) && Math.abs(current.x - previous.x) <= bodyFont * 0.5
+                && !currentStartsNewBlock;
               const prevEndsShort = pageJustified && rightMargin > 0
-                && !fillsMeasure(previous.rightX, rightMargin) && runLen < 3 && !attributionContinuation;
+                && !fillsMeasure(previous.rightX, rightMargin) && runLen < 3 && !attributionContinuation
+                && !raggedWrapSameMargin;
               // A FLUSH labeled list — consecutive lines that BOTH open with a short "Label:" (an email
               // header From:/Date:/To:/Subject:, an address, a spec sheet) — has each entry as its own
               // line, but with no hanging indent detectLabeledHangingList misses it and the splitter
               // merges them into a run-on. Requiring BOTH neighbours to be labels keeps prose (a lone
               // "Note: …" mid-paragraph has no label line before it) from splitting. Validated: 3 splits
               // on the Elon email header, 0 on Elon/Kurzweil prose pages.
-              const labelPair = labelStart.test(previous.text.replace(/[*_~]/gu, '').trimStart())
-                && labelStart.test(current.text.replace(/[*_~]/gu, '').trimStart());
+              // A REAL header field ("From:", "Date:", "Subject:", "Reply-To:") is a simple capitalised
+              // word or two before the colon — no internal punctuation. A figure caption ("Century
+              // (Princeton, NJ: Princeton University Press…") also carries an early colon but is prose with
+              // parentheses/commas, so the loose labelStart wrongly paired it with the "Principal sources:"
+              // line above and split the caption there. Require a CLEAN field name (letters/spaces/hyphens
+              // only) for the labelPair split so email headers still separate but a caption stays whole.
+              const isFieldLabel = (t: string): boolean =>
+                /^["'“]?[A-Z][A-Za-z][A-Za-z \-]{0,22}:(?:\s|$)/u.test(t.replace(/[*_~]/gu, '').trimStart());
+              const labelPair = isFieldLabel(previous.text) && isFieldLabel(current.text);
               // (A genuine multi-turn dialogue / CIP is now consumed whole by hangingRegionEnd above and
               // split per-entry by emitHangingEntries; a single-group hanging list still routes through the
               // inline detectLabeledHangingList fallback below. An earlier per-line "label at the outdent
@@ -3561,9 +3607,17 @@ __audit('disp', outBlocks);
             // MYCIN rule's IF:/THEN: (both at x=130 in the source) render mis-aligned (IF: flush).
             const opensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(text.replace(/^[*_~]+/u, ''));
             const blockFillsMeasure = rightMargin > 0 && fillsMeasure(Math.max(...group.map(l => l.rightX)), rightMargin);
-            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && (group.length >= 2 || opensListMarker || blockFillsMeasure) && bodyFont > 0 && blockLeftPx > bodyFont * 0.9)
-              ? Math.min(12, Math.round((blockLeftPx / bodyFont) / 1.5 * 4)) : 0;
-            if (blockNbsp > 0) console.log(`[blk-indent] p${pageNum} nbsp=${blockNbsp} lpx=${blockLeftPx.toFixed(0)} minX=${groupMinX.toFixed(0)} pMargin=${paraLeftMargin.toFixed(0)} | ${text.replace(/[-]/gu, '').slice(0, 46)}`);
+            // A list item's indent is its depth WITHIN the list, so measure it from the list's own top-level
+            // margin (the numbered-marker tier), not the wobbly per-page paraLeftMargin. This keeps a lettered
+            // sub-item nested at the SAME depth on every page - even a page where the top-level margin has too
+            // few openers to be sampled (Sovereign p338: paraLeftMargin collapses to the continuation tier, so
+            // sub-items a.-d. would otherwise measure as flush and de-nest vs the identical items on p337).
+            const listAnchoredLeftPx = (opensListMarker && listMarginLeft !== undefined && listMarginLeft < paraLeftMargin)
+              ? groupMinX - listMarginLeft
+              : blockLeftPx;
+            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && (group.length >= 2 || opensListMarker || blockFillsMeasure) && bodyFont > 0 && listAnchoredLeftPx > bodyFont * 0.9)
+              ? Math.min(12, Math.round((listAnchoredLeftPx / bodyFont) / 1.5 * 4)) : 0;
+            if (blockNbsp > 0) console.log(`[blk-indent] p${pageNum} nbsp=${blockNbsp} lpx=${listAnchoredLeftPx.toFixed(0)} minX=${groupMinX.toFixed(0)} pMargin=${paraLeftMargin.toFixed(0)} listM=${listMarginLeft ?? '-'} | ${text.replace(/[-]/gu, '').slice(0, 46)}`);
             // Geometry-faithful first-line indent: a paragraph whose FIRST line sits at the body margin
             // (not indented) is FLUSH \u2014 the section's opening paragraph in a first-line-indent book
             // ("Premonitions" \u2192 "The coming of the year 2000\u2026"), a chapter's first paragraph, a cross-
@@ -3573,8 +3627,13 @@ __audit('disp', outBlocks);
             // one-line paragraph too. Only a normal flowing body block (not a heading, right-attribution,
             // or left-indented definition block) carries it; a book that indents every paragraph has no
             // flush paragraphs \u2192 no tag \u2192 unchanged, and a block-style book (no indent anywhere) ignores it.
+            // A top-level LIST item (a numbered/lettered/IF-THEN marker at the margin, blockNbsp===0) is
+            // ALWAYS flush — its marker must align at the body margin like the other list items, never take
+            // the book's first-line indent. Force flush for it even when the margin test below just misses
+            // (a list crossing a page break can shift paraLeftMargin so one item fails the x threshold and
+            // renders indented while its siblings stay flush — the inconsistent "1./2." vs "3." indent).
             const firstLineFlush = !groupIsHeading && !isRightAttribution && blockNbsp === 0
-              && bodyFont > 0 && group[0].x <= paraLeftMargin + bodyFont * 0.6;
+              && bodyFont > 0 && (group[0].x <= paraLeftMargin + bodyFont * 0.6 || opensListMarker);
             // A TRUE block quote (a set-off quotation) is indented on BOTH margins — its lines end SHORT
             // of the body's right edge, unlike a left-only definition description (which fills the right
             // margin). Detect it (left block indent AND the block's widest line falls short of rightMargin)

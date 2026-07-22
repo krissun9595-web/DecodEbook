@@ -587,14 +587,17 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // A semicolon-separated list broken by a PAGE SEAM rejoins (processPdf can't bridge the seam; within a
+  // page it already merges the wrap into one block). The seam marker gates the rule so a figure source
+  // caption ("…World Bank; …Press, 1976)") never swallows the body sentence beneath it within a page.
   const pageBreakInsideList = [
     'Robert Lawrence, III; Ken Klein; Kim',
     '',
-    'Saull; Jim Moloney; Mike Geltner;',
+    '[[PAGE 6]]Saull; Jim Moloney; Mike Geltner;',
   ].join('\n');
   assert.equal(
     rearrangeAndCleanText(pageBreakInsideList),
-    'Robert Lawrence, III; Ken Klein; Kim Saull; Jim Moloney; Mike Geltner;'
+    'Robert Lawrence, III; Ken Klein; Kim [[PAGE 6]]Saull; Jim Moloney; Mike Geltner;'
   );
 }
 
@@ -623,9 +626,18 @@ const makeTopic = (index: number): string => [
     ].join('\n')),
     'The German GPI index stood at 33. on December 31, 1948, and 112. on June 30, 1995, which represents a compound annual depreciation of 2. percent. The U.S. CPI stood at 24 on December 31, 1948, and 152. on June 30, 1995. The cumulative U.S. inflation was 635 percent for the period.'
   );
+  // A name split by a PAGE BREAK still merges (processPdf can't rejoin across the seam). Within a page,
+  // processPdf already merges wrapped lines into one block, so the weak name-continuation rule is gated on
+  // the [[PAGE n]] seam — otherwise a figure caption ending in a proper noun ("…Nielsen Company") with no
+  // terminal punctuation wrongly swallowed the body sentence beneath it ("Unlike radio and television…").
   assert.equal(
-    rearrangeAndCleanText('We are grateful to Elizabeth\n\nWarren for the introduction.'),
-    'We are grateful to Elizabeth Warren for the introduction.'
+    rearrangeAndCleanText('We are grateful to Elizabeth\n\n[[PAGE 42]]Warren for the introduction.'),
+    'We are grateful to Elizabeth [[PAGE 42]]Warren for the introduction.'
+  );
+  // A within-page caption/proper-noun boundary is NOT merged (geometry already decided it).
+  assert.equal(
+    rearrangeAndCleanText('Principal sources: US Census Bureau; Nielsen Company\n\nUnlike radio and television, computers are interactive.'),
+    'Principal sources: US Census Bureau; Nielsen Company\n\nUnlike radio and television, computers are interactive.'
   );
   assert.equal(
     rearrangeAndCleanText('This is a complete paragraph.\n\nThis is the next real paragraph.'),

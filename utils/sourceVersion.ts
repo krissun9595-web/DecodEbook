@@ -494,7 +494,25 @@
 // v135: a list marker at END OF LINE (a standalone "IF:" whose conditions are on following lines) now
 //       counts as opensListMarker — so a MYCIN rule's "IF:" keeps its block indent and aligns with
 //       "THEN: …" (both at x=130 in the source) instead of rendering flush at the margin.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v135-standalone-if-marker';
+// v141: a lettered SUB-item's block indent is measured from the list's own top-level margin (the
+//       leftmost tier holding >=2 numbered markers) instead of the per-page paraLeftMargin, which
+//       wobbles right on a page carrying too few top-level openers to be sampled (Sovereign p338:
+//       only "8."/"9." at x=84, so the margin collapsed to the continuation tier x=102 and sub-items
+//       a.-d. de-nested to flush vs the identical items on p337). Keeps every sub-item at one depth.
+// v142: a ragged block on a justified page (a figure caption / source line / address, left-aligned so
+//       every line ends short) no longer shatters one line per paragraph. A short line marks a justified
+//       paragraph boundary only when it ENDS the paragraph (terminal punctuation); a same-margin mid-phrase
+//       wrap ("…in the Twentieth" / "Century (Princeton…", Singularity p165) is kept in the block so the
+//       caption reflows. Prose boundaries (last line ends with . ? !) and definition/note boundaries
+//       (different left margin) are unaffected.
+// v143: the ragged-caption reflow (v142) must not swallow a line that OPENS a new list item/bullet/
+//       footnote entry — MYCIN's numbered conditions end mid-clause ("…and") at the same margin, so they
+//       were merging into their neighbours and the rule's list collapsed. Exclude currentStartsNewBlock.
+// v144: the labelPair splitter (email From:/Date: headers) must require a CLEAN field name — a figure
+//       caption "Century (Princeton, NJ: …" carries an early colon too, so the loose test paired it with
+//       the "Principal sources:" line above and split the caption there even after prevEndsShort was
+//       suppressed. isFieldLabel requires letters/spaces/hyphens before the colon.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v144-labelpair-clean-field';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

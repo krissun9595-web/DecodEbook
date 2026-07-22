@@ -220,6 +220,16 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   // merged text (it carries the cross-page continuation) and is stripped for display in
   // buildPageSentenceData. EPUB has no page markers, so this never changes EPUB behaviour.
   const cur = current.trim().replace(/^\[\[PAGE\s+\d+\]\]\s*/iu, '');
+  // Is this pair a PDF PAGE SEAM (the next block opens with a [[PAGE n]] marker)? Geometry (processPdf)
+  // already decided every WITHIN-page paragraph boundary and merges wrapped lines into one block, so the
+  // only seam a text heuristic must bridge is one geometry couldn't see — a sentence/name broken by a
+  // page break. The WEAK name-continuation rules below (any Capitalised word ending prev + any Capitalised
+  // word starting cur) otherwise override a real within-page boundary: a figure caption ending in a proper
+  // noun with no terminal punctuation ("…Nielsen Company") glued to the body beneath it ("Unlike radio and
+  // television…"). A within-page name wrap is already one block from processPdf, so those rules are only
+  // needed across a seam — gate them on it. EPUB has no page markers → isPageSeam stays false → the name
+  // rules never fire on EPUB (EPUB never split a name across this boundary either).
+  const isPageSeam = /^\s*\[\[PAGE\s+\d+\]\]/iu.test(current);
   // The previous block may itself end with an attribution line — e.g. splitAttributionTail
   // returns "*quote*\n\n—— AUTHOR" as one block when a quote and its credit shared a
   // paragraph (the PDF epigraph case). The credit must never absorb the next body
@@ -266,12 +276,16 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   // block back in ("…key components:" + italic "Endpoints", "…thinking:" + "Agentic"). A genuine
   // lowercase continuation after a colon is already merged by the /^[a-z]/ rule above.
   if (/[,;—–-]\s*$/u.test(prev)) return true;
-  if (/;[^.!?。！？]*$/u.test(prev) && (/;/.test(cur) || /^[A-Z][\p{L}.'-]*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|V?I{0,3}))?;/u.test(cur))) return true;
+  // A semicolon-separated list (a references/authors list) wrapped across a break rejoins. Like the name
+  // rules, seam-gate it: within a page geometry already merged the wrap, and a figure SOURCE caption ("…US
+  // Census Bureau; World Bank; …Press, 1976)") uses semicolons too, so it would swallow the body sentence
+  // beneath whenever that body happens to contain any semicolon. Only bridge it across a [[PAGE n]] seam.
+  if (isPageSeam && /;[^.!?。！？]*$/u.test(prev) && (/;/.test(cur) || /^[A-Z][\p{L}.'-]*(?:,\s*(?:Jr\.?|Sr\.?|I{2,4}|V?I{0,3}))?;/u.test(cur))) return true;
   // Name split across a line break ("James Dale" / "Davidson"). NOT when the previous line is a BULLET
   // item (a short "• Simon Torrance") — that's a complete list entry, and the next capitalised word
   // ("Also, …") begins a new paragraph, not a name continuation.
-  if (!/^(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(prev) && /\b[A-Z][\p{L}'-]*$/u.test(prevTail) && /^[A-Z][\p{L}'-]*(?:[,;:]|$)/u.test(firstToken)) return true;
-  if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Sir|Dame|St|Gen|Gov|Rev|Hon)\.?$/u.test(prevTail) && /^[A-Z]/u.test(cur)) return true;
+  if (isPageSeam && !/^(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(prev) && /\b[A-Z][\p{L}'-]*$/u.test(prevTail) && /^[A-Z][\p{L}'-]*(?:[,;:]|$)/u.test(firstToken)) return true;
+  if (isPageSeam && /\b(?:Mr|Mrs|Ms|Dr|Prof|Sir|Dame|St|Gen|Gov|Rev|Hon)\.?$/u.test(prevTail) && /^[A-Z]/u.test(cur)) return true;
 
   return false;
 };
