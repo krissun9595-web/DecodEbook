@@ -40,6 +40,18 @@ const makeTopic = (index: number): string => [
 }
 
 {
+  // Notes are set SMALLER than body, so the relative font-size TIER feature prefixes every note
+  // paragraph with U+E01B (tiny tier). A leading sentinel hides the marker from NOTE_ENTRY_MARKER_RE,
+  // which collapsed "INTRODUCTION + notes 1, 2" into one entry and errored SOURCE_REQUIRED. The strip
+  // range must cover the size tiers (U+E01B–E01F) and the right-marker gutter (U+E020), not stop at E019.
+  const text = 'INTRODUCTION\n\n1 The first note ends here. 2 The second note should become reachable.';
+  const normalized = normalizeNotesReaderText(text);
+  assert.ok(!/[-]/.test(normalized), 'all block sentinels including size tiers (E01B–E01F) and E020 must be stripped from notes');
+  assert.ok(normalized.includes('here.\n\n2 The second note'), 'a size-tier-prefixed note 2 must still start its own entry');
+  assert.ok(/(^|\n)INTRODUCTION/.test(normalized), 'the section heading must remain at a line start, not glued into note 1');
+}
+
+{
   // A following note number glued to the previous note's terminal period
   // (e.g. "Ibid.12.", "op. cit.17.") must still start a new note line.
   const text = '11. Ibid.12. Durant, op. cit., p. 43. 13. Ramsay MacMullen, Corruption and the Decline of Rome (New Haven: Yale University Press, 1988), p. 192. 16. Lane, “Economic Consequences of Organized Violence,” op. cit.17. Ibid.18. Susan Ailing Gregg, Foragers and Farmers (Chicago: University of Chicago Press, 1988), p. 9.';

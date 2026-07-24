@@ -520,7 +520,11 @@
 // v146: an index alphabet-nav letter carries its section Y in the href (#pdfref-p{page}-y{destY}) so the
 //       reader can land on the letter's SECTION heading (a letter's section can start mid-page — U on p651
 //       sits below the tail of T), not just the page top.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v146-index-alpha-nav-sectionY';
+// v147: each emitted block carries a relative FONT-SIZE tier sentinel (U+E01B–U+E01F) = its dominant line
+//       height vs the document body size, quantized to 5 tiers with a deadband around 1.0 (body untagged).
+//       The reader renders it as an em-multiple of the base size, reproducing the source's size hierarchy
+//       (figure title/subtitle, sub-heads, captions, metadata) instead of flattening everything to body size.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v160-singleline-section-column';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

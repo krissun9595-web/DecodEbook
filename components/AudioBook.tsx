@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v43-caption-semicolon-merge-seam-gate';
+const CHAPTER_TEXT_CACHE_VERSION = 'v56-sized-subhead-flush';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -236,6 +236,8 @@ interface ParagraphData {
     // A hanging-list entry (dialogue speaker turn / CIP field, U+E01A from extraction): the label hangs
     // at the outdent and wrapped lines indent to `indent` (the NBSP tier). Reader renders it hanging.
     hangingEntry?: boolean;
+    sizeEm?: number;
+    rightMarker?: boolean;
     // A side-by-side two-column region (from a two-column PDF page): each column an array of
     // paragraphs, each paragraph its sentences with a global index (so the sentences translate and
     // highlight like any other). Rendered as side-by-side columns; in split view the translated
@@ -1046,9 +1048,7 @@ const buildPageSentenceData = (pageText: string): {
   // inline marker ("…update on [[PAGE 54]] 01/04/00") closes up cleanly. (Notes and index
   // strip their own markers upstream; this covers the main reading body.)
   // U+E017 marks a two-column index page (drives the reader's 2-col grid); strip it from display text.
-  { const m = pageText.match(/.{0,8}The study is to proceed/); if (m) console.log(`[bq-pageText] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(",")}`); }
   const cleanedPageText = pageText.replace(//gu, '').replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
-  { const m = cleanedPageText.match(/.{0,8}The study is to proceed/); if (m) console.log(`[bq-cleanedPT] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(",")}`); }
   const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0)
     // A figure marker can arrive GLUED to its caption ("[[FIG p14n1]] To maximize comparability…").
     // Split it into two paragraphs — the marker (→ figure) and the caption (→ text) — so every
@@ -1089,7 +1089,7 @@ const buildPageSentenceData = (pageText: string): {
     if (rawPText.includes('\uE014')) {
       const [leftRaw, rightRaw = ''] = rawPText.replace(/\uE014/gu, '').split('\uE015');
       const toCol = (s: string): ColumnPara[] => s.split('\uE016')
-        .map(p => p.replace(/[\uE010-\uE019]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
+        .map(p => p.replace(/[\uE010-\uE020]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
         .filter(Boolean)
         .map(pText => ({ sentences: splitIntoSentences(pText).map(sent => { const gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: gi, globalIndex: gi, text: stripInlineFormatSyntax(sent) }); return { text: sent, gi }; }) }));
       const left = toCol(leftRaw), right = toCol(rightRaw);
@@ -1100,8 +1100,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    if (/The study is to proceed|An attempt will be made to find|every aspect of learning/.test(rawPText)) console.log(`[bq-R] leadCodes=${[...rawPText.slice(0, 6)].map(c => c.charCodeAt(0).toString(16)).join(',')} | ${rawPText.replace(/\u00A0/g, '\u00B7').slice(0, 44)}`);
-    const ctrl = rawPText.match(/^\s*[\uE010-\uE013\uE018-\uE01A]+/);
+    const ctrl = rawPText.match(/^\s*[\uE010-\uE013\uE018-\uE020]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
@@ -1113,7 +1112,20 @@ const buildPageSentenceData = (pageText: string): {
     // U+E01A \u2014 a hanging-list entry (dialogue speaker turn / CIP field): the label hangs at the
     // outdent, wraps indent to the tier encoded by the following NBSP run (\u2192 `indent`, below).
     const hangingEntry = ctrlChars.includes('\uE01A');
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE01A]/g, '');
+    // U+E01B-E01F relative FONT-SIZE tier (em multiple of base). U+E020 right-aligned marker gutter.
+    // Display tiers are DAMPENED vs the source's print ratios (chapter 1.80\u00D7, section 1.40\u00D7, sub-head 1.13\u00D7):
+    // print display type is set large for a physical page, so the same ratio reads oversized on a reflowed
+    // screen. Compress the top of the scale (chapter 1.5em, section 1.25em, sub-head 1.15em) for on-screen
+    // comfort while preserving the hierarchy; the small tiers (caption 0.72em, 0.86em) stay faithful.
+    const sizeEm = ctrlChars.includes('\uE01F') ? 1.5 : ctrlChars.includes('\uE01E') ? 1.25
+      : ctrlChars.includes('\uE01D') ? 1.15 : ctrlChars.includes('\uE01B') ? 0.72
+      : ctrlChars.includes('\uE01C') ? 0.86 : undefined;
+    // A big tier on a LONG paragraph ending in sentence punctuation is a drop-cap body paragraph, not a
+    // heading -- don't blow it up (mirrors the isHeadingRole long-sentence guard at render).
+    const sizeStripped = stripInlineFormatSyntax(rawPText).replace(/^[\s\u00a0]+/u, '');
+    const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
+    const rightMarker = ctrlChars.includes('\uE020');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1145,11 +1157,10 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker });
   });
 
   if (/excellent overview of mechanistic|machine learning with imperfect|Neel Nanda/.test(pageText)) {
-    console.log(`[notes-R] paras=${paragraphData.length}`);
     paragraphData.slice(0, 14).forEach((p, i) => console.log(`  [${i}] role=${p.role || '-'} indent=${p.indent ?? 0} bq=${p.blockQuote ? 1 : 0} | ${JSON.stringify(p.original.join(' ').slice(0, 56))}`));
   }
   return { paragraphData, flatSentenceMap };
@@ -1522,7 +1533,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE01A]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -1842,16 +1853,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // it needs its own entry-per-paragraph formatting; EPUB indexes keep the existing
         // light cleanup untouched.
         const isPdfSource = fileContext.content.includes('[[PAGE ');
-        { const m = rawText.match(/.{0,6}The study is to proceed/); if (m) console.log(`[bq-raw] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(',')}`); }
         cleanText = isIndexChapterSource
           ? isPdfSource
             ? formatPdfIndexEntries(rawText)
             : normalizeInternalLinkMarkup(normalizeInternalLinkMarkup(rawText).replace(/\n{3,}/g, '\n\n').trim())
           : normalizeInternalLinkMarkup(rearrangeAndCleanText(normalizeInternalLinkMarkup(rawText)));
-        { const m = cleanText.match(/.{0,6}The study is to proceed/); if (m) console.log(`[bq-clean] codes=${[...m[0]].map(c => c.charCodeAt(0).toString(16)).join(',')}`); }
-        { const vis = (s: string) => [...s].map(c => { const n = c.charCodeAt(0); return n < 32 ? '<' + n.toString(16) + '>' : (n >= 0xe000 && n <= 0xf8ff) ? '«' + n.toString(16) + '»' : c; }).join('');
-          const mr = rawText.match(/NOTES[\s\S]{0,60}See the appendix/); if (mr) console.log(`[notes-raw] ${vis(mr[0]).slice(0, 100)}`);
-          const mc = cleanText.match(/NOTES[\s\S]{0,60}See the appendix/); if (mc) console.log(`[notes-clean] ${vis(mc[0]).slice(0, 100)}`); }
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });
         saveFile(textCacheKey, textBlob, {
@@ -2777,7 +2783,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const hasProblem = paragraphData?.some((p: any) => /Short Term|Medium Term|Long Term/.test(p.original?.join(' ') || ''));
     if (hasProblem && G.__raKey2 !== `${chapter.id}`) {
       G.__raKey2 = `${chapter.id}`;
-      console.log(`[reader-audit2] title="${chapter.title}" isIndexChapter=${isIndexChapter} viewMode=${viewMode} paras=${paragraphData.length}`);
       paragraphData.forEach((p: any) => {
         const t = (p.original?.join(' ') || '');
         if (/Short Term|Medium Term|Long Term|Agents|Summary|Ecosystem|26|28|29/.test(t)) console.log(`  role=${p.role || '-'} align=${p.align || '-'} indent=${p.indent || 0} | ${t.slice(0, 52)}`);
@@ -4123,7 +4128,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       <div
                         key={`c-${translated}-${pIdx}`}
                         className={`${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${isHeadingRole ? 'text-zinc-100 font-bold' : 'text-zinc-300 font-medium'} break-words min-w-0 ${rightWindowStart ? 'border-l border-zinc-800/20 pl-3 md:pl-5' : ''}`}
-                        style={{ paddingLeft: `${tierPad}em` }}
+                        style={{ paddingLeft: `${tierPad}em`, fontSize: para.sizeEm ? `${para.sizeEm}em` : undefined }}
                       >
                         {lineRuns.map((line, li) => (
                           <div key={li} style={isHeadingRole ? undefined : { textIndent: '-1em', paddingLeft: '1em' }}>
@@ -4248,8 +4253,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // A block-indented paragraph (definition description, block quote — para.indent>0) is a
                   // SET-OFF block: it must NOT also get the body's first-line indent (that stacked a stray
                   // 1.75em textIndent on top of the block's left padding).
-                  const paragraphStyle = (isListRole || isHeadingRole || isParagraphContinuation || (para.indent ?? 0) > 0) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
-                  if (/angry farmer|When the state finds|committed expenditure|Revenge of Nations|The study is to proceed|An attempt will be made to find/.test(para.original.join(' '))) console.log(`[flush-audit-R] flushFirstLine=${para.flushFirstLine} role=${para.role || '-'} srcFLI=${fileContext.sourceFirstLineIndent} indent=${para.indent ?? 0} textIndent=${(paragraphStyle as any).textIndent ?? 'none'} | ${para.original.join(' ').slice(0, 40)}`);
+                  // A SIZED-UP block (para.sizeEm>1 — a bold sub-head like the Dad-Bot Q&A questions) is
+                  // heading-like and must never take the body first-line indent, regardless of the source
+                  // geometry (which flips when a sub-head shares a page with a differently-margined section).
+                  const isSizedHeadingPara = !!para.sizeEm && para.sizeEm > 1;
+                  const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || (para.indent ?? 0) > 0) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
                   // A short Title-Case line that INTRODUCES an indented set-off block (its next paragraph is
                   // block-indented) is a definition-list TERM, not a section subtitle — keep its own
                   // emphasis (usually italic) instead of bolding it. (e.g. "Agentic AI" above its indented
@@ -4338,7 +4346,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // the body, blockPadEm=0) at the margin. Both keep their marker outdented with wraps
                   // tucked under the text.
                   const isRuleItem = !isHeadingRole && ((para.indent ?? 0) > 0 || !!para.flushFirstLine)
-                    && /^(?:IF:|THEN:|\d{1,2}[.)]|[a-z][.)])(?:\s|$)/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
+                    && /^(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])(?:\s|$)/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
                   // In a first-line-indent book, a set-off list "starts" like a paragraph: its top-level
                   // marker sits at the paragraph first-line-indent tier (aligned with the "W" that opens the
                   // preceding paragraph), not flush at the body margin — and the whole item hangs under that,
@@ -4347,8 +4355,26 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // their geometric gap while the list as a whole aligns with the paragraph indent. A block-
                   // style book (no first-line indent) keeps its lists flush at the margin (offset 0).
                   const listStartOffsetEm = fileContext.sourceFirstLineIndent ? 1.75 : 0;
+                  // A RIGHT-ALIGNED marker gutter (para.rightMarker, U+E020): the source right-tabs the marker
+                  // so the dots align while the marker left edges vary by width (roman i./ii./iii./iv.). Render
+                  // the marker in a fixed-width right-aligned gutter (below) and pad the body past it, instead of
+                  // the normal left-aligned hang. 2.2em fits "viii." etc.
+                  const ruleGutterEm = 2.2;
+                  const rightMarkerText = isRuleItem && para.rightMarker
+                    ? (stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, '').match(/^(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])/u)?.[0] || '')
+                    : '';
+                  // A right-aligned roman sub-list is ONE level under its bullet, and must sit CLEARLY right
+                  // of it: the bullet renders with its "•" at 0em and body at 1em (bulletHangStyle), so the
+                  // roman gutter's LEFT edge (2.5em) clears the bullet body by ~1.5em and its widest markers
+                  // ("iii."/"iv.", right-aligned) still start well right of the bullet column — reproducing
+                  // the source's ~2.5em marker step / ~3.7em body step past the bullet. NOT the geometry
+                  // block-indent (the source's absolute set-in is deep and the extra gutter double-counts);
+                  // fixed keeps every page of a page-split list identical.
                   const ruleHangStyle: React.CSSProperties | undefined =
-                    isRuleItem ? { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em + ${listStartOffsetEm}em)` } : undefined;
+                    !isRuleItem ? undefined
+                      : para.rightMarker
+                        ? { textIndent: 0, paddingLeft: `calc(2.5em + ${ruleGutterEm}em)` }
+                        : { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em + ${listStartOffsetEm}em)` };
                   // A NOTE entry HANGS: the "N" marker sits at the left margin and continuation lines
                   // indent under the citation (the source outdents the marker: marker x=89 < text x=103).
                   // The reader was instead applying its first-line indent inconsistently (some notes flush,
@@ -4369,7 +4395,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // (the label) pulls back to the margin while continuations stay at blockPadEm — hanging.
                   const dialogueHangStyle: React.CSSProperties | undefined =
                     para.hangingEntry && !isHeadingRole && blockPadEm > 0 ? { textIndent: `-${blockPadEm}em` } : undefined;
-                  if (isNotesChapter && /excellent overview of mechanistic|machine learning with imperfect|Marshall, .Timeline|Freberg, .Discovering|Kaas, .Evolution|Northcutt/.test(para.original.join(' '))) console.log(`[hang-R] noteEntry=${isNoteEntry} rule=${isRuleItem} indent=${para.indent ?? 0} bodyPad=${bodyBlockPadStyle ? JSON.stringify(bodyBlockPadStyle) : '-'} pStyle=${JSON.stringify(paragraphStyle)} | ${JSON.stringify(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, '').slice(0, 40))}`);
                   // A display block (title page, "also by" list, dedication) keeps its
                   // original right/centre alignment, captured upstream as para.align. A display
                   // block's FIRST line can lose its alignment sentinel upstream (the chapter slice
@@ -4412,10 +4437,23 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: `${para.sizeEm}em` } : {}) }}
                           >
-                            {line.map(({ sentence, sIdx, globalIndex }) => {
+                            {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
+                              // Right-aligned marker gutter: on the paragraph's FIRST sentence, emit the marker in
+                              // a fixed-width right-aligned box pulled into the left gutter (dots align) and strip
+                              // it from the body so the body left-aligns after the gutter.
+                              const renderMarker = lineIdx === 0 && sentInLine === 0 && !!rightMarkerText;
+                              // On a right-marker item, trim leading whitespace from every body sentence so the
+                              // marker→body gap is uniform. The source right-TABS the marker, so when the item's
+                              // body starts with a capital ("i.  Set…") splitIntoSentences peels "i." into its own
+                              // sentence and the NEXT sentence keeps the tab's leading spaces ("  Set…") — wider
+                              // than a lowercase item ("i. the…", one sentence, stripped). Trimming both, plus the
+                              // single space added after the gutter below, makes every item read "i. body".
+                              const bodySentence = renderMarker
+                                ? sentence.replace(/^\s*(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])(?:\s+|$)/u, '').replace(/^\s+/u, '')
+                                : (rightMarkerText ? sentence.replace(/^\s+/u, '') : sentence);
                               return (
                                 <span
                                   key={`o-${currentTranslationIdentity}-${globalIndex}-${pIdx}-${sIdx}`}
@@ -4426,7 +4464,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 	                                  onPointerDown={handleSentencePointerDown}
 	                                  onClick={(event) => handleSentenceClick(globalIndex, event)}
 	                                >
-                                  {renderInkableText(sentence, globalIndex, isAudioActive)}{' '}
+                                  {renderMarker && (
+                                    <span aria-hidden="true" style={{ display: 'inline-block', width: `${ruleGutterEm}em`, paddingRight: '0.45em', boxSizing: 'border-box', textAlign: 'right', marginLeft: `-${ruleGutterEm}em` }}>{rightMarkerText}</span>
+                                  )}
+                                  {/* A marker whose body stays on the SAME sentence ("i. the outputs…", lowercase
+                                      continuation) strips to a bare body with no leading gap; a marker split into its
+                                      own sentence ("i." | "Set…", capital) already gets a space from the {' '} join.
+                                      Add one space after the gutter in the former case so both read "i. body". */}
+                                  {renderMarker && bodySentence ? ' ' : null}
+                                  {renderInkableText(bodySentence, globalIndex, isAudioActive)}{' '}
                                 </span>
                               );
                             })}

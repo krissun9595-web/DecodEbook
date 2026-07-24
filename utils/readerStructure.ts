@@ -284,11 +284,15 @@ export const normalizeNotesReaderText = (value: string): string => {
   // chapter-scoping fail to recognise the header — so notes can't be grouped by chapter and
   // key-less footnotes can't resolve (SOURCE_REQUIRED). Strip them before any detection; the
   // headers still render bold via the reader's isNotesSectionHeadingParagraph wording rule.
-  // Range extended to U+E019: newer per-paragraph sentinels \u2014 U+E018 (flush first line) and U+E019
-  // (block quote) \u2014 also prefix a note paragraph, and a leading sentinel makes NOTE_ENTRY_MARKER_RE
-  // (which requires the marker be preceded by newline/space) fail to see "\u00ABE018\u00BB[1]\u2026", so every note
-  // collapsed into one entry (INTRODUCTION + notes 1, 2 merged). Strip the whole E010\u2013E019 block.
-  text = text.replace(/[\uE010-\uE019]/g, '');
+  // Range extended to U+E020: newer per-paragraph sentinels \u2014 U+E018 (flush first line), U+E019
+  // (block quote), U+E01B\u2013U+E01F (relative font-size TIERS) and U+E020 (right-aligned marker gutter)
+  // \u2014 also prefix a note paragraph. Notes are set SMALLER than body, so every note now carries a leading
+  // U+E01B (tiny tier) sentinel; a leading sentinel makes NOTE_ENTRY_MARKER_RE (which requires the marker be
+  // preceded by newline/space) fail to see "\u00ABE01B\u00BB[1]\u2026", so every note collapsed into one entry
+  // (INTRODUCTION + notes 1, 2 merged \u2192 SOURCE_REQUIRED). Strip the whole E010\u2013E020 block. The notes'
+  // section headers still render bold via the reader's isNotesSectionHeadingParagraph wording rule, and the
+  // note size is uniform in the notes chapter, so dropping the tier here is faithful.
+  text = text.replace(/[\uE010-\uE020]/g, '');
   // Page markers ("[[PAGE n]]") are navigation metadata, not note text. A note that spans
   // a page break carries the next page's marker inline (e.g. "…p. 22. [[PAGE 537]]"), and
   // otherwise the marker leaks to screen, so strip them before section/entry detection.
