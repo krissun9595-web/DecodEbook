@@ -1727,7 +1727,7 @@ const App: React.FC = () => {
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
       type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
-      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean }[] = [];
+      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean; hRules: { y: number; x: number; w: number }[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
 
@@ -1765,6 +1765,7 @@ const App: React.FC = () => {
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const pageHeight = page.getViewport({ scale: 1 }).height;
+        const pageWidth = page.getViewport({ scale: 1 }).width;
         // getOperatorList loads the page's fonts (so their real italic/bold names are
         // resolvable); getTextContent gives the glyph runs. Run both together.
         // Always pull marked content + struct tree: a book can be tagged ONLY in its front matter
@@ -1915,6 +1916,55 @@ const App: React.FC = () => {
               const t = chosen.map(g => g.ch).join('').replace(/^\s+|\s+$/gu, '');
               if (t) L.text = t;
             }
+            // Wrapped-destination-link resolver. A "this page"-style dest link whose anchor WRAPS across a
+            // line break has no quadPoints, no colour distinction and (untagged PDF) no struct tree — so its
+            // annotation rect is the UNION box spanning the full width of BOTH lines, and the grab above
+            // swallowed the unrelated body text on those lines ("user Valcenteu via CC BY 3.0 …"). The SAME
+            // anchor phrase appears as SINGLE-LINE dest links elsewhere on the page; use those as a per-page
+            // dictionary and split the wrapped link into two TIGHT per-line fragments — the phrase straddling
+            // the break (e.g. "this" at the top line's right edge ⇥ / ⇤ "page" at the next line's left edge).
+            // Fragment TEXT comes from the real glyphs (exact), the dictionary only VALIDATES the split.
+            const lineYs: number[] = [];
+            for (const y of [...new Set(accG.map(g => Math.round(g.y)))].sort((a, b) => b - a)) {
+              if (!lineYs.some(v => Math.abs(v - y) <= 3)) lineYs.push(y);
+            }
+            const glyphsAtLine = (ly: number) => accG.filter(g => Math.abs(g.y - ly) <= 3).sort((a, b) => a.x - b.x);
+            const destDict = [...new Set(links
+              .filter(L => L.key && !L.url && L.text && (L.rect[3] - L.rect[1]) < 20)
+              .map(L => (L.text as string).trim()))].filter(t => /\s/u.test(t));
+            if (destDict.length) {
+              const extraFrags: LinkAnn[] = [];
+              for (const L of links) {
+                if (!L.key || L.url || (L.rect[3] - L.rect[1]) < 20) continue; // only MULTI-LINE dest links
+                const covered = lineYs.filter(ly => ly >= L.rect[1] - 3 && ly <= L.rect[3] + 3).sort((a, b) => b - a);
+                if (covered.length !== 2) continue; // handle the common two-line wrap only
+                const topG = glyphsAtLine(covered[0]), botG = glyphsAtLine(covered[1]);
+                if (!topG.length || !botG.length) continue;
+                const topText = topG.map(g => g.ch).join(''), botText = botG.map(g => g.ch).join('');
+                const topTrim = topText.replace(/\s+$/u, ''), botTrim = botText.replace(/^\s+/u, '');
+                let done = false;
+                for (const A of destDict) {
+                  const toks = A.split(/\s+/u).filter(Boolean);
+                  for (let i = 1; i < toks.length && !done; i++) {
+                    const top = toks.slice(0, i).join(' '), bot = toks.slice(i).join(' ');
+                    if (!topTrim.endsWith(top) || !botTrim.startsWith(bot)) continue;
+                    const topFragG = topG.slice(topTrim.length - top.length, topTrim.length);
+                    const lead = botText.length - botTrim.length;
+                    const botFragG = botG.slice(lead, lead + bot.length);
+                    if (!topFragG.length || !botFragG.length) continue;
+                    const advs: number[] = [];
+                    for (let k = 1; k < topG.length; k++) { const d = topG[k].x - topG[k - 1].x; if (d > 0 && d < 40) advs.push(d); }
+                    const cw = advs.length ? advs.sort((a, b) => a - b)[advs.length >> 1] : 6;
+                    const yTop = topFragG[0].y, yBot = botFragG[0].y;
+                    L.rect = [topFragG[0].x - 1, yTop - 3, topFragG[topFragG.length - 1].x + cw, yTop + 11];
+                    L.text = topFragG.map(g => g.ch).join('');
+                    extraFrags.push({ rect: [botFragG[0].x - 1, yBot - 3, botFragG[botFragG.length - 1].x + cw, yBot + 11], key: L.key, text: botFragG.map(g => g.ch).join('') });
+                    done = true;
+                  }
+                }
+              }
+              for (const f of extraFrags) links.push(f);
+            }
           } catch { /* op-list parse failed — fall back to the uniform estimate below */ }
         }
         // An INDEX alphabet-nav bar: a row of standalone single uppercase letters (A B C … Z), each a
@@ -1931,6 +1981,8 @@ const App: React.FC = () => {
         // rule/underline/icon. Matched to their text lines and injected as "•" glyphs below, they flow
         // through the same isBulletParagraph path as text-glyph / EPUB <ul> bullets.
         const vectorBullets: { cx: number; cy: number; size: number }[] = [];
+        // Decorative horizontal RULES (epigraph/section dividers) drawn as thin filled rects.
+        const hRules: { y: number; x: number; w: number }[] = [];
         if (opList) {
           try {
             const OPS = pdfjsLib.OPS;
@@ -1938,6 +1990,7 @@ const App: React.FC = () => {
             const apply = (m: number[], px: number, py: number): number[] => [m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]];
             let ctm = [1, 0, 0, 1, 0, 0]; const gstack: number[][] = [];
             const dots: { cx: number; cy: number; size: number }[] = [];
+            const ruleCands: { y: number; x: number; w: number }[] = [];
             for (let i = 0; i < opList.fnArray.length; i++) {
               const fn = opList.fnArray[i]; const a = opList.argsArray[i];
               if (fn === OPS.save) gstack.push(ctm.slice());
@@ -1948,6 +2001,10 @@ const App: React.FC = () => {
                 if (!FILL_OP.has(op) || !mm) continue; // only FILLED paths; a bullet is a filled dot, not a stroke/clip
                 const [x0, y0] = apply(ctm, mm[0], mm[1]); const [x1, y1] = apply(ctm, mm[2], mm[3]);
                 const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+                // A decorative horizontal RULE (epigraph/section divider): thin and spans most of the text
+                // column. Narrow table/chart cell rules (< 0.55 page width) are excluded here; grid-like
+                // clusters are dropped below, so only genuine content dividers survive.
+                if (h <= 2 && w >= pageWidth * 0.55) { ruleCands.push({ y: (y0 + y1) / 2, x: Math.min(x0, x1), w }); continue; }
                 // A bullet dot is SMALL and roughly SQUARE (a filled circle/square). This excludes the
                 // page-clip rect, wide rules/underlines (w ≫ h), and figures (large either side).
                 if (w < 1.5 || h < 1.5 || w > 12 || h > 12 || Math.abs(w - h) > Math.max(w, h) * 0.5) continue;
@@ -1957,6 +2014,16 @@ const App: React.FC = () => {
             // Keep only dots that form a COLUMN — ≥2 dots sharing an x (±2pt). A real list hangs its
             // markers at one indent; a single isolated filled dot is more likely a decorative mark.
             for (const d of dots) if (dots.filter(o => Math.abs(o.cx - d.cx) <= 2).length >= 2) vectorBullets.push(d);
+            // A LINK UNDERLINE is a thin filled rect drawn right under a hyperlink (a citation URL) — NOT a
+            // decorative divider. It sits at the link annotation's baseline and spans its width, so it slips
+            // through the width gate above (a wide URL underline is >0.55×page). Drop any rule that coincides
+            // with a link annotation, else a notes page of URL citations injects stray U+E021 divider marks
+            // into the text (Singularity p489's "Me Too? ////").
+            const coincidesWithLink = (r: { y: number; x: number; w: number }): boolean =>
+              links.some(l => { const [lx1, ly1, lx2, ly2] = l.rect; return r.y >= ly1 - 4 && r.y <= ly2 + 3 && Math.min(r.x + r.w, lx2) - Math.max(r.x, lx1) > (lx2 - lx1) * 0.5; });
+            // Keep only ISOLATED rules — a table/chart grid stacks ≥3 within a small y-span; a content
+            // divider stands alone (or a pair bracketing an epigraph, ≥50pt apart).
+            for (const r of ruleCands) if (ruleCands.filter(o => Math.abs(o.y - r.y) <= 50).length < 3 && !coincidesWithLink(r)) hRules.push(r);
           } catch { /* best-effort — a parse failure just means no vector bullets are detected on this page */ }
         }
         type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean; mcRole?: string; paraOrder?: number };
@@ -2166,19 +2233,37 @@ const App: React.FC = () => {
           // truncated the highlighted link at the first divergence ("http://", or up to "%2C"). A URL
           // contains no spaces, so the displayed link is the contiguous non-space run from the scheme;
           // it ends at the first whitespace (the citation/sentence that the loose link box also covers).
+          // The URL is set in ONE consistent font from its scheme; the citation that follows it (a report
+          // TITLE, an author) is set in a DIFFERENT font/italic. When the URL tail is glued to that citation
+          // with NO space ("…campaignid=DemocracyIndex2011;Democracy Index 2012…") the whitespace test never
+          // fires, so the run ran deep into the italic title ("*Democracy*](url)" — a malformed link). End the
+          // run at the emphasis change (italic or font family) so the link stops at the URL. Only applies when
+          // the source actually carries emphasis (opaque font subsets that lose it are simply unaffected).
+          // Use ITALIC only (not font family): a long URL can legitimately span two opaque font subsets,
+          // so a family change is NOT a safe boundary, but a regular-font URL giving way to an ITALIC title is.
+          const anchorGlyph = gs[anchorIdx];
+          const emphasisBreak = (g: PdfGlyph): boolean => !!anchorGlyph && g.italic !== anchorGlyph.italic;
+          // The SPACE between a URL and the citation glued after it is often NOT a tagged glyph — pdf.js
+          // gives one wide link box and the space falls outside the URL run — so the whitespace test above
+          // never fires and the link ran through "…a16-bionic; Nick Guy and Roderick Scott, “Which i".
+          // A URL contains no spaces, so a same-line x-GAP to the next tagged glyph marks its end. (Only
+          // same-line: the wrap seam between the URL's two lines is contiguous and must NOT break.)
+          const gapBreak = (a: PdfGlyph, b: PdfGlyph): boolean =>
+            Math.abs(a.y - b.y) < Math.max(a.h, 1) * 0.5 && (b.x - (a.x + a.w)) > Math.max(a.h, 1) * 0.2;
           let ended = false;
           for (let i = anchorIdx; i < gs.length; i++) {
             if (ended) { urlKeep.set(gs[i], 0); continue; }
             const s = gs[i].str;
             const wsAt = s.search(/\s/u);
             let keep = wsAt < 0 ? s.length : wsAt;
+            const nextBreaks = gs[i + 1] ? (emphasisBreak(gs[i + 1]) || gapBreak(gs[i], gs[i + 1])) : false;
             // Trim trailing sentence punctuation from the glyph that ENDS the URL run — a period,
             // comma, or semicolon glued after the address ("…rocket-man.", "…html.") is the
             // surrounding sentence, not the URL. Only these three, which effectively never end a URL;
             // query/fragment/path chars (? & = # / - _ ~ and parens) are left intact.
-            if (wsAt >= 0 || i === gs.length - 1) { while (keep > 0 && /[.,;]/u.test(s[keep - 1])) keep--; }
+            if (wsAt >= 0 || i === gs.length - 1 || nextBreaks) { while (keep > 0 && /[.,;]/u.test(s[keep - 1])) keep--; }
             urlKeep.set(gs[i], keep);
-            if (wsAt >= 0) ended = true;
+            if (wsAt >= 0 || nextBreaks) ended = true;
           }
         }
         // Split a glyph whose text runs past the URL — a short URL tail glued to the next
@@ -2814,7 +2899,7 @@ const App: React.FC = () => {
           allLineHeights.push(...pageLines.map(line => line.h).filter(Boolean));
           allRightEdges.push(...pageLines.map(line => line.rightX).filter(Boolean));
         }
-        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, listMarginLeft, lineGap, isListPage, indentTiers, pageHeight, pageTwoColumn });
+        pageBuffers.push({ pageNum, lines: pageLines, bodyLeft, paraLeftMargin, listMarginLeft, lineGap, isListPage, indentTiers, pageHeight, pageTwoColumn, hRules });
       }
 
       // Running head/footer removal (untagged PDFs; a tagged PDF already dropped its Artifact
@@ -2963,7 +3048,12 @@ const App: React.FC = () => {
       // Without this, two chapter-end footnotes with a small gap join into one paragraph.
       const startsFootnoteEntry = (line: PdfLine): boolean => {
         if (bodyFont > 0 && line.h >= bodyFont * 0.92) return false;
-        if (/^\s*\[[^\]\n]+\]\(#[^)\n]*\)/.test(line.text)) return true;
+        // A footnote entry opens with a NOTE MARKER — a number or roman numeral — linked to its anchor.
+        // The anchor must be that marker, NOT arbitrary descriptive text: a "this page"-style dest link
+        // wrapping to a line start ("[page](#pdffn…) FDA photo…") is body text, and without this gate it
+        // split the credits paragraph at the wrap.
+        const leadLink = line.text.match(/^\s*\[([^\]\n]+)\]\(#[^)\n]*\)/);
+        if (leadLink && /^(?:\d{1,3}|[ivxlcdm]{1,4})$/iu.test(leadLink[1].trim())) return true;
         const m = line.text.match(/^\s*([ivxlcdm]{1,4}|\d{1,3})[.)]\s/iu);
         return Boolean(m && markerLabelOf(m[1]));
       };
@@ -3373,7 +3463,14 @@ const App: React.FC = () => {
               const last = entry[entry.length - 1];
               const carryover = entry[0].x > groupLeft + 4;
               const hang = !carryover && hangNbsp > 0 ? '' + ' '.repeat(hangNbsp) : '';
-              blocks.push({ text: hang + etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover, topY: Math.max(...entry.map(l => l.pageY)), bodyX: mode((entry.length > 1 ? entry.slice(1) : entry).map(l => Math.round(l.x))) });
+              // Carry the same relative FONT-SIZE tier the prose path applies (sizeSentinel below), so a
+              // small-print hanging list — the copyright page's CIP block — matches the size of the
+              // surrounding fine print instead of reverting to the default body size.
+              const entryH = mode(entry.map(l => Math.round(l.h))) || bodyFont;
+              const hangSizeRatio = bodyFont > 0 ? entryH / bodyFont : 1;
+              const hangSizeSentinel = hangSizeRatio >= 1.6 ? '' : hangSizeRatio >= 1.25 ? '' : hangSizeRatio > 1.08 ? ''
+                : hangSizeRatio < 0.80 ? '' : hangSizeRatio < 0.90 ? '' : '';
+              blocks.push({ text: hangSizeSentinel + hang + etext, role: 'body', firstX: entry[0].x, firstRightX: entry[0].rightX, lastRightX: last.rightX, lastText: last.text, carryover, topY: Math.max(...entry.map(l => l.pageY)), bodyX: mode((entry.length > 1 ? entry.slice(1) : entry).map(l => Math.round(l.x))) });
             }
             entry = [];
           };
@@ -3392,6 +3489,19 @@ const App: React.FC = () => {
         // labeled hanging list (detectLabeledHangingList) — the same proven gate, just fed the whole run.
         const hangingRegionEnd = (start: number): number => {
           if (isHeadingLine(lines[start])) return start - 1;
+          // A leading NON-LABEL line set off by a LARGER gap above the labeled list is the list's HEADER
+          // (e.g. "LIBRARY OF CONGRESS CATALOGING-IN-PUBLICATION DATA" above the CIP fields), not an entry.
+          // Absorbing it made it a hanging entry (run-on) instead of a standalone line the reader could set
+          // off. Leave it out: return start-1 so it emits on its own, and the region re-detects from start+1.
+          if (start + 2 < lines.length
+            && !labelStart.test(lines[start].text.replace(/[*_~]/gu, '').trim())
+            && labelStart.test(lines[start + 1].text.replace(/[*_~]/gu, '').trim())) {
+            const gapHead = lines[start].y - lines[start + 1].y;
+            const gapNext = lines[start + 1].y - lines[start + 2].y;
+            if (gapNext > 0 && gapHead > gapNext * 1.3) {
+              return start - 1;
+            }
+          }
           let end = start;
           while (end + 1 < lines.length) {
             const a = lines[end], b = lines[end + 1];
@@ -3805,6 +3915,15 @@ const App: React.FC = () => {
           let at = blocks.findIndex(b => (b.topY ?? -Infinity) < f.yTop);
           if (at < 0) at = blocks.length;
           blocks.splice(at, 0, fb);
+        }
+        // Decorative horizontal RULES (epigraph/section dividers) drop into the stream at their y the same
+        // way figures do. The U+E021 marker becomes its own block; the reader renders a thin grey rule
+        // (the attribution colour), and text/search/TTS consumers strip it.
+        for (const r of buf.hRules || []) {
+          const rb: EmitBlock = { text: '', role: 'body', firstX: r.x, firstRightX: r.x + r.w, lastRightX: r.x + r.w, lastText: '', topY: r.y, bodyX: r.x };
+          let at = blocks.findIndex(b => (b.topY ?? -Infinity) < r.y);
+          if (at < 0) at = blocks.length;
+          blocks.splice(at, 0, rb);
         }
 
         pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });

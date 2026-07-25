@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v56-sized-subhead-flush';
+const CHAPTER_TEXT_CACHE_VERSION = 'v101-url-gapbreak';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -247,6 +247,9 @@ interface ParagraphData {
     // key bookId + id). Rendered as an inline image; carries no sentences (invisible to TTS/
     // translation/highlighting).
     figure?: { id: string };
+    // A decorative horizontal rule from the source (epigraph/section divider). Carries no sentences;
+    // rendered as a thin centred line in the attribution grey.
+    divider?: boolean;
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1075,6 +1078,13 @@ const buildPageSentenceData = (pageText: string): {
     if (!/^\s*[-]*\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
       rawPText = rawPText.replace(/\[\[FIG\s+[^\]]+\]\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
       if (!rawPText) return;
+    }
+    // A decorative horizontal RULE (U+E021) — an epigraph/section divider from the source. Its own
+    // paragraph with no sentences (invisible to TTS/translation/search); the renderer draws a thin grey
+    // line in the attribution colour.
+    if (/^\s*\s*$/u.test(rawPText.replace(/\[\[PAGE\s+\d+\]\]/gi, ''))) {
+      paragraphData.push({ original: [], translated: [], divider: true });
+      return;
     }
     // An extracted figure marker "[[FIG id]]" — its own paragraph. No sentences (so it's invisible to
     // TTS/translation/highlighting); the renderer swaps it for the cached image.
@@ -3286,7 +3296,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // (mt-0.5 mb-4 from the 'attribution' segment style); adding paragraph-level
     // mt-2/mb-5 on top stacked them, leaving too much space above and below. Let
     // the segment's own margins stand so the author sits snugly under its quote.
-    if (looksLikeAttributionLine(clean)) return '';
+    // An epigraph/quote attribution ("—MATTHEW 10:26") sits TIGHT under its quote (its own segment
+    // carries a small top margin) but closes the set-off unit — give it a break BELOW so the body that
+    // resumes reads as a new content type, not a run-on.
+    if (looksLikeAttributionLine(clean)) return 'mb-8';
     if (looksLikeSignatureLine(clean)) return 'mt-1';
     return '';
   };
@@ -4120,6 +4133,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const renderCell = (pIdx: number, translated: boolean, rightWindowStart: boolean): React.ReactNode => {
                     if (pIdx >= N) return <div key={`c-${translated}-${pIdx}`} />;
                     const para = paragraphData[pIdx];
+                    // A decorative divider (epigraph/section rule) is full-width content with no sentences —
+                    // render the thin grey line in its cell too, so split/two-column view shows it instead of
+                    // dropping it as an empty cell (the same line the single-window flow draws).
+                    if (para.divider) return <div key={`c-${translated}-${pIdx}`} className="flex justify-center my-6"><span className="block h-px w-full bg-zinc-500/60" /></div>;
                     if (!para.original.length) return <div key={`c-${translated}-${pIdx}`} />;
                     const isHeadingRole = para.role === 'heading';
                     const tierPad = para.indent && !isHeadingRole ? (para.indent / 4) * 1.5 : 0;
@@ -4164,6 +4181,31 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
+                  // A decorative horizontal rule from the source (epigraph/section divider): a thin centred
+                  // line in the attribution grey, with room above and below so it reads as a content break.
+                  if (para.divider) {
+                    // A divider HUGS the epigraph it brackets and gives the body room (source: rule→quote ~16px,
+                    // attribution→rule ~8px, rule→body ~30px). Detect top vs bottom by which side the block-quote
+                    // is on: a TOP rule (quote follows) → room above (body), tight below; a BOTTOM rule (epigraph
+                    // precedes) → tight above (attribution), room below. (-mt cancels the attribution's margin.)
+                    const prevBq = !!paragraphData[pIdx - 1]?.blockQuote;
+                    const nextBq = !!paragraphData[pIdx + 1]?.blockQuote;
+                    // The attribution paragraph wrapper carries NO bottom margin in either view (the attribution
+                    // segment's mb-4 doesn't propagate to it), so a bottom rule needs a small POSITIVE top margin
+                    // (mt-2 = 8px) to match the source's attribution→rule gap — same in split and single.
+                    const dm = nextBq && !prevBq ? 'mt-6 mb-4' : prevBq && !nextBq ? 'mt-2 mb-6' : 'my-5';
+                    // Split view: a SEPARATE rule inside each layer (original left, translation right) with the
+                    // centre gutter between them — never one line spanning both windows. Single view: a rule
+                    // that scales to the text-column width, not a fixed length.
+                    return viewMode === 'split' ? (
+                      <div key={`div-${pIdx}`} className={`w-full flex ${dm} items-center`}>
+                        <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20"><span className="block h-px w-full bg-zinc-500/60" /></div>
+                        <div className="w-1/2 pl-2 md:pl-6"><span className="block h-px w-full bg-zinc-500/60" /></div>
+                      </div>
+                    ) : (
+                      <div key={`div-${pIdx}`} className={`w-full flex justify-center ${dm}`}><span className="block h-px w-full max-w-3xl bg-zinc-500/60" /></div>
+                    );
+                  }
                   // An extracted PDF figure — inline image loaded from the cache.
                   if (para.figure) {
                     // The figure's number + name live in its caption (the manifest has neither); the caption is
@@ -4262,7 +4304,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // block-indented) is a definition-list TERM, not a section subtitle — keep its own
                   // emphasis (usually italic) instead of bolding it. (e.g. "Agentic AI" above its indented
                   // definition, which isPlainSubtitleParagraph would otherwise promote to a bold heading.)
-                  const introducesIndentedBlock = (paragraphData[pIdx + 1]?.indent || 0) > 0;
+                  // EXCEPT an ALL-CAPS line ("LIBRARY OF CONGRESS CATALOGING-IN-PUBLICATION DATA" above the
+                  // indented CIP fields): that's a SECTION HEADER, never a definition term — a def-term is
+                  // Title-Case/has lowercase. Keep it a bold, set-off subtitle even though a list follows.
+                  const paraHeaderFlat = stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim();
+                  const isAllCapsSectionHeader = para.original.length === 1 && /\p{Lu}/u.test(paraHeaderFlat)
+                    && !/\p{Ll}/u.test(paraHeaderFlat) && isPlainSubtitleParagraph(para.original);
+                  const introducesIndentedBlock = (paragraphData[pIdx + 1]?.indent || 0) > 0 && !isAllCapsSectionHeader;
                   // An email/memo header field ("From:", "Subject:", …) is regular-weight body text, not a
                   // heading — keep the generic subtitle/heading heuristics from bolding "From: Elon Musk".
                   const isEmailHeader = isEmailHeaderLine(para.original);
@@ -4272,9 +4320,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // explicit top margin to reinstate that blank line on the first body paragraph.
                   const followsEmailHeader = !isEmailHeader && pIdx > 0
                     && isEmailHeaderLine(paragraphData[pIdx - 1]?.original || []);
+                  // A sign-off / signature block at the end of a foreword or letter — the author's name, a
+                  // dateline and a place ("Peter Thiel" / "January 6, 2020" / "Los Angeles") — stacks as tight,
+                  // regular-weight lines in the source. Two of them ("Peter Thiel", "Los Angeles") are two
+                  // capitalised words, which isPlainSubtitleParagraph would otherwise promote to bold section
+                  // subtitles with a big gap. Detect the block so it renders un-bold and tight, set off from the
+                  // body only above its first line. (A genuine name heading keeps para.role==='heading'.)
+                  const paraSignatureText = para.original.length === 1
+                    ? stripInlineFormatSyntax(para.original[0]).replace(/\s+/g, ' ').trim() : '';
+                  const isSignatureLine = !isHeadingRole && !isAllCapsSectionHeader && !!paraSignatureText && looksLikeSignatureLine(paraSignatureText);
+                  const prevSigPara = paragraphData[pIdx - 1];
+                  const prevIsSignatureLine = !!prevSigPara && prevSigPara.original?.length === 1
+                    && looksLikeSignatureLine(stripInlineFormatSyntax(prevSigPara.original[0]).replace(/\s+/g, ' ').trim());
                   const paragraphTextClass = !isListRole && !isHeadingRole && (introducesIndentedBlock || isEmailHeader)
                     ? 'text-zinc-300 font-medium'
-                    : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || isPlainSubtitleParagraph(para.original))
+                    : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || (isPlainSubtitleParagraph(para.original) && !isSignatureLine))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';
                   const hasParagraphTranslation = para.original.some((_, sIdx) => {
@@ -4309,7 +4369,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // block quote's right edge equal to the body's — no visible right inset. Fold the gutter in
                   // so the quote sits INSIDE it, matching the left inset. Single view has no gutter (the text
                   // div is max-w-3xl), so a plain em there.
-                  const blockPadEm = ((para.indent ?? 0) / 4) * 1.5;
+                  // A right-aligned attribution sits flush at the text margin in the source — regardless of how
+                  // wide or narrow its quote is (a one-line quote and a long wrapped one both take an attribution
+                  // at the same right margin). Its own para.indent reflects only its short right-shifted position,
+                  // which the block-quote's symmetric padding would turn into a large right inset, pushing the
+                  // credit well inside the margin. Zero it so the attribution hugs the content margin like the source.
+                  let effectiveIndent = para.indent ?? 0;
+                  if (para.blockQuote && looksLikeAttributionLine(stripInlineFormatSyntax((para.original ?? []).join(' ')).replace(/\s+/g, ' ').trim())) {
+                    effectiveIndent = 0;
+                  }
+                  const blockPadEm = (effectiveIndent / 4) * 1.5;
                   const bodyBlockPadStyle = !isIndexChapter && !isHeadingRole && para.indent
                     ? {
                         paddingLeft: `${blockPadEm}em`,
@@ -4430,14 +4499,39 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // A definition-list term that introduces an indented block is not a section
                         // subtitle — don't give it the subtitle's big top margin (an unwanted blank line
                         // above e.g. "Agentic AI").
-                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : paragraphSpacingClassFor(lineText);
+                        // A set-off quotation / epigraph (U+E019 block quote) is a CONTENT-TYPE change: give it a
+                        // clear break above so it doesn't read as continuous body (the source leaves ~2 line-
+                        // heights; a first-line-indent book otherwise spaces it like any paragraph). Its
+                        // attribution keeps the break BELOW (mb-8 via paragraphSpacingClassFor) so the quote+
+                        // credit read as one unit with body space on both sides.
+                        // When the source draws a divider around the epigraph, the divider block already
+                        // provides the break — don't ALSO add the fallback mt-8/mb-8 (which would double the
+                        // gap). Only apply the spacing fallback when there's no adjacent divider.
+                        const prevIsDivider = !!paragraphData[pIdx - 1]?.divider;
+                        const nextIsDivider = !!paragraphData[pIdx + 1]?.divider;
+                        // The mt-8 set-off break belongs at the START of a block-quote run only. When the previous
+                        // paragraph is itself a block quote, this one is a CONTINUATION (a wrapped multi-paragraph
+                        // quotation, or the items of an indented rule list like MYCIN's "IF: / 1. / 2. / … / THEN:")
+                        // — it must flow tight, not open a 32px gap before every item.
+                        const prevIsBlockQuote = !!paragraphData[pIdx - 1]?.blockQuote;
+                        const isAttrLine = looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim());
+                        // The attribution ("—MATTHEW 10:26") is itself inside the block-quote (bq=1), so exclude
+                        // it from the mt-8 break — it sits TIGHT under its quote, not a paragraph-gap below it.
+                        // When a divider follows the attribution, cancel the attribution segment's own mb-4 with
+                        // -mb-4 so only the divider's small top margin (mt-2 ≈ 8px) sets the attribution→rule gap,
+                        // matching the source. (Without this the mb-4 stacks on top and reads too wide.)
+                        // A bullet list item is never a set-off quotation, even when the extraction flakily tags
+                        // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
+                        // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
+                        // instead of opening a 32px gap before the mis-tagged items.
+                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? 'mt-8' : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
-                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: `${para.sizeEm}em` } : {}) }}
+                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: `${para.sizeEm}em` } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -4460,7 +4554,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                   id={globalIndex >= 0 ? `original-sent-${globalIndex}` : undefined}
 	                                  data-source="Original_Layer"
 	                                  data-sentence-index={globalIndex}
-	                                  className={`transition-all duration-300 px-[2px] ${isAudioActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
+	                                  className={`transition-all duration-300 px-[2px] ${isAttrLine ? 'inline-block align-top' : ''} ${isAudioActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
 	                                  onPointerDown={handleSentencePointerDown}
 	                                  onClick={(event) => handleSentenceClick(globalIndex, event)}
 	                                >
@@ -4479,8 +4573,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           </div>
                           {viewMode === 'split' && (
                             <div
-                              className={`w-1/2 pl-2 md:pl-6 ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
-                              style={paragraphStyle}
+                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
+                              style={{ ...paragraphStyle, ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
@@ -4507,7 +4601,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       key={`t-${currentTranslationIdentity}-${globalIndex}-${pIdx}-${sIdx}`}
 	                                      data-source="Translated_Layer"
 	                                      data-sentence-index={globalIndex}
-	                                      className={`transition-all duration-300 px-[2px] ${isActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
+	                                      className={`transition-all duration-300 px-[2px] ${isAttrLine ? 'inline-block align-top' : ''} ${isActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
 	                                      onPointerDown={handleSentencePointerDown}
 	                                      onClick={(event) => handleSentenceClick(globalIndex, event)}
 	                                    >
