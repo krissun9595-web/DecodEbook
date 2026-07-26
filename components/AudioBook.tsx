@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v101-url-gapbreak';
+const CHAPTER_TEXT_CACHE_VERSION = 'v108-smallcaps-heading';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1110,7 +1110,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[\uE010-\uE013\uE018-\uE020]+/);
+    const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
@@ -3189,6 +3189,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
 
   const readerTextClass = `${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`;
+  // The size TIER (para.sizeEm) must scale off the BODY text size, not the browser-default 16px parent that a
+  // bare `em` resolves against — else a 1.25em section head is 1.25*16=20px while body is 14px (=1.43x, not
+  // 1.25x). Multiply by the actual body px so the tier is a faithful multiple of body across all text sizes.
+  const bodyPx = ({ sm: 14, base: 16, lg: 18, xl: 22 } as Record<string, number>)[settings.textSize] ?? 16;
+  const sizeEmPx = (em?: number) => (em ? `${em * bodyPx}px` : undefined);
   const noIndentStyle: React.CSSProperties = { textIndent: 0, paddingLeft: 0, marginLeft: 0 };
   const noTextIndentStyle: React.CSSProperties = { textIndent: 0, marginLeft: 0 };
   const bodyParagraphStyle: React.CSSProperties = { textIndent: '1.75em', paddingLeft: 0, marginLeft: 0 };
@@ -4145,7 +4150,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       <div
                         key={`c-${translated}-${pIdx}`}
                         className={`${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${isHeadingRole ? 'text-zinc-100 font-bold' : 'text-zinc-300 font-medium'} break-words min-w-0 ${rightWindowStart ? 'border-l border-zinc-800/20 pl-3 md:pl-5' : ''}`}
-                        style={{ paddingLeft: `${tierPad}em`, fontSize: para.sizeEm ? `${para.sizeEm}em` : undefined }}
+                        style={{ paddingLeft: `${tierPad}em`, fontSize: sizeEmPx(para.sizeEm) }}
                       >
                         {lineRuns.map((line, li) => (
                           <div key={li} style={isHeadingRole ? undefined : { textIndent: '-1em', paddingLeft: '1em' }}>
@@ -4514,6 +4519,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // quotation, or the items of an indented rule list like MYCIN's "IF: / 1. / 2. / … / THEN:")
                         // — it must flow tight, not open a 32px gap before every item.
                         const prevIsBlockQuote = !!paragraphData[pIdx - 1]?.blockQuote;
+                        // A multi-line heading (chapter № / title / deck) is emitted as consecutive heading
+                        // paragraphs. The first opens the mt-8 chapter-top break; the rest stack TIGHT under it
+                        // (mt-1) so the number/title/deck read as one cohesive heading block, not three gaps.
+                        const prevIsHeading = paragraphData[pIdx - 1]?.role === 'heading';
                         const isAttrLine = looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim());
                         // The attribution ("—MATTHEW 10:26") is itself inside the block-quote (bq=1), so exclude
                         // it from the mt-8 break — it sits TIGHT under its quote, not a paragraph-gap below it.
@@ -4524,14 +4533,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? 'mt-8 mb-3' : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? 'mt-8' : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? 'mt-8' : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: `${para.sizeEm}em` } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;

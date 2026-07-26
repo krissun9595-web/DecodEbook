@@ -524,7 +524,7 @@
 //       height vs the document body size, quantized to 5 tiers with a deadband around 1.0 (body untagged).
 //       The reader renders it as an em-multiple of the base size, reproducing the source's size hierarchy
 //       (figure title/subtitle, sub-heads, captions, metadata) instead of flattening everything to body size.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v169-url-gapbreak';
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v175-smallcaps-sizechange';
 
 // A PDF's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored

@@ -761,6 +761,7 @@ const App: React.FC = () => {
       let opfDir = '';
       let bodyStartFull: string | undefined; // OPF <guide> type="text" — where the reading body begins
       let coverFull: string | undefined;     // OPF <guide> type="cover" (or a cover-image page)
+      let coverImageKey: string | undefined; // OPF cover IMAGE (properties="cover-image" / <meta name=cover>) — book metadata, not inline content
 
       if (opfPath) {
           // Robust EPUB Parsing via OPF Spine
@@ -779,8 +780,14 @@ const App: React.FC = () => {
                   manifestMeta[id] = { href, properties, mediaType };
                   if (/\bnav\b/i.test(properties)) navFullPath = resolveZip(href, opfDir);
                   if (/ncx/i.test(mediaType) || /\.ncx$/i.test(href)) ncxFullPath = resolveZip(href, opfDir);
+                  if (/\bcover-image\b/i.test(properties)) coverImageKey = resolveZip(href, opfDir);
               }
           });
+          // EPUB2 cover convention: <meta name="cover" content="<item-id>"> points at the cover image item.
+          if (!coverImageKey) {
+              const cid = Array.from(opfDoc.getElementsByTagName('meta')).find(m => (m.getAttribute('name') || '').toLowerCase() === 'cover')?.getAttribute('content');
+              if (cid && manifestMeta[cid] && /^image\//i.test(manifestMeta[cid].mediaType)) coverImageKey = resolveZip(manifestMeta[cid].href, opfDir);
+          }
 
           // 2. Get spine order (idref); the NCX may also be pointed at by <spine toc="...">.
           const spineIds = Array.from(opfDoc.getElementsByTagName("itemref"))
@@ -861,6 +868,7 @@ const App: React.FC = () => {
         return null;
       };
       const cssBoxLeftEm: Record<string, { m: number; p: number; ti: number }> = {}; // class → left margin/padding/text-indent (em)
+      const cssFontRaw: Record<string, string> = {}; // class → raw font-size value (for the U+E01B-E01F size tier)
       for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
         try {
           const css = await zip.files[key].async('string');
@@ -874,7 +882,8 @@ const App: React.FC = () => {
             const li = leftIndentPx(rule[2]);
             const mE = sideLeftEm(rule[2], 'margin'), pE = sideLeftEm(rule[2], 'padding');
             const tiM = /text-indent\s*:\s*([^;}]+)/i.exec(rule[2]); const tiE = tiM ? lenToEm(tiM[1]) : null;
-            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null) continue;
+            const fsM = /font-size\s*:\s*([^;}]+)/i.exec(rule[2]); const fs = fsM ? fsM[1].trim() : null;
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
               if (am) cssAlign[c] = am[1].toLowerCase() as 'center' | 'right';
@@ -883,6 +892,7 @@ const App: React.FC = () => {
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
               if (li > 0) cssIndent[c] = Math.max(cssIndent[c] || 0, li);
               if (mE != null || pE != null || tiE != null) { const cur = cssBoxLeftEm[c] || { m: 0, p: 0, ti: 0 }; cssBoxLeftEm[c] = { m: mE ?? cur.m, p: pE ?? cur.p, ti: tiE ?? cur.ti }; }
+              if (fs) cssFontRaw[c] = fs;
             }
           }
         } catch { /* skip an unreadable stylesheet */ }
@@ -952,6 +962,50 @@ const App: React.FC = () => {
         if (bold) return `**${text}**`;
         if (italic) return `*${text}*`;
         return text;
+      };
+
+      // FONT-SIZE tier (mirrors PDF's U+E01B–E01F). Resolve an element's CSS font-size to an absolute em
+      // (relative to the 16px root), compounding relative units up the cascade, then compare to THIS
+      // document's body base; emit the reader's size sentinel when a block is clearly larger (sub-head) or
+      // smaller (caption/fine-print). EPUB font-size is authoritative CSS — unlike the PDF geometry guess.
+      // The reader's 0.90–1.08 dead-zone leaves ordinary body text untiered even if the baseline is a touch off.
+      const cssFontSizeOf = (el: Element): string | null => {
+        const inline = (el as HTMLElement).style?.fontSize;
+        if (inline) return inline;
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssFontRaw[c]) return cssFontRaw[c];
+        return null;
+      };
+      const UA_HEADING_EM: Record<string, number> = { h1: 2, h2: 1.5, h3: 1.17, h4: 1, h5: 0.83, h6: 0.67 };
+      const resolveFontEm = (el: Element | null, depth = 0): number => {
+        if (!el || depth > 10) return 1;
+        const parentEm = () => resolveFontEm(el.parentElement, depth + 1);
+        const raw = cssFontSizeOf(el);
+        if (raw == null) {
+          // A heading with no explicit CSS size keeps the browser default for its level.
+          const tag = el.tagName?.toLowerCase();
+          return tag && UA_HEADING_EM[tag] !== undefined ? UA_HEADING_EM[tag] * parentEm() : parentEm();
+        }
+        const v = raw.trim().toLowerCase();
+        let m: RegExpExecArray | null;
+        if ((m = /(-?[\d.]+)px/.exec(v))) return (parseFloat(m[1]) || 16) / 16;
+        if ((m = /(-?[\d.]+)pt/.exec(v))) return ((parseFloat(m[1]) || 12) * 4 / 3) / 16;
+        if ((m = /(-?[\d.]+)rem/.exec(v))) return parseFloat(m[1]) || 1;
+        if ((m = /(-?[\d.]+)em/.exec(v))) return (parseFloat(m[1]) || 1) * parentEm();
+        if ((m = /(-?[\d.]+)%/.exec(v))) return ((parseFloat(m[1]) || 100) / 100) * parentEm();
+        const kw: Record<string, number> = { 'xx-small': 0.6, 'x-small': 0.75, small: 0.89, medium: 1, large: 1.2, 'x-large': 1.5, 'xx-large': 2 };
+        if (kw[v] !== undefined) return kw[v];
+        if (v.includes('smaller')) return 0.83 * parentEm();
+        if (v.includes('larger')) return 1.2 * parentEm();
+        return parentEm();
+      };
+      let currentBodyEm = 1; // this document's base font-size (set per spine file before the walk)
+      const sizeTierSentinel = (el: Element): string => {
+        const ratio = currentBodyEm > 0 ? resolveFontEm(el) / currentBodyEm : 1;
+        // ENLARGE only (headings / sub-heads). Do NOT emit the small tiers (E01B/E01C): EPUB SECTION
+        // headings are commonly small-caps <p> blocks with a deliberately SMALL font-size + letter-spacing;
+        // the reader flattens small-caps, so reading that as fine-print would render section titles tiny
+        // (Sovereign's "PREMONITIONS"). Mis-shrunk small-caps headings are worse than a caption not shrinking.
+        return ratio >= 1.6 ? String.fromCharCode(0xE01F) : ratio >= 1.25 ? String.fromCharCode(0xE01E) : ratio > 1.08 ? String.fromCharCode(0xE01D) : '';
       };
 
       // Heading anchors from the publisher's TOC: any element the nav/NCX points at via "#fragment" is a
@@ -1074,6 +1128,9 @@ const App: React.FC = () => {
         if (tag === 'img' || tag === 'image') {
           const src = element.getAttribute('src') || element.getAttribute('xlink:href') || element.getAttribute('href') || '';
           const full = src ? resolveZip(src, baseDir) : undefined;
+          // The cover IMAGE is book metadata (like a PDF cover), not inline reading content — never emit it
+          // as an inline figure, so the cover page renders clean (no "figure unavailable" placeholder).
+          if (full && coverImageKey && full === coverImageKey) return '';
           if (full && /\.(jpe?g|png|gif|webp|svg)$/i.test(full)) {
             const id = `epub${++figSeq}`;
             figSrc.set(id, full);
@@ -1121,7 +1178,25 @@ const App: React.FC = () => {
         // as the reader styles a heading as a whole (matches the PDF heading path).
         if (/^h[1-6]$/.test(tag)) {
           const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
-          return clean ? `\n\n${clean}\n\n` : '';
+          if (!clean) return '';
+          const _lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+          const _h1em = resolveFontEm(element);
+          const _tierOf = (em: number) => { const r = currentBodyEm > 0 ? em / currentBodyEm : 1; return r >= 1.6 ? String.fromCharCode(0xE01F) : r >= 1.25 ? String.fromCharCode(0xE01E) : r > 1.08 ? String.fromCharCode(0xE01D) : ''; };
+          // PRINCIPLE FIRST — the file's OWN size signal wins: read each display:block child's CSS font-size
+          // (a chapter heading's title/deck are styled spans). If the heading differentiates its lines' sizes
+          // itself, honour them per line and skip the heuristic below.
+          const _kidEms = Array.from(element.children).filter(c => isBlockChild(c)).map(c => resolveFontEm(c));
+          const _multiSized = _kidEms.some(e => Math.abs(e - _h1em) >= 0.02) || _kidEms.some((e, k) => k > 0 && Math.abs(e - _kidEms[0]) >= 0.02);
+          if (_multiSized && (_lines.length === _kidEms.length || _lines.length === _kidEms.length + 1)) {
+            const _ems = _lines.length === _kidEms.length ? _kidEms : [_h1em, ..._kidEms];
+            return '\n\n' + _lines.map((l, k) => _tierOf(_ems[k]) + SENT_HEADING + l).join('\n\n') + '\n\n';
+          }
+          // FLAT — the CSS gives the whole heading ONE font-size (a chapter <h1> stacks number / title / deck
+          // all at ~2em; the deck only LOOKS bigger via a distinct sans font, which the single-font reader
+          // can't reproduce). Render every line at the heading's OWN tier — a uniform chapter block (all
+          // 1.5em) that stays larger than section headings (1.25em) and is faithful to the real font-sizes.
+          const _st = _tierOf(_h1em);
+          return '\n\n' + _lines.map(l => _st + SENT_HEADING + l).join('\n\n') + '\n\n';
         }
         if (['p', 'div', 'section', 'article'].includes(tag)) {
           // The publisher's TOC points at this styled paragraph (see navAnchorIds) → it IS a heading, so
@@ -1132,7 +1207,7 @@ const App: React.FC = () => {
           const headId = element.getAttribute('id');
           if (headId && navAnchorIds.has(headId) && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
             const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
-            if (clean) return `\n\n${SENT_HEADING}${clean}\n\n`;
+            if (clean) return `\n\n${sizeTierSentinel(element)}${SENT_HEADING}${clean}\n\n`;
           }
           const a = alignFor(element);
           const sentinel = a === 'center' ? '' : a === 'right' ? '' : '';
@@ -1143,7 +1218,7 @@ const App: React.FC = () => {
             // A <br/>'s \n is followed by the next line's leading whitespace (the source newline after
             // <br/> collapses to a space), so consume that whitespace before the label or the split misses.
             const perField = body.replace(/\n[^\S\n]*(?=(?:[*_~`]*)(?:From|To|Cc|Bcc|Date|Sent|Subject|Reply-To)\s*:\s)/gi, '\n\n');
-            return `\n\n${sentinel}${perField}\n\n`;
+            return `\n\n${sizeTierSentinel(element)}${sentinel}${perField}\n\n`;
           }
           // A Contents/TOC SUB-entry — a lone internal link whose CSS gives it a left indent (e.g.
           // Transurfing's `.ogl-zag1 { margin: 0 0 0 14px }`) sits indented under its chapter. Mirror the
@@ -1153,9 +1228,9 @@ const App: React.FC = () => {
           const indentPx = indentFor(element);
           if (indentPx >= 8 && /^\[[^\]\n]+\]\([^)\n]+\)$/.test(body.trim())) {
             const levels = Math.min(4, Math.max(1, Math.round(indentPx / 14)));
-            return `\n\n${sentinel}${' '.repeat(levels * 4)}${body}\n\n`;
+            return `\n\n${sizeTierSentinel(element)}${sentinel}${' '.repeat(levels * 4)}${body}\n\n`;
           }
-          return `\n\n${sentinel}${body}\n\n`;
+          return `\n\n${sizeTierSentinel(element)}${sentinel}${body}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -1202,6 +1277,7 @@ const App: React.FC = () => {
         // closing tags into newlines REMOVED them, which left an <h1> unclosed so it swallowed the whole
         // chapter body — and the heading handler then flattened + bolded all of it.
         const doc = parser.parseFromString(content, "text/html");
+        currentBodyEm = resolveFontEm(doc.body) || 1; // this file's base size, so the tier ratio is relative to ITS body
         const text = nodeToMarkedText(doc.body, dirOf(filename))
           .replace(/[ \t]+\n/g, '\n')
           .replace(/\n[ \t]+/g, '\n')
@@ -1726,7 +1802,7 @@ const App: React.FC = () => {
       // `y` is the reading-order coordinate (the two-column re-flow re-stamps it so the y-sort yields
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
-      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
+      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; capH?: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean; hRules: { y: number; x: number; w: number }[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
@@ -2737,6 +2813,10 @@ const App: React.FC = () => {
               rightX: Math.max(...items.map(it => it.x + (it.w || 0))),
               text: out.replace(/\s+/g, ' ').trim(),
               h: lineBodyHeight,
+              // The TALLEST glyph's font size (cap height), EXCLUDING drop caps — for a small-caps line this
+              // exceeds the char-weighted `h` (the small caps sit at a reduced em); heading detection + a
+              // heading block's size read off this so small-caps heads aren't seen as body / shrunk below it.
+              capH: (() => { const cs = items.filter(it => !it.dropCap).map(it => it.h); return cs.length ? Math.max(...cs) : group.baseH; })(),
               bold: items.filter(it => it.bold).length > items.length / 2,
               family: modeStr(items.map(it => it.family)),
               localFont: 0, // set after the document body font is known (see the windowed pass)
@@ -3021,13 +3101,33 @@ const App: React.FC = () => {
       // catches body prose on a figure-heavy page (wrong family). TOGETHER: the size-15 notes header
       // (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue (not large vs
       // the h15 body) do not. (Falls back to the size rule when no contents page / no heading family.)
-      const isHeadingLine = (line: PdfLine): boolean =>
+      const isHeadingLine = (line: PdfLine): boolean => {
+        // Measure by CAP height, not the char-weighted `h`: a SMALL-CAPS heading ("PREMONITIONS" = one tall
+        // "P" + small caps) has a small `h` and would fail the size test, so it was mis-classified as body
+        // and then shrunk below body. Its caps are heading-sized — capH catches that. Body lines' caps are
+        // body-sized, so this doesn't promote prose.
+        const ch = line.capH ?? line.h;
         // Tagged PDF: the marked-content role is authoritative — H1–H6 is a heading, anything else
         // (P, Caption, …) is NOT, regardless of font. Only fall to geometry/outline when untagged.
-        line.mcRole ? /^H[1-6]?$/u.test(line.mcRole)
-          : line.outlineHeading === true || (headingFamily
-            ? line.family === headingFamily && line.localFont > 0 && line.h >= line.localFont * 1.2
-            : (bodyFont > 0 && line.h >= bodyFont * 1.2));
+        if (line.mcRole) return /^H[1-6]?$/u.test(line.mcRole);
+        if (line.outlineHeading === true) return true;
+        // Primary rule (unchanged): a display-font heading (family learned from the contents page) when the
+        // book HAS one; otherwise the plain size rule. Uses capH so a full-caps head reads the same as before.
+        if (headingFamily
+          ? (line.family === headingFamily && line.localFont > 0 && ch >= line.localFont * 1.2)
+          : (bodyFont > 0 && ch >= bodyFont * 1.2)) return true;
+        // SMALL-CAPS section head set in the BODY font (missed by the family rule — e.g. Sovereign's
+        // "PREMONITIONS", Transurfing's chapter titles). Signature: its full caps are clearly taller than its
+        // char-weighted body height (the small caps sit at a reduced em) AND heading-sized vs body. Requiring
+        // capH >> h means a full-caps body line can't trip it (no false headings); capH excludes drop caps.
+        // GUARD: this book also sets TERMS in small caps INSIDE body prose ("…subsequent to the MIDDLE
+        // AGES."), which can wrap onto their own line. A section head is short and set off; a body phrase
+        // ENDS A CLAUSE — so a line ending in a period/comma/semicolon (± a closing quote) is prose, not a head.
+        const scText = line.text.replace(/[*_~`\s ]+$/u, '');
+        const scEndsClause = /[.,;。，；]["')”’\]]?$/u.test(scText);
+        if (!scEndsClause && bodyFont > 0 && ch >= bodyFont * 1.3 && ch >= line.h * 1.25) return true;
+        return false;
+      };
       // A line "fills the measure" if its right edge reaches the page's text right margin
       // (within ~two characters) — i.e. it wrapped rather than ending. This is the geometric
       // signal for a continuing paragraph, the one a text-only heuristic cannot see.
@@ -3668,7 +3768,12 @@ const App: React.FC = () => {
               // letter; a real display heading is longer than 2 chars, so the length gate separates them.
               const isDropInitial = (l: PdfLine): boolean =>
                 bodyFont > 0 && l.h >= bodyFont * 2.2 && l.text.replace(/[*_~`\s]/gu, '').length <= 2;
-              const sizeChanged = bodyFont > 0 && Math.abs(current.h - group[0].h) >= Math.max(2, bodyFont * 0.18)
+              // Compare CAP heights, not the char-weighted `h`: a SMALL-CAPS line ("…the MIDDLE AGES.")
+              // has a small `h` (its small caps sit at a reduced em) but its CAPS are body-sized, so it is
+              // NOT a real size change — comparing `h` wrongly split it into its own block (→ a shrink tier +
+              // reader bolding). A genuine sub-head/caption differs in CAP height too, so it still splits.
+              const _chOf = (l: PdfLine) => l.capH ?? l.h;
+              const sizeChanged = bodyFont > 0 && Math.abs(_chOf(current) - _chOf(group[0])) >= Math.max(2, bodyFont * 0.18)
                 && !isDropInitial(current) && !isDropInitial(group[0]);
               // A list marker (numbered/lettered/roman/IF-THEN) always opens a new list item — after a
               // line that ENDED a sentence OR INTRODUCED the list with a trailing colon ("The output,
@@ -3813,7 +3918,13 @@ const App: React.FC = () => {
             // geometry; compute it up front so the first-line-flush decision can use it. (nonDropLines drops
             // decorative drop-cap lines so a large initial doesn't inflate a body paragraph to a display tier.)
             const nonDropLines = group.filter(l => l.h < bodyFont * 2.2);
-            const blockH = mode((nonDropLines.length ? nonDropLines : group).map(l => Math.round(l.h))) || bodyFont;
+            // A small-caps HEADING measures small by its char-weighted height (most letters are the small-cap
+            // size), but its CAP height (tallest glyph) is the true font size. For a heading block, size off
+            // cap height so a small-caps section head ("PREMONITIONS") / chapter label lands on its heading
+            // tier instead of a shrink tier below body — matching the EPUB, which reads the <h#> CSS size.
+            // Body blocks keep the char-weighted height (a body line's cap height is body-sized anyway).
+            const heightOf = (l: PdfLine) => groupIsHeading ? Math.min(l.capH ?? l.h, bodyFont * 2.2) : l.h;
+            const blockH = mode((nonDropLines.length ? nonDropLines : group).map(l => Math.round(heightOf(l)))) || bodyFont;
             const sizeRatio = bodyFont > 0 ? blockH / bodyFont : 1;
             const isSizedHead = sizeRatio > 1.08;   // e01d/e01e/e01f — a sub-head or heading
             // FIRST-LINE FLUSH — drop the book's uniform first-line indent for THIS paragraph. A first-line
@@ -4172,6 +4283,14 @@ const App: React.FC = () => {
             if (pageOff != null && pageOff >= prevOff && pageOff < nextOff) offset = pageOff;
           }
         }
+        // The resolved offset (a bookmark Y-destination or a page marker) lands on the heading's first
+        // GLYPH — just AFTER the extractor's injected role/size sentinels (U+E013 heading + U+E01x tier)
+        // that attach directly to the text with no newline between. That dropped the chapter's FIRST
+        // heading line (e.g. the "CHAPTER 1" number) to body size while later heading lines kept their tier.
+        // Snap the offset back over any immediately-preceding PUA sentinels so the opening heading keeps its
+        // role + size. (Chapters are [offset[i], offset[i+1]) with shared boundaries, so this just moves the
+        // boundary back onto the sentinels — no gap, overlap, or bleed into the previous chapter.)
+        if (offset != null) { while (offset > 0) { const c = fullText.charCodeAt(offset - 1); if (c >= 0xE000 && c <= 0xF8FF) offset--; else break; } }
         return { title: item.entry.title, page: item.entry.page, level: item.entry.level, offset };
       });
 
