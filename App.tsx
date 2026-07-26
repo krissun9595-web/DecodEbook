@@ -3626,6 +3626,12 @@ const App: React.FC = () => {
           }
           const groupIsHeading = isHeadingLine(lines[i]);
           const group: PdfLine[] = [lines[i]];
+          // Gap ABOVE this block (measured): the y-distance from the previous block's last line to this
+          // block's first line, on the same page/column. Used to reproduce the source's set-off spacing
+          // instead of a fixed constant. (`.y` preserves real single-column gaps; a page break / column
+          // change reads ~0 → treated as normal, which is correct for a block at a page/column top.)
+          const _prevL = i > 0 ? lines[i - 1] : undefined;
+          const gapAbove = (_prevL && _prevL.col === lines[i].col && _prevL.y > lines[i].y) ? (_prevL.y - lines[i].y) : 0;
           let j = i + 1;
           while (j < lines.length && isHeadingLine(lines[j]) === groupIsHeading) {
             const previous = lines[j - 1];
@@ -3898,7 +3904,13 @@ const App: React.FC = () => {
             const listAnchoredLeftPx = (opensListMarker && listMarginLeft !== undefined && listMarginLeft < paraLeftMargin)
               ? groupMinX - listMarginLeft
               : blockLeftPx;
-            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && (group.length >= 2 || opensListMarker || blockFillsMeasure) && bodyFont > 0 && listAnchoredLeftPx > bodyFont * 0.9)
+            // GEOMETRY-DIRECT indent: reproduce the block's MEASURED left offset for ALL blocks, single- or
+            // multi-line — no longer gated on group.length>=2. A single-line definition DESCRIPTION ("Able to
+            // make…") sits at the same left tier as its wrapping siblings and must keep it; and a lone
+            // indented line is visually identical whether it's a "block indent" or a "first-line indent"
+            // (one line shifted right looks the same), so reproducing the measured offset is faithful either
+            // way. A single short line no longer becomes a block-quote (see isBlockQuote's group.length gate).
+            const blockNbsp = (pageJustified && !groupIsHeading && !isRightAttribution && bodyFont > 0 && listAnchoredLeftPx > bodyFont * 0.9)
               ? Math.min(12, Math.round((listAnchoredLeftPx / bodyFont) / 1.5 * 4)) : 0;
             // Geometry-faithful first-line indent: a paragraph whose FIRST line sits at the body margin
             // (not indented) is FLUSH \u2014 the section's opening paragraph in a first-line-indent book
@@ -3948,7 +3960,17 @@ const App: React.FC = () => {
             // and tag it U+E019 so the reader adds a matching RIGHT padding (narrower paragraph) and drops
             // the first-line indent, instead of only padding the left.
             const blockMaxRight = Math.max(...group.map(l => l.rightX));
-            const isBlockQuote = blockNbsp > 0 && rightMargin > 0 && (rightMargin - blockMaxRight) > bodyFont * 0.9;
+            // Require MULTI-LINE evidence: a true set-off quote is a run of lines that ALL end short of the
+            // right margin (a narrow block). A single short line ends short only because it's short (a
+            // one-line definition description, a paragraph's ragged last line) — not a narrow block — so it
+            // must NOT be tagged a block-quote (which would add the set-off gap + shrink). Now that
+            // single-line blocks keep their measured left indent, this gate is what keeps them out of the quote path.
+            const isBlockQuote = group.length >= 2 && blockNbsp > 0 && rightMargin > 0 && (rightMargin - blockMaxRight) > bodyFont * 0.9;
+            // MEASURED set-off spacing: reproduce the source's gap-above instead of a fixed constant. A
+            // block-quote whose gap above is a genuine set-off (>=1.75x the line gap — a real epigraph/callout)
+            // carries U+E022 so the reader gives it the full set-off top margin; a quote that FLOWS from its
+            // lead-in (e.g. a colon-introduced definition, ~1.5x) omits it and gets only a moderate gap.
+            const setoffAbove = bodyLineGap > 0 && gapAbove >= bodyLineGap * 1.75;
             // Relative font-size TIER: the block's dominant line height vs the document body size. Encodes
             // the source's size hierarchy (figure title/subtitle, sub-heads, captions, metadata) so the
             // reader can reproduce it as an em-multiple of the user's base size — orthogonal to bold/heading/
@@ -3962,7 +3984,7 @@ const App: React.FC = () => {
             const sizeSentinel = sizeRatio >= 1.6 ? '\uE01F' : sizeRatio >= 1.25 ? '\uE01E' : sizeRatio > 1.08 ? '\uE01D'
               : sizeRatio < 0.80 ? '\uE01B' : sizeRatio < 0.90 ? '\uE01C' : '';
             blocks.push({
-              text: sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
+              text: (isBlockQuote && setoffAbove ? '\uE022' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,

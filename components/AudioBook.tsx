@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v108-smallcaps-heading';
+const CHAPTER_TEXT_CACHE_VERSION = 'v109-measured-gap';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -233,6 +233,7 @@ interface ParagraphData {
     // paragraph in a first-line-indent book (U+E018 from extraction). Reader drops its fixed indent.
     flushFirstLine?: boolean;
     blockQuote?: boolean;
+    setoffAbove?: boolean;
     // A hanging-list entry (dialogue speaker turn / CIP field, U+E01A from extraction): the label hangs
     // at the outdent and wrapped lines indent to `indent` (the NBSP tier). Reader renders it hanging.
     hangingEntry?: boolean;
@@ -1110,7 +1111,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[--]+/);
+    const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
@@ -1119,6 +1120,9 @@ const buildPageSentenceData = (pageText: string): {
     // U+E018 \u2014 the source paragraph's first line is flush (no first-line indent).
     const flushFirstLine = ctrlChars.includes('\uE018');
     const blockQuote = ctrlChars.includes('\uE019');
+    // U+E022 — the source has a genuine SET-OFF gap above this block-quote (>=1.75x the line gap):
+    // a real epigraph/callout. Absent = the quote flows from its lead-in (e.g. a colon-introduced definition).
+    const setoffAbove = ctrlChars.includes('\uE022');
     // U+E01A \u2014 a hanging-list entry (dialogue speaker turn / CIP field): the label hangs at the
     // outdent, wraps indent to the tier encoded by the following NBSP run (\u2192 `indent`, below).
     const hangingEntry = ctrlChars.includes('\uE01A');
@@ -1135,7 +1139,7 @@ const buildPageSentenceData = (pageText: string): {
     const sizeStripped = stripInlineFormatSyntax(rawPText).replace(/^[\s\u00a0]+/u, '');
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1167,7 +1171,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove });
   });
 
   if (/excellent overview of mechanistic|machine learning with imperfect|Neel Nanda/.test(pageText)) {
@@ -4533,7 +4537,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? 'mt-8' : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
