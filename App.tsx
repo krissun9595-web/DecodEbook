@@ -20,7 +20,7 @@ import { trackReferralClick, registerReferralSignup } from './services/referral'
 import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey, clearBook } from './services/fileCache';
 import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, findHeadingOffsetByTitle, headingMatchesTitle, isUsableEpubOutline, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
-import { PDF_TEXT_EXTRACTION_VERSION, isStalePdfExtraction } from './utils/sourceVersion';
+import { PDF_TEXT_EXTRACTION_VERSION, EPUB_TEXT_EXTRACTION_VERSION, expectedExtractorVersion, isStaleExtraction } from './utils/sourceVersion';
 import { isReadableChapterTitle } from './utils/structureAnalysis';
 import { buildBookPageIndex, searchBookIndex, ChapterPageIndex, SearchHit } from './utils/searchIndex';
 import { computePageTargetSize } from './utils/readerStructure';
@@ -78,6 +78,13 @@ const TARGET_LANGUAGES = [
 const sourceCacheKey = (bookId: string, version = SOURCE_CACHE_VERSION) =>
   buildCacheKey(bookId, SOURCE_CACHE_CHAPTER_ID, 'source-file', version);
 
+// The ORIGINAL uploaded file bytes (PDF/EPUB), kept so a book whose extraction engine is stale can be
+// re-extracted automatically (no manual re-upload). One per book, overwritten on re-upload; best-effort
+// (a save failure — e.g. quota — just falls back to the re-upload prompt). NOT versioned by engine: it's
+// the raw file, engine-independent, so it survives extractor bumps.
+const originalFileKey = (bookId: string) =>
+  buildCacheKey(bookId, SOURCE_CACHE_CHAPTER_ID, 'original-file', 'v1');
+
 const isSovereignIndividualTitle = (value?: string): boolean =>
   /sovereign\s+individual/iu.test(value || '');
 
@@ -122,7 +129,7 @@ const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
   // rendering text this engine version can't interpret. This is the single gate that the render
   // path lacked — it covers both the stored-content and source-cache paths, since the version
   // stamp travels on fileContext regardless of where the text was loaded from.
-  if (isStalePdfExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
+  if (isStaleExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
     return { ...item, fileContext: { ...item.fileContext, content: undefined } };
   }
 
@@ -190,9 +197,10 @@ const purgeSovereignIndividualDerivedCache = async (item: LibraryItem): Promise<
   }
 
   const currentSourceKey = sourceCacheKey(item.book.id);
+  const keepKey = originalFileKey(item.book.id); // never purge the ORIGINAL file — it's needed to re-extract
   const files = await listFiles(item.book.id);
   await Promise.all(files
-    .filter(file => file.key !== currentSourceKey)
+    .filter(file => file.key !== currentSourceKey && file.key !== keepKey)
     .map(file => deleteFile(file.key).catch(() => undefined))
   );
   localStorage.setItem(purgeKey, '1');
@@ -204,7 +212,7 @@ const restoreLibrarySources = async (items: LibraryItem[]): Promise<LibraryItem[
     // source cache key is shared across engine versions (it uses SOURCE_CACHE_VERSION, not the
     // extractor version), so after a rollback it would otherwise keep handing back the old text.
     // hydrateLibraryItem then drops the stale content, surfacing the re-upload prompt (B).
-    if (isStalePdfExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
+    if (isStaleExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
       deleteFile(sourceCacheKey(item.book.id)).catch(() => undefined);
       return hydrateLibraryItem(item);
     }
@@ -416,6 +424,20 @@ const App: React.FC = () => {
       const savedLibrary = localStorage.getItem('library');
       if (savedLibrary) {
         const parsed = JSON.parse(savedLibrary);
+        // Extraction-version audit — opt-in (set localStorage.dbgVersion = '1' to enable). Dumps each
+        // book's recorded vs expected extractor version + staleness on load.
+        try {
+          if (localStorage.getItem('dbgVersion') === '1') {
+            console.log('%c[extraction-version] expected  PDF =', 'color:#00e5ff', PDF_TEXT_EXTRACTION_VERSION, ' EPUB =', EPUB_TEXT_EXTRACTION_VERSION);
+            console.table(parsed.map((it: any) => ({
+              title: it?.book?.title,
+              kind: it?.fileContext?.sourceKind,
+              recorded: it?.fileContext?.sourceExtractorVersion ?? '(none)',
+              expected: expectedExtractorVersion(it?.fileContext?.sourceKind) ?? '(n/a)',
+              stale: isStaleExtraction(it?.fileContext?.sourceKind, it?.fileContext?.sourceExtractorVersion),
+            })));
+          }
+        } catch {}
         setLibrary(parsed);
         if (parsed.length > 0) setView(AppView.UPLOAD);
         restoreLibrarySources(parsed).then(restored => {
@@ -4369,6 +4391,94 @@ const App: React.FC = () => {
     }
   };
 
+  const reextractingRef = useRef<Set<string>>(new Set()); // book ids currently auto-re-extracting (dedupe)
+  const [reextractFailedId, setReextractFailedId] = useState<string | null>(null); // active book with no stored original
+
+  // Re-extract a book from its stored ORIGINAL file when its extraction engine is stale — no manual
+  // re-upload. Preserves the book id (reading position + derived caches). Returns the fresh item, or null
+  // to fall back to the re-upload prompt (no stored original, or extraction threw). Mirrors the pdf/epub
+  // branches of handleFileUpload + finalizeUpload's chapter build (kept in sync deliberately).
+  const reextractBook = async (item: LibraryItem): Promise<LibraryItem | null> => {
+    const kind = item.fileContext.sourceKind;
+    if (kind !== 'pdf' && kind !== 'epub') return null;
+    let orig: Awaited<ReturnType<typeof getFile>> = null;
+    try { orig = await getFile(originalFileKey(item.book.id)); } catch { orig = null; }
+    if (!orig?.blob) return null; // no stored original → A fallback (prompt)
+    try {
+      const meta = orig.metadata as any;
+      const file = new File([orig.blob], meta?.filename || `book.${kind}`, { type: meta?.mimeType || '' });
+      let context: FileContext;
+      let figures: ExtractedFigure[] | undefined;
+      if (kind === 'epub') {
+        const { content, outline, figures: f, anchors } = await processEpub(file);
+        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined };
+        figures = f.length ? f : undefined;
+      } else {
+        const { content, outline, title, figures: f, justified, firstLineIndent } = await processPdf(file);
+        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'pdf', sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION, pdfOutline: outline, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
+        figures = f.length ? f : undefined;
+      }
+      if (figures?.length) context = { ...context, pdfFigures: figures.map(({ blob, ...m }) => m) };
+      const preparedContext = hydrateFileContext(context);
+      const structure = await analyzeBookStructure(preparedContext);
+      structure.id = item.book.id;                              // PRESERVE id → keep reading position + caches
+      structure.title = context.docTitle || item.book.title;    // keep the established title (avoid drift)
+      const useOutline =
+        (preparedContext.sourceKind === 'pdf' && isUsablePdfOutline(preparedContext.content, preparedContext.pdfOutline)) ||
+        (preparedContext.sourceKind === 'epub' && isUsableEpubOutline(preparedContext.pdfOutline));
+      const indexedChapters = useOutline
+        ? buildChaptersFromOutline(preparedContext.content, preparedContext.pdfOutline!)
+        : preparedContext.isText
+        ? splitDetectedBackMatter(preparedContext.content, buildSourceIndexedChapters(preparedContext.content, expandTopicSectionsIntoChapters(preparedContext.content, buildSourceIndexedChapters(preparedContext.content, structure.chapters), 10)))
+        : structure.chapters;
+      if (figures?.length) {
+        const ts = Date.now();
+        await Promise.all(figures.map(f => saveFile(buildCacheKey(structure.id, 0, 'figure-image', f.id), f.blob, { filename: `${f.id}.jpg`, mimeType: f.mimeType, timestamp: ts, bookId: structure.id, chapterId: 0, componentSource: 'Reextract', fileType: 'figure-image' }).catch(() => {})));
+      }
+      const newItem: LibraryItem = { book: { ...structure, chapters: indexedChapters }, fileContext: preparedContext, uploadDate: item.uploadDate };
+      await saveSourceToCache(newItem).catch(() => {});
+      console.log('[reextract] ok', kind, JSON.stringify(item.book.title), '->', newItem.book.chapters.length, 'chapters, ver', context.sourceExtractorVersion);
+      return newItem;
+    } catch (e) {
+      console.warn('[reextract] failed', e);
+      return null;
+    }
+  };
+
+  // Open a book — auto-re-extracting first if its engine is stale and we still hold its original file
+  // (B). If re-extraction isn't possible (no original / failure), open as-is so the render path surfaces
+  // the re-upload prompt (A fallback).
+  const openBook = async (item: LibraryItem) => {
+    let target = item;
+    if (isStaleExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) {
+      setIsProcessing(true);
+      const fresh = await reextractBook(item);
+      setIsProcessing(false);
+      if (fresh) { setLibrary(prev => prev.map(b => b.book.id === item.book.id ? fresh : b)); target = fresh; }
+    }
+    setActiveBookId(target.book.id);
+    if (target.book.chapters.length > 0) { setActiveChapterPageTarget('first'); setActiveChapterId(target.book.chapters[0].id); }
+    setShowLibraryList(false);
+  };
+
+  // Auto re-extract the ACTIVE book when its content was dropped as stale (covers the on-reload restore
+  // path, which doesn't go through openBook) — from the stored original, fresh content in place. If there's
+  // no original (re-extract returns null), flag it so the reader shows a re-upload hint, not an endless spinner.
+  useEffect(() => {
+    if (!activeBookId) return;
+    const item = library.find(b => b.book.id === activeBookId);
+    if (!item || item.fileContext.content) return;
+    if (!isStaleExtraction(item.fileContext.sourceKind, item.fileContext.sourceExtractorVersion)) return;
+    if (reextractingRef.current.has(activeBookId)) return;
+    reextractingRef.current.add(activeBookId);
+    (async () => {
+      const fresh = await reextractBook(item);
+      if (fresh) setLibrary(prev => prev.map(b => b.book.id === item.book.id ? fresh : b));
+      else setReextractFailedId(item.book.id);
+      reextractingRef.current.delete(item.book.id);
+    })();
+  }, [activeBookId, library]);
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -4467,6 +4577,17 @@ const App: React.FC = () => {
                 });
             }
             await saveSourceToCache(newItem);
+            // Keep the ORIGINAL uploaded file so a future extractor bump can auto-re-extract without a manual
+            // re-upload. Best-effort: a save failure (e.g. IndexedDB quota) just leaves this book on the
+            // re-upload-prompt fallback. Only pdf/epub carry a structured extractor that can go stale.
+            if (preparedContext.sourceKind === 'pdf' || preparedContext.sourceKind === 'epub') {
+              saveFile(originalFileKey(structure.id), file, {
+                filename: file.name,
+                mimeType: file.type || (preparedContext.sourceKind === 'epub' ? 'application/epub+zip' : 'application/pdf'),
+                timestamp: Date.now(), bookId: structure.id, chapterId: SOURCE_CACHE_CHAPTER_ID,
+                componentSource: 'OriginalFile', fileType: 'original-file',
+              }).catch(() => {});
+            }
             setLibrary(prev => [newItem, ...prev.filter(item => !newBookTitle || bookIdentity(item.book.title, item.fileContext.sourceKind) !== newBookIdentity)]);
             setActiveBookId(structure.id);
             if (structure.chapters.length > 0) {
@@ -4493,6 +4614,7 @@ const App: React.FC = () => {
             mimeType: 'text/plain',
             isText: true,
             sourceKind: 'epub',
+            sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION,
             pdfOutline: epubOutline.length ? epubOutline : undefined,
             epubAnchors: Object.keys(epubAnchors).length ? epubAnchors : undefined,
          }, epubFigures.length ? epubFigures : undefined);
@@ -4610,6 +4732,23 @@ const App: React.FC = () => {
     }
 
     if (!activeChapter || !activeFileContext) return null;
+    // A stale book's content was dropped pending auto re-extraction (see the effect above). Never render a
+    // reader with no content — it reads content.length and crashes. Show a spinner while re-extracting from
+    // the stored original, or a re-upload hint if there's no original (re-extract flagged it failed).
+    if (!activeFileContext.content) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-6 text-zinc-400 px-6 text-center">
+          {reextractFailedId === activeBookId ? (
+            <>
+              <p className="text-sm">This book was extracted by an older engine and its original file isn't stored. Re-upload it to refresh — it replaces this copy, no need to delete anything first.</p>
+              <button onClick={() => { setActiveBookId(null); setShowLibraryList(false); setView(AppView.UPLOAD); }} className="px-4 py-2 rounded-lg border border-neon-cyan/40 hover:bg-neon-cyan/10 text-neon-cyan text-sm">Re-upload this book</button>
+            </>
+          ) : (
+            <Loader text="PREPARING_BOOK..." />
+          )}
+        </div>
+      );
+    }
 
     let content;
     switch (activeTab) {
@@ -4860,12 +4999,10 @@ const App: React.FC = () => {
                     >
                         <button
                             onClick={() => {
-                                setActiveBookId(item.book.id);
-                                if(item.book.chapters.length > 0) {
-                                  setActiveChapterPageTarget('first');
-                                  setActiveChapterId(item.book.chapters[0].id);
-                                }
-                                setShowLibraryList(false);
+                                // openBook auto-re-extracts a stale book from its stored original (B) before
+                                // opening, or falls back to the re-upload prompt (A). setActiveChapterId etc.
+                                // happen inside openBook after any re-extraction rebuilds the chapters.
+                                void openBook(item);
                                 closeSidebarMobile();
                             }}
                             className="flex items-center gap-3 flex-1 min-w-0"

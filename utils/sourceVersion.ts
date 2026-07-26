@@ -526,12 +526,32 @@
 //       (figure title/subtitle, sub-heads, captions, metadata) instead of flattening everything to body size.
 export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v178-measured-gap';
 
-// A PDF's stored text is stale when it was produced by a different extraction engine than this
+// EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
+// v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
+//     CSS text-align) emitting the same reader sentinels the PDF path uses. Existing EPUBs carry no
+//     stamp ('(none)'), so they read as stale on this build and are re-extracted from their stored
+//     original (or prompt a one-time re-upload when no original was kept).
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v1';
+
+// The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
+// which have no structured extractor and are never stale).
+export const expectedExtractorVersion = (sourceKind: string | undefined): string | undefined =>
+  sourceKind === 'pdf' ? PDF_TEXT_EXTRACTION_VERSION
+    : sourceKind === 'epub' ? EPUB_TEXT_EXTRACTION_VERSION
+    : undefined;
+
+// A book's stored text is stale when it was produced by a different extraction engine than this
 // build — a NEWER one, or one we rolled back FROM. A code rollback never rewrites already-stored
 // text, and the source cache key is shared across engine versions, so without this check a
 // rollback keeps serving (and rendering) text whose block structure / sentinels this build can't
-// interpret. EPUB/TXT carry no extractor version and are never stale by this rule.
-export const isStalePdfExtraction = (
+// interpret. Applies to PDF and EPUB (both carry a version); TXT/HTML carry none and are never stale.
+export const isStaleExtraction = (
   sourceKind: string | undefined,
   sourceExtractorVersion: string | undefined,
-): boolean => sourceKind === 'pdf' && sourceExtractorVersion !== PDF_TEXT_EXTRACTION_VERSION;
+): boolean => {
+  const expected = expectedExtractorVersion(sourceKind);
+  return expected !== undefined && sourceExtractorVersion !== expected;
+};
+
+// Back-compat alias (PDF-only historical name) — same generalized check.
+export const isStalePdfExtraction = isStaleExtraction;
