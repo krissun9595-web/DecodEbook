@@ -542,7 +542,11 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v178-measured-gap';
 //     JUSTIFIED (Sovereign's `.calibre` base = text-align:justify → the reader's 'auto' align justifies
 //     the body, matching the PDF) and whether it uses a first-line indent vs block style. Conservative:
 //     only decided over >= 8 sampled paragraphs, else left undefined (reader default).
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v4-justify';
+// v5: per-paragraph FLUSH FIRST LINE — a paragraph the source explicitly sets text-indent:0 (e.g.
+//     Sovereign's `.noindent` first-of-section paragraph) emits U+E018 so the reader drops its default
+//     first-line indent, matching the PDF (first paragraph of each section flush, the rest indented).
+//     Only fires on an explicit text-indent~=0 (not a mere omission, not a negative hanging indent).
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v5-flush-first-para';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

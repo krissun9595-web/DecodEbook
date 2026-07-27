@@ -895,6 +895,7 @@ const App: React.FC = () => {
         return null;
       };
       const cssBoxLeftEm: Record<string, { m: number; p: number; ti: number }> = {}; // class → left margin/padding/text-indent (em)
+      const cssTiDeclared = new Set<string>(); // classes that EXPLICITLY declare text-indent (so ti:0 = a deliberate flush, not a default)
       const cssFontRaw: Record<string, string> = {}; // class → raw font-size value (for the U+E01B-E01F size tier)
       for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
         try {
@@ -919,6 +920,7 @@ const App: React.FC = () => {
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
               if (li > 0) cssIndent[c] = Math.max(cssIndent[c] || 0, li);
               if (mE != null || pE != null || tiE != null) { const cur = cssBoxLeftEm[c] || { m: 0, p: 0, ti: 0 }; cssBoxLeftEm[c] = { m: mE ?? cur.m, p: pE ?? cur.p, ti: tiE ?? cur.ti }; }
+              if (tiE != null) cssTiDeclared.add(c);
               if (fs) cssFontRaw[c] = fs;
             }
           }
@@ -1307,7 +1309,19 @@ const App: React.FC = () => {
             if (_ti <= 0) for (const c of (element.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b?.ti) _ti = Math.max(_ti, b.ti); }
             if (_ti > 0.1) firstIndentParaTally++;
           }
-          return `\n\n${sizeTierSentinel(element)}${sentinel}${body}\n\n`;
+          // Reproduce the source's per-paragraph FIRST-LINE INDENT. The reader indents every body paragraph
+          // by default (1.75em); a paragraph the source sets flush (text-indent:0 — e.g. Sovereign's
+          // `.noindent` first-of-section paragraph) emits U+E018 (flush first line) to override that, matching
+          // the PDF. Only when the paragraph EXPLICITLY declares text-indent ~= 0 (cssTiDeclared) and no
+          // positive indent; a paragraph that merely omits text-indent keeps the reader default, and a
+          // negative (hanging) text-indent is left alone.
+          const _tiInlineRaw = (element as HTMLElement).style?.textIndent;
+          const _tiInline = _tiInlineRaw && _tiInlineRaw.trim() !== '' ? (lenToEm(_tiInlineRaw) ?? null) : null;
+          const _tiDecl = _tiInline != null ? [_tiInline]
+            : (element.getAttribute('class') || '').split(/\s+/).filter(c => cssTiDeclared.has(c)).map(c => cssBoxLeftEm[c].ti);
+          const flushFirst = tag === 'p' && !_tiDecl.some(v => v > 0.05) && _tiDecl.some(v => Math.abs(v) <= 0.05);
+          const flushSentinel = flushFirst ? String.fromCharCode(0xE018) : '';
+          return `\n\n${sizeTierSentinel(element)}${sentinel}${flushSentinel}${body}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
