@@ -546,7 +546,15 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v178-measured-gap';
 //     Sovereign's `.noindent` first-of-section paragraph) emits U+E018 so the reader drops its default
 //     first-line indent, matching the PDF (first paragraph of each section flush, the rest indented).
 //     Only fires on an explicit text-indent~=0 (not a mere omission, not a negative hanging indent).
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v5-flush-first-para';
+// v6: SMALL-FONT parity — the EPUB now emits the shrink size tiers (E01B 0.72 / E01C 0.86) for genuine
+//     small BODY content (footnotes, "also by", copyright fine print via the <p> path; endnotes via the
+//     <li> path), matching the PDF (measured: notes/quotes/copyright ~0.85x body). sizeTierSentinel gains
+//     an allowShrink flag — enlarge tiers always fire, shrink only for body callers. A heading guard keeps
+//     it off headings: <h*>/nav-anchored heads use the enlarge-only path, and a short ALL-CAPS <p> (an
+//     untagged small-caps head) is excluded, so a title can't be shrunk to fine print. Existing tiers are
+//     reused (no new codepoints — the ~2 real shrink values are covered, and new sentinels would need
+//     every strip site widened). Ratio thresholds mirror the PDF (<0.80 -> E01B, <0.90 -> E01C).
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v6-small-font';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

@@ -1045,13 +1045,23 @@ const App: React.FC = () => {
         return parentEm();
       };
       let currentBodyEm = 1; // this document's base font-size (set per spine file before the walk)
-      const sizeTierSentinel = (el: Element): string => {
+      // Map an element's CSS font-size (relative to its file's body em) to a size-tier sentinel, matching
+      // the PDF's tiers/thresholds (App.tsx sizeSentinel). ENLARGE tiers (E01D/E01E/E01F) always fire.
+      // SHRINK tiers (E01B 0.72 / E01C 0.86) fire ONLY when allowShrink=true — the caller passes it for
+      // genuine BODY content (notes, quotes, copyright fine print) but NOT for headings: an EPUB section
+      // heading is often a small-caps block with a deliberately small font-size, and the reader flattens
+      // small-caps, so shrinking it would render the title tiny (Sovereign's "PREMONITIONS"). Headings go
+      // through their own path (_tierOf, enlarge-only) or pass allowShrink=false here, so they can't shrink.
+      const sizeTierSentinel = (el: Element, allowShrink = false): string => {
         const ratio = currentBodyEm > 0 ? resolveFontEm(el) / currentBodyEm : 1;
-        // ENLARGE only (headings / sub-heads). Do NOT emit the small tiers (E01B/E01C): EPUB SECTION
-        // headings are commonly small-caps <p> blocks with a deliberately SMALL font-size + letter-spacing;
-        // the reader flattens small-caps, so reading that as fine-print would render section titles tiny
-        // (Sovereign's "PREMONITIONS"). Mis-shrunk small-caps headings are worse than a caption not shrinking.
-        return ratio >= 1.6 ? String.fromCharCode(0xE01F) : ratio >= 1.25 ? String.fromCharCode(0xE01E) : ratio > 1.08 ? String.fromCharCode(0xE01D) : '';
+        if (ratio >= 1.6) return String.fromCharCode(0xE01F);
+        if (ratio >= 1.25) return String.fromCharCode(0xE01E);
+        if (ratio > 1.08) return String.fromCharCode(0xE01D);
+        if (allowShrink) {
+          if (ratio < 0.80) return String.fromCharCode(0xE01B); // 0.72em
+          if (ratio < 0.90) return String.fromCharCode(0xE01C); // 0.86em
+        }
+        return '';
       };
 
       // Heading anchors from the publisher's TOC: any element the nav/NCX points at via "#fragment" is a
@@ -1321,7 +1331,14 @@ const App: React.FC = () => {
             : (element.getAttribute('class') || '').split(/\s+/).filter(c => cssTiDeclared.has(c)).map(c => cssBoxLeftEm[c].ti);
           const flushFirst = tag === 'p' && !_tiDecl.some(v => v > 0.05) && _tiDecl.some(v => Math.abs(v) <= 0.05);
           const flushSentinel = flushFirst ? String.fromCharCode(0xE018) : '';
-          return `\n\n${sizeTierSentinel(element)}${sentinel}${flushSentinel}${body}\n\n`;
+          // Heading guard for the shrink tier: an EPUB heading is normally an <h*>/nav-anchored element
+          // handled in an earlier branch, so anything reaching here is body content. As a backstop against
+          // an UNTAGGED small-caps section head (a short all-caps <p> with a small font), don't allow shrink
+          // on a short ALL-CAPS line with no terminal punctuation. Genuine small body text (notes, copyright
+          // fine print, even short address lines like 'New York, NY 10020') has lowercase, so it still shrinks.
+          const _shrinkText = trimmed.replace(/[\uE000-\uF8FF*_~`]+/gu, '').trim();
+          const _looksLikeHeading = _shrinkText.length > 0 && _shrinkText.length < 50 && /[A-Za-z]/.test(_shrinkText) && _shrinkText === _shrinkText.toUpperCase() && !/[.!?]$/.test(_shrinkText);
+          return `\n\n${sizeTierSentinel(element, !_looksLikeHeading)}${sentinel}${flushSentinel}${body}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -1350,7 +1367,10 @@ const App: React.FC = () => {
               return `\n• ${trimmed}\n`;
             }
           }
-          return `\n${trimmed}\n`;
+          // Endnotes (<li class="endnotes">, 0.833em) and other already-marked list entries land here.
+          // Emit the shrink tier (ratio-gated) so small notes render smaller like the PDF; a body-size
+          // item computes ratio ~1 and gets no tier. (Index li return earlier; ol/ul markers above.)
+          return `\n${sizeTierSentinel(element, true)}${trimmed}\n`;
         }
         // A display:block inline element (e.g. a heading_break span carrying a title line) is a visual
         // line — put it on its own so a multi-line heading/label keeps its breaks (see the h1 handler).
