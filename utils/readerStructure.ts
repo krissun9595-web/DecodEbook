@@ -292,7 +292,7 @@ export const normalizeNotesReaderText = (value: string): string => {
   // (INTRODUCTION + notes 1, 2 merged \u2192 SOURCE_REQUIRED). Strip the whole E010\u2013E020 block. The notes'
   // section headers still render bold via the reader's isNotesSectionHeadingParagraph wording rule, and the
   // note size is uniform in the notes chapter, so dropping the tier here is faithful.
-  text = text.replace(/[\uE010-\uE020]/g, '');
+  text = text.replace(/[\uE010-\uE020\uE023]/g, '');
   // Page markers ("[[PAGE n]]") are navigation metadata, not note text. A note that spans
   // a page break carries the next page's marker inline (e.g. "…p. 22. [[PAGE 537]]"), and
   // otherwise the marker leaks to screen, so strip them before section/entry detection.

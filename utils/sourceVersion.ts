@@ -524,7 +524,12 @@
 //       height vs the document body size, quantized to 5 tiers with a deadband around 1.0 (body untagged).
 //       The reader renders it as an em-multiple of the base size, reproducing the source's size hierarchy
 //       (figure title/subtitle, sub-heads, captions, metadata) instead of flattening everything to body size.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v178-measured-gap';
+// v179: explicit-LEFT tag (U+E023). On a JUSTIFIED document, a multi-line block at the body margin whose
+//       non-last lines all fall short of the right margin is a left-ragged block (copyright/dedication front
+//       matter), not justified body — tag it so the reader skips justify and renders it ragged, faithful to
+//       the source (the doc-level sourceJustified flag otherwise justifies everything). Narrow gate + 0 body
+//       false positives validated on the test PDFs.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v179-explicit-left';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
@@ -554,7 +559,11 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v178-measured-gap';
 //     untagged small-caps head) is excluded, so a title can't be shrunk to fine print. Existing tiers are
 //     reused (no new codepoints — the ~2 real shrink values are covered, and new sentinels would need
 //     every strip site widened). Ratio thresholds mirror the PDF (<0.80 -> E01B, <0.90 -> E01C).
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v6-small-font';
+// v7: explicit-LEFT tag (U+E023) — a paragraph the source aligns left (copyright/dedication `.copya/.copyb`
+//     in a justified book) emits it so the reader skips justify and renders it left-ragged, matching the
+//     source. effectiveAlignOf resolves CSS inheritance (body prose = justify, no tag). Pairs with the PDF's
+//     v179 (same sentinel + reader support).
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v7-explicit-left';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

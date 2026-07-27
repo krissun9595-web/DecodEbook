@@ -227,7 +227,7 @@ interface ParagraphData {
     original: string[];
     translated: string[];
     indent?: number;
-    align?: 'right' | 'center';
+    align?: 'right' | 'center' | 'left';
     role?: 'list' | 'heading';
     // The source paragraph's FIRST line is flush (no first-line indent) — a section's opening
     // paragraph in a first-line-indent book (U+E018 from extraction). Reader drops its fixed indent.
@@ -1100,7 +1100,7 @@ const buildPageSentenceData = (pageText: string): {
     if (rawPText.includes('\uE014')) {
       const [leftRaw, rightRaw = ''] = rawPText.replace(/\uE014/gu, '').split('\uE015');
       const toCol = (s: string): ColumnPara[] => s.split('\uE016')
-        .map(p => p.replace(/[\uE010-\uE020]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
+        .map(p => p.replace(/[\uE010-\uE020\uE023]/gu, '').replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/\s+/g, ' ').trim())
         .filter(Boolean)
         .map(pText => ({ sentences: splitIntoSentences(pText).map(sent => { const gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: gi, globalIndex: gi, text: stripInlineFormatSyntax(sent) }); return { text: sent, gi }; }) }));
       const left = toCol(leftRaw), right = toCol(rightRaw);
@@ -1111,10 +1111,10 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[--]+/);
+    const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
-    const align: 'right' | 'center' | undefined =
-      ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : undefined;
+    const align: 'right' | 'center' | 'left' | undefined =
+      ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
     const role: 'list' | 'heading' | undefined =
       ctrlChars.includes('\uE013') ? 'heading' : ctrlChars.includes('\uE012') ? 'list' : undefined;
     // U+E018 \u2014 the source paragraph's first line is flush (no first-line indent).
@@ -1139,7 +1139,7 @@ const buildPageSentenceData = (pageText: string): {
     const sizeStripped = stripInlineFormatSyntax(rawPText).replace(/^[\s\u00a0]+/u, '');
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1547,7 +1547,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE023]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -3244,7 +3244,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
   const isNotesSectionHeadingParagraph = (sentences: string[]): boolean =>
     isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
-  const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center', flushFirstLine?: boolean): React.CSSProperties => {
+  const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center' | 'left', flushFirstLine?: boolean): React.CSSProperties => {
     const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
     // The source is BLOCK-style (paragraphs flush, separated by space — detected at extraction): render
     // prose flush instead of forcing the default first-line indent the source doesn't have. Any real

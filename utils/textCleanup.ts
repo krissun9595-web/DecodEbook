@@ -14,7 +14,7 @@ const endsWithTerminalPunctuation = (value: string): boolean =>
 // too so the first-character heading/subtitle tests below see the real text — otherwise a heading
 // that leads with the sentinel (e.g. "THE BIRTH OF AI") fails the `^[A-Z…]` anchor, the
 // heading guard never fires, and the heading is merged into the body paragraph that follows it.
-const stripBlockSentinels = (value: string): string => value.replace(/[-]/g, '');
+const stripBlockSentinels = (value: string): string => value.replace(/[-]/g, '');
 
 const looksLikeHeadingOrStructure = (value: string): boolean => {
   // A block carrying the heading sentinel (U+E013) IS a heading by construction — an EPUB <h1>–<h6> or
@@ -186,8 +186,8 @@ const normalizeAttributionLine = (value: string): string => {
   // stripped BEFORE the dash, else the dash regex fails on it and the source's own "—" survives under
   // the "—— " prefix ("—— —HENRY…"), while the sentinel gets buried mid-string and the alignment is
   // lost. Also strip a leading emphasis marker (an italic credit extracts as "*—Tom Stoppard,*").
-  const sentinel = value.match(/^\s*([-]+)/u)?.[1] ?? '';
-  const body = value.replace(/\s+/g, ' ').trim().replace(/^[-]*[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
+  const sentinel = value.match(/^\s*([-]+)/u)?.[1] ?? '';
+  const body = value.replace(/\s+/g, ' ').trim().replace(/^[-]*[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
   const linkedNote = body.match(/^(.*?)\s*(\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))\s*[*_~]*$/iu);
   if (linkedNote) {
     return `${sentinel}—— ${stripDisplayStyleMarkers(linkedNote[1])}${linkedNote[2]}`;

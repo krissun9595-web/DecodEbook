@@ -1222,7 +1222,7 @@ const App: React.FC = () => {
           const _ratio = currentBodyEm > 0 ? _minEm / currentBodyEm : 1;
           const sizeTier = _ratio <= 0.78 ? String.fromCharCode(0xE01B) : _ratio < 0.94 ? String.fromCharCode(0xE01C) : '';
           const tagged = blocks.map((b, i) => {
-            const lead = b.match(/^[\uE010-\uE022]*/u)![0]; // existing align sentinel (attribution E011) stays in the run
+            const lead = b.match(/^[\uE010-\uE023]*/u)![0]; // existing align sentinel (attribution E011) stays in the run
             return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + b.slice(lead.length);
           });
           return `\n\n${tagged.join('\n\n')}\n\n`;
@@ -1338,7 +1338,12 @@ const App: React.FC = () => {
           // fine print, even short address lines like 'New York, NY 10020') has lowercase, so it still shrinks.
           const _shrinkText = trimmed.replace(/[\uE000-\uF8FF*_~`]+/gu, '').trim();
           const _looksLikeHeading = _shrinkText.length > 0 && _shrinkText.length < 50 && /[A-Za-z]/.test(_shrinkText) && _shrinkText === _shrinkText.toUpperCase() && !/[.!?]$/.test(_shrinkText);
-          return `\n\n${sizeTierSentinel(element, !_looksLikeHeading)}${sentinel}${flushSentinel}${body}\n\n`;
+          // Explicit LEFT: a paragraph the source aligns left (e.g. copyright/dedication `.copya/.copyb`
+          // in a book whose body is justified) emits U+E023 so the reader skips justify and renders it
+          // left-ragged, matching the source. effectiveAlignOf resolves CSS inheritance; body prose
+          // resolves to 'justify' (no sentinel), only genuinely-left paragraphs get E023.
+          const leftSentinel = effectiveAlignOf(element) === 'left' ? String.fromCharCode(0xE023) : '';
+          return `\n\n${sizeTierSentinel(element, !_looksLikeHeading)}${sentinel}${flushSentinel}${leftSentinel}${body}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -4100,8 +4105,16 @@ const App: React.FC = () => {
             // decision can use the size tier.)
             const sizeSentinel = sizeRatio >= 1.6 ? '\uE01F' : sizeRatio >= 1.25 ? '\uE01E' : sizeRatio > 1.08 ? '\uE01D'
               : sizeRatio < 0.80 ? '\uE01B' : sizeRatio < 0.90 ? '\uE01C' : '';
+            // Explicit LEFT-ragged block on a JUSTIFIED doc: its non-last lines all fall short of the
+            // right margin (a justified paragraph fills it), so it is a left-aligned block (copyright/
+            // dedication front matter) -> tag U+E023 so the reader skips justify and renders it ragged,
+            // faithful to the source. Narrow gate (multi-line, at the margin, not a quote/indent/heading/
+            // attribution) + validated on the test PDFs: 0 body false positives (justified lines reach it).
+            const raggedLeft = sourceJustified === true && !groupIsHeading && !isBlockQuote && !isRightAttribution
+              && blockNbsp === 0 && rightMargin > 0 && group.length >= 2
+              && group.slice(0, -1).every(l => (rightMargin - l.rightX) > bodyFont * 0.9);
             blocks.push({
-              text: (isBlockQuote && setoffAbove ? '\uE022' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
+              text: (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,
@@ -4133,7 +4146,7 @@ const App: React.FC = () => {
         // continuation tier in the run (where the wrapped lines sit), so every item aligns and hangs together.
         {
           const openRe = /^(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])(?:\s|$)/u;
-          const leadRe = /^([\uE010-\uE020]*)(\u00A0*)([\s\S]*)$/u;
+          const leadRe = /^([\uE010-\uE020\uE023]*)(\u00A0*)([\s\S]*)$/u;
           const listReal = (b: EmitBlock): boolean => { const m = b.text.match(leadRe); return m ? openRe.test(m[3].replace(/^[*_~]+/u, '')) : false; };
           for (let a = 0; a < blocks.length;) {
             if (blocks[a].col !== undefined || !listReal(blocks[a])) { a++; continue; }
