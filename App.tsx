@@ -4060,6 +4060,13 @@ const App: React.FC = () => {
             const heightOf = (l: PdfLine) => groupIsHeading ? Math.min(l.capH ?? l.h, bodyFont * 2.2) : l.h;
             const blockH = mode((nonDropLines.length ? nonDropLines : group).map(l => Math.round(heightOf(l)))) || bodyFont;
             const sizeRatio = bodyFont > 0 ? blockH / bodyFont : 1;
+            // CAP height of the block (tallest non-drop glyph anywhere in it). A small-caps LEAD-IN
+            // ("DO YOU THINK I'm insane?") measures SMALL by char-weighted height (the small caps dominate)
+            // but its caps are body-sized (the mixed-in regular glyphs) — it is NOT fine print. Gate the
+            // SHRINK tiers on this: only shrink when the caps are ALSO small (a genuine caption/footnote),
+            // so a small-caps body run isn't shrunk below body. Same principle capH already gives headings.
+            const blockCapH = Math.max(...(nonDropLines.length ? nonDropLines : group).map(l => l.capH ?? l.h));
+            const capRatio = bodyFont > 0 ? blockCapH / bodyFont : 1;
             const isSizedHead = sizeRatio > 1.08;   // e01d/e01e/e01f — a sub-head or heading
             // FIRST-LINE FLUSH — drop the book's uniform first-line indent for THIS paragraph. A first-line
             // indent is a WITHIN-paragraph property: the first line sits deeper than the paragraph's OWN
@@ -4104,7 +4111,7 @@ const App: React.FC = () => {
             // (nonDropLines / blockH / sizeRatio are computed above, before firstLineFlush, so the flush
             // decision can use the size tier.)
             const sizeSentinel = sizeRatio >= 1.6 ? '\uE01F' : sizeRatio >= 1.25 ? '\uE01E' : sizeRatio > 1.08 ? '\uE01D'
-              : sizeRatio < 0.80 ? '\uE01B' : sizeRatio < 0.90 ? '\uE01C' : '';
+              : capRatio < 0.92 ? (sizeRatio < 0.80 ? '\uE01B' : sizeRatio < 0.90 ? '\uE01C' : '') : '';
             // Explicit LEFT-ragged block on a JUSTIFIED doc: its non-last lines all fall short of the
             // right margin (a justified paragraph fills it), so it is a left-aligned block (copyright/
             // dedication front matter) -> tag U+E023 so the reader skips justify and renders it ragged,
@@ -4205,6 +4212,20 @@ const App: React.FC = () => {
         if (blocks.length === 0) continue;
         const marker = `[[PAGE ${pageNum}]]`;
         const first = blocks[0];
+        // A prev line can end short NOT because the paragraph ended but because the next word was too long
+        // to fit in the trailing space (a forced wrap, e.g. "…humongous green" | "landmass…"). Treat that
+        // as a continuation too, so a mid-sentence page-seam wrap isn't split into a new paragraph. Estimate
+        // the next word's width from its length; only fires on a modestly-short line (< ~one long word).
+        const _seamTrail = prevBlock ? prevRightMargin - prevBlock.lastRightX : 0;
+        const _seamNextWord = (first.text || '').replace(/^[\s -*_~`]+/u, '').split(/\s+/)[0] || '';
+        const forcedWrapAtSeam = prevBlock !== null && !fillsMeasure(prevBlock.lastRightX, prevRightMargin)
+          && _seamTrail > 0 && _seamTrail < bodyFont * 6 && _seamNextWord.length * bodyFont * 0.5 > _seamTrail;
+        // A genuine continuation may OPEN with a short line (the wrapped sentence ends soon, or the line
+        // just breaks early) — its first line need not fill the measure. Distinguish it from a short
+        // running head (which firstFills guards against) by LENGTH: a continuation is a substantial body
+        // block; a running head is a few words. Running heads are already stripped upstream, so this is a
+        // light belt-and-suspenders relaxation, length-gated.
+        const firstIsSubstantialBody = (first.text || '').replace(/[\s -*_~`]/gu, '').length > 60;
         const continues =
           prevBlock !== null &&
           pages.length > 0 &&
@@ -4217,7 +4238,7 @@ const App: React.FC = () => {
           // the prev line filled the measure and did not end a sentence, and this page opens at the
           // margin with a filled line (so a short running head is not taken for the continuation).
           (first.carryover ||
-            (fillsMeasure(prevBlock.lastRightX, prevRightMargin) &&
+            ((fillsMeasure(prevBlock.lastRightX, prevRightMargin) || forcedWrapAtSeam) &&
               !endsWithTerminalPunctuation(prevBlock.lastText) &&
               // The continuation opens EITHER at the body margin (ordinary prose) OR at the previous
               // block's own continuation/indent tier (a bullet or block-indented item that wrapped
@@ -4225,7 +4246,7 @@ const App: React.FC = () => {
               // the bodyLeft test alone dropped it and the tail rendered as a stray indented paragraph).
               (first.firstX <= bodyLeft + 8 ||
                 (prevBlock.bodyX !== undefined && Math.abs(first.firstX - prevBlock.bodyX) <= 4)) &&
-              fillsMeasure(first.firstRightX, rightMargin)));
+              (fillsMeasure(first.firstRightX, rightMargin) || firstIsSubstantialBody)));
         // Carry each block's geometry-decided role to the reader as a private-use sentinel
         // (U+E012 list, U+E013 heading; the reader strips them). A run of LEFT-column (col 0) blocks
         // immediately followed by RIGHT-column (col 1) blocks is a side-by-side TWO-COLUMN region:
@@ -4254,7 +4275,7 @@ const App: React.FC = () => {
           if (unitIndex === 0 && continues) {
             // Merged continuation: drop its own leading block-indent NBSP run (it inherits the opener's
             // indent) so an indented item's page-wrapped tail doesn't leak an NBSP gap mid-sentence.
-            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${unit.block.text.replace(/^ +/u, '')}`;
+            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${unit.block.text.replace(/^[  \uE018\uE01B-\uE01F]+/u, '')}`;
           } else if (unitIndex === 0) {
             pages.push(`${marker}\n${text}`);
           } else {

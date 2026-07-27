@@ -529,7 +529,18 @@
 //       matter), not justified body — tag it so the reader skips justify and renders it ragged, faithful to
 //       the source (the doc-level sourceJustified flag otherwise justifies everything). Narrow gate + 0 body
 //       false positives validated on the test PDFs.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v179-explicit-left';
+// v180: a small-caps BODY lead-in ("DO YOU THINK I'm insane?") no longer shrinks below body. The shrink
+//       size tiers (E01B/E01C) now fire only when the block's CAP height is also small (genuine fine print
+//       — footnotes/captions); a small-caps run has body-sized caps (the mixed-in regular glyphs), so it
+//       stays body size. Same capH principle headings already use, extended to the shrink decision.
+// v181: page-seam continuation merge fixed for two cases that split a sentence into a new paragraph at a
+//       page break (Elon "…green" | "landmass…", "…write" | "about…"). (a) A prev line that ends short only
+//       because the NEXT WORD was too long to fit in the trailing space is a forced WRAP, not a paragraph
+//       end (forcedWrapAtSeam) — so it still continues. (b) A continuation may OPEN with a short line (need
+//       not fill the measure) as long as it's a substantial body block, not a short running head. On merge,
+//       the continuation's leading flush/size sentinels are stripped so nothing leaks mid-sentence. Fixes
+//       both the visible gap AND the mid-sentence page break (pagination now breaks at the real boundary).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v181-seam-continuation';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
