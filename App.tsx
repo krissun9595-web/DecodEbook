@@ -853,6 +853,11 @@ const App: React.FC = () => {
       // (mirrors PDF's U+E010/E011). A light regex over the stylesheets — enough for the common
       // ".center { text-align: center }" idiom without pulling in a full CSS parser.
       const cssAlign: Record<string, 'center' | 'right'> = {};
+      const cssJustify = new Set<string>(); // text-align:justify — for the doc-level sourceJustified flag
+      const cssLeft = new Set<string>();    // text-align:left — explicit override of an inherited justify
+      // Doc-level layout tally (mirrors the PDF's line-fill measurement, but from the CSS the EPUB declares):
+      // count body paragraphs, how many resolve to justified text, and how many carry a first-line indent.
+      let bodyParaTally = 0, justifiedParaTally = 0, firstIndentParaTally = 0;
       const cssBlock = new Set<string>();  // display:block — keep line breaks inside a heading
       const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
       const cssBold = new Set<string>();   // font-weight:bold/700
@@ -895,7 +900,7 @@ const App: React.FC = () => {
         try {
           const css = await zip.files[key].async('string');
           for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-            const am = /text-align\s*:\s*(center|right)/i.exec(rule[2]);
+            const am = /text-align\s*:\s*(center|right|justify|left)/i.exec(rule[2]);
             const isBlock = /display\s*:\s*block/i.test(rule[2]);
             const isItalic = /font-style\s*:\s*italic/i.test(rule[2]);
             const isBold = /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(rule[2]);
@@ -908,7 +913,7 @@ const App: React.FC = () => {
             if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
-              if (am) cssAlign[c] = am[1].toLowerCase() as 'center' | 'right';
+              if (am) { const av = am[1].toLowerCase(); if (av === 'center' || av === 'right') cssAlign[c] = av; else if (av === 'justify') cssJustify.add(c); else if (av === 'left') cssLeft.add(c); }
               if (isBlock) cssBlock.add(c);
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
@@ -923,6 +928,23 @@ const App: React.FC = () => {
         const inline = (el as HTMLElement).style?.textAlign?.toLowerCase();
         if (inline === 'center' || inline === 'right') return inline;
         for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssAlign[c]) return cssAlign[c];
+        return null;
+      };
+      // The EFFECTIVE text-align of an element, resolving CSS inheritance (text-align inherits, so a
+      // paragraph with no align of its own takes its ancestor's — commonly the body's `.calibre` justify).
+      // Walks up the element chain checking inline style then class → justify/center/right/left. Used to
+      // tally how much of the body is justified for the doc-level sourceJustified flag.
+      const effectiveAlignOf = (el: Element | null): 'justify' | 'center' | 'right' | 'left' | null => {
+        let cur: Element | null = el;
+        for (let depth = 0; cur && cur.nodeType === 1 && depth < 12; depth++, cur = cur.parentElement) {
+          const inline = (cur as HTMLElement).style?.textAlign?.toLowerCase();
+          if (inline === 'justify' || inline === 'left' || inline === 'right' || inline === 'center') return inline;
+          for (const c of (cur.getAttribute('class') || '').split(/\s+/)) {
+            if (cssJustify.has(c)) return 'justify';
+            if (cssAlign[c]) return cssAlign[c];
+            if (cssLeft.has(c)) return 'left';
+          }
+        }
         return null;
       };
       const indentFor = (el: Element): number => {
@@ -1166,11 +1188,33 @@ const App: React.FC = () => {
         const trimmed = childText.trim();
         if (!trimmed) return '';
 
-        // A blockquote reads as a set-off quote → italic. But wrap in "*" ONLY when the content isn't
-        // ALREADY emphasised (an inner <i>/<em> makes trimmed start/end with "*", and the extra layer
-        // would collapse to "**…**" = bold, or tangle and drop the italic). If it already carries
-        // emphasis, keep it verbatim so the source's own italics render.
-        if (tag === 'blockquote') return /[*_]/.test(trimmed) ? `\n\n${trimmed}\n\n` : `\n\n*${trimmed}*\n\n`;
+        // Render a <blockquote> like the PDF: a FLUSH-LEFT set-off quotation (gap above, flush first line,
+        // the source's own smaller font + italics, attribution right-aligned) - NOT a horizontally-indented
+        // block. The PDF insets a quote only when the print geometry is inset on both margins, which these
+        // are not (`.blockquote` = `margin:0 10% 0 0` -> left 0). So per inner block emit: the block-quote
+        // ROLE (U+E019) for the set-off gap WITHOUT any NBSP indent (stays flush/full-width, reader pads
+        // only when para.indent>0); U+E018 flush-first-line (the source `.block/.noindent` set text-indent:0,
+        // and the reader otherwise applies its default 1.75em first-line indent since para.indent is 0); and
+        // a small SIZE tier read from the quote's own font-size (sizeTierSentinel skips small tiers globally
+        // to protect small-caps section headings - a quote is not a heading, so read it here: Sovereign's
+        // .block/.att = 0.833em -> E01C 0.86, matching the PDF). U+E022 gives the first block the full set-
+        // off top margin. ORDER IS LOAD-BEARING: every sentinel must precede any text.
+        if (tag === 'blockquote') {
+          const blocks = childText.split(/\n{2,}/u).map(b => b.trim()).filter(Boolean);
+          if (!blocks.length) return '';
+          const E018 = String.fromCharCode(0xE018); // flush first line
+          const E019 = String.fromCharCode(0xE019); // block-quote role (set-off gap)
+          const E022 = String.fromCharCode(0xE022); // full set-off gap above (first block only)
+          const _kids = Array.from(element.children).filter(c => isBlockChild(c));
+          const _minEm = _kids.length ? Math.min(..._kids.map(c => resolveFontEm(c))) : resolveFontEm(element);
+          const _ratio = currentBodyEm > 0 ? _minEm / currentBodyEm : 1;
+          const sizeTier = _ratio <= 0.78 ? String.fromCharCode(0xE01B) : _ratio < 0.94 ? String.fromCharCode(0xE01C) : '';
+          const tagged = blocks.map((b, i) => {
+            const lead = b.match(/^[\uE010-\uE022]*/u)![0]; // existing align sentinel (attribution E011) stays in the run
+            return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + b.slice(lead.length);
+          });
+          return `\n\n${tagged.join('\n\n')}\n\n`;
+        }
         if (tag === 'cite') return `\n—— ${trimmed.replace(/^(?:——|--|—|–|-)\s*/u, '')}\n`;
         // Emphasis via a tag: same figure-marker guard as emphasize() — a decorative image inside
         // <b>/<i>/<em> must not be wrapped, or a stray "**"/"*" survives when the image is dropped.
@@ -1251,6 +1295,17 @@ const App: React.FC = () => {
           if (indentPx >= 8 && /^\[[^\]\n]+\]\([^)\n]+\)$/.test(body.trim())) {
             const levels = Math.min(4, Math.max(1, Math.round(indentPx / 14)));
             return `\n\n${sizeTierSentinel(element)}${sentinel}${' '.repeat(levels * 4)}${body}\n\n`;
+          }
+          // Doc-level layout tally: this is a genuine body paragraph. Count it, whether it resolves to
+          // JUSTIFIED text (CSS inheritance walked), and whether it carries a first-line indent (its own
+          // text-indent) - feeds sourceJustified / sourceFirstLineIndent after the walk. Real prose only.
+          if (tag === 'p' && trimmed.length > 40) {
+            bodyParaTally++;
+            if (effectiveAlignOf(element) === 'justify') justifiedParaTally++;
+            const _tiIn = (element as HTMLElement).style?.textIndent;
+            let _ti = _tiIn ? (lenToEm(_tiIn) ?? 0) : 0;
+            if (_ti <= 0) for (const c of (element.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b?.ti) _ti = Math.max(_ti, b.ti); }
+            if (_ti > 0.1) firstIndentParaTally++;
           }
           return `\n\n${sizeTierSentinel(element)}${sentinel}${body}\n\n`;
         }
@@ -1568,7 +1623,13 @@ const App: React.FC = () => {
       // (buildChaptersFromOutline sorts by offset and collapses non-monotonic entries, so re-anchored
       // entries that land out of nav order are put back into reading order there.)
 
-      return { content: fullText, outline, figures, anchors: epubAnchors };
+      // Doc-level layout flags from the tally (parity with the PDF's line-fill measurement). Conservative,
+      // like the PDF: only decide over enough samples. justified = most body paragraphs resolve to justify
+      // (the reader's 'auto' align then mirrors it); firstLineIndent = most carry a first-line indent
+      // (true) vs clearly block-style (false) — undefined when unclear, leaving the reader's default.
+      const justified = bodyParaTally >= 8 ? justifiedParaTally / bodyParaTally > 0.6 : undefined;
+      const firstLineIndent = bodyParaTally >= 8 ? firstIndentParaTally / bodyParaTally >= 0.25 : undefined;
+      return { content: fullText, outline, figures, anchors: epubAnchors, justified, firstLineIndent };
 
     } catch (e) {
       console.error("EPUB processing error", e);
@@ -4410,8 +4471,8 @@ const App: React.FC = () => {
       let context: FileContext;
       let figures: ExtractedFigure[] | undefined;
       if (kind === 'epub') {
-        const { content, outline, figures: f, anchors } = await processEpub(file);
-        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined };
+        const { content, outline, figures: f, anchors, justified, firstLineIndent } = await processEpub(file);
+        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
         figures = f.length ? f : undefined;
       } else {
         const { content, outline, title, figures: f, justified, firstLineIndent } = await processPdf(file);
@@ -4608,7 +4669,7 @@ const App: React.FC = () => {
 
     if (isEpub) {
        try {
-         const { content: textContent, outline: epubOutline, figures: epubFigures, anchors: epubAnchors } = await processEpub(file);
+         const { content: textContent, outline: epubOutline, figures: epubFigures, anchors: epubAnchors, justified: epubJustified, firstLineIndent: epubFirstLineIndent } = await processEpub(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -4617,6 +4678,8 @@ const App: React.FC = () => {
             sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION,
             pdfOutline: epubOutline.length ? epubOutline : undefined,
             epubAnchors: Object.keys(epubAnchors).length ? epubAnchors : undefined,
+            sourceJustified: epubJustified,
+            sourceFirstLineIndent: epubFirstLineIndent,
          }, epubFigures.length ? epubFigures : undefined);
        } catch (err: any) {
          setError(err.message || "Failed to process EPUB.");

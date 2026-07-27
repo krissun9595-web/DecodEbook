@@ -531,7 +531,18 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v178-measured-gap';
 //     CSS text-align) emitting the same reader sentinels the PDF path uses. Existing EPUBs carry no
 //     stamp ('(none)'), so they read as stale on this build and are re-extracted from their stored
 //     original (or prompt a one-time re-upload when no original was kept).
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v1';
+// v3: a <blockquote> renders like the PDF — FLUSH-LEFT and full-width with a set-off gap above (U+E019
+//     role, no forced indent; U+E022 top margin on the first block), a FLUSH FIRST LINE (U+E018, since the
+//     source `.block/.noindent` set text-indent:0 and the reader otherwise adds its default first-line
+//     indent), and the quote's OWN smaller font (a size tier read from the quote's font-size — e.g.
+//     Sovereign's .block/.att 0.833em → E01C 0.86 — since sizeTierSentinel skips small tiers globally to
+//     protect small-caps headings). Source italics + right-aligned attribution kept. (v2 wrongly indented.)
+// v4: doc-level layout flags — sourceJustified + sourceFirstLineIndent, the parity the PDF already sets.
+//     A tally over body paragraphs (CSS-inheritance-aware) decides whether most body text resolves to
+//     JUSTIFIED (Sovereign's `.calibre` base = text-align:justify → the reader's 'auto' align justifies
+//     the body, matching the PDF) and whether it uses a first-line indent vs block style. Conservative:
+//     only decided over >= 8 sampled paragraphs, else left undefined (reader default).
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v4-justify';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).
