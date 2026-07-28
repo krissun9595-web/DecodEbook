@@ -540,7 +540,13 @@
 //       not fill the measure) as long as it's a substantial body block, not a short running head. On merge,
 //       the continuation's leading flush/size sentinels are stripped so nothing leaks mid-sentence. Fixes
 //       both the visible gap AND the mid-sentence page break (pagination now breaks at the real boundary).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v181-seam-continuation';
+// v182: in-chapter footnotes with an "fn"-prefixed marker ("[fn2](#pdffn…)", Elon Musk) now start their own
+//       block. startsFootnoteEntry's leadLink test matched only a numeric/roman label, so the whole footnote
+//       section merged into the body (no blank line, no per-entry break) and fn2 navigation resolved nowhere
+//       (SOURCE_REQUIRED). Use markerLabelOf, which accepts fn-prefixed markers while still rejecting a
+//       descriptive dest link ("[page](#…)"). Each footnote is now a set-off entry (small font via the shrink
+//       tier), the section breaks from the body, and the marker navigates to its local note.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v182-fn-footnote-entries';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,

@@ -917,7 +917,19 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
       pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }], continuesParagraph });
     }
     continuesParagraph = !brokeAtBoundary; // the NEXT page continues the paragraph iff we split inside one
-    remaining = trimPageText(remaining.substring(splitIdx));
+    const _nextRemaining = trimPageText(remaining.substring(splitIdx));
+    if (continuesParagraph && _nextRemaining) {
+      // Carry the split paragraph's SIZE tier (and alignment) sentinel onto the continuation page: a small
+      // footnote / a heading that wraps across a reader page keeps its size, instead of the continuation
+      // rendering at default body size (its leading sentinel stayed on the first page).
+      const _firstPortion = remaining.substring(0, splitIdx);
+      const _pStart = _firstPortion.lastIndexOf('\n\n');
+      const _lead = _firstPortion.slice(_pStart < 0 ? 0 : _pStart + 2).match(/^[\uE010-\uE023]+/u)?.[0] || '';
+      const _carry = (_lead.match(/[\uE01B-\uE01F]/u)?.[0] || '') + (_lead.match(/[\uE010\uE011]/u)?.[0] || '');
+      remaining = _carry + _nextRemaining;
+    } else {
+      remaining = _nextRemaining;
+    }
   }
   return pages;
 };

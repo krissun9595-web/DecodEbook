@@ -3275,7 +3275,11 @@ const App: React.FC = () => {
         // wrapping to a line start ("[page](#pdffn…) FDA photo…") is body text, and without this gate it
         // split the credits paragraph at the wrap.
         const leadLink = line.text.match(/^\s*\[([^\]\n]+)\]\(#[^)\n]*\)/);
-        if (leadLink && /^(?:\d{1,3}|[ivxlcdm]{1,4})$/iu.test(leadLink[1].trim())) return true;
+        // markerLabelOf accepts a numeric/roman marker AND an "fn"-prefixed one ("fn2"), while still
+        // rejecting descriptive dest links ("[page](#…)"). The Elon PDF's in-chapter footnotes use
+        // "[fn2](#pdffn…)"; the old numeric-only test missed them, so each footnote failed to start its
+        // own block — the whole footnote section merged into the body and fn2 navigation resolved nowhere.
+        if (leadLink && markerLabelOf(leadLink[1].trim())) return true;
         const m = line.text.match(/^\s*([ivxlcdm]{1,4}|\d{1,3})[.)]\s/iu);
         return Boolean(m && markerLabelOf(m[1]));
       };

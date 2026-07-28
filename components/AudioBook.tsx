@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v110-seam-merge';
+const CHAPTER_TEXT_CACHE_VERSION = 'v111-footnote-nav';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -556,7 +556,10 @@ const parseLeadingNoteMarker = (
   value: string,
   marker: string
 ): { label: string; rest: string; href?: string; noteKey?: string } | null => {
-  const clean = value.trimStart();
+  // Strip leading block sentinels (size tier / flush-first-line / align) as well as whitespace: a footnote
+  // entry now opens with its shrink-size sentinel ("<E01B><E018>[fn2](#pdffn…)"), and a bare trimStart left
+  // those PUA chars in front of the "[" so the ^-anchored marker match failed and note navigation missed.
+  const clean = value.replace(/^[\s\u00A0\uE010-\uE023]+/u, '');
   const linkedMatch = clean.match(new RegExp(`^\\[(${noteMarkerSourceFor(marker)})\\]\\(([^)]+)\\)(?:[.)])?(?:\\s+|$)`, 'iu'));
   if (linkedMatch) {
     return {
