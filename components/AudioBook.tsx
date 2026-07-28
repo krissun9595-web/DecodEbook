@@ -585,6 +585,16 @@ const sentenceStartsWithNoteMarker = (value: string, marker: string, noteKey?: s
     new RegExp(`^\\s*${noteMarkerSourceFor(marker)}(?:\\s+|$)`, 'iu').test(stripInlineFormatSyntax(value));
 };
 
+// A paragraph that OPENS a footnote/endnote ENTRY — its text begins with a note-marker LINK whose href
+// is a note destination (#pdffn / #pdfnote / #en / #fn…, not a #pdfref page cross-ref). Marker-agnostic
+// (fn-prefixed, numeric, or roman) so an in-chapter footnote section ("[fn2](#pdffn…) …") is recognised
+// without needing the whole chapter to be the Notes chapter. Used to render such entries hanging + tight
+// (consecutive footnotes flow like the source's footnote block, with a set-off only before the first).
+const paraStartsFootnoteEntry = (para?: { original?: string[] }): boolean => {
+  const t = (para?.original || []).join(' ').replace(/^[\s -]+/u, '');
+  return /^["'“]?\s*\[\s*(?:fn\.?\s?)?[0-9ivxlcdm]{1,8}\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn)/iu.test(t);
+};
+
 const splitLeadingNoteMarker = (value: string, marker: string, noteKey?: string): { label: string; rest: string } | null => {
   const parsed = parseLeadingNoteMarker(value, marker);
   if (!parsed || (noteKey && parsed.noteKey !== noteKey)) return null;
@@ -4467,8 +4477,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // "N."/"N)" (Sovereign notes).
                   const isNoteEntry = isNotesChapter && !isHeadingRole && !isNotesSectionHeadingParagraph(para.original)
                     && /^["'“]?\s*(?:\[\s*[0-9ivxlcdm]{1,8}\s*\](?:\s*\([^)\n]*\))?|[0-9]{1,3}[.)])/iu.test(para.original.join(' ').replace(/^[\s ]+/u, ''));
+                  // In-chapter footnote entries (a footnote section at the END of a normal chapter, not the
+                  // Notes chapter) — same hanging indent as note entries, and reproduced TIGHT: consecutive
+                  // footnotes flow like the source's footnote block (measured ~1 line gap, no blank line), with
+                  // a set-off only BEFORE the first one (the gap the source puts between body and the section).
+                  const isFnEntry = !isHeadingRole && paraStartsFootnoteEntry(para);
+                  const prevFnEntry = paraStartsFootnoteEntry(paragraphData[pIdx - 1]);
                   const notesHangStyle: React.CSSProperties | undefined =
-                    isNoteEntry ? { textIndent: '-1.5em', paddingLeft: '1.5em' } : undefined;
+                    (isNoteEntry || isFnEntry) ? { textIndent: '-1.5em', paddingLeft: '1.5em' } : undefined;
                   // A hanging-list entry (dialogue speaker turn / CIP field, para.hangingEntry from the
                   // U+E01A sentinel): the label HANGS at the outdent, wrapped lines indent to the tier.
                   // para.indent (the NBSP tier) already gives noTextIndent (drops the 1.75em) + the left
@@ -4540,7 +4556,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
