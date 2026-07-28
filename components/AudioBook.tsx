@@ -4220,11 +4220,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // ([&_span.block]:!mb-0) so the rule lands ~4px under the actual attribution glyphs.
                     const prevHd = paragraphData[pIdx - 1]?.role === 'heading';
                     const nextHd = paragraphData[pIdx + 1]?.role === 'heading';
+                    // "Attribution above" — an epigraph credit ("—— MATTHEW 10:26") that the rule must hug
+                    // (mt-1). PDF attributions are right-aligned lines, NOT block-quotes (prevBq=false), so key
+                    // off the em-dash lead-in (robust to footnote markers / trailing years, which defeat
+                    // looksLikeAttributionLine) after stripping leading sentinels/quotes.
+                    const prevAttr = /^[\s -"'“‘]*(?:——|—|–|--)\s*\S/u.test((paragraphData[pIdx - 1]?.original || []).join(' '));
                     // Compute the rule's top and bottom margins INDEPENDENTLY from what sits above vs below —
                     // so "attribution above" always hugs (mt-1), even when a heading follows (an epigraph
                     // whose next block is a chapter/section head). A heading neighbour hugs tight (mt-2/mb-2,
                     // the deck bracket), a block-quote hugs (attribution/quote side), body keeps room (5).
-                    const mt = prevHd ? 'mt-2' : prevBq ? 'mt-1' : nextHd ? 'mt-6' : 'mt-5';
+                    const mt = prevHd ? 'mt-2' : (prevBq || prevAttr) ? 'mt-1' : nextHd ? 'mt-6' : 'mt-5';
                     const mb = nextHd ? 'mb-2' : nextBq ? 'mb-1' : prevHd ? 'mb-6' : 'mb-5';
                     const dm = `${mt} ${mb}`;
                     // A DOUBLE rule (chapter deck bracket) draws two close parallel lines (source: two ~0.75pt
