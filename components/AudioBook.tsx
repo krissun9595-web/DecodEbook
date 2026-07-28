@@ -251,6 +251,7 @@ interface ParagraphData {
     // A decorative horizontal rule from the source (epigraph/section divider). Carries no sentences;
     // rendered as a thin centred line in the attribution grey.
     divider?: boolean;
+    dividerDouble?: boolean; // a DOUBLE rule (two close parallel lines) — a chapter deck bracket, not a single line
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1096,8 +1097,9 @@ const buildPageSentenceData = (pageText: string): {
     // A decorative horizontal RULE (U+E021) — an epigraph/section divider from the source. Its own
     // paragraph with no sentences (invisible to TTS/translation/search); the renderer draws a thin grey
     // line in the attribution colour.
-    if (/^\s*\s*$/u.test(rawPText.replace(/\[\[PAGE\s+\d+\]\]/gi, ''))) {
-      paragraphData.push({ original: [], translated: [], divider: true });
+    const _divM = rawPText.replace(/\[\[PAGE\s+\d+\]\]/gi, '').match(/^\s*(+)\s*$/u);
+    if (_divM) {
+      paragraphData.push({ original: [], translated: [], divider: true, dividerDouble: _divM[1].length >= 2 });
       return;
     }
     // An extracted figure marker "[[FIG id]]" — its own paragraph. No sentences (so it's invisible to
@@ -4158,7 +4160,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // A decorative divider (epigraph/section rule) is full-width content with no sentences —
                     // render the thin grey line in its cell too, so split/two-column view shows it instead of
                     // dropping it as an empty cell (the same line the single-window flow draws).
-                    if (para.divider) return <div key={`c-${translated}-${pIdx}`} className="flex justify-center my-6"><span className="block h-px w-full bg-zinc-500/60" /></div>;
+                    if (para.divider) return <div key={`c-${translated}-${pIdx}`} className="flex justify-center my-6"><span className={para.dividerDouble ? "block h-1 w-full border-t border-b border-zinc-500/60" : "block h-px w-full bg-zinc-500/60"} /></div>;
                     if (!para.original.length) return <div key={`c-${translated}-${pIdx}`} />;
                     const isHeadingRole = para.role === 'heading';
                     const tierPad = para.indent && !isHeadingRole ? (para.indent / 4) * 1.5 : 0;
@@ -4212,20 +4214,33 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // precedes) → tight above (attribution), room below. (-mt cancels the attribution's margin.)
                     const prevBq = !!paragraphData[pIdx - 1]?.blockQuote;
                     const nextBq = !!paragraphData[pIdx + 1]?.blockQuote;
-                    // The attribution paragraph wrapper carries NO bottom margin in either view (the attribution
-                    // segment's mb-4 doesn't propagate to it), so a bottom rule needs a small POSITIVE top margin
-                    // (mt-2 = 8px) to match the source's attribution→rule gap — same in split and single.
-                    const dm = nextBq && !prevBq ? 'mt-6 mb-4' : prevBq && !nextBq ? 'mt-2 mb-6' : 'my-5';
+                    // OUTSIDE (rule↔body) ≈ mt-5/mb-5 (~20px, source ~15.7pt); INSIDE (rule↔quote/attribution)
+                    // ≈ mt-1/mb-1 (~4px, source ~3pt). The attribution's inner 'block' segment carries an mb-4
+                    // that would push the rule ~18px below the text; the attribution line div zeroes it
+                    // ([&_span.block]:!mb-0) so the rule lands ~4px under the actual attribution glyphs.
+                    const prevHd = paragraphData[pIdx - 1]?.role === 'heading';
+                    const nextHd = paragraphData[pIdx + 1]?.role === 'heading';
+                    // A rule that brackets a chapter DECK (heading) hugs it TIGHT (mt-2/mb-2 toward the
+                    // heading) so the deck sits equidistant between its two rules like the source; away from
+                    // the deck it keeps epigraph/body room.
+                    const dm = (prevHd || nextHd)
+                      ? `${prevHd ? 'mt-2' : 'mt-6'} ${nextHd ? 'mb-2' : nextBq ? 'mb-4' : 'mb-6'}`
+                      : nextBq && !prevBq ? 'mt-5 mb-1' : prevBq && !nextBq ? 'mt-1 mb-5' : 'my-5';
+                    // A DOUBLE rule (chapter deck bracket) draws two close parallel lines (source: two ~0.75pt
+                    // lines ~2pt apart) via a top+bottom border on a 2px box; a single rule is one thin line.
+                    const ruleCls = (extra = '') => para.dividerDouble
+                      ? `block h-1 w-full ${extra} border-t border-b border-zinc-500/60`
+                      : `block h-px w-full ${extra} bg-zinc-500/60`;
                     // Split view: a SEPARATE rule inside each layer (original left, translation right) with the
                     // centre gutter between them — never one line spanning both windows. Single view: a rule
                     // that scales to the text-column width, not a fixed length.
                     return viewMode === 'split' ? (
                       <div key={`div-${pIdx}`} className={`w-full flex ${dm} items-center`}>
-                        <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20"><span className="block h-px w-full bg-zinc-500/60" /></div>
-                        <div className="w-1/2 pl-2 md:pl-6"><span className="block h-px w-full bg-zinc-500/60" /></div>
+                        <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20"><span className={ruleCls()} /></div>
+                        <div className="w-1/2 pl-2 md:pl-6"><span className={ruleCls()} /></div>
                       </div>
                     ) : (
-                      <div key={`div-${pIdx}`} className={`w-full flex justify-center ${dm}`}><span className="block h-px w-full max-w-3xl bg-zinc-500/60" /></div>
+                      <div key={`div-${pIdx}`} className={`w-full flex justify-center ${dm}`}><span className={ruleCls('max-w-3xl')} /></div>
                     );
                   }
                   // An extracted PDF figure — inline image loaded from the cache.
@@ -4556,13 +4571,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
-                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
+                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${isAttrLine && nextIsDivider ? 'leading-tight [&_span.block]:!mb-0 [&_span.block]:!mt-0' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                             style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
@@ -4586,7 +4601,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                   id={globalIndex >= 0 ? `original-sent-${globalIndex}` : undefined}
 	                                  data-source="Original_Layer"
 	                                  data-sentence-index={globalIndex}
-	                                  className={`transition-all duration-300 px-[2px] ${isAttrLine ? 'inline-block align-top' : ''} ${isAudioActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
+	                                  className={`transition-all duration-300 px-[2px] ${isAttrLine ? (nextIsDivider ? 'inline-block align-bottom' : 'inline-block align-top') : ''} ${isAudioActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
 	                                  onPointerDown={handleSentencePointerDown}
 	                                  onClick={(event) => handleSentenceClick(globalIndex, event)}
 	                                >
@@ -4598,14 +4613,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       own sentence ("i." | "Set…", capital) already gets a space from the {' '} join.
                                       Add one space after the gutter in the former case so both read "i. body". */}
                                   {renderMarker && bodySentence ? ' ' : null}
-                                  {renderInkableText(bodySentence, globalIndex, isAudioActive)}{' '}
+                                  {renderInkableText(bodySentence, globalIndex, isAudioActive)}{isAttrLine && nextIsDivider ? null : ' '}
                                 </span>
                               );
                             })}
                           </div>
                           {viewMode === 'split' && (
                             <div
-                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
+                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
                               style={{ ...paragraphStyle, ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
@@ -4633,7 +4648,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       key={`t-${currentTranslationIdentity}-${globalIndex}-${pIdx}-${sIdx}`}
 	                                      data-source="Translated_Layer"
 	                                      data-sentence-index={globalIndex}
-	                                      className={`transition-all duration-300 px-[2px] ${isAttrLine ? 'inline-block align-top' : ''} ${isActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
+	                                      className={`transition-all duration-300 px-[2px] ${isAttrLine ? (nextIsDivider ? 'inline-block align-bottom' : 'inline-block align-top') : ''} ${isActive ? HIGHLIGHT_STYLES[settings.highlightColor] : sentenceHoverClass}`}
 	                                      onPointerDown={handleSentencePointerDown}
 	                                      onClick={(event) => handleSentenceClick(globalIndex, event)}
 	                                    >

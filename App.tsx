@@ -1925,7 +1925,7 @@ const App: React.FC = () => {
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
       type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; capH?: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
-      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean; hRules: { y: number; x: number; w: number }[] }[] = [];
+      const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean; hRules: { y: number; x: number; w: number; double?: boolean }[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
 
@@ -2180,7 +2180,7 @@ const App: React.FC = () => {
         // through the same isBulletParagraph path as text-glyph / EPUB <ul> bullets.
         const vectorBullets: { cx: number; cy: number; size: number }[] = [];
         // Decorative horizontal RULES (epigraph/section dividers) drawn as thin filled rects.
-        const hRules: { y: number; x: number; w: number }[] = [];
+        const hRules: { y: number; x: number; w: number; double?: boolean }[] = [];
         if (opList) {
           try {
             const OPS = pdfjsLib.OPS;
@@ -2219,9 +2219,20 @@ const App: React.FC = () => {
             // into the text (Singularity p489's "Me Too? ////").
             const coincidesWithLink = (r: { y: number; x: number; w: number }): boolean =>
               links.some(l => { const [lx1, ly1, lx2, ly2] = l.rect; return r.y >= ly1 - 4 && r.y <= ly2 + 3 && Math.min(r.x + r.w, lx2) - Math.max(r.x, lx1) > (lx2 - lx1) * 0.5; });
-            // Keep only ISOLATED rules — a table/chart grid stacks ≥3 within a small y-span; a content
-            // divider stands alone (or a pair bracketing an epigraph, ≥50pt apart).
-            for (const r of ruleCands) if (ruleCands.filter(o => Math.abs(o.y - r.y) <= 50).length < 3 && !coincidesWithLink(r)) hRules.push(r);
+            // Group rule candidates into UNITS first: a decorative rule is a SINGLE line OR a DOUBLE rule
+            // (two thin lines ~2-4pt apart, bracketing a chapter DECK/subtitle — Sovereign ch1, ch3-8). Two
+            // lines within 4pt collapse to one double unit, so the double-rule pairs framing a deck (4 lines
+            // total) count as 2 units, not 4, and aren't mistaken for a table grid.
+            const _sortedRules = [...ruleCands].sort((a, b) => a.y - b.y);
+            const ruleUnits: { y: number; x: number; w: number; double: boolean }[] = [];
+            for (const r of _sortedRules) {
+              const last = ruleUnits[ruleUnits.length - 1];
+              if (last && !last.double && Math.abs(r.y - last.y) <= 4) last.double = true; // 2nd line of a pair
+              else ruleUnits.push({ y: r.y, x: r.x, w: r.w, double: false });
+            }
+            // Keep only ISOLATED units — a table/chart grid stacks ≥3 UNITS within a small y-span; a content
+            // divider (single or double) stands alone (or a pair bracketing an epigraph, ≥50pt apart).
+            for (const u of ruleUnits) if (ruleUnits.filter(o => Math.abs(o.y - u.y) <= 50).length < 3 && !coincidesWithLink(u)) hRules.push(u);
           } catch { /* best-effort — a parse failure just means no vector bullets are detected on this page */ }
         }
         type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean; mcRole?: string; paraOrder?: number };
@@ -4194,7 +4205,7 @@ const App: React.FC = () => {
         // way figures do. The U+E021 marker becomes its own block; the reader renders a thin grey rule
         // (the attribution colour), and text/search/TTS consumers strip it.
         for (const r of buf.hRules || []) {
-          const rb: EmitBlock = { text: '', role: 'body', firstX: r.x, firstRightX: r.x + r.w, lastRightX: r.x + r.w, lastText: '', topY: r.y, bodyX: r.x };
+          const rb: EmitBlock = { text: r.double ? '' : '', role: 'body', firstX: r.x, firstRightX: r.x + r.w, lastRightX: r.x + r.w, lastText: '', topY: r.y, bodyX: r.x };
           let at = blocks.findIndex(b => (b.topY ?? -Infinity) < r.y);
           if (at < 0) at = blocks.length;
           blocks.splice(at, 0, rb);

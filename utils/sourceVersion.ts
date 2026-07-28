@@ -546,7 +546,12 @@
 //       (SOURCE_REQUIRED). Use markerLabelOf, which accepts fn-prefixed markers while still rejecting a
 //       descriptive dest link ("[page](#…)"). Each footnote is now a set-off entry (small font via the shrink
 //       tier), the section breaks from the body, and the marker navigates to its local note.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v182-fn-footnote-entries';
+// v183: DOUBLE decorative rules. A chapter deck/subtitle is bracketed by two thin lines ~2pt apart
+//       (Sovereign ch1, ch3-8); the isolated-rule filter (drop a rule with >=3 neighbours within 50pt as a
+//       table grid) dropped the middle line of each of the two pairs, leaving a single line. Rules are now
+//       grouped into UNITS (two lines within 4pt = one DOUBLE unit) before the grid filter, and a double
+//       unit emits U+E021 twice so the reader draws two close parallel lines instead of one.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v183-double-rules';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
