@@ -4220,12 +4220,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // ([&_span.block]:!mb-0) so the rule lands ~4px under the actual attribution glyphs.
                     const prevHd = paragraphData[pIdx - 1]?.role === 'heading';
                     const nextHd = paragraphData[pIdx + 1]?.role === 'heading';
-                    // A rule that brackets a chapter DECK (heading) hugs it TIGHT (mt-2/mb-2 toward the
-                    // heading) so the deck sits equidistant between its two rules like the source; away from
-                    // the deck it keeps epigraph/body room.
-                    const dm = (prevHd || nextHd)
-                      ? `${prevHd ? 'mt-2' : 'mt-6'} ${nextHd ? 'mb-2' : nextBq ? 'mb-4' : 'mb-6'}`
-                      : nextBq && !prevBq ? 'mt-5 mb-1' : prevBq && !nextBq ? 'mt-1 mb-5' : 'my-5';
+                    // Compute the rule's top and bottom margins INDEPENDENTLY from what sits above vs below —
+                    // so "attribution above" always hugs (mt-1), even when a heading follows (an epigraph
+                    // whose next block is a chapter/section head). A heading neighbour hugs tight (mt-2/mb-2,
+                    // the deck bracket), a block-quote hugs (attribution/quote side), body keeps room (5).
+                    const mt = prevHd ? 'mt-2' : prevBq ? 'mt-1' : nextHd ? 'mt-6' : 'mt-5';
+                    const mb = nextHd ? 'mb-2' : nextBq ? 'mb-1' : prevHd ? 'mb-6' : 'mb-5';
+                    const dm = `${mt} ${mb}`;
                     // A DOUBLE rule (chapter deck bracket) draws two close parallel lines (source: two ~0.75pt
                     // lines ~2pt apart) via a top+bottom border on a 2px box; a single rule is one thin line.
                     const ruleCls = (extra = '') => para.dividerDouble
@@ -4571,13 +4572,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '-mb-4' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !prevIsDivider && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
-                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${isAttrLine && nextIsDivider ? 'leading-tight [&_span.block]:!mb-0 [&_span.block]:!mt-0' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
+                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                             style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
@@ -4620,7 +4621,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           </div>
                           {viewMode === 'split' && (
                             <div
-                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
+                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
                               style={{ ...paragraphStyle, ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (

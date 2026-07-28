@@ -585,7 +585,14 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v183-double-rules';
 //     in a justified book) emits it so the reader skips justify and renders it left-ragged, matching the
 //     source. effectiveAlignOf resolves CSS inheritance (body prose = justify, no tag). Pairs with the PDF's
 //     v179 (same sentinel + reader support).
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v7-explicit-left';
+// v8: DECORATIVE RULES (U+E021) — the EPUB draws rules as top/bottom BORDERS, so a `border-top/bottom:
+//     … double …` (`.heading_break1` deck) emits a DOUBLE rule and `… solid/dashed …` (`.blockquote1/2a/2b`
+//     epigraph, `.footnote` top separator) a SINGLE rule, as their own U+E021 divider paragraphs bracketing
+//     the block — the same reader path the PDF's v183 double-rules use (unifies EPUB with PDF). Only top/
+//     bottom borders (a horizontal line), never the all-sides `border:` shorthand or table/figure boxes; a
+//     ruled block child inside a heading (the deck) is bracketed by the h1 handler so the rule paragraphs
+//     sit OUTSIDE the heading sentinel.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v8-decorative-rules';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

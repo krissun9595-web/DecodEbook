@@ -897,6 +897,13 @@ const App: React.FC = () => {
       const cssBoxLeftEm: Record<string, { m: number; p: number; ti: number }> = {}; // class → left margin/padding/text-indent (em)
       const cssTiDeclared = new Set<string>(); // classes that EXPLICITLY declare text-indent (so ti:0 = a deliberate flush, not a default)
       const cssFontRaw: Record<string, string> = {}; // class → raw font-size value (for the U+E01B-E01F size tier)
+      // Decorative horizontal RULES the EPUB draws as top/bottom BORDERS (mirrors the PDF's U+E021): a
+      // `border-top/bottom: … double …` brackets a chapter DECK (`.heading_break1`), a `… solid/dashed …`
+      // brackets an epigraph (`.blockquote1/2a/2b`) or tops a footnote block (`.footnote`). Only top/bottom
+      // (a horizontal line) — never the `border:` all-sides shorthand (image frames) or left/right (table/
+      // figure boxes). class → 'single' | 'double'.
+      const cssBorderTop: Record<string, 'single' | 'double'> = {};
+      const cssBorderBottom: Record<string, 'single' | 'double'> = {};
       for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
         try {
           const css = await zip.files[key].async('string');
@@ -911,9 +918,13 @@ const App: React.FC = () => {
             const mE = sideLeftEm(rule[2], 'margin'), pE = sideLeftEm(rule[2], 'padding');
             const tiM = /text-indent\s*:\s*([^;}]+)/i.exec(rule[2]); const tiE = tiM ? lenToEm(tiM[1]) : null;
             const fsM = /font-size\s*:\s*([^;}]+)/i.exec(rule[2]); const fs = fsM ? fsM[1].trim() : null;
-            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null) continue;
+            const btM = /border-top\s*:\s*[^;}]*?\b(solid|double|dashed)\b/i.exec(rule[2]);
+            const bbM = /border-bottom\s*:\s*[^;}]*?\b(solid|double|dashed)\b/i.exec(rule[2]);
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
+              if (btM) cssBorderTop[c] = btM[1].toLowerCase() === 'double' ? 'double' : 'single';
+              if (bbM) cssBorderBottom[c] = bbM[1].toLowerCase() === 'double' ? 'double' : 'single';
               if (am) { const av = am[1].toLowerCase(); if (av === 'center' || av === 'right') cssAlign[c] = av; else if (av === 'justify') cssJustify.add(c); else if (av === 'left') cssLeft.add(c); }
               if (isBlock) cssBlock.add(c);
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
@@ -1157,6 +1168,28 @@ const App: React.FC = () => {
       const SENT_HEADING = String.fromCharCode(0xE013);
       const SENT_CENTER = String.fromCharCode(0xE010);
       const SENT_RIGHT = String.fromCharCode(0xE011);
+      // A decorative RULE sentinel (U+E021) — one for a single line, two for a double rule (chapter deck
+      // bracket). The reader draws them exactly like the PDF path (buildPageSentenceData matches a
+      // paragraph that is ONLY U+E021s). ruleBlock wraps it as its own paragraph.
+      const SENT_RULE = String.fromCharCode(0xE021);
+      const ruleBlock = (kind: 'single' | 'double'): string => `\n\n${kind === 'double' ? SENT_RULE + SENT_RULE : SENT_RULE}\n\n`;
+      // The decorative top/bottom border an element declares (inline style OR a class from cssBorderTop/
+      // Bottom) → the rule kind to draw above/below it. Skips table context (a cell's border-bottom is a
+      // grid line, not a content divider).
+      const borderRuleOf = (el: Element): { top: 'single' | 'double' | null; bottom: 'single' | 'double' | null } => {
+        if (el.closest('table')) return { top: null, bottom: null };
+        let top: 'single' | 'double' | null = null, bottom: 'single' | 'double' | null = null;
+        const st = (el as HTMLElement).style;
+        const inlKind = (s: string | undefined): 'single' | 'double' | null =>
+          (s || '').toLowerCase() === 'double' ? 'double' : ((s || '').toLowerCase() === 'solid' || (s || '').toLowerCase() === 'dashed') ? 'single' : null;
+        top = inlKind(st?.borderTopStyle);
+        bottom = inlKind(st?.borderBottomStyle);
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) {
+          if (!top && cssBorderTop[c]) top = cssBorderTop[c];
+          if (!bottom && cssBorderBottom[c]) bottom = cssBorderBottom[c];
+        }
+        return { top, bottom };
+      };
       // An email/memo header field line ("From: …", "Date: …", "To: …", "Subject: …"). Such a header
       // is authored as one <p> with <br>-separated fields; those <br> become soft \n breaks, leaving
       // the fields in one paragraph. Promote them to SEPARATE paragraphs (\n\n) so the reader styles
@@ -1225,7 +1258,10 @@ const App: React.FC = () => {
             const lead = b.match(/^[\uE010-\uE023]*/u)![0]; // existing align sentinel (attribution E011) stays in the run
             return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + b.slice(lead.length);
           });
-          return `\n\n${tagged.join('\n\n')}\n\n`;
+          // A ruled block-quote (`.blockquote1/2a/2b` = a solid border top+bottom) is an epigraph bracketed
+          // by decorative rules in the source \u2014 emit them, like the PDF.
+          const _bq = borderRuleOf(element);
+          return `\n\n${_bq.top ? ruleBlock(_bq.top) : ''}${tagged.join('\n\n')}${_bq.bottom ? ruleBlock(_bq.bottom) : ''}\n\n`;
         }
         if (tag === 'cite') return `\n—— ${trimmed.replace(/^(?:——|--|—|–|-)\s*/u, '')}\n`;
         // Emphasis via a tag: same figure-marker guard as emphasize() — a decorative image inside
@@ -1263,18 +1299,29 @@ const App: React.FC = () => {
           // PRINCIPLE FIRST — the file's OWN size signal wins: read each display:block child's CSS font-size
           // (a chapter heading's title/deck are styled spans). If the heading differentiates its lines' sizes
           // itself, honour them per line and skip the heuristic below.
-          const _kidEms = Array.from(element.children).filter(c => isBlockChild(c)).map(c => resolveFontEm(c));
+          const _kids = Array.from(element.children).filter(c => isBlockChild(c));
+          const _kidEms = _kids.map(c => resolveFontEm(c));
           const _multiSized = _kidEms.some(e => Math.abs(e - _h1em) >= 0.02) || _kidEms.some((e, k) => k > 0 && Math.abs(e - _kidEms[0]) >= 0.02);
+          // A chapter DECK (e.g. `.heading_break1`) is a styled block child bracketed by a DOUBLE border top+
+          // bottom — the source's decorative rules around the subtitle. Map each heading line back to its block
+          // child (offset 1 when a leading text node like "CHAPTER 3" precedes the first child) and emit that
+          // child's rules as their OWN divider paragraphs around the line (never inside the heading sentinel).
+          const _off = _lines.length - _kids.length; // 0 (line↔child) or 1 (leading text node first)
+          const _wrapHeadingLine = (l: string, k: number, tier: string): string => {
+            const kid = (_off === 0 || _off === 1) ? _kids[k - _off] : undefined;
+            const br = kid ? borderRuleOf(kid) : { top: null, bottom: null };
+            return (br.top ? ruleBlock(br.top) : '') + tier + SENT_HEADING + l + (br.bottom ? ruleBlock(br.bottom) : '');
+          };
           if (_multiSized && (_lines.length === _kidEms.length || _lines.length === _kidEms.length + 1)) {
             const _ems = _lines.length === _kidEms.length ? _kidEms : [_h1em, ..._kidEms];
-            return '\n\n' + _lines.map((l, k) => _tierOf(_ems[k]) + SENT_HEADING + l).join('\n\n') + '\n\n';
+            return '\n\n' + _lines.map((l, k) => _wrapHeadingLine(l, k, _tierOf(_ems[k]))).join('\n\n') + '\n\n';
           }
           // FLAT — the CSS gives the whole heading ONE font-size (a chapter <h1> stacks number / title / deck
           // all at ~2em; the deck only LOOKS bigger via a distinct sans font, which the single-font reader
           // can't reproduce). Render every line at the heading's OWN tier — a uniform chapter block (all
           // 1.5em) that stays larger than section headings (1.25em) and is faithful to the real font-sizes.
           const _st = _tierOf(_h1em);
-          return '\n\n' + _lines.map(l => _st + SENT_HEADING + l).join('\n\n') + '\n\n';
+          return '\n\n' + _lines.map((l, k) => _wrapHeadingLine(l, k, _st)).join('\n\n') + '\n\n';
         }
         if (['p', 'div', 'section', 'article'].includes(tag)) {
           // The publisher's TOC points at this styled paragraph (see navAnchorIds) → it IS a heading, so
@@ -1343,7 +1390,10 @@ const App: React.FC = () => {
           // left-ragged, matching the source. effectiveAlignOf resolves CSS inheritance; body prose
           // resolves to 'justify' (no sentinel), only genuinely-left paragraphs get E023.
           const leftSentinel = effectiveAlignOf(element) === 'left' ? String.fromCharCode(0xE023) : '';
-          return `\n\n${sizeTierSentinel(element, !_looksLikeHeading)}${sentinel}${flushSentinel}${leftSentinel}${body}\n\n`;
+          // A ruled block (`.footnote` = a solid border-top separating chapter-end notes from the body; or a
+          // block that brackets itself with a border) draws the source's decorative rule above/below it.
+          const _pr = borderRuleOf(element);
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, !_looksLikeHeading)}${sentinel}${flushSentinel}${leftSentinel}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -1379,7 +1429,12 @@ const App: React.FC = () => {
         }
         // A display:block inline element (e.g. a heading_break span carrying a title line) is a visual
         // line — put it on its own so a multi-line heading/label keeps its breaks (see the h1 handler).
-        if (isBlockChild(element)) return `\n${emphasize(trimmed, element)}\n`;
+        if (isBlockChild(element)) {
+          // A ruled block span (e.g. `.font` = a double border-bottom under a title). Inside a heading the
+          // h1/h2 handler owns the rule (so it isn't swallowed by the heading sentinel), so skip here.
+          const _cr = element.closest('h1,h2,h3,h4,h5,h6') ? { top: null, bottom: null } : borderRuleOf(element);
+          return `${_cr.top ? ruleBlock(_cr.top) : '\n'}${emphasize(trimmed, element)}${_cr.bottom ? ruleBlock(_cr.bottom) : '\n'}`;
+        }
         return emphasize(childText, element);
       };
 
