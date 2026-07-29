@@ -245,6 +245,10 @@ const findNextNonEmpty = (lines: string[], fromIndex: number): string => {
 
 const shouldMergeAcrossBlankLine = (previous: string, next: string): boolean => {
   if (!previous || !next) return false;
+  // VERSE: a poem stanza (U+E024 hard line breaks) ends at a real stanza boundary — never merge it into the
+  // next stanza/paragraph across the blank line, even when its last line ends mid-sentence (no terminal
+  // punctuation), which the prose-wrap merge below would otherwise do.
+  if (previous.includes('') || next.includes('')) return false;
   if (/^[\p{Ll},;:)\]}]/u.test(next)) return true;
   return !/[.!?。！？"”')\]}]$/.test(previous);
 };

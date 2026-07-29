@@ -234,6 +234,10 @@ interface ParagraphData {
     flushFirstLine?: boolean;
     blockQuote?: boolean;
     setoffAbove?: boolean;
+    // A VERSE/poem stanza (U+E024 hard line breaks from extraction). Its lines render TIGHT (each on its own
+    // line via lineBreakAfter, no per-line paragraph gap) and each stanza is a paragraph, so a stanza gap
+    // (mt-4) sits between them — matching the source's `.poem` (margin:0) / `.poemb` (stanza break) layout.
+    verse?: boolean;
     // A hanging-list entry (dialogue speaker turn / CIP field, U+E01A from extraction): the label hangs
     // at the outdent and wrapped lines indent to `indent` (the NBSP tier). Reader renders it hanging.
     hangingEntry?: boolean;
@@ -1085,6 +1089,11 @@ const buildPageSentenceData = (pageText: string): {
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
+    // VERSE: a poem stanza carries its line breaks as U+E024 (a hard-break sentinel that survives the
+    // chapter-build whitespace collapse, unlike a raw \n). Restore them to \n here so the line splitter
+    // below yields one line per verse line (lineBreakAfter → tight <br> lines), and flag the paragraph.
+    const isVerse = rawPText.includes('');
+    if (isVerse) rawPText = rawPText.replace(//g, '\n');
     // Safety net: strip any figure marker still sitting INSIDE a text paragraph, so an internal marker
     // never surfaces to the reader as literal text. A LEADING marker glued to its caption is already
     // split into its own paragraph upstream (splitFigureMarkerParagraphs), preserving the 1
@@ -1186,7 +1195,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, verse: isVerse });
   });
 
   if (/excellent overview of mechanistic|machine learning with imperfect|Neel Nanda/.test(pageText)) {
@@ -1562,7 +1571,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE023]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE023\uE024]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -4563,6 +4572,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // quotation, or the items of an indented rule list like MYCIN's "IF: / 1. / 2. / … / THEN:")
                         // — it must flow tight, not open a 32px gap before every item.
                         const prevIsBlockQuote = !!paragraphData[pIdx - 1]?.blockQuote;
+                        const prevIsVerse = !!paragraphData[pIdx - 1]?.verse;
                         // A multi-line heading (chapter № / title / deck) is emitted as consecutive heading
                         // paragraphs. The first opens the mt-8 chapter-top break; the rest stack TIGHT under it
                         // (mt-1) so the number/title/deck read as one cohesive heading block, not three gaps.
@@ -4577,7 +4587,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (para.align === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && lineIdx === 0 && prevIsBlockQuote) ? 'mt-4' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (para.align === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div

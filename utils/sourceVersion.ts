@@ -616,10 +616,13 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v186-center-url-len';
 // v11: a CENTRED small caps line is display/promo text, not an untagged section head — honour its real
 //     small size (Sovereign's 0.75em "A TOUCHSTONE BOOK" was kept full-size by the all-caps shrink guard).
 //     The shrink guard now yields to `text-align:center`. (Pairs with the reader no-bolding centred lines.)
-// (v12 verse attempt reverted — the reader flattens a paragraph's internal \n to spaces in chapter build
-//  [readerStructure paragraph join], so one-paragraph-with-\n verse rendered as a run-on. Proper verse needs
-//  line breaks preserved through chapter build → pagination → sentence data; deferred as a focused task.)
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v13-verse-reverted';
+// v14: VERSE/POEM support. A poem (`.poem` lines, `.poemb` stanza ends) now emits each STANZA as one
+//     paragraph whose lines are joined by U+E024 — a hard line-break sentinel that survives the chapter-build
+//     whitespace collapse (unlike a raw \n) and is restored to \n in buildPageSentenceData, so the lines
+//     render TIGHT (lineBreakAfter → <br>) and each stanza (its own paragraph, flagged para.verse) gets a
+//     stanza gap. normalizeReaderText never merges a verse stanza across the blank line; combinedText
+//     neutralises U+E024 for search/footnote offsets.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v14-verse';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

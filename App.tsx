@@ -1249,6 +1249,26 @@ const App: React.FC = () => {
         // .block/.att = 0.833em -> E01C 0.86, matching the PDF). U+E022 gives the first block the full set-
         // off top margin. ORDER IS LOAD-BEARING: every sentinel must precede any text.
         if (tag === 'blockquote') {
+          // VERSE/POEM: source `.poem` lines (each a `<p>`, tight margin:0) with `.poemb` ending a stanza
+          // (margin 0 0 1em). Emit each STANZA as ONE paragraph whose lines are joined by U+E024 (a hard
+          // line-break sentinel the reader restores to \n so the lines render TIGHT via lineBreakAfter);
+          // separate stanzas with \n\n so the reader's verse spacing puts a stanza gap between them. Not a
+          // block quote — verse has its own tight-line + stanza-gap layout.
+          const _poemKids = Array.from(element.children).filter(c => /\bpoem/i.test(c.getAttribute('class') || ''));
+          if (_poemKids.length >= 2) {
+            const _VLB = String.fromCharCode(0xE024);
+            const _pMin = Math.min(..._poemKids.map(c => resolveFontEm(c)));
+            const _pRatio = currentBodyEm > 0 ? _pMin / currentBodyEm : 1;
+            const _pTier = _pRatio <= 0.78 ? String.fromCharCode(0xE01B) : _pRatio < 0.94 ? String.fromCharCode(0xE01C) : '';
+            const _stanzas: string[][] = []; let _cur: string[] = [];
+            for (const _c of _poemKids) {
+              const _lt = Array.from(_c.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('').replace(/\s+/g, ' ').trim();
+              if (_lt) _cur.push(_lt);
+              if (/\bpoemb/i.test(_c.getAttribute('class') || '')) { if (_cur.length) _stanzas.push(_cur); _cur = []; }
+            }
+            if (_cur.length) _stanzas.push(_cur);
+            if (_stanzas.length) return '\n\n' + _stanzas.map(st => _pTier + st.join(_VLB)).join('\n\n') + '\n\n';
+          }
           const blocks = childText.split(/\n{2,}/u).map(b => b.trim()).filter(Boolean);
           if (!blocks.length) return '';
           const E018 = String.fromCharCode(0xE018); // flush first line
