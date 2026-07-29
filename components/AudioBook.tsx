@@ -4230,7 +4230,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // whose next block is a chapter/section head). A heading neighbour hugs tight (mt-2/mb-2,
                     // the deck bracket), a block-quote hugs (attribution/quote side), body keeps room (5).
                     const mt = prevHd ? 'mt-2' : (prevBq || prevAttr) ? 'mt-1' : nextHd ? 'mt-6' : 'mt-5';
-                    const mb = nextHd ? 'mb-2' : nextBq ? 'mb-1' : prevHd ? 'mb-6' : 'mb-5';
+                    const mb = nextHd ? 'mb-2' : prevHd ? 'mb-6' : nextBq ? 'mb-1' : 'mb-5';
                     const dm = `${mt} ${mb}`;
                     // A DOUBLE rule (chapter deck bracket) draws two close parallel lines (source: two ~0.75pt
                     // lines ~2pt apart) via a top+bottom border on a 2px box; a single rule is one thin line.

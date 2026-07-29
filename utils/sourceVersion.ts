@@ -551,7 +551,11 @@
 //       table grid) dropped the middle line of each of the two pairs, leaving a single line. Rules are now
 //       grouped into UNITS (two lines within 4pt = one DOUBLE unit) before the grid filter, and a double
 //       unit emits U+E021 twice so the reader draws two close parallel lines instead of one.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v183-double-rules';
+// v184: link-underline guard no longer eats a decorative rule that merely passes near a NARROW link. An
+//       underline spans the link TEXT (≈ annotation width); require the rule's width to match the link's, so
+//       a full-column epigraph rule 3pt above a footnote marker isn't dropped (Sovereign p56 "We shall not
+//       be…" lost its top rule).
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v184-rule-link-width';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,

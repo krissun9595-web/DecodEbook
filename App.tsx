@@ -2272,8 +2272,13 @@ const App: React.FC = () => {
             // through the width gate above (a wide URL underline is >0.55×page). Drop any rule that coincides
             // with a link annotation, else a notes page of URL citations injects stray U+E021 divider marks
             // into the text (Singularity p489's "Me Too? ////").
+            // Match the link's WIDTH too: an underline spans the link TEXT (≈ the annotation width), so a
+            // full-column decorative rule (e.g. an epigraph bracket that merely passes 3pt above a footnote
+            // link's narrow marker) is NOT an underline and must be kept. Without this, a wide rule crossing a
+            // narrow link's x-range slipped the >50%-overlap gate and was wrongly dropped (Sovereign p56's
+            // "We shall not be…" epigraph lost its TOP rule).
             const coincidesWithLink = (r: { y: number; x: number; w: number }): boolean =>
-              links.some(l => { const [lx1, ly1, lx2, ly2] = l.rect; return r.y >= ly1 - 4 && r.y <= ly2 + 3 && Math.min(r.x + r.w, lx2) - Math.max(r.x, lx1) > (lx2 - lx1) * 0.5; });
+              links.some(l => { const [lx1, ly1, lx2, ly2] = l.rect; return r.y >= ly1 - 4 && r.y <= ly2 + 3 && r.w <= (lx2 - lx1) + 12 && Math.min(r.x + r.w, lx2) - Math.max(r.x, lx1) > (lx2 - lx1) * 0.5; });
             // Group rule candidates into UNITS first: a decorative rule is a SINGLE line OR a DOUBLE rule
             // (two thin lines ~2-4pt apart, bracketing a chapter DECK/subtitle — Sovereign ch1, ch3-8). Two
             // lines within 4pt collapse to one double unit, so the double-rule pairs framing a deck (4 lines
