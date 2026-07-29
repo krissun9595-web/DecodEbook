@@ -3851,8 +3851,48 @@ const App: React.FC = () => {
           if (end - start + 1 < 4) return start - 1;
           return detectLabeledHangingList(lines.slice(start, end + 1)) ? end : start - 1;
         };
+        // VERSE/POEM run: a stanza of tight SHORT italic lines (Clough's "Say not, the struggle…") — every
+        // line is FULLY ITALIC, ends well short of the right margin, and shares a left edge. That's unlike
+        // prose (lines fill the measure) or an italic block-quote (which WRAPS to full lines), so a run of
+        // >=3 such lines is verse: emit each STANZA (a sub-run at the normal line gap; a larger gap starts a
+        // new stanza) as one block whose lines join with U+E024 — the reader renders tight <br> verse lines
+        // with a stanza gap (para.verse), the same path the EPUB uses.
+        const isVerseLine = (l: PdfLine): boolean => rightMargin > 0 && /^\s*\*[^*]+\*\s*$/.test(l.text) && l.rightX < rightMargin - bodyFont * 4;
+        const verseRegionEnd = (start: number): number => {
+          if (isHeadingLine(lines[start]) || !isVerseLine(lines[start])) return start - 1;
+          const x0 = lines[start].x; let end = start;
+          while (end + 1 < lines.length) {
+            const b = lines[end + 1];
+            if (isHeadingLine(b) || !isVerseLine(b) || Math.abs(b.x - x0) > bodyFont * 1.5) break;
+            if (Math.abs(lines[end].pageY - b.pageY) > Math.max(lines[end].h, b.h) * 3) break;
+            end++;
+          }
+          return end - start + 1 >= 3 ? end : start - 1;
+        };
+        const emitVerseLines = (group: PdfLine[]): void => {
+          const VLB = String.fromCharCode(0xE024);
+          const gaps = group.slice(1).map((l, k) => group[k].y - l.y).filter(g => g > 0).sort((a, b) => a - b);
+          const medGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : bodyFont * 1.3;
+          const stanzas: PdfLine[][] = []; let cur: PdfLine[] = [group[0]];
+          for (let k = 1; k < group.length; k++) {
+            if (group[k - 1].y - group[k].y > medGap * 1.5) { stanzas.push(cur); cur = []; }
+            cur.push(group[k]);
+          }
+          if (cur.length) stanzas.push(cur);
+          for (const st of stanzas) {
+            const sizeR = bodyFont > 0 ? (mode(st.map(l => Math.round(l.h))) || bodyFont) / bodyFont : 1;
+            const tier = sizeR <= 0.80 ? String.fromCharCode(0xE01B) : sizeR < 0.90 ? String.fromCharCode(0xE01C) : '';
+            const last = st[st.length - 1];
+            blocks.push({ text: tier + st.map(l => l.text.trim()).join(VLB), role: 'body', firstX: st[0].x, firstRightX: st[0].rightX, lastRightX: last.rightX, lastText: last.text, topY: Math.max(...st.map(l => l.pageY)), bodyX: st[0].x });
+          }
+        };
         let i = 0;
         while (i < lines.length) {
+          // A VERSE run (tight italic short lines) — consume it before the prose rules mangle it.
+          if (!isHeadingLine(lines[i])) {
+            const vEnd = verseRegionEnd(i);
+            if (vEnd >= i) { emitVerseLines(lines.slice(i, vEnd + 1)); i = vEnd + 1; continue; }
+          }
           // Consume a whole hanging-list region up front so it isn't fragmented by the prose rules below.
           if (!isHeadingLine(lines[i])) {
             const hEnd = hangingRegionEnd(i);

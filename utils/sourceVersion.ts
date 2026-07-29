@@ -563,7 +563,11 @@
 // v186: the per-line centre "short line" length check now measures the VISIBLE text — a centred URL line
 //       (`[SimonandSchuster.com/…](http://…long…)`) has a ~110-char markdown link but only ~48 visible
 //       chars, so it was wrongly excluded as "too long" and stayed flush-left while its neighbours centred.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v186-center-url-len';
+// v187: VERSE/POEM geometric detection. The prose splitter mangled a poem (merged/split its short lines).
+//       Detect a run of >=3 FULLY-ITALIC lines that each end short of the margin and share a left edge
+//       (verse; unlike prose that fills the measure or an italic block-quote that wraps to full lines) and
+//       emit each stanza as a U+E024 verse block — same reader path (tight <br> lines + stanza gap) as EPUB.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v187-verse';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
