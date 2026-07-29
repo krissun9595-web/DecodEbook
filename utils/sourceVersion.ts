@@ -601,7 +601,11 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v184-rule-link-width';
 //     edges are skipped (they were littering back-matter pages with stray lines). (b) A <br>-separated
 //     line block containing standalone LINKS ("FOR MORE ON THESE AUTHORS:" + author URLs) splits into a
 //     paragraph per line, preserving the source's 3-line structure instead of running the URLs off-edge.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v9-box-borders-brlinks';
+// v10: index INTRO note no longer shrinks. The "A note about the index:" para (`.indextxt`) and the index
+//     entries (`.indexmain`) are BOTH 0.75em — the whole index shares a reduced baseline — so the note must
+//     match the entries, which the <li> path renders at reader-normal size (no shrink). Suppress the shrink
+//     tier for index-class paragraphs; the note read a size smaller than its own entries before.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v10-index-note-size';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

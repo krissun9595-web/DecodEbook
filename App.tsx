@@ -1402,10 +1402,15 @@ const App: React.FC = () => {
           // left-ragged, matching the source. effectiveAlignOf resolves CSS inheritance; body prose
           // resolves to 'justify' (no sentinel), only genuinely-left paragraphs get E023.
           const leftSentinel = effectiveAlignOf(element) === 'left' ? String.fromCharCode(0xE023) : '';
+          // An INDEX paragraph (the "A note about the index:" intro, class `indextxt`) shares the index's own
+          // reduced baseline (the whole index is 0.75em — note AND entries alike), so it must NOT be shrunk
+          // relative to the document body: the index <li> entries render at reader-normal size (no shrink),
+          // and the note has to match them. Suppress the shrink tier for index-class paragraphs.
+          const _isIndexPara = (element.getAttribute('class') || '').split(/\s+/).some(c => /^index/i.test(c));
           // A ruled block (`.footnote` = a solid border-top separating chapter-end notes from the body; or a
           // block that brackets itself with a border) draws the source's decorative rule above/below it.
           const _pr = borderRuleOf(element);
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, !_looksLikeHeading)}${sentinel}${flushSentinel}${leftSentinel}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, !_looksLikeHeading && !_isIndexPara)}${sentinel}${flushSentinel}${leftSentinel}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
