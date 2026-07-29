@@ -920,11 +920,15 @@ const App: React.FC = () => {
             const fsM = /font-size\s*:\s*([^;}]+)/i.exec(rule[2]); const fs = fsM ? fsM[1].trim() : null;
             const btM = /border-top\s*:\s*[^;}]*?\b(solid|double|dashed)\b/i.exec(rule[2]);
             const bbM = /border-bottom\s*:\s*[^;}]*?\b(solid|double|dashed)\b/i.exec(rule[2]);
+            // A left/right border means this class is a BOX side (e.g. a promo sign-up box's `.signup-top`
+            // = border-top + border-right), not a standalone horizontal divider — its top/bottom edges must
+            // NOT become decorative rules, or the box frame litters the page with stray lines.
+            const isBoxSide = /border-(?:left|right)\s*:\s*[^;}]*?\b(?:solid|double|dashed)\b/i.test(rule[2]);
             if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
-              if (btM) cssBorderTop[c] = btM[1].toLowerCase() === 'double' ? 'double' : 'single';
-              if (bbM) cssBorderBottom[c] = bbM[1].toLowerCase() === 'double' ? 'double' : 'single';
+              if (btM && !isBoxSide) cssBorderTop[c] = btM[1].toLowerCase() === 'double' ? 'double' : 'single';
+              if (bbM && !isBoxSide) cssBorderBottom[c] = bbM[1].toLowerCase() === 'double' ? 'double' : 'single';
               if (am) { const av = am[1].toLowerCase(); if (av === 'center' || av === 'right') cssAlign[c] = av; else if (av === 'justify') cssJustify.add(c); else if (av === 'left') cssLeft.add(c); }
               if (isBlock) cssBlock.add(c);
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
@@ -1344,6 +1348,14 @@ const App: React.FC = () => {
             // <br/> collapses to a space), so consume that whitespace before the label or the split misses.
             const perField = body.replace(/\n[^\S\n]*(?=(?:[*_~`]*)(?:From|To|Cc|Bcc|Date|Sent|Subject|Reply-To)\s*:\s)/gi, '\n\n');
             return `\n\n${sizeTierSentinel(element)}${sentinel}${perField}\n\n`;
+          }
+          // A <br>-separated LINE BLOCK that includes standalone LINKS (e.g. "FOR MORE ON THESE AUTHORS:"
+          // followed by two author URLs, each on its own line) — the reader flows a single \n, collapsing
+          // the source's explicit breaks and running the long URLs off the edge. Promote each <br> line to
+          // its own paragraph so the 3-line structure survives (and each URL wraps within the column).
+          const _brLines = body.split('\n').map(s => s.trim()).filter(Boolean);
+          if (_brLines.length >= 2 && _brLines.some(s => /^\[[^\]]+\]\([^)]+\)\s*$/.test(s)) && _brLines.every(s => s.length < 120)) {
+            return `\n\n${_brLines.map(s => `${sizeTierSentinel(element)}${sentinel}${s}`).join('\n\n')}\n\n`;
           }
           // A Contents/TOC SUB-entry — a lone internal link whose CSS gives it a left indent (e.g.
           // Transurfing's `.ogl-zag1 { margin: 0 0 0 14px }`) sits indented under its chapter. Mirror the
