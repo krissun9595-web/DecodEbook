@@ -634,7 +634,12 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v189-hanging-intro-prose';
 //     render TIGHT (lineBreakAfter → <br>) and each stanza (its own paragraph, flagged para.verse) gets a
 //     stanza gap. normalizeReaderText never merges a verse stanza across the blank line; combinedText
 //     neutralises U+E024 for search/footnote offsets.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v14-verse';
+// v15: EPUB now returns its OPF <dc:title> as docTitle (like the PDF's metadata title), so the display
+//     title + re-upload dedup identity use the real book title instead of the one INFERRED from the content
+//     title page. That inferred title could differ from the PDF's metadata title (a different subtitle
+//     edition — Sovereign "How to Survive…" vs "Mastering…"), splitting one book into two library items.
+//     Bumping re-extracts existing EPUBs so their title (and dedup) self-correct in place.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v15-dc-title';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

@@ -784,12 +784,20 @@ const App: React.FC = () => {
       let bodyStartFull: string | undefined; // OPF <guide> type="text" — where the reading body begins
       let coverFull: string | undefined;     // OPF <guide> type="cover" (or a cover-image page)
       let coverImageKey: string | undefined; // OPF cover IMAGE (properties="cover-image" / <meta name=cover>) — book metadata, not inline content
+      let epubTitle: string | undefined; // OPF <dc:title> — the publisher's book title (display + re-upload dedup)
 
       if (opfPath) {
           // Robust EPUB Parsing via OPF Spine
           const opfContent = await zip.files[opfPath].async("string");
           const opfDoc = parser.parseFromString(opfContent, "text/xml");
           opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+          // The publisher's <dc:title> — the book's real metadata title. Return it as the EPUB's docTitle so
+          // the display title + re-upload dedup identity match the PDF path (which uses the PDF metadata
+          // title). Without it the EPUB used the title INFERRED from its content title page, which can differ
+          // from the PDF's metadata title (a different subtitle edition), splitting one book into two library
+          // items that never dedup against each other.
+          const _titleEl = opfDoc.getElementsByTagName('dc:title')[0] || opfDoc.getElementsByTagName('title')[0];
+          epubTitle = _titleEl?.textContent?.replace(/\s+/g, ' ').trim() || undefined;
 
           // 1. Map id -> {href, properties, media-type} (Manifest). The nav doc (EPUB3) and the NCX
           //    (EPUB2) are located here so we can build authoritative chapters from the publisher TOC.
@@ -1764,7 +1772,7 @@ const App: React.FC = () => {
       // (true) vs clearly block-style (false) — undefined when unclear, leaving the reader's default.
       const justified = bodyParaTally >= 8 ? justifiedParaTally / bodyParaTally > 0.6 : undefined;
       const firstLineIndent = bodyParaTally >= 8 ? firstIndentParaTally / bodyParaTally >= 0.25 : undefined;
-      return { content: fullText, outline, figures, anchors: epubAnchors, justified, firstLineIndent };
+      return { content: fullText, outline, title: epubTitle, figures, anchors: epubAnchors, justified, firstLineIndent };
 
     } catch (e) {
       console.error("EPUB processing error", e);
@@ -4728,8 +4736,8 @@ const App: React.FC = () => {
       let context: FileContext;
       let figures: ExtractedFigure[] | undefined;
       if (kind === 'epub') {
-        const { content, outline, figures: f, anchors, justified, firstLineIndent } = await processEpub(file);
-        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
+        const { content, outline, title, figures: f, anchors, justified, firstLineIndent } = await processEpub(file);
+        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
         figures = f.length ? f : undefined;
       } else {
         const { content, outline, title, figures: f, justified, firstLineIndent } = await processPdf(file);
@@ -4926,7 +4934,7 @@ const App: React.FC = () => {
 
     if (isEpub) {
        try {
-         const { content: textContent, outline: epubOutline, figures: epubFigures, anchors: epubAnchors, justified: epubJustified, firstLineIndent: epubFirstLineIndent } = await processEpub(file);
+         const { content: textContent, outline: epubOutline, title: epubDocTitle, figures: epubFigures, anchors: epubAnchors, justified: epubJustified, firstLineIndent: epubFirstLineIndent } = await processEpub(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -4935,6 +4943,7 @@ const App: React.FC = () => {
             sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION,
             pdfOutline: epubOutline.length ? epubOutline : undefined,
             epubAnchors: Object.keys(epubAnchors).length ? epubAnchors : undefined,
+            docTitle: epubDocTitle,
             sourceJustified: epubJustified,
             sourceFirstLineIndent: epubFirstLineIndent,
          }, epubFigures.length ? epubFigures : undefined);
