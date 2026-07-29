@@ -567,7 +567,11 @@
 //       Detect a run of >=3 FULLY-ITALIC lines that each end short of the margin and share a left edge
 //       (verse; unlike prose that fills the measure or an italic block-quote that wraps to full lines) and
 //       emit each stanza as a U+E024 verse block — same reader path (tight <br> lines + stanza gap) as EPUB.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v187-verse';
+// v188: a page-spanning FIRST-LINE-INDENT paragraph no longer block-indents. Its lone first line at the
+//       bottom of a page (indented by the first-line amount) couldn't be told from a block-indented line, so
+//       it got a leading block NBSP that the seam-merge then carried into the whole paragraph. At the merge,
+//       when the continuation opens flush at the body margin (proving a first-line indent), drop that NBSP.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v188-seam-firstline-indent';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,

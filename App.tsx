@@ -4450,7 +4450,14 @@ const App: React.FC = () => {
           if (unitIndex === 0 && continues) {
             // Merged continuation: drop its own leading block-indent NBSP run (it inherits the opener's
             // indent) so an indented item's page-wrapped tail doesn't leak an NBSP gap mid-sentence.
-            pages[pages.length - 1] = `${pages[pages.length - 1]} ${marker} ${unit.block.text.replace(/^[  \uE018\uE01B-\uE01F]+/u, '')}`;
+            // A page-spanning FIRST-LINE-INDENT paragraph: its lone first line at the previous page's bottom
+            // couldn't be told from a block-indented line, so it got a leading block NBSP. The continuation
+            // here opens at the body margin (flush), proving it's a first-line indent, so drop that NBSP from
+            // the previous page's tail — the reader re-applies its own default first-line indent.
+            const _prevTail = first.firstX <= bodyLeft + 8
+              ? pages[pages.length - 1].replace(/^((?:\[\[PAGE\s+\d+\]\]\n)?[\uE010-\uE023]*)\u00A0+(?=\S)/u, '$1')
+              : pages[pages.length - 1];
+            pages[pages.length - 1] = `${_prevTail} ${marker} ${unit.block.text.replace(/^[  \uE018\uE01B-\uE01F]+/u, '')}`;
           } else if (unitIndex === 0) {
             pages.push(`${marker}\n${text}`);
           } else {
