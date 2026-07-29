@@ -571,7 +571,11 @@
 //       bottom of a page (indented by the first-line amount) couldn't be told from a block-indented line, so
 //       it got a leading block NBSP that the seam-merge then carried into the whole paragraph. At the merge,
 //       when the continuation opens flush at the body margin (proving a first-line indent), drop that NBSP.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v188-seam-firstline-indent';
+// v189: a hanging-list region no longer swallows the INTRO PROSE before it. A labeled list ("Layer 1:… /
+//       Layer 7:…") outvotes a preceding non-labeled paragraph in detectLabeledHangingList, so that prose was
+//       tagged a hanging entry (Agentic Mesh "Here are the seven layers…"). The region must now OPEN with a
+//       labeled line or an indented continuation; a non-labeled margin start line is left as normal prose.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v189-hanging-intro-prose';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,

@@ -3849,6 +3849,13 @@ const App: React.FC = () => {
             end++;
           }
           if (end - start + 1 < 4) return start - 1;
+          // The region must OPEN with a genuine entry: a labeled line ("Label:") or an indented continuation
+          // (a turn wrapped from the previous page). A NON-labeled MARGIN line at the start is INTRO PROSE
+          // preceding the list — the labeled entries below outvote it in detectLabeledHangingList, so it'd be
+          // swept in as a hanging entry (Agentic Mesh: "Here are the seven layers…" before "Layer 1:…").
+          // Leave it out; the main loop advances and re-detects the region from the first real entry.
+          const _regLeft = Math.min(...lines.slice(start, end + 1).map(l => l.x));
+          if (lines[start].x <= _regLeft + 4 && !labelStart.test(lines[start].text.replace(/[*_~]/gu, '').trim())) return start - 1;
           return detectLabeledHangingList(lines.slice(start, end + 1)) ? end : start - 1;
         };
         // VERSE/POEM run: a stanza of tight SHORT italic lines (Clough's "Say not, the struggle…") — every
