@@ -5346,6 +5346,11 @@ const App: React.FC = () => {
                                 void openBook(item);
                                 closeSidebarMobile();
                             }}
+                            // Hover tooltip: the complete uploaded FILE NAME (like the chapter list's title=),
+                            // so identically-titled formats (a PDF vs an EPUB of one book) are distinguishable
+                            // by their extension. Fall back to "Title (FORMAT)" for items uploaded before the
+                            // filename was recorded.
+                            title={item.fileContext.sourceFileName || `${item.book.title} (${(item.fileContext.sourceKind || 'file').toUpperCase()})`}
                             className="flex items-center gap-3 flex-1 min-w-0"
                         >
                             <div className={`w-1 h-8 shrink-0 ${activeBookId === item.book.id ? 'bg-neon-cyan' : 'bg-zinc-800'}`}></div>
