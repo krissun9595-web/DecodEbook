@@ -4834,6 +4834,9 @@ const App: React.FC = () => {
             // Carry the figure MANIFEST (no bytes) on the context so the reader can find them; the
             // bytes are cached below once the book id exists.
             if (pdfFigures?.length) context = { ...context, pdfFigures: pdfFigures.map(({ blob, ...meta }) => meta) };
+            // Record the uploaded file's NAME so re-upload dedup has a stable identity even if the extracted
+            // title later shifts (a metadata/inference tweak) — the same file always replaces its own entry.
+            context = { ...context, sourceFileName: context.sourceFileName || file.name };
             const preparedContext = hydrateFileContext(context);
             const structure = await analyzeBookStructure(preparedContext);
             // Prefer the PDF's own metadata Title over the one inferred from the first content
@@ -4891,9 +4894,18 @@ const App: React.FC = () => {
               `${(title || '').trim().toLowerCase()} ${kind || ''}`;
             const newBookTitle = (structure.title || '').trim().toLowerCase();
             const newBookIdentity = bookIdentity(structure.title, preparedContext.sourceKind);
-            if (newBookTitle) {
+            const newFileName = (preparedContext.sourceFileName || '').trim().toLowerCase();
+            const newKind = preparedContext.sourceKind || '';
+            // A re-upload REPLACES the same book. Either matcher supersedes: (1) title+format — the stable
+            // identity; (2) uploaded FILENAME+format — so the same file replaces its own entry even when a
+            // later title-extraction tweak shifts the title (which title-only dedup misses, piling up dupes).
+            // A PDF and an EPUB of one book stay separate (format differs).
+            const sameBook = (item: LibraryItem): boolean =>
+              (!!newBookTitle && bookIdentity(item.book.title, item.fileContext.sourceKind) === newBookIdentity)
+              || (!!newFileName && (item.fileContext.sourceFileName || '').trim().toLowerCase() === newFileName && (item.fileContext.sourceKind || '') === newKind);
+            if (newBookTitle || newFileName) {
               library
-                .filter(item => bookIdentity(item.book.title, item.fileContext.sourceKind) === newBookIdentity)
+                .filter(sameBook)
                 .forEach(superseded => {
                   if (currentUser) deleteBookFromCloud(currentUser.id, superseded.book.id).catch(() => {});
                   // Purge the WHOLE superseded copy's cache — not just its source file. Otherwise its derived
@@ -4914,7 +4926,7 @@ const App: React.FC = () => {
                 componentSource: 'OriginalFile', fileType: 'original-file',
               }).catch(() => {});
             }
-            setLibrary(prev => [newItem, ...prev.filter(item => !newBookTitle || bookIdentity(item.book.title, item.fileContext.sourceKind) !== newBookIdentity)]);
+            setLibrary(prev => [newItem, ...prev.filter(item => !sameBook(item))]);
             setActiveBookId(structure.id);
             if (structure.chapters.length > 0) {
               setActiveChapterPageTarget('first');

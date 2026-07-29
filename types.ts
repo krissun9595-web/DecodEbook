@@ -136,6 +136,7 @@ export interface FileContext {
   sourceExtractorVersion?: string;
   pdfOutline?: PdfOutlineItem[]; // PDF bookmarks (top-level), if the document has them
   docTitle?: string; // the PDF's own metadata Title, preferred over an inferred one
+  sourceFileName?: string; // the uploaded file's name — a stable re-upload identity even if the title shifts
   pdfFigures?: PdfFigure[]; // figures extracted from the PDF; bytes cached separately
   // EPUB internal-navigation anchors: fragment id → a short text snippet just after that anchor's
   // element. Powers one-way jumps for Contents/TOC entries, Index page-locators, and inline
