@@ -4377,7 +4377,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     && looksLikeSignatureLine(stripInlineFormatSyntax(prevSigPara.original[0]).replace(/\s+/g, ' ').trim());
                   const paragraphTextClass = !isListRole && !isHeadingRole && (introducesIndentedBlock || isEmailHeader)
                     ? 'text-zinc-300 font-medium'
-                    : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || (isPlainSubtitleParagraph(para.original) && !isSignatureLine))
+                    : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || (isPlainSubtitleParagraph(para.original) && !isSignatureLine && para.align !== 'center'))
                     ? 'text-zinc-100 font-bold'
                     : 'text-zinc-300 font-medium';
                   const hasParagraphTranslation = para.original.some((_, sIdx) => {
@@ -4577,7 +4577,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (prevIsDivider ? '' : para.setoffAbove ? 'mt-8' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (para.align === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && lineIdx === 0 && prevIsBlockQuote) ? 'mt-4' : paragraphSpacingClassFor(lineText);
                         return (
                         <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
                           <div

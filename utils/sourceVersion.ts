@@ -555,7 +555,15 @@
 //       underline spans the link TEXT (≈ annotation width); require the rule's width to match the link's, so
 //       a full-column epigraph rule 3pt above a footnote marker isn't dropped (Sovereign p56 "We shall not
 //       be…" lost its top rule).
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v184-rule-link-width';
+// v185: PER-LINE centring on a MIXED page. The whole-page display classifier only fires when the entire
+//       page shares one alignment, so a centred line among left-aligned prose (a promo back-matter page:
+//       "A TOUCHSTONE BOOK", "FOR MORE ON THESE AUTHORS:") stayed flush-left. Tag a short single-line body
+//       block as centred (U+E010) when it's indented on BOTH sides by a similar, significant amount (centre
+//       ≈ body centre) — tight gates exclude signatures, headings, hanging entries, indented prose.
+// v186: the per-line centre "short line" length check now measures the VISIBLE text — a centred URL line
+//       (`[SimonandSchuster.com/…](http://…long…)`) has a ~110-char markdown link but only ~48 visible
+//       chars, so it was wrongly excluded as "too long" and stayed flush-left while its neighbours centred.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v186-center-url-len';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
@@ -605,7 +613,13 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v184-rule-link-width';
 //     entries (`.indexmain`) are BOTH 0.75em — the whole index shares a reduced baseline — so the note must
 //     match the entries, which the <li> path renders at reader-normal size (no shrink). Suppress the shrink
 //     tier for index-class paragraphs; the note read a size smaller than its own entries before.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v10-index-note-size';
+// v11: a CENTRED small caps line is display/promo text, not an untagged section head — honour its real
+//     small size (Sovereign's 0.75em "A TOUCHSTONE BOOK" was kept full-size by the all-caps shrink guard).
+//     The shrink guard now yields to `text-align:center`. (Pairs with the reader no-bolding centred lines.)
+// (v12 verse attempt reverted — the reader flattens a paragraph's internal \n to spaces in chapter build
+//  [readerStructure paragraph join], so one-paragraph-with-\n verse rendered as a run-on. Proper verse needs
+//  line breaks preserved through chapter build → pagination → sentence data; deferred as a focused task.)
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v13-verse-reverted';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

@@ -1407,10 +1407,14 @@ const App: React.FC = () => {
           // relative to the document body: the index <li> entries render at reader-normal size (no shrink),
           // and the note has to match them. Suppress the shrink tier for index-class paragraphs.
           const _isIndexPara = (element.getAttribute('class') || '').split(/\s+/).some(c => /^index/i.test(c));
+          // The all-caps SHRINK guard protects an UNTAGGED section heading (a flush-left short caps line) from
+          // being read as small print. A CENTRED caps line is not a section head — it's display/promo text
+          // (e.g. Sovereign's centred 0.75em "A TOUCHSTONE BOOK") — so honour its real small size.
+          const _allowShrink = (!_looksLikeHeading || a === 'center') && !_isIndexPara;
           // A ruled block (`.footnote` = a solid border-top separating chapter-end notes from the body; or a
           // block that brackets itself with a border) draws the source's decorative rule above/below it.
           const _pr = borderRuleOf(element);
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, !_looksLikeHeading && !_isIndexPara)}${sentinel}${flushSentinel}${leftSentinel}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -4287,7 +4291,26 @@ const App: React.FC = () => {
           if (at < 0) at = blocks.length;
           blocks.splice(at, 0, rb);
         }
-
+        // PER-LINE CENTRING on a MIXED page. The whole-page display classifier above only fires when the
+        // ENTIRE page shares one alignment, so a centred line among left-aligned prose (a back-matter promo
+        // page — "A TOUCHSTONE BOOK", "FOR MORE ON THESE AUTHORS:") stayed flush-left (the PDF, unlike EPUB,
+        // has NO align metadata). Tag a SHORT single-line body block as centred (U+E010) when it's indented
+        // on BOTH sides by a similar, significant amount (its centre ≈ the body centre). Tight gates keep
+        // signatures (flush-right: one-sided), headings/lists (own sentinel), hanging entries (left-only
+        // indent) and first-line-indented prose (centre sits left) out.
+        if (rightMargin > bodyLeft) {
+          const bodyCentre = (bodyLeft + rightMargin) / 2;
+          for (const b of blocks) {
+            if (b.role !== 'body' || /[-]/u.test(b.text)) continue;
+            const bare = b.text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[-*_~`]/gu, '').trim(); // visible text (strip md link URL)
+            if (!bare || bare.length > 60) continue; // a genuinely centred display line is short (one line)
+            const left = b.firstX - bodyLeft, right = rightMargin - b.lastRightX;
+            const centre = (b.firstX + b.lastRightX) / 2;
+            if (left > bodyFont * 2 && right > bodyFont * 2 && Math.abs(left - right) <= bodyFont && Math.abs(centre - bodyCentre) <= bodyFont) {
+              b.text = '' + b.text;
+            }
+          }
+        }
         pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
       }
 
