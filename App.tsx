@@ -1241,6 +1241,35 @@ const App: React.FC = () => {
         }
         if (tag === 'svg') return Array.from(element.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
 
+        // A DATA TABLE (Sovereign's dice-frequency table — a header row plus rows that use ditto marks `"`
+        // to repeat "The sum of / spots will appear / times."). Emit the SAME positioned-token payload the
+        // PDF path uses (U+E025 <rows joined by U+E024>, each token a PUA position char U+E200 + permille of
+        // its x-fraction + its text), so the reader lays out every column aligned exactly — parity with the
+        // PDF. The EPUB has no x-coordinates, so a cell's x-fraction is its COLUMN INDEX / total columns
+        // (honouring colspan, so the header's spanning cell starts at its column). Gated to ≥3 columns and
+        // ≥3 rows (a real data table, mirroring the PDF's multi-gutter rule); a smaller/layout table falls
+        // through to the default per-cell text flow, unchanged.
+        if (tag === 'table') {
+          const trs = Array.from(element.getElementsByTagName('tr'));
+          const rowCells = trs.map(tr => Array.from(tr.children).filter(c => /^t[dh]$/i.test(c.tagName || '')));
+          const colsOf = (cells: Element[]) => cells.reduce((n, c) => n + (parseInt(c.getAttribute('colspan') || '1', 10) || 1), 0);
+          const totalCols = Math.max(1, ...rowCells.map(colsOf));
+          const posChar = (xf: number) => String.fromCharCode(0xE200 + Math.max(0, Math.min(1000, Math.round(xf * 1000))));
+          const rowsEnc = rowCells.map(cells => {
+            let col = 0, out = '';
+            for (const c of cells) {
+              const span = parseInt(c.getAttribute('colspan') || '1', 10) || 1;
+              const txt = (c.textContent || '').replace(/\s+/g, ' ').trim();
+              if (txt) out += posChar(col / totalCols) + txt;
+              col += span;
+            }
+            return out;
+          }).filter(Boolean);
+          if (totalCols >= 3 && rowsEnc.length >= 3) {
+            return '\n\n' + String.fromCharCode(0xE025) + rowsEnc.join(String.fromCharCode(0xE024)) + '\n\n';
+          }
+        }
+
         const childText = Array.from(element.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
         const trimmed = childText.trim();
         if (!trimmed) return '';
@@ -1794,6 +1823,11 @@ const App: React.FC = () => {
       // figure's Y so the reader drops it into the reading flow.
       const allFigures: ExtractedFigure[] = [];
       const figuresByPage = new Map<number, { id: string; yTop: number }[]>();
+      // A row-major DATA TABLE detected on a page (a ditto/numeric table like the Sovereign dice
+      // frequencies): the whole table encoded as a single positioned-token payload (U+E025 …) so the
+      // reader can reproduce its column alignment exactly. Dropped into the block stream by yTop, like
+      // a figure. See the row-major detection below and the reader's table branch.
+      const tablesByPage = new Map<number, { text: string; yTop: number }[]>();
       // Right-edge of every substantial body line, gathered across pages: a JUSTIFIED source fills to
       // one right margin on nearly every line (only paragraph-final lines fall short), while a
       // ragged-left source scatters. Used at the end to set fileContext.sourceJustified so the reader
@@ -2840,7 +2874,52 @@ const App: React.FC = () => {
           // table ("Editor: Jane Smith") does not. Skip the row-major cut for a list-like page. (A
           // genuinely two-column index is handled by the geometry BAND above, not here.)
           const isListLikePage = flowGroups.filter(g => /\d[.)]?\s*$/u.test([...g.items].sort((a, b) => a.x - b.x).map(it => it.str).join('').trim())).length >= 6;
-          if (runLen >= 3 && !isListLikePage) {
+          // Distinguish a real MULTI-COLUMN data table (a ditto/numeric frequency table — Sovereign's
+          // dice table) from a plain 2-column colophon. Count the INTERNAL vertical gutters that stay
+          // empty across MOST rows of the aligned run: a colophon has ONE (label | value); a data table
+          // has ≥2 (≥3 columns). A run with ≥2 such gutters is emitted as a positioned-token TABLE so the
+          // reader reproduces every column's alignment exactly, instead of the single-gutter 2-col cut
+          // (which strands column 1 and mashes the rest into one cell — the bug the user flagged). The
+          // header row may bridge some gutters, so the empty test tolerates a minority (≤50%) of rows.
+          const runRows = flowGroups.slice(runStart, runStart + runLen);
+          const nRows = runRows.length;
+          const rLeft = Math.min(...runRows.flatMap(g => g.items.map(it => it.x)));
+          const rRight = Math.max(...runRows.flatMap(g => g.items.map(it => it.x + (it.w || 0))));
+          const tW = Math.max(1, Math.ceil(rRight - rLeft) + 1);
+          const coverRows = new Int32Array(tW);
+          for (const g of runRows) {
+            const mark = new Uint8Array(tW);
+            for (const it of g.items) { const a = Math.max(0, Math.floor(it.x - rLeft)), b = Math.min(tW, Math.ceil(it.x + (it.w || 0) - rLeft)); for (let i = a; i < b; i++) mark[i] = 1; }
+            for (let i = 0; i < tW; i++) coverRows[i] += mark[i];
+          }
+          const gutThresh = Math.max(8, bodyHeight * 1.2);
+          let nGut = 0, gutRun = 0;
+          for (let i = 0; i < tW; i++) {
+            if (coverRows[i] <= nRows * 0.5) gutRun++;
+            else { if (gutRun >= gutThresh && i - gutRun > 0) nGut++; gutRun = 0; }
+          }
+          __dbg.tableGutters = nGut;
+          if (runLen >= 3 && !isListLikePage && nGut >= 2) {
+            // A positioned-token TABLE: each token carries its x-fraction as a single PUA position char
+            // (U+E200 + permille), tokens concatenated, rows joined by U+E024, whole payload prefixed
+            // U+E025. Survives the whitespace collapse; the position chars neutralise to spaces for search.
+            // Dropped into the block stream by yTop below. The x-fraction is measured against the PAGE's
+            // content bounds (contentMinX..contentMaxX = the body text column), NOT the table's own bbox —
+            // so a table that SPANS TWO PAGES (this one does: sums 24→9, then 8→2) keeps identical column
+            // positions on both fragments (the continuation page lacks the "The sum of" header, so its own
+            // bbox is narrower and would scale/shift its columns out of line with the first page). Both
+            // dice pages share the same content column, so the fragments now align exactly.
+            __dbg.path = 'geo-rowmajor-table';
+            const posChar = (xf: number) => String.fromCharCode(0xE200 + Math.max(0, Math.min(1000, Math.round(xf * 1000))));
+            const denom = Math.max(1, contentMaxX - contentMinX);
+            const rowsEnc = runRows.map(g => [...g.items].sort((a, b) => a.x - b.x)
+              .map(it => { const t = it.str.replace(/\s+/g, ' ').trim(); return t ? posChar((it.x - contentMinX) / denom) + t : ''; })
+              .filter(Boolean).join(''));
+            const payload = '' + rowsEnc.filter(Boolean).join('');
+            const yTop = Math.max(...runRows.flatMap(g => g.items.map(it => it.y)));
+            const list = tablesByPage.get(pageNum) || []; list.push({ text: payload, yTop }); tablesByPage.set(pageNum, list);
+            flowGroups.forEach((g, idx) => { if (idx >= runStart && idx < runStart + runLen) return; groups.push(g); });
+          } else if (runLen >= 3 && !isListLikePage) {
             __dbg.path = 'geo-rowmajor';
             const cs = rowInfo.slice(runStart, runStart + runLen).map(r => r.at).sort((a, b) => a - b);
             const gutterX = cs[cs.length >> 1];
@@ -4357,6 +4436,16 @@ const App: React.FC = () => {
           if (at < 0) at = blocks.length;
           blocks.splice(at, 0, fb);
         }
+        // A detected row-major DATA TABLE (positioned-token U+E025 payload) drops into the block stream at
+        // its top-Y, like a figure. It is one atomic block (its own paragraph); the reader's table branch
+        // parses the payload and lays out each token at its x-fraction.
+        const pageTables = tablesByPage.get(pageNum);
+        if (pageTables) for (const t of pageTables) {
+          const tb: EmitBlock = { text: t.text, role: 'body', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '', topY: t.yTop, bodyX: bodyLeft };
+          let at = blocks.findIndex(b => (b.topY ?? -Infinity) < t.yTop);
+          if (at < 0) at = blocks.length;
+          blocks.splice(at, 0, tb);
+        }
         // Decorative horizontal RULES (epigraph/section dividers) drop into the stream at their y the same
         // way figures do. The U+E021 marker becomes its own block; the reader renders a thin grey rule
         // (the attribution colour), and text/search/TTS consumers strip it.
@@ -4376,7 +4465,7 @@ const App: React.FC = () => {
         if (rightMargin > bodyLeft) {
           const bodyCentre = (bodyLeft + rightMargin) / 2;
           for (const b of blocks) {
-            if (b.role !== 'body' || /[-]/u.test(b.text)) continue;
+            if (b.role !== 'body' || /[-]/u.test(b.text)) continue;
             const bare = b.text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[-*_~`]/gu, '').trim(); // visible text (strip md link URL)
             if (!bare || bare.length > 60) continue; // a genuinely centred display line is short (one line)
             const left = b.firstX - bodyLeft, right = rightMargin - b.lastRightX;

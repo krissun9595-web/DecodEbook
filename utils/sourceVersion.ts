@@ -575,7 +575,22 @@
 //       Layer 7:…") outvotes a preceding non-labeled paragraph in detectLabeledHangingList, so that prose was
 //       tagged a hanging entry (Agentic Mesh "Here are the seven layers…"). The region must now OPEN with a
 //       labeled line or an indented continuation; a non-labeled margin start line is left as normal prose.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v189-hanging-intro-prose';
+// v190: MULTI-COLUMN DATA TABLE fidelity. A ditto/numeric frequency table (Sovereign p297 dice table — a
+//       header row plus rows using ditto marks `"` to repeat "The sum of / spots will appear / times.")
+//       was cut by the row-major detector at only its single widest gutter → 2 columns, stranding column 1
+//       and mashing the other 5 into one cell. Now, when the aligned run has ≥2 majority-empty INTERNAL
+//       gutters (≥3 columns), the whole table is emitted as a positioned-token payload (U+E025 <rows joined
+//       by U+E024>, each token a PUA position char U+E200+permille of its x-fraction + its text) and dropped
+//       into the block stream by yTop like a figure. The reader lays out each token at its x-fraction, so
+//       every column — and every ditto mark under the word it repeats — aligns exactly as the original. A
+//       plain 2-column colophon (one gutter) still takes the existing 2-col cut. Validated on p296 geometry
+//       (nGut=5, all six columns land at a stable permille per row).
+// v191: a multi-page data table (the dice table spans two pages: sums 24→9, then 8→2) keeps IDENTICAL
+//       column positions across both fragments. The token x-fraction is now measured against the PAGE's
+//       content bounds (contentMinX..contentMaxX = the body text column, identical on both pages) instead
+//       of the table's OWN bounding box — the continuation page lacks the "The sum of" header, so its own
+//       bbox is narrower and scaled/shifted its columns out of line with the first page's fragment.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v191-multicol-table-align';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
@@ -639,7 +654,13 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v189-hanging-intro-prose';
 //     title page. That inferred title could differ from the PDF's metadata title (a different subtitle
 //     edition — Sovereign "How to Survive…" vs "Mastering…"), splitting one book into two library items.
 //     Bumping re-extracts existing EPUBs so their title (and dedup) self-correct in place.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v15-dc-title';
+// v16: DATA TABLE parity with the PDF. A multi-column <table> (Sovereign's dice-frequency ditto table) is
+//      emitted as the same positioned-token payload the PDF uses (U+E025 <rows joined by U+E024>, each token
+//      a PUA position char U+E200 + permille of its x-fraction + text), so the reader renders every column
+//      aligned exactly instead of flowing the cells into a run-on line. The EPUB has no coordinates, so a
+//      cell's x-fraction is its COLUMN INDEX / total columns (honouring colspan — the header's spanning cell
+//      starts at its column). Gated to ≥3 columns and ≥3 rows; a smaller/layout table is unchanged.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v16-data-table';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

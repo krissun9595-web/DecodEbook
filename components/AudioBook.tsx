@@ -256,6 +256,13 @@ interface ParagraphData {
     // rendered as a thin centred line in the attribution grey.
     divider?: boolean;
     dividerDouble?: boolean; // a DOUBLE rule (two close parallel lines) — a chapter deck bracket, not a single line
+    // A row-major DATA TABLE (a ditto/numeric frequency table — Sovereign's dice table; an EPUB <table>).
+    // Each row is a list of tokens, each token positioned at its source x-fraction (0..1 of the table's
+    // width) so every column aligns exactly as the original. Rendered as absolutely-positioned rows. In
+    // split view the right pane shows the same grid with WORD tokens (letter-bearing — "The sum of",
+    // "spots will appear once.", "times.") translated and numbers/dittos kept verbatim; `word` marks which
+    // tokens are translatable (they carry a real `gi`; numbers/dittos have gi=-1 and are never translated).
+    table?: { rows: { x: number; text: string; gi: number; word: boolean }[][] };
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1089,6 +1096,33 @@ const buildPageSentenceData = (pageText: string): {
   let globalIdx = 0;
 
   rawParagraphs.forEach((rawPText, pIndex) => {
+    // DATA TABLE: a row-major table (Sovereign dice-frequency, an EPUB <table>) is encoded by the
+    // extractor as U+E025 <rows joined by U+E024>, each row a run of tokens, each token a single PUA
+    // position char (U+E200 + permille of its x-fraction) followed by its text. Parse it into rows of
+    // positioned tokens BEFORE the verse check (a table payload also contains U+E024). Each row is one
+    // searchable sentence (its tokens joined by spaces); its tokens share that sentence's global index.
+    const _tblRaw = rawPText.replace(/\[\[PAGE\s+\d+\]\]/gi, '').replace(/^\s+/u, '');
+    const _tblM = _tblRaw.match(/^[\uE010-\uE024]*\uE025([\s\S]*)$/u);
+    if (_tblM) {
+      const rows = _tblM[1].split('').map(rowStr => {
+        const toks: { x: number; text: string; gi: number; word: boolean }[] = [];
+        const re = /([-])([^-]*)/gu;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(rowStr)) !== null) {
+          const text = m[2].replace(/\s+/g, ' ').trim();
+          if (!text) continue;
+          const x = (m[1].charCodeAt(0) - 0xE200) / 1000;
+          // A WORD token (letter-bearing) is translatable and gets its own global index; numbers and
+          // ditto marks are kept verbatim (gi = -1, never translated).
+          const word = /\p{L}/u.test(text);
+          let gi = -1;
+          if (word) { gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: gi, globalIndex: gi, text: stripInlineFormatSyntax(text) }); }
+          toks.push({ x, text, gi, word });
+        }
+        return toks;
+      }).filter(r => r.length);
+      if (rows.length) { paragraphData.push({ original: [], translated: [], table: { rows } }); return; }
+    }
     // VERSE: a poem stanza carries its line breaks as U+E024 (a hard-break sentinel that survives the
     // chapter-build whitespace collapse, unlike a raw \n). Restore them to \n here so the line splitter
     // below yields one line per verse line (lineBreakAfter → tight <br> lines), and flag the paragraph.
@@ -1571,7 +1605,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE023\uE024]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE023-\uE025\uE200-\uE5E8]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -4271,6 +4305,57 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     const caption = [pIdx + 1, pIdx + 2, pIdx - 1, pIdx + 3]
                       .map(capText).find(t => capRe.test(t)) || '';
                     return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} bookTitle={bookTitle} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} chapterLabel={chapterLabel} caption={caption} />;
+                  }
+                  // A row-major DATA TABLE (ditto/numeric frequency table). Each token is absolutely
+                  // positioned at its source x-fraction so every column aligns exactly as the original —
+                  // the ditto marks sit under the words they repeat, numbers line up, nothing is mashed
+                  // into one cell (the two-column-cut bug this replaces). In split view the right pane shows
+                  // the same grid with WORD tokens translated and numbers/dittos kept verbatim (a data
+                  // table's numbers are universal; only its descriptive words carry meaning).
+                  if (para.table) {
+                    const tcls = `${TEXT_SIZES[settings.textSize]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 font-medium`;
+                    // A table that SPANS PAGES arrives as consecutive `table` paragraphs (one per source
+                    // page). Collapse the inter-fragment margin so the fragments read as one continuous
+                    // table (no blank band at the page seam), while keeping the normal set-off gap before
+                    // the first fragment and after the last.
+                    const prevIsTable = !!paragraphData[pIdx - 1]?.table;
+                    const nextIsTable = !!paragraphData[pIdx + 1]?.table;
+                    const marginCls = `${prevIsTable ? 'mt-0' : 'mt-4'} ${nextIsTable ? 'mb-0' : 'mb-4'}`;
+                    // translated=false → the original grid; translated=true → the same positions with each
+                    // WORD token replaced by its translation (falling back to the original until it lands),
+                    // numbers/dittos untouched. Only word tokens carry a real gi (highlight/click); numbers
+                    // and dittos are inert.
+                    const tableGrid = (translated: boolean) => (
+                      <div className={`w-full ${tcls}`}>
+                        {para.table!.rows.map((row, r) => (
+                          <div key={r} className="relative w-full" style={{ height: '1.7em' }}>
+                            {row.map((tok, ci) => {
+                              const active = autoScroll && tok.word && tok.gi === activeSentenceIndex;
+                              const content = translated
+                                ? (tok.word ? (translationByIndex.get(tok.gi) || tok.text) : tok.text)
+                                : renderInkableText(tok.text, tok.gi, active);
+                              return (
+                                <span
+                                  key={ci}
+                                  {...(tok.word ? { 'data-sentence-index': tok.gi, onClick: (e: React.MouseEvent) => handleSentenceClick(tok.gi, e) } : {})}
+                                  className={`absolute whitespace-nowrap px-[1px] transition-all duration-300 ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : (tok.word ? sentenceHoverClass : '')}`}
+                                  style={{ left: `${(tok.x * 100).toFixed(2)}%`, top: 0 }}
+                                >{content}</span>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                    if (viewMode === 'split') {
+                      return (
+                        <div key={`tbl-${pIdx}`} className={`w-full flex items-start ${marginCls}`}>
+                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{tableGrid(false)}</div>
+                          <div className="w-1/2 pl-2 md:pl-6">{tableGrid(true)}</div>
+                        </div>
+                      );
+                    }
+                    return <div key={`tbl-${pIdx}`} className={`w-full max-w-3xl mx-auto ${marginCls}`}>{tableGrid(false)}</div>;
                   }
                   // A side-by-side two-column region. Original columns render side by side; in split
                   // view the TRANSLATED columns render in the right half (original-L | original-R ||
