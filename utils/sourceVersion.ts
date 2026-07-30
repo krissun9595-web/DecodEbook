@@ -660,7 +660,15 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v191-multicol-table-align';
 //      aligned exactly instead of flowing the cells into a run-on line. The EPUB has no coordinates, so a
 //      cell's x-fraction is its COLUMN INDEX / total columns (honouring colspan — the header's spanning cell
 //      starts at its column). Gated to ≥3 columns and ≥3 rows; a smaller/layout table is unchanged.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v16-data-table';
+// v17: infer a Part→Chapter TOC hierarchy when the nav is FLAT. Some EPUBs (Agentic Mesh) list the Part
+//      dividers and their Chapters as SIBLINGS at the same nav level, so the nested catalogue the PDF shows
+//      (Part I → chapters 1-4, Part II → 5-12, …) was flattened. When the outline came out entirely flat
+//      AND holds ≥2 Part dividers (a bare Roman-numeral / "Part …" title, never "Chapter I.") with numbered
+//      Chapters after them, each numbered Chapter is nested (level 1) under its preceding Part;
+//      buildChaptersFromOutline then links parentId and the reader renders the collapsible tree. Front/back
+//      matter stays top-level. Gated on ≥2 Parts so partless books (Elon, Sovereign, Transurfing) are
+//      untouched (validated across all test EPUBs: only Agentic Mesh nests).
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v17-part-chapter-hierarchy';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

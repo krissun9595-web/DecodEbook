@@ -1232,9 +1232,6 @@ const buildPageSentenceData = (pageText: string): {
     paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, verse: isVerse });
   });
 
-  if (/excellent overview of mechanistic|machine learning with imperfect|Neel Nanda/.test(pageText)) {
-    paragraphData.slice(0, 14).forEach((p, i) => console.log(`  [${i}] role=${p.role || '-'} indent=${p.indent ?? 0} bq=${p.blockQuote ? 1 : 0} | ${JSON.stringify(p.original.join(' ').slice(0, 56))}`));
-  }
   return { paragraphData, flatSentenceMap };
 };
 
@@ -2849,18 +2846,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // parsed as a reference marker and broken onto its own line. (Mirrors the extraction-side gate.)
   const isIndexChapter = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
     || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
-  // ── READER AUDIT (TOC/index) — remove after fix. Fires ONLY when the problem entries are present.
-  {
-    const G: any = globalThis as any;
-    const hasProblem = paragraphData?.some((p: any) => /Short Term|Medium Term|Long Term/.test(p.original?.join(' ') || ''));
-    if (hasProblem && G.__raKey2 !== `${chapter.id}`) {
-      G.__raKey2 = `${chapter.id}`;
-      paragraphData.forEach((p: any) => {
-        const t = (p.original?.join(' ') || '');
-        if (/Short Term|Medium Term|Long Term|Agents|Summary|Ecosystem|26|28|29/.test(t)) console.log(`  role=${p.role || '-'} align=${p.align || '-'} indent=${p.indent || 0} | ${t.slice(0, 52)}`);
-      });
-    }
-  }
   const activeNoteTarget =
     typeof pendingNavigationTarget === 'object' && pendingNavigationTarget?.type === 'note'
       ? pendingNavigationTarget

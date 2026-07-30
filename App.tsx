@@ -1389,9 +1389,14 @@ const App: React.FC = () => {
           // emit the heading sentinel like an <h1>–<h6>. This renders a CSS-class section heading as a
           // heading regardless of casing, instead of a bold run-in. Guard: a real heading isn't a full
           // sentence, so skip when the text ends in terminal punctuation (a footnote/prose paragraph that
-          // happens to carry a TOC-referenced id).
+          // happens to carry a TOC-referenced id). ALSO guard on LENGTH: a heading is short — a whole
+          // chapter CONTAINER that a nav entry points at (an <section data-type="index"> the "Index" nav
+          // entry targets, or a chapter wrapper) is thousands of chars; treating it as one heading collapses
+          // all its inner \n\n to \n (via / *\n+ */→\n) and stamps the whole chapter bold+oversized. Only a
+          // short, heading-length block qualifies.
           const headId = element.getAttribute('id');
-          if (headId && navAnchorIds.has(headId) && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
+          const _navHeadLen = trimmed.replace(/[-]/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim().length;
+          if (headId && navAnchorIds.has(headId) && _navHeadLen > 0 && _navHeadLen < 90 && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
             const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
             if (clean) return `\n\n${sizeTierSentinel(element)}${SENT_HEADING}${clean}\n\n`;
           }
@@ -1479,12 +1484,41 @@ const App: React.FC = () => {
           // downstream prose-reflow can't merge them, and prefix sub-entries with
           // non-breaking spaces (which survive whitespace collapsing) to preserve
           // their indentation under the parent term.
-          if (liClass.includes('indexsub') || liClass.includes('indexmain')) {
+          // An index entry can be marked by CLASS (indexsub/indexmain \u2014 Sovereign) OR by the semantic
+          // EPUB index markup (a <section|div data-type="index"> container with <span data-type="index-term">
+          // / <a data-type="index:locator"> children \u2014 Agentic Mesh). Either way it is a structured index
+          // entry, NOT a bulleted list: the source sets `list-style-type:none`, so it must emit flush (with
+          // NBSP indent for sub-entries under a parent term), never with a "\u2022".
+          const isIndexEntry = (() => {
+            if (liClass.includes('indexsub') || liClass.includes('indexmain')) return true;
+            // Walk ancestors with getAttribute (querySelector/closest can be unreliable on the EPUB's
+            // parsed XHTML DOM) for the index container: <section|div data-type="index"> / <div class="index">
+            // / epub:type="index".
+            for (let anc: Element | null = element; anc; anc = anc.parentElement) {
+              const dt = (anc.getAttribute('data-type') || '').toLowerCase();
+              const cl = (anc.getAttribute('class') || '').toLowerCase();
+              const et = (anc.getAttribute('epub:type') || anc.getAttribute('type') || '').toLowerCase();
+              if (dt === 'index' || et.includes('index') || /\bindex\b/.test(cl)) return true;
+            }
+            return false;
+          })();
+          if (isIndexEntry) {
             // CSS-derived index indent: reader renders (nbsp/4)*1.5em = nbsp*0.375em, so map the entry's
             // rendered em indent to leading NBSP. A main entry nets ~0 (flush); a sub-entry gets its real
             // margin + the nested list's UA padding (~2.2-4em) instead of a flat single level.
             const nbsp = Math.round(renderedIndentEm(element) / 0.375);
-            return `\n\n${'\u00a0'.repeat(Math.max(0, nbsp))}${trimmed}\n\n`;
+            // Emit the entry's OWN text (index term + its direct locator links) as ONE paragraph, then
+            // recurse into any nested sub-entry <ul>/<ol> so each sub-entry is its OWN indented paragraph.
+            // Do NOT let the generic block wrapper handle the nested list: it joins with a single '\n', which
+            // merges a parent term with its first sub-entry (and cascades the whole index into the "Index"
+            // heading paragraph \u2014 rendering every entry bold + oversized). Explicit '\n\n' keeps entries apart.
+            const isSubList = (n: Node): boolean => n.nodeType === 1 && /^(?:ul|ol)$/i.test((n as Element).tagName || '');
+            const ownText = Array.from(element.childNodes).filter(n => !isSubList(n))
+              .map(n => nodeToMarkedText(n, baseDir)).join('').replace(/\s+/g, ' ').trim();
+            const subs = Array.from(element.children).filter(c => isSubList(c))
+              .flatMap(ul => Array.from(ul.children).filter(c => c.tagName.toLowerCase() === 'li'))
+              .map(li => nodeToMarkedText(li, baseDir)).join('');
+            return `\n\n${'\u00a0'.repeat(Math.max(0, nbsp))}${ownText}\n\n${subs}`;
           }
           // Reveal list structure: bullets for <ul>, numbers for <ol>. Skip when the
           // item already carries its own marker (e.g. endnote backlinks "[2](...)"),
@@ -1767,8 +1801,16 @@ const App: React.FC = () => {
           const titleOff = findHeadingOffsetByTitle(fullText, e.title, lastResolvedOffset);
           if (seenFile.has(target) && titleOff != null && fileOff != null && titleOff >= fileOff && titleOff < regionEnd!) {
             continue;                                                 // section inside an already-added chapter → keep as content
-          } else if (titleOff != null) {
-            offset = titleOff;                                        // misdirected pointer → re-anchor to the real heading (Elon)
+          } else if (seenFile.has(target) && (e.level ?? 0) >= 1) {
+            // A DEEP nav entry (a section, level >= 1) whose FILE is already claimed by a shallower entry is
+            // content within that chapter — NOT a separate reading unit. Drop it; never re-anchor it to a
+            // DIFFERENT file. (Agentic Mesh's Preface > "Navigating This Book" links descriptively to the
+            // Part title pages — "Part I: Defining the Essentials" -> preface01.html; re-anchoring it to the
+            // real part01.html would STEAL the divider's file, drop the real "I. Defining" divider, and
+            // leave a mis-nested "Part I" under the Preface — which also broke the flat-nav Part inference.)
+            continue;
+          } else if (titleOff != null && (e.level ?? 0) === 0) {
+            offset = titleOff;                                        // misdirected TOP-LEVEL pointer → re-anchor to the real heading (Elon)
           } else if (fileOff != null && !seenFile.has(target) && (fileEntryCount.get(target) === 1 || headingAtFile === '')) {
             offset = fileOff;                                         // uncontested pointer / headingless page → trust the file start
           } else {
@@ -1794,6 +1836,31 @@ const App: React.FC = () => {
       }
       // (buildChaptersFromOutline sorts by offset and collapses non-monotonic entries, so re-anchored
       // entries that land out of nav order are put back into reading order there.)
+
+      // INFER a Part→Chapter hierarchy when the nav is FLAT. Some EPUBs (Agentic Mesh) list the Part
+      // dividers and their Chapters as SIBLINGS at the same nav level, so the nested TOC the PDF shows
+      // (Part I → chapters 1–4, Part II → 5–12, …) is flattened. When the outline came out entirely flat
+      // AND holds ≥2 Part dividers with numbered Chapters after them, nest each numbered Chapter under its
+      // preceding Part — mirroring the PDF outline's own nesting (buildChaptersFromOutline then assigns
+      // parentId from the levels, and the reader renders the collapsible tree). Front/back matter (Foreword,
+      // Preface, Index, …) is neither a Part nor a numbered Chapter, so it stays top-level. A Part is a bare
+      // Roman-numeral or "Part …" divider — NOT "Chapter I." (Reality Transurfing's roman-numbered chapters),
+      // which keeps that book flat. Gated on ≥2 Parts so a partless book (Elon) is untouched.
+      const isPartTitle = (t: string): boolean =>
+        /^\s*part\b/i.test(t) || (/^\s*[IVXLCDM]+[.:]\s+\S/.test(t) && !/^\s*chapter\b/i.test(t));
+      const isChapterTitle = (t: string): boolean => /^\s*(?:chapter\s+)?\d+[.:)]\s+\S/i.test(t);
+      if (outline.every(o => (o.level ?? 0) === 0)) {
+        const ordered = [...outline].sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
+        const nParts = ordered.filter(o => isPartTitle(o.title)).length;
+        const nChaps = ordered.filter(o => isChapterTitle(o.title)).length;
+        if (nParts >= 2 && nChaps >= nParts) {
+          let inParts = false;
+          for (const o of ordered) {
+            if (isPartTitle(o.title)) inParts = true;                    // a Part divider — stays level 0
+            else if (inParts && isChapterTitle(o.title)) o.level = 1;    // a numbered Chapter — nest under it
+          }
+        }
+      }
 
       // Doc-level layout flags from the tally (parity with the PDF's line-fill measurement). Conservative,
       // like the PDF: only decide over enough samples. justified = most body paragraphs resolve to justify
