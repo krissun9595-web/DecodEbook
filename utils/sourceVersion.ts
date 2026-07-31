@@ -668,7 +668,16 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v191-multicol-table-align';
 //      buildChaptersFromOutline then links parentId and the reader renders the collapsible tree. Front/back
 //      matter stays top-level. Gated on ≥2 Parts so partless books (Elon, Sovereign, Transurfing) are
 //      untouched (validated across all test EPUBs: only Agentic Mesh nests).
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v17-part-chapter-hierarchy';
+// v18: GENERAL CSS selector matching. The style resolver was class-keyed — it read font-style/weight/
+//      text-align/font-size/indent from `.class` rules only, so a PROFESSIONAL EPUB (O'Reilly's Agentic
+//      Mesh) that styles via TAG / ATTRIBUTE / DESCENDANT selectors and ::before pseudo-elements resolved
+//      NOTHING (italic quotes read roman, attributions lost their right-align + em-dash). Added a general
+//      matcher (tag + [attr] + ancestor/descendant, specificity-ordered cascade) used as a FALLBACK after
+//      the class/inline fast path — so class-styled conversions (Sovereign/Elon/Transurfing) are unchanged
+//      while semantic stylesheets now resolve. A whole-paragraph italic emits U+E026 (survives sentence
+//      splitting, unlike wrapping in *…*); a ::before content (attribution em-dash) is prepended; an
+//      attribution <p> (right-aligned) is kept out of the block-quote set-off.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v18-general-css-match';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

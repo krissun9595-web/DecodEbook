@@ -912,6 +912,17 @@ const App: React.FC = () => {
       // figure boxes). class → 'single' | 'double'.
       const cssBorderTop: Record<string, 'single' | 'double'> = {};
       const cssBorderBottom: Record<string, 'single' | 'double'> = {};
+      // GENERAL selector matcher — the class-keyed maps above are the fast path for class-styled EPUBs
+      // (calibre/z-library conversions: `.att`, `.calibre3`, `.indexsubentry`). PROFESSIONAL EPUBs (O'Reilly)
+      // style via TAG / ATTRIBUTE / DESCENDANT selectors and ::before pseudo-elements — none of which are
+      // classes — so those books resolve NOTHING through the maps. Keep every rule here so a resolver can
+      // fall back to matching an element by tag + [attr] + ancestor when its class/inline lookup is empty.
+      const cssRules: { sel: string; decl: string; spec: number; tag: string }[] = [];
+      const cssBeforeRules: { sel: string; content: string }[] = []; // ::before { content } (e.g. attribution em-dash)
+      const specOf = (sel: string): number =>
+        (sel.match(/#[\w-]+/g) || []).length * 100
+        + (sel.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) || []).length * 10
+        + (sel.match(/(?:^|[\s>+~])[a-zA-Z][\w-]*/g) || []).length;
       for (const key of zipKeys.filter(k => /\.css$/i.test(k))) {
         try {
           const css = await zip.files[key].async('string');
@@ -932,6 +943,27 @@ const App: React.FC = () => {
             // = border-top + border-right), not a standalone horizontal divider — its top/bottom edges must
             // NOT become decorative rules, or the box frame litters the page with stray lines.
             const isBoxSide = /border-(?:left|right)\s*:\s*[^;}]*?\b(?:solid|double|dashed)\b/i.test(rule[2]);
+            const hasListStyle = /list-style(?:-type)?\s*:/i.test(rule[2]);
+            // Record every rule with a property a resolver cares about — split on comma into single selectors.
+            // A `::before/::after` rule with `content` goes to cssBeforeRules (e.g. the attribution em-dash);
+            // everything else (tag/attr/descendant/class) goes to cssRules for general matching.
+            const _relevant = am || isBlock || isItalic || isBold || isNormalWeight || isNormalStyle
+              || li || mE != null || pE != null || tiE != null || fs != null || btM || bbM || hasListStyle;
+            const _beforeContent = /::?(?:before|after)\b/i.test(rule[1]) ? /content\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/i.exec(rule[2]) : null;
+            for (const rawSel of rule[1].split(',')) {
+              const sel = rawSel.replace(/\s+/g, ' ').trim();
+              if (!sel) continue;
+              // Skip AT-RULES (@font-face/@media/@page/@charset). @font-face carries a `font-style` for the
+              // font variant, and its selector has no tag/class/attr — so it would match EVERY element and
+              // (font-style:normal) wipe out all italic. Never a document element selector.
+              if (sel.startsWith('@')) continue;
+              if (/::?(?:before|after)\b/i.test(sel)) { if (_beforeContent) cssBeforeRules.push({ sel: sel.replace(/\s*::?(?:before|after)\b/ig, '').trim() || '*', content: _beforeContent[2] }); continue; }
+              if (/::?[a-z]/i.test(sel)) continue; // an un-evaluable pseudo-element on a non-before rule — skip
+              // A selector with no tag AND no class AND no attribute (a bare combinator artefact or `*`) would
+              // match every element — skip it so a stray universal rule can't blanket the whole book.
+              if (!/[a-zA-Z]|\[|\./.test(sel.replace(/[>+~\s*]/g, ''))) continue;
+              if (_relevant) { const _rt = (sel.split(/\s*>\s*|\s+/).pop() || '').match(/^([a-zA-Z][\w-]*)/); cssRules.push({ sel, decl: rule[2], spec: specOf(sel), tag: _rt ? _rt[1].toLowerCase() : '' }); }
+            }
             if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
             for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
               const c = cls[1];
@@ -949,11 +981,70 @@ const App: React.FC = () => {
           }
         } catch { /* skip an unreadable stylesheet */ }
       }
+      // ── GENERAL selector matching ──────────────────────────────────────────────────────────────────
+      // Match ONE compound selector (no combinators) against an element: tag + .class + [attr]. Loose on
+      // attribute operators beyond = / ~= (treated as "attribute present"), which covers real stylesheets.
+      const matchSimple = (el: Element, simple: string): boolean => {
+        const s = simple.trim();
+        if (!s || s === '*') return true;
+        const tagM = s.match(/^([a-zA-Z][\w-]*)/);
+        if (tagM && (el.tagName || '').toLowerCase() !== tagM[1].toLowerCase()) return false;
+        const classes = (el.getAttribute('class') || '').split(/\s+/);
+        for (const cm of s.matchAll(/\.([\w-]+)/g)) if (!classes.includes(cm[1])) return false;
+        for (const am of s.matchAll(/\[\s*([\w:-]+)\s*(?:([~|^$*]?=)\s*"?([^"\]]*?)"?\s*)?\]/g)) {
+          const av = el.getAttribute(am[1]);
+          if (av == null) return false;
+          if (am[2] === '=' && av !== am[3]) return false;
+          if (am[2] === '~=' && !av.split(/\s+/).includes(am[3])) return false;
+        }
+        return true;
+      };
+      // Match a full selector (descendant/child combinators) against an element — the rightmost compound
+      // must match `el`, each earlier compound must match SOME ancestor in order (child `>` treated as
+      // descendant, a safe over-match).
+      const selMatches = (el: Element, sel: string): boolean => {
+        const combos = sel.split(/\s*>\s*|\s+/).filter(Boolean);
+        if (!combos.length || !matchSimple(el, combos[combos.length - 1])) return false;
+        let anc: Element | null = el.parentElement;
+        for (let i = combos.length - 2; i >= 0; i--) {
+          let ok = false;
+          while (anc) { const p: Element | null = anc.parentElement; if (matchSimple(anc, combos[i])) { ok = true; anc = p; break; } anc = p; }
+          if (!ok) return false;
+        }
+        return true;
+      };
+      // The effective declaration string for an element: every matching rule's declarations, LOW→HIGH
+      // specificity (stable sort keeps source order within a tier), then the inline style last — so reading
+      // "the last value of a property wins" mirrors the CSS cascade closely enough for these stylesheets.
+      const declCache = new WeakMap<Element, string>();
+      const matchDecl = (el: Element): string => {
+        const c = declCache.get(el); if (c != null) return c;
+        const elTag = (el.tagName || '').toLowerCase();
+        const decl = cssRules.filter(r => (r.tag === '' || r.tag === elTag) && selMatches(el, r.sel)).sort((a, b) => a.spec - b.spec)
+          .map(r => r.decl).join(';') + ';' + ((el as HTMLElement).style?.cssText || '');
+        declCache.set(el, decl);
+        return decl;
+      };
+      // Last value of a CSS property across the cascaded declaration string (cascade → last wins).
+      const declProp = (el: Element, prop: string): string | null => {
+        const re = new RegExp(`(?:^|[;{\\s])${prop}\\s*:\\s*([^;}]+)`, 'gi');
+        let m: RegExpExecArray | null, last: string | null = null;
+        const d = matchDecl(el);
+        while ((m = re.exec(d)) !== null) last = m[1].trim();
+        return last;
+      };
+      // ::before content (decoded from CSS \HHHH escapes) for an element — the highest-specificity match.
+      const beforeContentOf = (el: Element): string => {
+        let best = '', bestSpec = -1;
+        for (const b of cssBeforeRules) { if (selMatches(el, b.sel)) { const s = specOf(b.sel); if (s >= bestSpec) { bestSpec = s; best = b.content; } } }
+        return best.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch { return ''; } });
+      };
       const alignFor = (el: Element): 'center' | 'right' | null => {
         const inline = (el as HTMLElement).style?.textAlign?.toLowerCase();
         if (inline === 'center' || inline === 'right') return inline;
         for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssAlign[c]) return cssAlign[c];
-        return null;
+        const d = declProp(el, 'text-align'); // general matcher (attribute/descendant rules the class map misses)
+        return d === 'center' || d === 'right' ? d : null;
       };
       // The EFFECTIVE text-align of an element, resolving CSS inheritance (text-align inherits, so a
       // paragraph with no align of its own takes its ancestor's — commonly the body's `.calibre` justify).
@@ -969,6 +1060,8 @@ const App: React.FC = () => {
             if (cssAlign[c]) return cssAlign[c];
             if (cssLeft.has(c)) return 'left';
           }
+          const d = declProp(cur, 'text-align'); // general matcher fallback
+          if (d === 'justify' || d === 'left' || d === 'right' || d === 'center') return d;
         }
         return null;
       };
@@ -1016,20 +1109,31 @@ const App: React.FC = () => {
         }
         return Math.max(0, em);
       };
-      // CSS-driven emphasis: an element italicised/bolded via a class (not <i>/<b>) — wrap its text in
-      // the markdown the reader renders. Guard against double-wrapping when a nested <i>/<em> already did.
+      // Whether an element resolves to italic / bold — inline style, then a class in the fast-path set, then
+      // the GENERAL matcher (tag/attribute/descendant rules the class maps miss, e.g. `blockquote p{italic}`).
+      // An explicit `normal` wins (a `p[data-type=attribution]{font-style:normal}` overrides the quote italic).
+      const elItalicOf = (el: Element): boolean => {
+        const inline = ((el as HTMLElement).style?.fontStyle || '').toLowerCase();
+        if (inline === 'italic') return true; if (inline === 'normal') return false;
+        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssItalic.has(c))) return true;
+        return declProp(el, 'font-style') === 'italic';
+      };
+      const elBoldOf = (el: Element): boolean => {
+        const inline = ((el as HTMLElement).style?.fontWeight || '').toLowerCase();
+        if (/^(?:bold|[6-9]00)$/.test(inline)) return true; if (/^(?:normal|[1-4]00)$/.test(inline)) return false;
+        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssBold.has(c))) return true;
+        return /^(?:bold|[6-9]00)$/.test((declProp(el, 'font-weight') || '').toLowerCase());
+      };
+      // CSS-driven emphasis: an element italicised/bolded via a class/tag/attribute (not <i>/<b>) — wrap its
+      // text in the markdown the reader renders. Guard against double-wrapping when a nested <i>/<em> did.
       const emphasize = (text: string, el: Element): string => {
         // Never wrap a figure marker in emphasis. A decorative image inside <span class="bold">
         // (chapter-opener rules/ornaments in this EPUB) would become "**[[FIG id]]**"; when the image is
         // then dropped as decorative, blankMarker blanks only the marker, leaving the "**" bookends as two
         // stray bold-marker paragraphs — a phantom vertical gap between the heading and the next block.
         if (!text || /[*_]/u.test(text) || text.includes('[[FIG ')) return text;
-        const style = (el as HTMLElement).style;
-        const classes = (el.getAttribute('class') || '').split(/\s+/);
-        const italic = (style?.fontStyle || '').toLowerCase() === 'italic' || classes.some(c => cssItalic.has(c));
-        const bold = /^(?:bold|[6-9]00)$/.test((style?.fontWeight || '').toLowerCase()) || classes.some(c => cssBold.has(c));
-        if (bold) return `**${text}**`;
-        if (italic) return `*${text}*`;
+        if (elBoldOf(el)) return `**${text}**`;
+        if (elItalicOf(el)) return `*${text}*`;
         return text;
       };
 
@@ -1315,8 +1419,12 @@ const App: React.FC = () => {
           const _minEm = _kids.length ? Math.min(..._kids.map(c => resolveFontEm(c))) : resolveFontEm(element);
           const _ratio = currentBodyEm > 0 ? _minEm / currentBodyEm : 1;
           const sizeTier = _ratio <= 0.78 ? String.fromCharCode(0xE01B) : _ratio < 0.94 ? String.fromCharCode(0xE01C) : '';
+          const E011 = String.fromCharCode(0xE011); // right-align (an attribution p carries this from its own handler)
           const tagged = blocks.map((b, i) => {
-            const lead = b.match(/^[\uE010-\uE023]*/u)![0]; // existing align sentinel (attribution E011) stays in the run
+            const lead = b.match(/^[\uE010-\uE026]*/u)![0]; // leading sentinels the p handler set (E010/E011 align, E026 italic)
+            // An ATTRIBUTION block (right-aligned, E011) is NOT a quote \u2014 leave it as-is (right-aligned,
+            // em-dash prefixed by its own handler). Only a real quote gets the block-quote set-off/flush.
+            if (lead.includes(E011)) return b;
             return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + b.slice(lead.length);
           });
           // A ruled block-quote (`.blockquote1/2a/2b` = a solid border top+bottom) is an epigraph bracketed
@@ -1402,7 +1510,15 @@ const App: React.FC = () => {
           }
           const a = alignFor(element);
           const sentinel = a === 'center' ? '' : a === 'right' ? '' : '';
-          const body = emphasize(trimmed, element);
+          // Whole-paragraph italic (a quote/epigraph <p> the stylesheet italicises — often through a
+          // descendant selector the class maps can't see) → the E026 paragraph-italic sentinel, NOT a `*…*`
+          // wrap (the reader's sentence splitter would break the markers across sentences). Inner <em> stays
+          // wrapped inline. A ::before pseudo-element's content (an attribution em-dash, never in textContent)
+          // is prepended.
+          const _pItalic = elItalicOf(element);
+          const _before = beforeContentOf(element);
+          const _bodyBold = elBoldOf(element) && !_pItalic && !/[*_]/u.test(trimmed) && !trimmed.includes('[[FIG ');
+          const body = _before + (_bodyBold ? `**${trimmed}**` : trimmed);
           // Email/memo header block: split its <br>-joined fields into their own paragraphs so the
           // reader renders each field flush + un-bold + tight (matches the PDF appendix path).
           if (isEmailHeaderBlock(trimmed)) {
@@ -1476,7 +1592,7 @@ const App: React.FC = () => {
           // A ruled block (`.footnote` = a solid border-top separating chapter-end notes from the body; or a
           // block that brackets itself with a border) draws the source's decorative rule above/below it.
           const _pr = borderRuleOf(element);
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_pItalic ? '' : ''}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
@@ -1716,10 +1832,26 @@ const App: React.FC = () => {
         const regionEnd = fileOffsetsAsc.find(o => o > fileOff) ?? fullText.length;
         const text = fullText.slice(fileOff, regionEnd).replace(/[\u{E010}-\u{E013}]/gu, '').replace(/\s+/g, ' ').trim();
         const low = text.toLowerCase();
+        // FAITHFUL naming: a front-matter file that carries its OWN heading (an <h1> the source gave it — e.g.
+        // the praise page's "Praise for Agentic Mesh") names itself. Reading the file's first U+E013 heading
+        // beats guessing from content, which mislabeled the praise page "Contents" (its quotes mention chapter
+        // titles) — and that made the reader treat it as a Contents chapter and apply the index hanging indent.
+        const ownHead = (() => {
+          const region = fullText.slice(fileOff, Math.min(regionEnd, fileOff + 600));
+          const hs: string[] = [];
+          for (const ln of region.split('\n')) {
+            const idx = ln.indexOf('');
+            if (idx >= 0) { hs.push(ln.slice(idx + 1).replace(/[\u{E000}-\u{F8FF}*_`~]/gu, '').trim()); if (hs.join('').length > 3 && !/^\d+$/.test(hs.join(''))) break; }
+            else if (hs.length && ln.trim()) break;
+            if (hs.length >= 3) break;
+          }
+          return hs.join(' ').replace(/\s+/g, ' ').trim();
+        })();
         let title: string;
         if (file === coverFull || low.length < 30) title = 'Cover';
+        else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)) title = 'Copyright'; // copyright markers win over an h1 title
+        else if (ownHead && ownHead.length >= 3 && ownHead.length <= 60) title = ownHead; // the file names itself (praise, dedication, …)
         else if (/^(?:table of )?contents\b/u.test(low) || navTitles.filter(t => low.includes(t.toLowerCase())).length >= 3) title = 'Contents';
-        else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)) title = 'Copyright';
         else title = 'Front Matter';
         if (title === lastFront) continue; // merge consecutive same-kind pages into one entry
         lastFront = title;
