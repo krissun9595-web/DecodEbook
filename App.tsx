@@ -1465,14 +1465,30 @@ const App: React.FC = () => {
           const _kids = Array.from(element.children).filter(c => isBlockChild(c));
           const _minEm = _kids.length ? Math.min(..._kids.map(c => resolveFontEm(c))) : resolveFontEm(element);
           const _ratio = currentBodyEm > 0 ? _minEm / currentBodyEm : 1;
-          const sizeTier = _ratio <= 0.78 ? String.fromCharCode(0xE01B) : _ratio < 0.94 ? String.fromCharCode(0xE01C) : '';
+          // A block quote set BELOW body (a set-off quote/definition) renders at the reader's mild-shrink tier
+          // E01C (0.86). Professional EPUBs use a MILD shrink — O'Reilly's `blockquote{font-size:95%}` — which
+          // the old `< 0.94` gate rounded away to body size, so the "An agent is a program…" definition read
+          // full-size while the SAME book's PDF renders it smaller (measured ratio 0.82 → E01C). Extend the
+          // gate to `< 0.97` so any deliberately-sub-body quote hits E01C (body-size quotes at ≥0.97 stay
+          // body). Only Agentic Mesh's 95% quotes are affected among the test EPUBs; Sovereign's are 0.833.
+          const sizeTier = _ratio <= 0.78 ? String.fromCharCode(0xE01B) : _ratio < 0.97 ? String.fromCharCode(0xE01C) : '';
           const E011 = String.fromCharCode(0xE011); // right-align (an attribution p carries this from its own handler)
+          // A block quote whose source gives it a real LEFT MARGIN is an INDENTED set-off block (O'Reilly's
+          // `blockquote{margin:10px}`, and its PDF insets the "An agent\u2026" definition ~1.6em). Emit a leading
+          // NBSP run so the reader pads it left (bodyBlockPadStyle; E018 below keeps the first line flush at
+          // that tier). Reads the ACTUAL left margin, so it is NOT specific to one book: Sovereign's
+          // left-0 quotes (`.epigraph` 14% 0 0, `.blockquote` 0 10% 0 0, `.blockquote1b`) stay flush, while its
+          // `.blockquote1/2/2a/2b/3a` (`margin:1em 1.2em`, inset on BOTH margins) now correctly indent \u2014 user
+          // verified against the Sovereign PDF that those quotes ARE indented there. A set-off quote gets at
+          // least the conventional ~1.5em (4 NBSP, matching the PDF), more if the source margin is larger.
+          const _bqLeftEm = boxLeftEm(element).m;
+          const _bqIndent = _bqLeftEm > 0.1 ? '\u00A0'.repeat(Math.max(4, Math.round(_bqLeftEm / 0.375))) : '';
           const tagged = blocks.map((b, i) => {
             const lead = b.match(/^[\uE010-\uE026]*/u)![0]; // leading sentinels the p handler set (E010/E011 align, E026 italic)
             // An ATTRIBUTION block (right-aligned, E011) is NOT a quote \u2014 leave it as-is (right-aligned,
             // em-dash prefixed by its own handler). Only a real quote gets the block-quote set-off/flush.
             if (lead.includes(E011)) return b;
-            return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + b.slice(lead.length);
+            return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + _bqIndent + b.slice(lead.length);
           });
           // A ruled block-quote (`.blockquote1/2a/2b` = a solid border top+bottom) is an epigraph bracketed
           // by decorative rules in the source \u2014 emit them, like the PDF.
@@ -1502,12 +1518,15 @@ const App: React.FC = () => {
           }
           const label = trimmed.replace(/\s+/g, ' ').trim();
           if (href) return `[${label}](${href})`;
-          // An href-less <a> that WRAPPED block content — a self-closing index marker `<a data-type=
-          // "indexterm" …/>` that text/html parsing does NOT self-close, so the open <a> swallowed the
-          // following flow content (a whole <dl>, or paragraphs). Return its childText UNFLATTENED so the
-          // block structure (\n\n) survives; flattening it (the label path) collapsed a definition list into
-          // run-on prose. A genuinely inline anchor (no block newlines) still flattens to its label.
-          return /\n/.test(childText) ? childText : label;
+          // An href-less <a> is a zero-width index MARKER — a self-closing `<a data-type="indexterm" …/>`
+          // that text/html parsing does NOT self-close, so the open <a> swallows the following flow content
+          // (inline text, or a whole <dl>/paragraphs). The marker itself contributes NOTHING, so return its
+          // childText VERBATIM — never the trimmed/flattened `label`. Trimming dropped the LEADING space of
+          // swallowed inline text ("So<a/> while…" → "Sowhile…"; "Uses<a/> sophisticated…" →
+          // "Usessophisticated…"); flattening collapsed a swallowed <dl> into run-on prose. childText keeps
+          // both the boundary whitespace and the block \n\n structure. (`label` retained above for hrefs.)
+          void label;
+          return childText;
         }
         // Semantic heading → the reader's heading role (U+E013), the same sentinel PDF emits. EPUB
         // headings are authoritative (unlike PDF font-size guessing). Strip inner emphasis markers,
@@ -1784,7 +1803,17 @@ const App: React.FC = () => {
       const fileStartOffset = new Map<string, number>(); // spine file → offset where its content begins
       let fullText = "";
       for (const filename of sortedFiles) {
-        const content = await zip.files[filename].async("string");
+        const rawContent = await zip.files[filename].async("string");
+        // The EPUB is XHTML, so zero-width index markers are written SELF-CLOSING: `<a data-type="indexterm"
+        // id="…"/>` (Agentic Mesh has 1056 of them). Parsed as text/html (below), a self-closing <a> is NOT
+        // honoured — the open <a> triggers the HTML parser's adoption-agency algorithm, which SWALLOWS the
+        // following flow content and RESTRUCTURES it: inline text lost its boundary space ("So<a/> while" →
+        // "Sowhile") and, inside a <dl>, the parser pulled the <dt> terms out and DROPPED whole entries (the
+        // "Agentic" glossary row vanished; only 2 of 6 dt/dd parts survived). Close every self-closing anchor
+        // to `<a …></a>` first (keeping its id for navigation) so the tree parses clean; the empty marker then
+        // contributes nothing and the surrounding text/blocks keep their structure. Only <a> is affected —
+        // it's the sole self-closing non-void element in these files, and the only adoption-agency element.
+        const content = rawContent.replace(/<a\b([^>]*?)\/>/gi, '<a$1></a>');
         // Parse the RAW html — DOMParser builds a correct, properly-scoped tree (headings close, blocks
         // nest right) and nodeToMarkedText derives the \n\n structure. The old pre-strip that turned
         // closing tags into newlines REMOVED them, which left an <h1> unclosed so it swallowed the whole
