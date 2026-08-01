@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v111-footnote-nav';
+const CHAPTER_TEXT_CACHE_VERSION = 'v112-pdf-list-per-tier';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4608,7 +4608,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const isStrayDisplayLine = !para.role
                     && para.original.length === 1
                     && stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim().length <= 90;
-                  const effectiveAlign = para.align || (neighborAlign && isStrayDisplayLine ? neighborAlign : undefined);
+                  // A list item (isRuleItem — opens a numbered/lettered/IF-THEN marker, rendered with a hanging
+                  // marker) is LEFT-aligned by construction; it can't also be centered. The geometry's centre
+                  // detector false-fires on a SHORT list line whose margins look symmetric (MYCIN "4. The patient
+                  // is not a compromised host, and" was tagged centre while its siblings were left), so drop a
+                  // spurious centre tag on a rule item.
+                  // A rule item (hanging list marker) is left-aligned by construction — never centre it, whether
+                  // from its OWN mis-detected centre tag (MYCIN "4.") OR one inherited from a centred neighbour
+                  // via isStrayDisplayLine (MYCIN "3." sat next to the mis-centred "4." and inherited it). Suppress
+                  // on the FINAL align so both paths are covered.
+                  const rawAlign = para.align || (neighborAlign && isStrayDisplayLine ? neighborAlign : undefined);
+                  const effectiveAlign = (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
                   // Body-text alignment. 'auto' mirrors the source (justify + hyphenation when the PDF
                   // is justified, else the default left); 'justify'/'left' force it. Never applied to a
@@ -4662,9 +4672,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (para.align === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : paragraphSpacingClassFor(lineText);
+                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : paragraphSpacingClassFor(lineText);
                         return (
-                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) ? 'justify-start' : 'justify-center'}`}>
+                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) || (isRuleItem && !effectiveAlign) ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""

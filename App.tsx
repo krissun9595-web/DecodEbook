@@ -965,8 +965,15 @@ const App: React.FC = () => {
               if (_relevant) { const _rt = (sel.split(/\s*>\s*|\s+/).pop() || '').match(/^([a-zA-Z][\w-]*)/); cssRules.push({ sel, decl: rule[2], spec: specOf(sel), tag: _rt ? _rt[1].toLowerCase() : '' }); }
             }
             if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
-            for (const cls of rule[1].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
-              const c = cls[1];
+            // Attribute a property ONLY to the class(es) in the RIGHTMOST compound (the rule's actual
+            // subject), not every class in the selector. `div.preface dt em code{font-style:italic}` styles
+            // the `code`, NOT `.preface` — over-attributing to `.preface` flat-italicised whole sections.
+            const _subjectClasses = new Set<string>();
+            for (const _oneSel of rule[1].split(',')) {
+              const _rm = _oneSel.trim().split(/\s*[>+~\s]\s*/).filter(Boolean).pop() || '';
+              for (const cm of _rm.matchAll(/\.([A-Za-z0-9_-]+)/g)) _subjectClasses.add(cm[1]);
+            }
+            for (const c of _subjectClasses) {
               if (btM && !isBoxSide) cssBorderTop[c] = btM[1].toLowerCase() === 'double' ? 'double' : 'single';
               if (bbM && !isBoxSide) cssBorderBottom[c] = bbM[1].toLowerCase() === 'double' ? 'double' : 'single';
               if (am) { const av = am[1].toLowerCase(); if (av === 'center' || av === 'right') cssAlign[c] = av; else if (av === 'justify') cssJustify.add(c); else if (av === 'left') cssLeft.add(c); }
@@ -1042,8 +1049,8 @@ const App: React.FC = () => {
       const alignFor = (el: Element): 'center' | 'right' | null => {
         const inline = (el as HTMLElement).style?.textAlign?.toLowerCase();
         if (inline === 'center' || inline === 'right') return inline;
-        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssAlign[c]) return cssAlign[c];
-        const d = declProp(el, 'text-align'); // general matcher (attribute/descendant rules the class map misses)
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssAlign[c]) return cssAlign[c]; // calibre fast path
+        const d = declProp(el, 'text-align'); // general matcher (professional)
         return d === 'center' || d === 'right' ? d : null;
       };
       // The EFFECTIVE text-align of an element, resolving CSS inheritance (text-align inherits, so a
@@ -1055,12 +1062,12 @@ const App: React.FC = () => {
         for (let depth = 0; cur && cur.nodeType === 1 && depth < 12; depth++, cur = cur.parentElement) {
           const inline = (cur as HTMLElement).style?.textAlign?.toLowerCase();
           if (inline === 'justify' || inline === 'left' || inline === 'right' || inline === 'center') return inline;
-          for (const c of (cur.getAttribute('class') || '').split(/\s+/)) {
+          for (const c of (cur.getAttribute('class') || '').split(/\s+/)) { // calibre fast path
             if (cssJustify.has(c)) return 'justify';
             if (cssAlign[c]) return cssAlign[c];
             if (cssLeft.has(c)) return 'left';
           }
-          const d = declProp(cur, 'text-align'); // general matcher fallback
+          const d = declProp(cur, 'text-align'); // general matcher (professional)
           if (d === 'justify' || d === 'left' || d === 'right' || d === 'center') return d;
         }
         return null;
@@ -1070,14 +1077,15 @@ const App: React.FC = () => {
         const inline = leftIndentPx(`margin-left:${s?.marginLeft || ''};padding-left:${s?.paddingLeft || ''};text-indent:${s?.textIndent || ''}`);
         if (inline > 0) return inline;
         let px = 0;
-        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssIndent[c]) px = Math.max(px, cssIndent[c]);
-        return px;
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssIndent[c]) px = Math.max(px, cssIndent[c]); // calibre fast path
+        return px > 0 ? px : leftIndentPx(matchDecl(el)); // general matcher (professional)
       };
       const isBlockChild = (n: Node): boolean => {
         if (n.nodeType !== Node.ELEMENT_NODE) return false;
         const el = n as HTMLElement;
         if ((el.style?.display || '').toLowerCase() === 'block') return true;
-        return (el.getAttribute('class') || '').split(/\s+/).some(c => cssBlock.has(c));
+        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssBlock.has(c))) return true; // calibre fast path
+        return (declProp(el, 'display') || '').toLowerCase() === 'block'; // general matcher (professional)
       };
       // The rendered LEFT indent (em) where an INDEX entry's text starts, relative to the top-level index
       // list. Walk up summing each ancestor's margin-left + padding-left (em) — INCLUDING the browser
@@ -1087,7 +1095,21 @@ const App: React.FC = () => {
       // entry nets ~0 (padding cancels its negative text-indent) and stays flush.
       const boxLeftEm = (el: Element): { m: number; p: number; ti: number } => {
         const acc = { m: 0, p: 0, ti: 0 };
-        for (const c of (el.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b) { if (b.m) acc.m = b.m; if (b.p) acc.p = b.p; if (b.ti) acc.ti = b.ti; } }
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b) { if (b.m) acc.m = b.m; if (b.p) acc.p = b.p; if (b.ti) acc.ti = b.ti; } } // calibre fast path
+        // General matcher (professional) — correct cascade (the reset's `margin:0` is OVERRIDDEN by a later
+        // `dd{margin:…1.5em}`, so take the LAST value of each property, reading the left value from the shorthand).
+        const leftOf = (prop: 'margin' | 'padding'): number | null => {
+          const explicit = declProp(el, `${prop}-left`);
+          if (explicit != null) return lenToEm(explicit.replace(/!important/ig, ''));
+          const sh = (declProp(el, prop) || '').replace(/!important/ig, '').trim();
+          if (!sh) return null;
+          const q = sh.split(/\s+/); const l = q.length === 4 ? q[3] : q.length >= 2 ? q[1] : q[0];
+          return lenToEm(l);
+        };
+        // Only fill in what the class fast path didn't set (class-first, so calibre is unchanged).
+        if (!acc.m) { const dm = leftOf('margin'); if (dm != null) acc.m = dm; }
+        if (!acc.p) { const dp = leftOf('padding'); if (dp != null) acc.p = dp; }
+        if (!acc.ti) { const dti = declProp(el, 'text-indent'); if (dti != null) { const e = lenToEm(dti.replace(/!important/ig, '')); if (e != null) acc.ti = e; } }
         const s = (el as HTMLElement).style;
         if (s?.marginLeft) { const e = lenToEm(s.marginLeft); if (e != null) acc.m = e; }
         if (s?.paddingLeft) { const e = lenToEm(s.paddingLeft); if (e != null) acc.p = e; }
@@ -1109,14 +1131,16 @@ const App: React.FC = () => {
         }
         return Math.max(0, em);
       };
-      // Whether an element resolves to italic / bold — inline style, then a class in the fast-path set, then
-      // the GENERAL matcher (tag/attribute/descendant rules the class maps miss, e.g. `blockquote p{italic}`).
-      // An explicit `normal` wins (a `p[data-type=attribution]{font-style:normal}` overrides the quote italic).
+      // Whether an element resolves to italic / bold. Resolved through the GENERAL matcher (proper
+      // specificity + descendant/attribute matching), NOT the class-keyed sets — those OVER-ATTRIBUTE a
+      // compound rule's property to every class in it (`div.preface dt em code{font-style:italic}` would
+      // mark `.preface` ITSELF italic), which flatly italicised whole professional-EPUB sections. An
+      // explicit `normal` wins (`p[data-type=attribution]{font-style:normal}` beats the quote's italic).
       const elItalicOf = (el: Element): boolean => {
         const inline = ((el as HTMLElement).style?.fontStyle || '').toLowerCase();
         if (inline === 'italic') return true; if (inline === 'normal') return false;
-        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssItalic.has(c))) return true;
-        return declProp(el, 'font-style') === 'italic';
+        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssItalic.has(c))) return true; // calibre fast path
+        return declProp(el, 'font-style') === 'italic'; // general matcher (professional tag/descendant/attr rules)
       };
       const elBoldOf = (el: Element): boolean => {
         const inline = ((el as HTMLElement).style?.fontWeight || '').toLowerCase();
@@ -1145,8 +1169,9 @@ const App: React.FC = () => {
       const cssFontSizeOf = (el: Element): string | null => {
         const inline = (el as HTMLElement).style?.fontSize;
         if (inline) return inline;
-        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssFontRaw[c]) return cssFontRaw[c];
-        return null;
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssFontRaw[c]) return cssFontRaw[c]; // calibre fast path
+        const d = declProp(el, 'font-size'); // general matcher (professional)
+        return d != null ? d.replace(/!important/ig, '').trim() : null;
       };
       const UA_HEADING_EM: Record<string, number> = { h1: 2, h2: 1.5, h3: 1.17, h4: 1, h5: 0.83, h6: 0.67 };
       const resolveFontEm = (el: Element | null, depth = 0): number => {
@@ -1300,9 +1325,20 @@ const App: React.FC = () => {
           (s || '').toLowerCase() === 'double' ? 'double' : ((s || '').toLowerCase() === 'solid' || (s || '').toLowerCase() === 'dashed') ? 'single' : null;
         top = inlKind(st?.borderTopStyle);
         bottom = inlKind(st?.borderBottomStyle);
-        for (const c of (el.getAttribute('class') || '').split(/\s+/)) {
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) { // calibre fast path
           if (!top && cssBorderTop[c]) top = cssBorderTop[c];
           if (!bottom && cssBorderBottom[c]) bottom = cssBorderBottom[c];
+        }
+        // General matcher (professional) for whatever the class path didn't set. A left/right border means a
+        // BOX FRAME, not a horizontal divider — skip its top/bottom edges.
+        if (!top || !bottom) {
+          const kindOf = (v: string | null): 'single' | 'double' | null => {
+            const m = v ? /\b(solid|double|dashed)\b/i.exec(v) : null;
+            return m ? (m[1].toLowerCase() === 'double' ? 'double' : 'single') : null;
+          };
+          const isBox = kindOf(declProp(el, 'border-left')) || kindOf(declProp(el, 'border-right'));
+          if (!top && !isBox) top = kindOf(declProp(el, 'border-top'));
+          if (!bottom && !isBox) bottom = kindOf(declProp(el, 'border-bottom'));
         }
         return { top, bottom };
       };
@@ -1401,14 +1437,25 @@ const App: React.FC = () => {
             const _pMin = Math.min(..._poemKids.map(c => resolveFontEm(c)));
             const _pRatio = currentBodyEm > 0 ? _pMin / currentBodyEm : 1;
             const _pTier = _pRatio <= 0.78 ? String.fromCharCode(0xE01B) : _pRatio < 0.94 ? String.fromCharCode(0xE01C) : '';
-            const _stanzas: string[][] = []; let _cur: string[] = [];
-            for (const _c of _poemKids) {
-              const _lt = Array.from(_c.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('').replace(/\s+/g, ' ').trim();
-              if (_lt) _cur.push(_lt);
-              if (/\bpoemb/i.test(_c.getAttribute('class') || '')) { if (_cur.length) _stanzas.push(_cur); _cur = []; }
+            // Walk ALL children in order: poem lines build tight stanzas; a NON-poem child (a credit/
+            // attribution after the verse — Sovereign's "—FIFTEENTH-CENTURY ENGLISH BALLAD" as a
+            // `<p class="noindent">`) is flushed as its OWN block via the normal path, so it is no longer
+            // dropped along with everything that isn't `.poem`.
+            const _out: string[] = []; let _cur: string[] = [];
+            const _flush = () => { if (_cur.length) { _out.push(_pTier + _cur.join(_VLB)); _cur = []; } };
+            for (const _c of Array.from(element.children)) {
+              if (/\bpoem/i.test(_c.getAttribute('class') || '')) {
+                const _lt = Array.from(_c.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('').replace(/\s+/g, ' ').trim();
+                if (_lt) _cur.push(_lt);
+                if (/\bpoemb/i.test(_c.getAttribute('class') || '')) _flush();
+              } else {
+                _flush();
+                const _nt = nodeToMarkedText(_c, baseDir).replace(/^\n+|\n+$/g, '').trim();
+                if (_nt) _out.push(_nt);
+              }
             }
-            if (_cur.length) _stanzas.push(_cur);
-            if (_stanzas.length) return '\n\n' + _stanzas.map(st => _pTier + st.join(_VLB)).join('\n\n') + '\n\n';
+            _flush();
+            if (_out.length) return '\n\n' + _out.join('\n\n') + '\n\n';
           }
           const blocks = childText.split(/\n{2,}/u).map(b => b.trim()).filter(Boolean);
           if (!blocks.length) return '';
@@ -1454,7 +1501,13 @@ const App: React.FC = () => {
             return `[${lbl}](#${frag})`;
           }
           const label = trimmed.replace(/\s+/g, ' ').trim();
-          return href ? `[${label}](${href})` : label;
+          if (href) return `[${label}](${href})`;
+          // An href-less <a> that WRAPPED block content — a self-closing index marker `<a data-type=
+          // "indexterm" …/>` that text/html parsing does NOT self-close, so the open <a> swallowed the
+          // following flow content (a whole <dl>, or paragraphs). Return its childText UNFLATTENED so the
+          // block structure (\n\n) survives; flattening it (the label path) collapsed a definition list into
+          // run-on prose. A genuinely inline anchor (no block newlines) still flattens to its label.
+          return /\n/.test(childText) ? childText : label;
         }
         // Semantic heading → the reader's heading role (U+E013), the same sentinel PDF emits. EPUB
         // headings are authoritative (unlike PDF font-size guessing). Strip inner emphasis markers,
@@ -1594,6 +1647,36 @@ const App: React.FC = () => {
           const _pr = borderRuleOf(element);
           return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_pItalic ? '' : ''}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
+        // A DEFINITION LIST (<dl> of <dt> term / <dd> description) — O'Reilly's "What You Will Learn" and
+        // similar. Without a handler the whole list flattens into run-on prose. Emit each <dt> as its OWN
+        // paragraph (italic when `dt{font-style:italic}` resolves — via the general matcher) and each <dd> as
+        // an INDENTED paragraph below it, the indent taken from the <dd>'s own left margin (`dd{margin-left:
+        // 1.5em}`), mapped to the reader's NBSP indent the same way index sub-entries are.
+        if (tag === 'dl') {
+          const E026 = String.fromCharCode(0xE026);
+          const parts: string[] = [];
+          for (const kid of Array.from(element.children)) {
+            const kt = (kid.tagName || '').toLowerCase();
+            if (kt !== 'dt' && kt !== 'dd') continue;
+            const raw = Array.from(kid.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
+            if (kt === 'dt') {
+              const term = raw.replace(/[\u{E000}-\u{F8FF}]/gu, '').replace(/\s+/g, ' ').trim();
+              if (term) parts.push((elItalicOf(kid) ? E026 : '') + term);
+            } else {
+              // Keep the description's inline emphasis/links; drop its inner block sentinels, then indent it.
+              const desc = raw.replace(/[\u{E010}-\u{E026}]/gu, '').replace(/\s+/g, ' ').trim();
+              if (!desc) continue;
+              // The <dd>'s cascaded left margin (LAST value wins — the reset's `margin:0` precedes
+              // `dd{margin:…1.5em}`, so read the LAST margin/margin-left, not the first).
+              const _explicit = declProp(kid, 'margin-left');
+              let ml = _explicit != null ? (lenToEm(_explicit.replace(/!important/ig, '')) ?? 0) : 0;
+              if (!ml) { const sh = (declProp(kid, 'margin') || '').replace(/!important/ig, '').trim(); if (sh) { const q = sh.split(/\s+/); const l = q.length === 4 ? q[3] : q.length >= 2 ? q[1] : q[0]; ml = lenToEm(l) ?? 0; } }
+              const nbsp = Math.round(Math.max(0, ml) / 0.375);
+              parts.push(' '.repeat(nbsp) + desc);
+            }
+          }
+          return parts.length ? '\n\n' + parts.join('\n\n') + '\n\n' : '';
+        }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
           // Index entries are a structured list: emit each as its own paragraph so
@@ -1642,12 +1725,43 @@ const App: React.FC = () => {
           const parentTag = element.parentElement?.tagName.toLowerCase();
           const alreadyMarked = /^\[?\s*[0-9ivxlcdm]{1,8}[.)\]]/i.test(trimmed);
           if (!alreadyMarked) {
+            // A NESTED list item (an <ol>/<ul> inside another list's <li> — Sovereign's a/b/c/d sub-list under
+            // "5. …") indents by its rendered depth; a top-level item nets 0 and stays flush. Same NBSP→reader-
+            // padding mechanism the index sub-entries use.
+            const _liInd = ' '.repeat(Math.max(0, Math.round(renderedIndentEm(element) / 0.375)));
+            // A list item that CONTAINS a nested sub-list must emit its OWN text (this marker line) and the
+            // sub-list as SEPARATE \n\n paragraphs — NEVER fold the sub-list into this item's text. Otherwise the
+            // <ol>/<ul> wrapper's .trim() strips the first sub-item's leading NBSP+newline and glues it onto this
+            // item (Sovereign "5. …reaction:" swallowed sub-item "a.", so "a" lost its indent while b/c/d kept
+            // theirs). Mirrors the index-entry handler above: own text, then recurse the sub-<li> as their own
+            // paragraphs (each re-enters this handler and carries its own renderedIndentEm NBSP tier).
+            const _isSubList = (n: Node): boolean => n.nodeType === 1 && /^(?:ul|ol)$/i.test((n as Element).tagName || '');
+            const _hasSub = Array.from(element.children).some(_isSubList);
+            const _ownTrim = (_hasSub
+              ? Array.from(element.childNodes).filter(n => !_isSubList(n)).map(n => nodeToMarkedText(n, baseDir)).join('')
+              : childText).trim();
+            const _subs = _hasSub
+              ? Array.from(element.children).filter(_isSubList)
+                  .flatMap(sl => Array.from(sl.children).filter(c => c.tagName.toLowerCase() === 'li'))
+                  .map(li => nodeToMarkedText(li, baseDir)).join('')
+              : '';
             if (parentTag === 'ol') {
               const items = Array.from(element.parentElement!.children).filter(c => c.tagName.toLowerCase() === 'li');
-              return `\n${items.indexOf(element) + 1}. ${trimmed}\n`;
+              // Honour the list's `list-style-type` (Sovereign's `ol.nlista_lower` → a/b/c/d, not 1/2/3/4) and
+              // the item's own `value`/`start`. Resolved via the general matcher, so a class OR a tag rule works.
+              const _n = (() => { const v = element.getAttribute('value'); if (v && /^\d+$/.test(v)) return parseInt(v, 10); const st = element.parentElement!.getAttribute('start'); return items.indexOf(element) + (st && /^\d+$/.test(st) ? parseInt(st, 10) : 1); })();
+              const _lst = (declProp(element.parentElement!, 'list-style-type') || '').toLowerCase();
+              const _roman = (n: number): string => { const t: [number, string][] = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]; let s = ''; for (const [val, sym] of t) while (n >= val) { s += sym; n -= val; } return s; };
+              const _marker = _lst.includes('lower-alpha') || _lst.includes('lower-latin') ? String.fromCharCode(96 + ((_n - 1) % 26) + 1)
+                : _lst.includes('upper-alpha') || _lst.includes('upper-latin') ? String.fromCharCode(64 + ((_n - 1) % 26) + 1)
+                : _lst.includes('lower-roman') ? _roman(_n) : _lst.includes('upper-roman') ? _roman(_n).toUpperCase()
+                : _lst === 'none' ? '' : `${_n}`;
+              const _line = `${_liInd}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
+              return _hasSub ? (_ownTrim ? `\n\n${_line}\n\n${_subs}\n\n` : `\n\n${_subs}\n\n`) : `\n${_line}\n`;
             }
             if (parentTag === 'ul') {
-              return `\n• ${trimmed}\n`;
+              const _line = `${_liInd}• ${_ownTrim}`;
+              return _hasSub ? (_ownTrim ? `\n\n${_line}\n\n${_subs}\n\n` : `\n\n${_subs}\n\n`) : `\n${_line}\n`;
             }
           }
           // Endnotes (<li class="endnotes">, 0.833em) and other already-marked list entries land here.
@@ -4608,18 +4722,45 @@ const App: React.FC = () => {
             if (blocks[a].col !== undefined || !listReal(blocks[a])) { a++; continue; }
             let b = a; while (b < blocks.length && blocks[b].col === undefined && listReal(blocks[b])) b++;
             const run = blocks.slice(a, b);
-            const lefts = run.map(bl => bl.firstX);
-            const spread = Math.max(...lefts) - Math.min(...lefts);
-            const tab = Math.max(...run.map(bl => bl.bodyX ?? bl.firstX));
-            // A run is a right-aligned marker list when either the marker lefts VARY (spread) or it holds an
-            // unambiguous MULTI-char roman marker (ii./iii./iv.). The roman test also catches a lone item left
-            // on a page by a page break ("iv." alone on p36 while i./ii./iii. sit on p35), which has spread 0.
-            const romanRun = run.some(bl => { const mm = bl.text.match(leadRe); return !!mm && /^[ivxlcdm]{2,7}[.)]/u.test(mm[3].replace(/^[*_~]+/u, '')); });
-            // Anchor on the DOC-WIDE body margin (not the wobbly per-page one) so the same list indents the
-            // same on every page and a page-split list stays consistent.
-            if ((spread > bodyFont * 0.3 || romanRun) && bodyFont > 0 && tab > docBodyLeft + bodyFont * 0.9) {
-              const newNbsp = Math.min(12, Math.round((tab - docBodyLeft) / bodyFont / 1.5 * 4));
-              for (const bl of run) { const m = bl.text.match(leadRe)!; bl.text = '\uE020' + m[1] + '\u00A0'.repeat(newNbsp) + m[3]; }
+            // A contiguous marker run can span NESTING LEVELS: the LIVE audit on Sovereign p337 proved the run
+            // is [3 4 5 a b c d 6 7 a b] with the OUTER items at firstX≈84 (leadNbsp already 0, flush) and the
+            // INNER a/b/c/d at firstX≈114 (leadNbsp already 5, indented) — the base extraction ALREADY tiers
+            // them correctly. Judging the whole run as one unit gives spread≈31 (measured ACROSS the two tiers)
+            // → the guard fires and OVERWRITES every item to one deep tab (newNbsp 11), destroying the correct
+            // base indents (outer dragged in, inner over-indented). Split the run into per-TIER sub-runs by
+            // marker-left (firstX, gap-clustered) and apply the right-marker test PER tier: an aligned tier
+            // (spread≈0) is LEFT ALONE at its correct base indent, while a genuinely right-tabbed roman list
+            // (markers jitter within ONE tier: i.=150…iii.=143) stays one sub-run and still re-anchors. MYCIN
+            // (all firstX≈133, one tier, spread 3) never fired and still does not.
+            const tiers: EmitBlock[][] = [];
+            for (const bl of [...run].sort((x, y) => x.firstX - y.firstX)) {
+              const cur = tiers[tiers.length - 1];
+              if (cur && bl.firstX - cur[cur.length - 1].firstX <= bodyFont * 1.5) cur.push(bl);
+              else tiers.push([bl]);
+            }
+            for (const tier of tiers) {
+              const lefts = tier.map(bl => bl.firstX);
+              const spread = Math.max(...lefts) - Math.min(...lefts);
+              const tab = Math.max(...tier.map(bl => bl.bodyX ?? bl.firstX));
+              // A tier is a right-aligned marker list when the marker lefts VARY (spread) or it holds a MULTI-
+              // char roman marker (ii./iii./iv.) — the latter also catches a lone item left on a page by a page
+              // break ("iv." alone on p36 while i./ii./iii. sit on p35), which has spread 0.
+              const romanRun = tier.some(bl => { const mm = bl.text.match(leadRe); return !!mm && /^[ivxlcdm]{2,7}[.)]/u.test(mm[3].replace(/^[*_~]+/u, '')); });
+              // Anchor on the DOC-WIDE body margin (not the wobbly per-page one) so the same list indents the
+              // same on every page and a page-split list stays consistent.
+              // The re-anchor is a SUB-LIST right-marker gutter — it must NOT fire on a TOP-LEVEL list whose
+              // markers sit at the body margin. Sovereign's outer 1-10 right-aligns its numbers, so "10." lands
+              // at firstX 77 vs "8."/"9." at 84 → a 7.5px spurious spread that wrongly fired the gutter and
+              // nested 8/9/10. A top-level list's marker is ≤~0.8em past docBodyLeft (outdented at the margin);
+              // a genuine sub-list's marker is far deeper (Sovereign a/b/c/d ~2.7em, Singularity roman ~4.4em).
+              // Require the tier's leftmost marker to be genuinely indented past the doc margin. (Live audit:
+              // Sovereign outer excluded; roman/inner still eligible; MYCIN spread never fired anyway.)
+              const markerIndented = Math.min(...tier.map(bl => bl.firstX)) - docBodyLeft > bodyFont;
+              const fires = markerIndented && (spread > bodyFont * 0.3 || romanRun) && bodyFont > 0 && tab > docBodyLeft + bodyFont * 0.9;
+              if (fires) {
+                const newNbsp = Math.min(12, Math.round((tab - docBodyLeft) / bodyFont / 1.5 * 4));
+                for (const bl of tier) { const m = bl.text.match(leadRe)!; bl.text = '' + m[1] + ' '.repeat(newNbsp) + m[3]; }
+              }
             }
             a = b;
           }

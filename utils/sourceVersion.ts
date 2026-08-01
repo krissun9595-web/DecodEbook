@@ -590,7 +590,26 @@
 //       content bounds (contentMinX..contentMaxX = the body text column, identical on both pages) instead
 //       of the table's OWN bounding box — the continuation page lacks the "The sum of" header, so its own
 //       bbox is narrower and scaled/shifted its columns out of line with the first page's fragment.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v191-multicol-table-align';
+// v192: the right-marker re-anchor (v160) grouped a CONTIGUOUS marker run across NESTING LEVELS — an outer
+//       list ("5."/"7." … "8."/"9."/"10.") and its inner sub-list (a./b./c./d.) are all marker blocks in
+//       reading order but at firstX tiers ~2×bodyFont apart, so the whole-run spread (84→114) mis-fired and
+//       re-anchored BOTH levels to the deepest tab (Sovereign a/b/c/d dragged deep; 8/9/10 sucked into the
+//       sub-list). Now the run is split into per-TIER sub-runs by marker-left (firstX, gap-clustered) and the
+//       right-marker test applies PER tier: an aligned single-level list (spread 0) keeps its natural indent,
+//       a right-tabbed roman list (markers jitter within ONE tier: i.=150…iii.=143) stays one sub-run and
+//       still re-anchors. Validated headless across Sovereign 5/7, MYCIN, Singularity roman by
+//       scripts/pdf-list-reanchor-audit.mjs (Sovereign stops firing; roman keeps firing; MYCIN unchanged).
+//       NOTE: the a/b/c/d run-on MERGE (they end in ';', not .!?/colon) is a SEPARATE block-split issue, not
+//       addressed here — a naive split fix regressed MYCIN, so it needs its own harness pass.
+// v192 (final): the LIVE [dbg-reanchor] audit proved the base extraction ALREADY tiers Sovereign p337
+//       correctly (outer 3-7 leadNbsp=0 flush; inner a/b/c/d leadNbsp=5 indented) — the ONLY defect is the
+//       re-anchor firing on the whole cross-tier run (spread 31, measured 84→114) and OVERWRITING every item
+//       to one deep tab (newNbsp 11). Fix: split the run into per-TIER sub-runs by firstX (gap-clustered),
+//       apply the right-marker test PER tier — an aligned tier (spread≈0) keeps its correct base indent, a
+//       right-tabbed roman list (Singularity, markers jitter within ONE tier) still fires. MYCIN (firstX≈133
+//       uniform, spread 3) never fired. Validated on the REAL block geometry from the live audit, not the
+//       offline harness (whose block grouping differed). See project_decodebook_pdf_merge_page_seam_only.
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v192-toplevel-margin-gate';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
@@ -677,7 +696,41 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v191-multicol-table-align';
 //      while semantic stylesheets now resolve. A whole-paragraph italic emits U+E026 (survives sentence
 //      splitting, unlike wrapping in *…*); a ::before content (attribution em-dash) is prepended; an
 //      attribution <p> (right-aligned) is kept out of the block-quote set-off.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v18-general-css-match';
+// v19: DEFINITION LISTS (<dl>/<dt>/<dd>) — O'Reilly's "What You Will Learn" etc. No handler existed, so
+//      the term/description pairs flattened into run-on prose. Now each <dt> is its own paragraph (italic
+//      when `dt{font-style:italic}` resolves via the general matcher) and each <dd> an indented paragraph
+//      below it, the indent from the <dd>'s own left margin (`dd{margin-left:1.5em}`) → NBSP.
+// v20: STYLE resolvers go through the general selector matcher, NOT the class-keyed maps. The class maps
+//      OVER-ATTRIBUTED a compound rule's property to every class in it (`div.preface dt em code{font-style:
+//      italic}` marked `.preface` ITSELF italic; a descendant font-size leaked onto a wrapper class), which
+//      flat-italicised whole professional-EPUB sections and enlarged paragraphs. elItalicOf/elBoldOf/alignFor/
+//      effectiveAlignOf/cssFontSizeOf/boxLeftEm/isBlockChild/borderRuleOf/indentFor now resolve via the
+//      matcher (correct specificity + descendant/attribute matching). This is the mechanism by which
+//      professional/native EPUBs INHERIT every style-based solution built for calibre conversions.
+// v21: fix the class-map POPULATION (root of v20's over-attribution) — a property is attributed ONLY to
+//      the class(es) in a selector's RIGHTMOST compound (its subject), so `div.preface dt em code{italic}`
+//      no longer marks `.preface` italic. Resolvers keep the CLASS fast path FIRST (calibre unchanged) then
+//      fall back to the general matcher (professional EPUBs inherit). Also: a verse blockquote no longer
+//      DROPS a trailing non-poem child — a credit after the stanzas (Sovereign's "—FIFTEENTH-CENTURY ENGLISH
+//      BALLAD") is emitted as its own block.
+// v22: (a) an <ol>'s <li> markers honour `list-style-type` (Sovereign's `ol.nlista_lower` → a/b/c/d, not
+//      1/2/3/4) + the item's own value/start — resolved via the general matcher. (b) an href-less <a> that
+//      WRAPPED block content (a self-closing `<a data-type="indexterm"/>` HTML didn't self-close, so the open
+//      <a> swallowed the following <dl>) returns its childText UNFLATTENED — the definition list no longer
+//      collapses into run-on prose.
+// v23: a NESTED list item (an <ol>/<ul> whose parent list sits inside another list's <li> — Sovereign's
+//      a/b/c/d sub-list under "5. …") indents by its rendered depth (renderedIndentEm → NBSP, the SAME
+//      mechanism the index sub-entries already use); a top-level item nets 0 and stays flush. Validated
+//      headless across all 4 test EPUBs by scripts/epub-list-audit.mjs: the change touches ONLY the 8
+//      genuine sub-list items — 0 index entries, 0 flat lists, 0 in the other three books.
+// v24: a list item that CONTAINS a nested sub-list now emits its OWN text and the sub-list as SEPARATE
+//      \n\n paragraphs (mirrors the index-entry handler), instead of folding the sub-list into the item's
+//      text where the <ol>/<ul> wrapper's .trim() stripped the FIRST sub-item's leading NBSP+newline and
+//      glued it onto the parent (Sovereign "5." swallowed sub-item "a." — a floated flush while b/c/d were
+//      indented). Now a/b/c/d are uniform indent-7 paragraphs under item 5. Validated headless by
+//      scripts/epub-list-audit.mjs: touches ONLY 2 sites (Sovereign items 5 & 7) — 0 in the professional
+//      EPUB (Agentic Mesh; its index already separated) and 0 in Elon/Transurfing.
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v24-sublist-separate-paragraphs';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).
