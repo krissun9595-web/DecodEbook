@@ -730,7 +730,7 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v193-seam-hang-nbsp-keep';
 //      indented). Now a/b/c/d are uniform indent-7 paragraphs under item 5. Validated headless by
 //      scripts/epub-list-audit.mjs: touches ONLY 2 sites (Sovereign items 5 & 7) — 0 in the professional
 //      EPUB (Agentic Mesh; its index already separated) and 0 in Elon/Transurfing.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v40-roman-list-gutter';
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v42-toplevel-list-hang';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

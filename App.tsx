@@ -1130,7 +1130,7 @@ const App: React.FC = () => {
         const st = (el as HTMLElement).style;
         return { top: (st?.marginTop && lenToEm(st.marginTop)) || side('top'), bottom: (st?.marginBottom && lenToEm(st.marginBottom)) || side('bottom') };
       };
-      const renderedIndentEm = (el: Element): number => {
+      const renderedIndentEm = (el: Element, uaListPadEm = 2.5): number => {
         let em = 0; let node: Element | null = el; let first = true;
         while (node) {
           const tag = node.tagName?.toLowerCase();
@@ -1139,7 +1139,7 @@ const App: React.FC = () => {
           if ((tag === 'ul' || tag === 'ol') && node.parentElement?.tagName.toLowerCase() !== 'li') break;
           const b = boxLeftEm(node);
           em += b.m + b.p;
-          if ((tag === 'ul' || tag === 'ol') && b.p === 0) em += 2.5; // UA default list padding-inline-start
+          if ((tag === 'ul' || tag === 'ol') && b.p === 0) em += uaListPadEm; // UA default list padding-inline-start
           if (first) { em += b.ti; first = false; }
           node = node.parentElement;
         }
@@ -1849,7 +1849,11 @@ const App: React.FC = () => {
             // A NESTED list item (an <ol>/<ul> inside another list's <li> — Sovereign's a/b/c/d sub-list under
             // "5. …") indents by its rendered depth; a top-level item nets 0 and stays flush. Same NBSP→reader-
             // padding mechanism the index sub-entries use.
-            const _liInd = ' '.repeat(Math.max(0, Math.round(renderedIndentEm(element) / 0.375)));
+            // A nested rule-item sub-list (a./b./i./ii. inside a numbered item — Sovereign a-d under "5.") goes
+            // through the reader's ruleHang (which already adds a 1.5em hang), so use the PDF's tighter print
+            // per-tier step (~1.875em -> 5 NBSP, matching the Sovereign PDF's leadNbsp=5) rather than the browser's
+            // wider 2.5em UA <ol> padding, which over-indented it ~2 NBSP deeper than the PDF. Index keeps 2.5em.
+            const _liInd = ' '.repeat(Math.max(0, Math.round(renderedIndentEm(element, 1.875) / 0.375)));
             // Sub level of a LABELLED LIST: if this list sits right after an IF:/THEN: label (the EPUB
             // does NOT nest them — flat siblings — so nothing else marks the hierarchy), indent its items
             // one tier DEEPER than that mother label (8 NBSP vs the label's 4), reproducing the PDF's tiering.
@@ -1895,7 +1899,13 @@ const App: React.FC = () => {
               // (the EPUB path was missing it, so roman markers rendered left-aligned). Single-char alpha/decimal
               // are uniform width (right-align == left-align), so they keep the normal left-hang, untouched.
               const _romanGutter = _isRoman && _marker ? String.fromCharCode(0xE020) : '';
-              const _line = `${_romanGutter}${_liIndEff}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
+              // A TOP-LEVEL list item (no leading NBSP indent) isn't caught by the reader's isRuleItem (which
+              // needs indent>0), so it falls to a prose first-line indent (marker pushed right, continuation
+              // flush at the margin) instead of HANGING like the PDF. Emit U+E018 (flushFirstLine) so it becomes
+              // a rule item and hangs (marker at the paragraph indent, wrapped lines one hang deeper) — matching
+              // the PDF, whose top-level list items carry flushFirstLine (verified via [dbg-sublist-render]).
+              const _flushFL = _liIndEff === '' ? String.fromCharCode(0xE018) : '';
+              const _line = `${_flushFL}${_romanGutter}${_liIndEff}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
               return _hasSub ? (_ownTrim ? `\n\n${_line}\n\n${_subs}\n\n` : `\n\n${_subs}\n\n`) : `\n${_line}\n`;
             }
             if (parentTag === 'ul') {

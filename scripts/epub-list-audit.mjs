@@ -112,13 +112,13 @@ function makeIndent(model, declProp) {
     if (s.textIndent) { const e = lenToEm(s.textIndent); if (e != null) acc.ti = e; }
     return acc;
   };
-  const renderedIndentEm = (el) => {
+  const renderedIndentEm = (el, uaListPadEm = 2.5) => {
     let em = 0; let node = el; let first = true;
     while (node) {
       const tag = node.tagName?.toLowerCase(); if (!tag || tag === 'body') break;
       if ((tag === 'ul' || tag === 'ol') && node.parentElement?.tagName.toLowerCase() !== 'li') break;
       const b = boxLeftEm(node); em += b.m + b.p;
-      if ((tag === 'ul' || tag === 'ol') && b.p === 0) em += 2.5;
+      if ((tag === 'ul' || tag === 'ol') && b.p === 0) em += uaListPadEm;
       if (first) { em += b.ti; first = false; }
       node = node.parentElement;
     }
@@ -183,7 +183,7 @@ for (const epub of EPUBS) {
       const alreadyMarked = /^\[?\s*[0-9ivxlcdm]{1,8}[.)\]]/i.test(trimmed);
       const pt = li.parentElement?.tagName.toLowerCase();
       const route = isIndex ? 'index' : alreadyMarked ? 'marked' : (pt === 'ol' || pt === 'ul') ? pt : 'block';
-      const indentEm = renderedIndentEm(li);
+      const indentEm = (route === 'ol' || route === 'ul') ? renderedIndentEm(li, 1.875) : renderedIndentEm(li);
       const nbsp = Math.round(indentEm / 0.375);
       const marker = markerOf(li, declProp);   // '⦙'-prefixed = a roman U+E020 right-marker-gutter item
       // A parent item that CONTAINS a nested sub-list is an EMIT-CHANGE site for the sub-list-separation fix
