@@ -136,13 +136,18 @@ function markerOf(el, declProp) {
   const items = Array.from(parent.children).filter(c => c.tagName.toLowerCase() === 'li');
   const v = el.getAttribute('value'); const st = parent.getAttribute('start');
   const n = (v && /^\d+$/.test(v)) ? parseInt(v,10) : items.indexOf(el) + (st && /^\d+$/.test(st) ? parseInt(st,10) : 1);
-  const lst = (declProp(parent, 'list-style-type') || '').toLowerCase();
-  if (lst.includes('lower-alpha') || lst.includes('lower-latin')) return String.fromCharCode(96 + ((n-1)%26) + 1);
-  if (lst.includes('upper-alpha') || lst.includes('upper-latin')) return String.fromCharCode(64 + ((n-1)%26) + 1);
-  if (lst.includes('lower-roman')) return _roman(n);
-  if (lst.includes('upper-roman')) return _roman(n).toUpperCase();
-  if (lst === 'none') return '';
-  return `${n}`;
+  // Mirror App.tsx: resolve list-style-type from li -> ol -> ancestors (nearest explicit).
+  let lst = '';
+  { let e = el; for (let d = 0; e && d < 4 && !lst; e = e.parentElement, d++) lst = (declProp(e, 'list-style-type') || '').toLowerCase(); }
+  const roman = lst.includes('lower-roman') || lst.includes('upper-roman');
+  let mk;
+  if (lst.includes('lower-alpha') || lst.includes('lower-latin')) mk = String.fromCharCode(96 + ((n-1)%26) + 1);
+  else if (lst.includes('upper-alpha') || lst.includes('upper-latin')) mk = String.fromCharCode(64 + ((n-1)%26) + 1);
+  else if (lst.includes('lower-roman')) mk = _roman(n);
+  else if (lst.includes('upper-roman')) mk = _roman(n).toUpperCase();
+  else if (lst === 'none') mk = '';
+  else mk = `${n}`;
+  return (roman && mk ? '⦙' : '') + mk;   // ⦙ prefix marks a U+E020 right-gutter marker
 }
 
 // ---- run over every EPUB ----
@@ -180,7 +185,7 @@ for (const epub of EPUBS) {
       const route = isIndex ? 'index' : alreadyMarked ? 'marked' : (pt === 'ol' || pt === 'ul') ? pt : 'block';
       const indentEm = renderedIndentEm(li);
       const nbsp = Math.round(indentEm / 0.375);
-      const marker = markerOf(li, declProp);
+      const marker = markerOf(li, declProp);   // '⦙'-prefixed = a roman U+E020 right-marker-gutter item
       // A parent item that CONTAINS a nested sub-list is an EMIT-CHANGE site for the sub-list-separation fix
       // (its own text now emits as its own \n\n paragraph, sub-<li> recurse separately). Everything else is
       // byte-identical.

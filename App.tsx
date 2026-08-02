@@ -1877,13 +1877,25 @@ const App: React.FC = () => {
               // Honour the list's `list-style-type` (Sovereign's `ol.nlista_lower` → a/b/c/d, not 1/2/3/4) and
               // the item's own `value`/`start`. Resolved via the general matcher, so a class OR a tag rule works.
               const _n = (() => { const v = element.getAttribute('value'); if (v && /^\d+$/.test(v)) return parseInt(v, 10); const st = element.parentElement!.getAttribute('start'); return items.indexOf(element) + (st && /^\d+$/.test(st) ? parseInt(st, 10) : 1); })();
-              const _lst = (declProp(element.parentElement!, 'list-style-type') || '').toLowerCase();
+              // list-style-type can sit on the <li> (Kurzweil `li.x10-Sidebar-List-Numbered`), the <ol>
+              // (Sovereign `ol.nlista_lower`, Agentic Mesh `ol ol`), or an inherited container <div> (Agentic
+              // Mesh `div.orderedlistalpha`). CSS list-style-type INHERITS, so take the nearest EXPLICIT
+              // declaration walking li → ol → ancestors — not just the parent <ol>, which missed Kurzweil's
+              // per-<li> style so its roman sidebar list rendered as decimal "1./2./3." instead of "i./ii./iii.".
+              let _lst = '';
+              { let _el: Element | null = element; for (let _d = 0; _el && _d < 4 && !_lst; _el = _el.parentElement, _d++) _lst = (declProp(_el, 'list-style-type') || '').toLowerCase(); }
               const _roman = (n: number): string => { const t: [number, string][] = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]; let s = ''; for (const [val, sym] of t) while (n >= val) { s += sym; n -= val; } return s; };
+              const _isRoman = _lst.includes('lower-roman') || _lst.includes('upper-roman');
               const _marker = _lst.includes('lower-alpha') || _lst.includes('lower-latin') ? String.fromCharCode(96 + ((_n - 1) % 26) + 1)
                 : _lst.includes('upper-alpha') || _lst.includes('upper-latin') ? String.fromCharCode(64 + ((_n - 1) % 26) + 1)
                 : _lst.includes('lower-roman') ? _roman(_n) : _lst.includes('upper-roman') ? _roman(_n).toUpperCase()
                 : _lst === 'none' ? '' : `${_n}`;
-              const _line = `${_liIndEff}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
+              // A ROMAN marker (i./ii./iii./iv.…) VARIES in width, so the source right-tabs it into a gutter (the
+              // periods align). Emit the reader's U+E020 right-marker gutter — mirroring the PDF's roman sub-list
+              // (the EPUB path was missing it, so roman markers rendered left-aligned). Single-char alpha/decimal
+              // are uniform width (right-align == left-align), so they keep the normal left-hang, untouched.
+              const _romanGutter = _isRoman && _marker ? String.fromCharCode(0xE020) : '';
+              const _line = `${_romanGutter}${_liIndEff}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
               return _hasSub ? (_ownTrim ? `\n\n${_line}\n\n${_subs}\n\n` : `\n\n${_subs}\n\n`) : `\n${_line}\n`;
             }
             if (parentTag === 'ul') {
