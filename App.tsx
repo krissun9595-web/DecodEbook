@@ -1116,6 +1116,20 @@ const App: React.FC = () => {
         if (s?.textIndent) { const e = lenToEm(s.textIndent); if (e != null) acc.ti = e; }
         return acc;
       };
+      // Vertical (top/bottom) source margins in em — so a block's own set-off gaps (a labelled-list's
+      // margin-top on IF: / margin-bottom on THEN:) are reproduced from the SOURCE, not hard-coded.
+      const vMarginEm = (el: Element): { top: number; bottom: number } => {
+        const side = (which: 'top' | 'bottom'): number => {
+          const ex = declProp(el, `margin-${which}`);
+          if (ex != null) return lenToEm(ex.replace(/!important/ig, '')) ?? 0;
+          const sh = (declProp(el, 'margin') || '').replace(/!important/ig, '').trim();
+          if (!sh) return 0;
+          const q = sh.split(/\s+/);
+          return lenToEm(which === 'top' ? q[0] : (q.length >= 3 ? q[2] : q[0])) ?? 0;
+        };
+        const st = (el as HTMLElement).style;
+        return { top: (st?.marginTop && lenToEm(st.marginTop)) || side('top'), bottom: (st?.marginBottom && lenToEm(st.marginBottom)) || side('bottom') };
+      };
       const renderedIndentEm = (el: Element): number => {
         let em = 0; let node: Element | null = el; let first = true;
         while (node) {
@@ -1155,10 +1169,15 @@ const App: React.FC = () => {
         // (chapter-opener rules/ornaments in this EPUB) would become "**[[FIG id]]**"; when the image is
         // then dropped as decorative, blankMarker blanks only the marker, leaving the "**" bookends as two
         // stray bold-marker paragraphs — a phantom vertical gap between the heading and the next block.
-        if (!text || /[*_]/u.test(text) || text.includes('[[FIG ')) return text;
-        if (elBoldOf(el)) return `**${text}**`;
-        if (elItalicOf(el)) return `*${text}*`;
-        return text;
+        if (!text || text.includes('[[FIG ')) return text;
+        // Reproduce CSS `text-transform:uppercase` (a dialogue speaker label "Cassandra:" → "CASSANDRA:", a
+        // small-caps run-in) — but never upper-case a markdown link (its href must stay verbatim).
+        const _tt = ((el as HTMLElement).style?.textTransform || declProp(el, 'text-transform') || '').toLowerCase();
+        const t = _tt === 'uppercase' && !/\]\(/.test(text) ? text.toUpperCase() : text;
+        if (/[*_]/u.test(t)) return t;
+        if (elBoldOf(el)) return `**${t}**`;
+        if (elItalicOf(el)) return `*${t}*`;
+        return t;
       };
 
       // FONT-SIZE tier (mirrors PDF's U+E01B–E01F). Resolve an element's CSS font-size to an absolute em
@@ -1266,10 +1285,20 @@ const App: React.FC = () => {
           for (const m of raw.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
             const hash = m[1].indexOf('#');
             if (hash < 0) continue;
-            const label = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().replace(/\.$/, '');
-            if (!MARKER.test(label)) continue;
+            const openTag = m[0].slice(0, m[0].indexOf('>') + 1);
+            // A SEMANTIC note reference (EPUB3 `role="doc-noteref"`, or a `…noteref/endnote-reference…` class —
+            // Singularity: `<a class="Endnote-Reference" role="doc-noteref" href="18_Notes.xhtml#EndnoteNumber200">[15]</a>`).
+            // Its fragment ("EndnoteNumber200") has a word between "Endnote" and the digit so isNoteFrag misses
+            // it, and its label ("[15]") is bracketed so MARKER rejects it — yet the role/class say
+            // unambiguously it IS a note ref. Trust the semantic marker and bypass those two heuristics.
+            const semanticNoteRef = /\brole=["']doc-noteref["']|\bclass=["'][^"']*(?:noteref|endnote-reference|footnote-reference)/i.test(openTag);
+            // Strip a bracketed marker ("[15]" → "15") so it passes MARKER and renders as a clean note number.
+            const label = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().replace(/^\[+\s*|\s*\]+$/g, '').replace(/\.$/, '');
             const frag = decodeURIComponent(m[1].slice(hash + 1)).trim();
-            if (!isNoteFrag(frag)) continue;
+            if (!semanticNoteRef) {
+              if (!MARKER.test(label)) continue;
+              if (!isNoteFrag(frag)) continue;
+            } else if (!label || label.length > 8) continue; // a note marker is short
             const tgt = hash > 0 ? (resolveZip(m[1].slice(0, hash), dir) || filename) : filename;
             links.push({ src: filename, tgt, frag, label, srcOffset: m.index ?? 0 });
           }
@@ -1484,10 +1513,14 @@ const App: React.FC = () => {
           const _bqLeftEm = boxLeftEm(element).m;
           const _bqIndent = _bqLeftEm > 0.1 ? '\u00A0'.repeat(Math.max(4, Math.round(_bqLeftEm / 0.375))) : '';
           const tagged = blocks.map((b, i) => {
-            const lead = b.match(/^[\uE010-\uE026]*/u)![0]; // leading sentinels the p handler set (E010/E011 align, E026 italic)
+            const lead = b.match(/^[\uE010-\uE027]*/u)![0]; // leading sentinels the p handler set (E010/E011 align, E026 italic, E027 gap)
             // An ATTRIBUTION block (right-aligned, E011) is NOT a quote \u2014 leave it as-is (right-aligned,
             // em-dash prefixed by its own handler). Only a real quote gets the block-quote set-off/flush.
             if (lead.includes(E011)) return b;
+            // A HANGING ENTRY (dialogue speaker turn, U+E01A) is NOT a quote \u2014 the reader renders it hanging
+            // (dialogueHangStyle). Leave it verbatim so it isn't re-wrapped flush; its own source gaps (E022/E027)
+            // already ride along in `lead`.
+            if (lead.includes(String.fromCharCode(0xE01A))) return b;
             return (i === 0 ? E022 : '') + sizeTier + E018 + E019 + lead + _bqIndent + b.slice(lead.length);
           });
           // A ruled block-quote (`.blockquote1/2a/2b` = a solid border top+bottom) is an epigraph bracketed
@@ -1505,6 +1538,10 @@ const App: React.FC = () => {
         if (tag === 's' || tag === 'strike' || tag === 'del') return `~~${trimmed}~~`;
         if (tag === 'a') {
           const href = element.getAttribute('href') || '';
+          // A back-link ("BACK TO NOTE REFERENCE N", role="doc-backlink") is source navigation the reader
+          // regenerates itself (handleNoteBackNavigation) — drop it so it doesn't clutter a note body as a
+          // stray "[BACK TO NOTE REFERENCE N](…)" link.
+          if ((element.getAttribute('role') || '').toLowerCase() === 'doc-backlink') return '';
           // Note-BODY anchor: this <a> carries the id a reference points to → emit the reader's note anchor
           // (key = the id), dropping its own back-link href. (Matches the reference's "[label](#id)".)
           const aId = element.getAttribute('id');
@@ -1513,7 +1550,9 @@ const App: React.FC = () => {
           const hash = href.indexOf('#');
           const frag = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)).trim() : '';
           if (frag && noteRefLabels.has(frag)) {
-            const lbl = (trimmed.replace(/\s+/g, ' ').trim() || noteRefLabels.get(frag)!).replace(/\.$/, '');
+            // Strip a bracketed marker ("[15]" → "15") so the emitted ref is `[15](#frag)`, not the double-
+            // bracketed `[[15]](#frag)` the reader's link parser can't read (leaked as raw text before).
+            const lbl = (trimmed.replace(/\s+/g, ' ').trim().replace(/^\[+\s*|\s*\]+$/g, '') || noteRefLabels.get(frag)!).replace(/\.$/, '');
             return `[${lbl}](#${frag})`;
           }
           const label = trimmed.replace(/\s+/g, ' ').trim();
@@ -1534,6 +1573,25 @@ const App: React.FC = () => {
         if (/^h[1-6]$/.test(tag)) {
           const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
           if (!clean) return '';
+          // A "heading" whose text is a LIST-MARKER LABEL ("IF:"/"THEN:", or a bare "1."/"a." marker) is a list
+          // head, NOT a section title (Singularity's `.x07-List-Head` <h2>IF:</h2> above a numbered <ol>). Emit
+          // it as an INDENTED, non-heading paragraph (leading NBSP from its source left margin, no U+E013) so
+          // the reader's isRuleItem — which recognises the SAME IF:/THEN:/N. markers the PDF splitter does —
+          // renders it via ruleHangStyle, coherent with the numbered items below it and identical to the PDF.
+          // (A numbered SECTION heading like "1. Introduction" has text after the marker, so it is NOT caught.)
+          const _hm = clean.replace(/^[*_~`]+/u, '');
+          if (/^(?:IF:|THEN:)/i.test(_hm) || /^(?:\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])\s*$/u.test(_hm)) {
+            // Mother level of a LABELLED LIST: this IF:/THEN: label sits right before a numbered <ol>
+            // (the EPUB nests nothing — they are flat siblings), so render the label one tier SHALLOWER
+            // than the items (4 NBSP) and let the <li> items go one tier deeper (8 NBSP, below), inferring
+            // the hierarchy the PDF shows. A lone marker label with no following list keeps its source margin.
+            const _nextIsList = /^(?:ol|ul)$/i.test(element.nextElementSibling?.tagName || '');
+            const _hEm = boxLeftEm(element).m;
+            const _hInd = _nextIsList ? ' '.repeat(4) : (_hEm > 0.5 ? ' '.repeat(Math.min(12, Math.round(_hEm / 0.375))) : '');
+            const _hv = vMarginEm(element);
+            const _hGap = (_hv.top > 1 ? String.fromCharCode(0xE022) : '') + (_hv.bottom > 1 ? String.fromCharCode(0xE027) : '');
+            return `\n\n${_hGap}${_hInd}${_hm.replace(/\n/g, ' ')}\n\n`;
+          }
           const _lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
           const _h1em = resolveFontEm(element);
           const _tierOf = (em: number) => { const r = currentBodyEm > 0 ? em / currentBodyEm : 1; return r >= 1.6 ? String.fromCharCode(0xE01F) : r >= 1.25 ? String.fromCharCode(0xE01E) : r > 1.08 ? String.fromCharCode(0xE01D) : ''; };
@@ -1591,6 +1649,20 @@ const App: React.FC = () => {
           const _before = beforeContentOf(element);
           const _bodyBold = elBoldOf(element) && !_pItalic && !/[*_]/u.test(trimmed) && !trimmed.includes('[[FIG ');
           const body = _before + (_bodyBold ? `**${trimmed}**` : trimmed);
+          // HANGING ENTRY (dialogue speaker turn / hanging definition). The source gives the <p> a NEGATIVE
+          // text-indent with a matching positive left margin so the first line (the speaker label) hangs at the
+          // margin while wrapped lines indent — Kurzweil's `p.x06-Dialogue { margin-left:3.4em; text-indent:-3.4em }`.
+          // This is the SAME geometry the PDF's hanging-list detector emits U+E01A for; emit it here so the reader
+          // renders each turn hanging (dialogueHangStyle) instead of a flush block-quote. General (any hanging <p>,
+          // margin ≈ -text-indent), not class-specific; the source top/bottom margin drives the set-off gaps.
+          const _tIndentEm = lenToEm((declProp(element, 'text-indent') || (element as HTMLElement).style?.textIndent || '').replace(/!important/ig, '')) ?? 0;
+          const _hangLeftEm = boxLeftEm(element).m;
+          if (_tIndentEm < -0.5 && _hangLeftEm > 0.5 && Math.abs(_hangLeftEm + _tIndentEm) < 1.2) {
+            const _hn = Math.max(4, Math.round(_hangLeftEm / 0.375));
+            const _hv = vMarginEm(element);
+            const _hGap = (_hv.top > 1 ? String.fromCharCode(0xE022) : '') + (_hv.bottom > 1 ? String.fromCharCode(0xE027) : '');
+            return `\n\n${_hGap}${sizeTierSentinel(element)}${String.fromCharCode(0xE01A)}${'\u00a0'.repeat(_hn)}${body}\n\n`;
+          }
           // Email/memo header block: split its <br>-joined fields into their own paragraphs so the
           // reader renders each field flush + un-bold + tight (matches the PDF appendix path).
           if (isEmailHeaderBlock(trimmed)) {
@@ -1616,6 +1688,23 @@ const App: React.FC = () => {
           if (indentPx >= 8 && /^\[[^\]\n]+\]\([^)\n]+\)$/.test(body.trim())) {
             const levels = Math.min(4, Math.max(1, Math.round(indentPx / 14)));
             return `\n\n${sizeTierSentinel(element)}${sentinel}${' '.repeat(levels * 4)}${body}\n\n`;
+          }
+          // A list-head LABEL paragraph (Singularity's `.x07-List-Head-No-Space` <p>THEN: …</p>, the twin of
+          // the <h2>IF:</h2> above the numbered list): its text is a THEN:/IF: marker. Give it its source
+          // left indent (leading NBSP) so the reader's isRuleItem renders it via ruleHangStyle — coherent
+          // with IF: and the numbered items, matching the PDF. Narrowly gated to the IF:/THEN: label so
+          // ordinary indented prose is untouched.
+          // A list-head LABEL paragraph (THEN:) — read its indent from boxLeftEm (the general CSS matcher),
+          // NOT indentFor, which returns 0 for this <p class=x07-List-Head-No-Space>. When it follows the
+          // numbered <ol>, it is the MOTHER level (4 NBSP), aligned with the IF: label; otherwise its source
+          // margin. isRuleItem then renders 'THEN:' via ruleHangStyle.
+          const _thenEm = boxLeftEm(element).m;
+          if (_thenEm >= 1.5 && /^(?:IF:|THEN:)/i.test(body.replace(/^[*_~`]+/u, ''))) {
+            const _prevIsList = /^(?:ol|ul)$/i.test(element.previousElementSibling?.tagName || '');
+            const _pn = _prevIsList ? 4 : Math.min(12, Math.round(_thenEm / 0.375));
+            const _pv = vMarginEm(element);
+            const _pGap = (_pv.top > 1 ? String.fromCharCode(0xE022) : '') + (_pv.bottom > 1 ? String.fromCharCode(0xE027) : '');
+            return `\n\n${_pGap}${sizeTierSentinel(element)}${sentinel}${' '.repeat(_pn)}${body}\n\n`;
           }
           // Doc-level layout tally: this is a genuine body paragraph. Count it, whether it resolves to
           // JUSTIFIED text (CSS inheritance walked), and whether it carries a first-line indent (its own
@@ -1698,6 +1787,19 @@ const App: React.FC = () => {
         }
         if (tag === 'li') {
           const liClass = (element.getAttribute('class') || '').toLowerCase();
+          // Note BODY as a semantic <li> (O'Reilly/Kurzweil: `<ol class="endnotes"><li id="EndnoteNumberN">`
+          // under `<div role="doc-endnotes">`). The frag id sits on the <li>, not an <a>, so the note-body
+          // ANCHOR rule (~line 1535) can't key it — and the ol-marker path below would stamp the LIST position
+          // (which drifts from the displayed number: notes restart per chapter while the frag increments
+          // globally) instead of the note's own key. Emit the SAME `[label](#id)` key marker calibre's <a id>
+          // note bodies use, so the reader's note locator (parseLeadingNoteMarker → noteKey match) resolves it
+          // and bounds each entry — inheriting the working path (fixes the merged 18/19 body + SOURCE_REQUIRED).
+          const _noteBodyId = element.getAttribute('id') || '';
+          if (_noteBodyId && noteRefLabels.has(_noteBodyId)) {
+            const _noteText = Array.from(element.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('')
+              .replace(/[\u{E010}-\u{E027}]/gu, '').replace(/\s+/g, ' ').trim();
+            return `\n\n[${noteRefLabels.get(_noteBodyId)}](#${_noteBodyId}) ${_noteText}\n\n`;
+          }
           // Index entries are a structured list: emit each as its own paragraph so
           // downstream prose-reflow can't merge them, and prefix sub-entries with
           // non-breaking spaces (which survive whitespace collapsing) to preserve
@@ -1748,6 +1850,12 @@ const App: React.FC = () => {
             // "5. …") indents by its rendered depth; a top-level item nets 0 and stays flush. Same NBSP→reader-
             // padding mechanism the index sub-entries use.
             const _liInd = ' '.repeat(Math.max(0, Math.round(renderedIndentEm(element) / 0.375)));
+            // Sub level of a LABELLED LIST: if this list sits right after an IF:/THEN: label (the EPUB
+            // does NOT nest them — flat siblings — so nothing else marks the hierarchy), indent its items
+            // one tier DEEPER than that mother label (8 NBSP vs the label's 4), reproducing the PDF's tiering.
+            const _prevSib = element.parentElement?.previousElementSibling;
+            const _underLabel = !!_prevSib && /^(?:h[1-6]|p)$/i.test(_prevSib.tagName || '') && /^(?:IF:|THEN:)/i.test((_prevSib.textContent || '').trim());
+            const _liIndEff = _underLabel ? ' '.repeat(8) : _liInd;
             // A list item that CONTAINS a nested sub-list must emit its OWN text (this marker line) and the
             // sub-list as SEPARATE \n\n paragraphs — NEVER fold the sub-list into this item's text. Otherwise the
             // <ol>/<ul> wrapper's .trim() strips the first sub-item's leading NBSP+newline and glues it onto this
@@ -1775,11 +1883,11 @@ const App: React.FC = () => {
                 : _lst.includes('upper-alpha') || _lst.includes('upper-latin') ? String.fromCharCode(64 + ((_n - 1) % 26) + 1)
                 : _lst.includes('lower-roman') ? _roman(_n) : _lst.includes('upper-roman') ? _roman(_n).toUpperCase()
                 : _lst === 'none' ? '' : `${_n}`;
-              const _line = `${_liInd}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
+              const _line = `${_liIndEff}${_marker ? _marker + '. ' : ''}${_ownTrim}`;
               return _hasSub ? (_ownTrim ? `\n\n${_line}\n\n${_subs}\n\n` : `\n\n${_subs}\n\n`) : `\n${_line}\n`;
             }
             if (parentTag === 'ul') {
-              const _line = `${_liInd}• ${_ownTrim}`;
+              const _line = `${_liIndEff}• ${_ownTrim}`;
               return _hasSub ? (_ownTrim ? `\n\n${_line}\n\n${_subs}\n\n` : `\n\n${_subs}\n\n`) : `\n${_line}\n`;
             }
           }
@@ -1809,11 +1917,17 @@ const App: React.FC = () => {
         // honoured — the open <a> triggers the HTML parser's adoption-agency algorithm, which SWALLOWS the
         // following flow content and RESTRUCTURES it: inline text lost its boundary space ("So<a/> while" →
         // "Sowhile") and, inside a <dl>, the parser pulled the <dt> terms out and DROPPED whole entries (the
-        // "Agentic" glossary row vanished; only 2 of 6 dt/dd parts survived). Close every self-closing anchor
-        // to `<a …></a>` first (keeping its id for navigation) so the tree parses clean; the empty marker then
-        // contributes nothing and the surrounding text/blocks keep their structure. Only <a> is affected —
-        // it's the sole self-closing non-void element in these files, and the only adoption-agency element.
-        const content = rawContent.replace(/<a\b([^>]*?)\/>/gi, '<a$1></a>');
+        // "Agentic" glossary row vanished; only 2 of 6 dt/dd parts survived). Close every self-closing NON-VOID
+        // element to `<tag …></tag>` first (keeping its id for navigation) so the tree parses clean; the empty
+        // marker then contributes nothing and the surrounding text/blocks keep their structure. Originally only
+        // <a/> was seen, but Kurzweil also writes SELF-CLOSING page-break spans INSIDE a bold/uppercase speaker
+        // span (`<span class="…Speaker-Inline"><span epub:type="pagebreak" …/>Cassandra: </span>Okay…`): the
+        // unhonoured `<span/>` opens an inner span, the single `</span>` closes THAT, leaving the speaker span
+        // open to swallow the rest of the turn — so the whole paragraph rendered bold + uppercase. Generalise to
+        // any non-void tag (void tags stay self-closing: they're legitimately empty).
+        const content = rawContent.replace(
+          /<(?!(?:area|base|br|col|embed|hr|img|input|keygen|link|meta|param|source|track|wbr)\b)([a-z][\w:-]*)\b([^>]*?)\/>/gi,
+          '<$1$2></$1>');
         // Parse the RAW html — DOMParser builds a correct, properly-scoped tree (headings close, blocks
         // nest right) and nodeToMarkedText derives the \n\n structure. The old pre-strip that turned
         // closing tags into newlines REMOVED them, which left an <h1> unclosed so it swallowed the whole
@@ -4928,7 +5042,7 @@ const App: React.FC = () => {
             // here opens at the body margin (flush), proving it's a first-line indent, so drop that NBSP from
             // the previous page's tail — the reader re-applies its own default first-line indent.
             const _prevTail = first.firstX <= bodyLeft + 8
-              ? pages[pages.length - 1].replace(/^((?:\[\[PAGE\s+\d+\]\]\n)?[\uE010-\uE023]*)\u00A0+(?=\S)/u, '$1')
+              ? pages[pages.length - 1].replace(/^((?:\[\[PAGE\s+\d+\]\]\n)?[\uE010-\uE019\uE01B-\uE023]*)\u00A0+(?=\S)/u, '$1')
               : pages[pages.length - 1];
             pages[pages.length - 1] = `${_prevTail} ${marker} ${unit.block.text.replace(/^[  \uE018\uE01B-\uE01F]+/u, '')}`;
           } else if (unitIndex === 0) {

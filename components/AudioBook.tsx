@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v112-pdf-list-per-tier';
+const CHAPTER_TEXT_CACHE_VERSION = 'v113-dialogue-seam-nbsp';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -234,6 +234,7 @@ interface ParagraphData {
     flushFirstLine?: boolean;
     blockQuote?: boolean;
     setoffAbove?: boolean;
+    setoffBelow?: boolean;
     // Whole-paragraph ITALIC (U+E026) — an epigraph/quote the source sets italic (e.g. `blockquote p{italic}`,
     // a descendant selector). Applied to the whole paragraph so it survives sentence splitting; inner <em>
     // stays as-is (it inherits the same italic in the source).
@@ -371,6 +372,10 @@ interface InlineParseOptions {
   internalNoteLinksAsFootnotes?: boolean;
   inferBareFootnotes?: boolean;
   romanMarkersAsReferences?: boolean;
+  // In the Notes chapter, a leading note-ENTRY marker ("[18](#…) V. L. Yu et al…") is a reference NUMBER,
+  // not a hyperlink — render it as a non-underlined referenceMarker (matching the PDF + the translation
+  // column), not the neon-blue link style. Numeric OR roman; a real URL in the note stays a link.
+  noteEntryMarkersAsReferences?: boolean;
 }
 
 // A flattened footnote marker is a small digit that PDF flattening dropped inline. We only
@@ -828,6 +833,16 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
         const trailingPunctuation = labelPunctuation || (value[pattern.lastIndex] === '.' ? '.' : '');
         segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker', href: match[2] });
         if (!labelPunctuation && trailingPunctuation) pattern.lastIndex += 1;
+      } else if (
+        options.noteEntryMarkersAsReferences && !hasBodyTextBeforeLink && hasTextAfterLink &&
+        (isLikelyInternalNoteLink(label, match[2]) || isLikelyInternalRomanReferenceLink(label, match[2]))
+      ) {
+        // A LEADING note-ENTRY marker in the Notes chapter ("[18](#…) V. L. Yu et al…") is a reference
+        // NUMBER, not a hyperlink — render it non-underlined (like the roman note-entry case above, the
+        // translation column, and the PDF), NOT the neon-blue link style. A real URL in the note (its label
+        // is the URL text, not a bare number) fails isLikelyInternalNoteLink and stays a real link.
+        const _lp = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
+        segments.push({ text: `${label}${_lp}`, format: 'referenceMarker' });
       } else {
         // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation
         // rect covers the leading space ("…at [ https://…]"), keep that space as plain text
@@ -1173,7 +1188,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[--]+/);
+    const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | 'left' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
@@ -1185,7 +1200,10 @@ const buildPageSentenceData = (pageText: string): {
     const italic = ctrlChars.includes(''); // whole-paragraph italic (epigraph/quote)
     // U+E022 — the source has a genuine SET-OFF gap above this block-quote (>=1.75x the line gap):
     // a real epigraph/callout. Absent = the quote flows from its lead-in (e.g. a colon-introduced definition).
-    const setoffAbove = ctrlChars.includes('\uE022');
+    const setoffAbove = ctrlChars.includes('');
+    // U+E027 \u2014 the source gives this block a set-off gap BELOW (its own margin-bottom \u2014 a labelled list's
+    // closing THEN: label). Reproduced as a bottom margin so the block sets off from the following prose.
+    const setoffBelow = ctrlChars.includes('');
     // U+E01A \u2014 a hanging-list entry (dialogue speaker turn / CIP field): the label hangs at the
     // outdent, wraps indent to the tier encoded by the following NBSP run (\u2192 `indent`, below).
     const hangingEntry = ctrlChars.includes('\uE01A');
@@ -1202,7 +1220,7 @@ const buildPageSentenceData = (pageText: string): {
     const sizeStripped = stripInlineFormatSyntax(rawPText).replace(/^[\s\u00a0]+/u, '');
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026\uE027]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1234,7 +1252,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, verse: isVerse, italic });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, verse: isVerse, italic });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -3714,12 +3732,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       internalNoteLinksAsFootnotes: !isNotesChapter && !isIndexChapter,
       inferBareFootnotes: !isIndexChapter,
       romanMarkersAsReferences: !isNotesChapter && !isIndexChapter,
+      noteEntryMarkersAsReferences: isNotesChapter,
       ...inlineOptions,
     };
     const segments = parseInlineFormatting(textToRender, {
       internalNoteLinksAsFootnotes: parseOptions.internalNoteLinksAsFootnotes,
       inferBareFootnotes: parseOptions.inferBareFootnotes,
       romanMarkersAsReferences: parseOptions.romanMarkersAsReferences,
+      noteEntryMarkersAsReferences: parseOptions.noteEntryMarkersAsReferences,
     });
     // If this line is an attribution (e.g. translated author/source) and its footnote
     // was stripped from the translation, attach the inherited footnote inside the
@@ -4672,9 +4692,24 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // some bullets as block quotes (bq alternates across a list) — exclude bullets from the
                         // mt-8 block-quote break so a bulleted list flows tight (single-spaced) like the source
                         // instead of opening a 32px gap before the mis-tagged items.
-                        const spacingClass = isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : paragraphSpacingClassFor(lineText);
+                        // A demoted INDENTED list-head (an <h2 class="x07-List-Head">-style label too long to
+                        // stay a heading, e.g. the MYCIN "THEN: There is suggestive evidence…" clause) keeps the
+                        // set-off gap its source margin gives it — a blank line before and after — so it doesn't
+                        // run into the sub-list above or the body below. Real headings (isHeadingRole) already
+                        // get mt-8/mb-3 above; ordinary paragraphs are unaffected (gated on role=heading+indent).
+                        // Source set-off gaps (U+E022 top / U+E027 bottom) read from the block's OWN margins —
+                        // e.g. a labelled list's IF: (margin-top) and THEN: (margin-bottom). Gated to a rule-item
+                        // LABEL so blockquotes (which also carry E022) keep their own spacing branch below.
+                        const _sourceGap = [(isRuleItem && para.setoffAbove && lineIdx === 0) ? 'mt-5' : '', (isRuleItem && para.setoffBelow && lineIdx === 0) ? 'mb-5' : ''].filter(Boolean).join(' ');
+                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : paragraphSpacingClassFor(lineText));
+                        // Single view: the reading column is a max-w-3xl child CENTERED in the w-full row
+                        // (justify-center). justify-start pins that 768px child to the page's LEFT edge —
+                        // correct ONLY for an index chapter, whose child is w-full (fills, justify moot). Any
+                        // NON-index paragraph (body, a rule/list item, a role=list page inside a normal chapter)
+                        // MUST stay justify-center or it juts out left of the body column (the MYCIN IF/THEN
+                        // block did exactly this).
                         return (
-                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter || (isListRole && !para.align) || (isRuleItem && !effectiveAlign) ? 'justify-start' : 'justify-center'}`}>
+                        <div key={`${currentTranslationIdentity}-plain-p-${pIdx}-line-${lineIdx}`} className={`w-full flex ${spacingClass} ${viewMode === 'split' ? 'items-start' : isIndexChapter ? 'justify-start' : 'justify-center'}`}>
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
