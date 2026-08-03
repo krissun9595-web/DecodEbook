@@ -3964,29 +3964,38 @@ const App: React.FC = () => {
       // (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue (not large vs
       // the h15 body) do not. (Falls back to the size rule when no contents page / no heading family.)
       const isHeadingLine = (line: PdfLine): boolean => {
-        // Measure by CAP height, not the char-weighted `h`: a SMALL-CAPS heading ("PREMONITIONS" = one tall
-        // "P" + small caps) has a small `h` and would fail the size test, so it was mis-classified as body
-        // and then shrunk below body. Its caps are heading-sized — capH catches that. Body lines' caps are
-        // body-sized, so this doesn't promote prose.
         const ch = line.capH ?? line.h;
-        // Tagged PDF: the marked-content role is authoritative — H1–H6 is a heading, anything else
-        // (P, Caption, …) is NOT, regardless of font. Only fall to geometry/outline when untagged.
         if (line.mcRole) return /^H[1-6]?$/u.test(line.mcRole);
         if (line.outlineHeading === true) return true;
-        // Primary rule (unchanged): a display-font heading (family learned from the contents page) when the
-        // book HAS one; otherwise the plain size rule. Uses capH so a full-caps head reads the same as before.
+        const scText = line.text.replace(/[*_~`\s ]+$/u, '');
+        const scEndsClause = /[.,;。，；]["')”’\]]?$/u.test(scText);
+        // Primary rule: a display-font heading (family learned from the contents page) LARGER than the body
+        // of its own section (1.2×); else the plain size rule (no display family learned).
         if (headingFamily
           ? (line.family === headingFamily && line.localFont > 0 && ch >= line.localFont * 1.2)
           : (bodyFont > 0 && ch >= bodyFont * 1.2)) return true;
-        // SMALL-CAPS section head set in the BODY font (missed by the family rule — e.g. Sovereign's
-        // "PREMONITIONS", Transurfing's chapter titles). Signature: its full caps are clearly taller than its
-        // char-weighted body height (the small caps sit at a reduced em) AND heading-sized vs body. Requiring
-        // capH >> h means a full-caps body line can't trip it (no false headings); capH excludes drop caps.
-        // GUARD: this book also sets TERMS in small caps INSIDE body prose ("…subsequent to the MIDDLE
-        // AGES."), which can wrap onto their own line. A section head is short and set off; a body phrase
-        // ENDS A CLAUSE — so a line ending in a period/comma/semicolon (± a closing quote) is prose, not a head.
-        const scText = line.text.replace(/[*_~`\s ]+$/u, '');
-        const scEndsClause = /[.,;。，；]["')”’\]]?$/u.test(scText);
+        // SUB-HEADING below the 1.2× gate (Transurfing's "Principle"/"Interpretation": bold, 16.9 vs body 15
+        // = 1.13×, each on its own short line above its paragraph — otherwise MERGED into the body). These
+        // z-lib PDFs collapse every weight to ONE family name (LiberationSerif), so a display-FAMILY test
+        // can't see them; key off the WHOLE-LINE-BOLD the extractor already detected, OR a genuinely distinct
+        // family. Guard against a body-size bold callout by requiring LARGER than body (>=1.08x), NOT clause-
+        // ending, and SHORT (doesn't fill the measure — a wrapped bold body line would).
+        const _hRef = line.localFont > 0 ? line.localFont : bodyFont;
+        // WHOLE-LINE-BOLD only. (A distinct-FAMILY test over-caught non-headings in books with a real
+        // display font — Singularity chart titles + an italic back-matter promo, both a different family;
+        // those books' real headings are already caught by the 1.2× primary rule, so family isn't needed.)
+        const _wholeBold = /^\*\*[\s\S]+\*\*$/u.test(line.text.trim());
+        // A bare-label sub-head ("Principle") has NO terminal punctuation; a full question/utterance
+        // (Singularity's bold Q&A prompts "WHAT IS THE MEANING OF LIFE?", already handled via sizeEm)
+        // ends in ? or !, so exclude those here — scEndsClause only covers . , ; so add ? ! explicitly.
+        const _endsUtterance = /[.,;。，；?!？！]["')”’\]]?$/u.test(scText);
+        if (_wholeBold && _hRef > 0
+          && ch >= _hRef * 1.08 && !_endsUtterance && !fillsMeasure(line.rightX, bodyRightEdge)) {
+          return true;
+        }
+        // SMALL-CAPS section head set in the BODY font (missed by the family rule — Sovereign's "PREMONITIONS",
+        // Transurfing chapter titles): full caps clearly taller than the char-weighted body height AND heading-
+        // sized vs body; capH >> h keeps a full-caps body line out. A body phrase ending a clause is prose.
         if (!scEndsClause && bodyFont > 0 && ch >= bodyFont * 1.3 && ch >= line.h * 1.25) return true;
         return false;
       };
