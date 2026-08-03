@@ -1410,6 +1410,18 @@ const App: React.FC = () => {
         }
         if (tag === 'svg') return Array.from(element.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
 
+        // HIDDEN content is invisible in the source, so drop it to render faithfully: a display:none /
+        // visibility:hidden element, or a font-size:0 TEXT LEAF (a publisher's zero-width label — Kurzweil's
+        // Contents `<span class="CN">Chapter 1:</span>` at font-size:0, hidden so the entry reads just the
+        // title). font-size:0 is leaf-gated (no child elements) so a wrapper resetting its children's size
+        // isn't dropped with them.
+        {
+          const _st = (element as HTMLElement).style;
+          if ((_st?.display || '').toLowerCase() === 'none' || (_st?.visibility || '').toLowerCase() === 'hidden') return '';
+          const _fs = cssFontSizeOf(element);
+          if (_fs != null && /^0(?:px|em|rem|pt|%)?$/u.test(_fs.trim()) && !element.querySelector('*')) return '';
+        }
+
         // A DATA TABLE (Sovereign's dice-frequency table — a header row plus rows that use ditto marks `"`
         // to repeat "The sum of / spots will appear / times."). Emit the SAME positioned-token payload the
         // PDF path uses (U+E025 <rows joined by U+E024>, each token a PUA position char U+E200 + permille of
@@ -1647,8 +1659,32 @@ const App: React.FC = () => {
           // is prepended.
           const _pItalic = elItalicOf(element);
           const _before = beforeContentOf(element);
-          const _bodyBold = elBoldOf(element) && !_pItalic && !/[*_]/u.test(trimmed) && !trimmed.includes('[[FIG ');
-          const body = _before + (_bodyBold ? `**${trimmed}**` : trimmed);
+          // The "already emphasised" guard must ignore a LINK's href — a TOC/Contents entry is a single
+          // link "[Chapter 1: …](09_Chapter_1_Where_Are_W.xhtml)" whose href is full of underscores; counting
+          // those as emphasis markers wrongly dropped the source's bold (font-weight:bold on the entry). Strip
+          // `](href)` targets before the check so only REAL emphasis in the visible text suppresses the wrap.
+          const _emphProbe = trimmed.replace(/\]\([^)\n]*\)/gu, ']');
+          const _bodyBold = elBoldOf(element) && !_pItalic && !/[*_]/u.test(_emphProbe) && !trimmed.includes('[[FIG ');
+          let body = _before + (_bodyBold ? `**${trimmed}**` : trimmed);
+          // Reproduce CSS `text-transform:uppercase` on a block (a Contents entry, a small-caps section head):
+          // upper-case the VISIBLE text but PROTECT link hrefs (a `[Title](09_Chapter_1_…xhtml)` target must
+          // stay verbatim or the reader can't resolve the jump). Kurzweil's Contents entries are uppercase.
+          {
+            const _tt = ((element as HTMLElement).style?.textTransform || declProp(element, 'text-transform') || '').toLowerCase();
+            if (_tt === 'uppercase' && body) {
+              const _hrefs: string[] = [];
+              const _MK = '\uE0FF'; // PUA delimiter — never in body text, survives toUpperCase
+              body = body
+                .replace(/\]\(([^)\n]*)\)/gu, (_m, h) => { _hrefs.push(h); return `](${_MK}${_hrefs.length - 1}${_MK})`; })
+                .toUpperCase()
+                .replace(new RegExp(_MK + '(\\d+)' + _MK, 'gu'), (_m, i) => _hrefs[Number(i)]);
+            }
+          }
+          // A lone TOC/Contents LINK ("[10 THE REVENGE…](text00015.html)") also uses a negative
+          // text-indent + matching margin (a hanging-NUMBER technique), which would otherwise trip the
+          // dialogue hanging-entry detector below and render it flush. Compute it here so that branch can
+          // skip it — a TOC entry indents via its margin-left in the lone-link branch instead.
+          const _loneLink = /^\*{0,2}\[[^\]\n]+\]\([^)\n]+\)\*{0,2}$/.test(body.trim());
           // HANGING ENTRY (dialogue speaker turn / hanging definition). The source gives the <p> a NEGATIVE
           // text-indent with a matching positive left margin so the first line (the speaker label) hangs at the
           // margin while wrapped lines indent — Kurzweil's `p.x06-Dialogue { margin-left:3.4em; text-indent:-3.4em }`.
@@ -1657,7 +1693,7 @@ const App: React.FC = () => {
           // margin ≈ -text-indent), not class-specific; the source top/bottom margin drives the set-off gaps.
           const _tIndentEm = lenToEm((declProp(element, 'text-indent') || (element as HTMLElement).style?.textIndent || '').replace(/!important/ig, '')) ?? 0;
           const _hangLeftEm = boxLeftEm(element).m;
-          if (_tIndentEm < -0.5 && _hangLeftEm > 0.5 && Math.abs(_hangLeftEm + _tIndentEm) < 1.2) {
+          if (!_loneLink && _tIndentEm < -0.5 && _hangLeftEm > 0.5 && Math.abs(_hangLeftEm + _tIndentEm) < 1.2) {
             const _hn = Math.max(4, Math.round(_hangLeftEm / 0.375));
             const _hv = vMarginEm(element);
             const _hGap = (_hv.top > 1 ? String.fromCharCode(0xE022) : '') + (_hv.bottom > 1 ? String.fromCharCode(0xE027) : '');
@@ -1685,9 +1721,34 @@ const App: React.FC = () => {
           // index/Contents indent renders as padding). Gated to a lone link so body prose / blockquotes
           // with a left margin never pick up a stray indent.
           const indentPx = indentFor(element);
-          if (indentPx >= 8 && /^\[[^\]\n]+\]\([^)\n]+\)$/.test(body.trim())) {
+          // Tolerate a `**…**` bold wrap (a bold TOC entry — Kurzweil's `x01-FM-Contents-FM` is bold AND
+          // margin-left:10% indented) so it still gets its indent NBSP, not just chapters. The `**` rides along.
+          if (_loneLink && indentPx >= 8) {
             const levels = Math.min(4, Math.max(1, Math.round(indentPx / 14)));
             return `\n\n${sizeTierSentinel(element)}${sentinel}${' '.repeat(levels * 4)}${body}\n\n`;
+          }
+          // indentFor is px-ONLY, so a Kurzweil TOC front-matter entry's `margin-left:10%` (em/%) read as
+          // 0 and rendered FLUSH like a chapter. Resolve an em/% left margin here (~% of the reading
+          // column) and emit its NBSP so front matter indents and chapters (margin-left:0) stay flush.
+          if (_loneLink && indentPx < 8) {
+            const _mlRaw = (((element as HTMLElement).style?.marginLeft
+              || declProp(element, 'margin-left')
+              || ((): string => { const q = (declProp(element, 'margin') || '').replace(/!important/ig, '').trim().split(/\s+/); return q.length === 4 ? q[3] : q.length >= 2 ? q[1] : ''; })()
+              || '') as string).replace(/!important/ig, '').trim();
+            const _mlNum = parseFloat(_mlRaw) || 0;
+            const _indentEm = /%$/.test(_mlRaw) ? _mlNum * 0.36 : /r?em$/i.test(_mlRaw) ? _mlNum : 0;
+            // A TOC front-matter entry positions its (single) line with a POSITIVE first-line text-indent
+            // on top of the small margin (Elon EPUB `.toc_text { margin-left:0.3em; text-indent:1em }` →
+            // 1.3em, aligned with the chapter titles). Margin alone (0.3em) read as flush and broke that
+            // alignment. Use the FULL text-indent (a single line's position = margin + text-indent): positive
+            // pushes front matter out to the title column, negative pulls a non-numbered entry back (EPILOGUE
+            // `margin-left:2.3em; text-indent:-1em` → 1.3em, aligned). A numbered chapter's negative text-indent
+            // is its number-hang, but those render via the reader gutter (para.indent ignored), so this is safe.
+            const _effEm = Math.max(0, _indentEm + _tIndentEm);
+            if (_effEm >= 0.6) {
+              const _nbsp = Math.min(16, Math.round(_effEm / 0.375));
+              return `\n\n${sizeTierSentinel(element)}${sentinel}${' '.repeat(_nbsp)}${body}\n\n`;
+            }
           }
           // A list-head LABEL paragraph (Singularity's `.x07-List-Head-No-Space` <p>THEN: …</p>, the twin of
           // the <h2>IF:</h2> above the numbered list): its text is a THEN:/IF: marker. Give it its source
@@ -2128,7 +2189,9 @@ const App: React.FC = () => {
         })();
         let title: string;
         if (file === coverFull || low.length < 30) title = 'Cover';
-        else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)) title = 'Copyright'; // copyright markers win over an h1 title
+        else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)
+          && !/^(?:table of )?contents\b/u.test(low)
+          && !/^(?:table of )?contents$/iu.test(ownHead)) title = 'Copyright'; // copyright markers win over an h1 title — UNLESS this IS the Contents page: a TOC lists a "COPYRIGHT" entry, so the bare copyright test mislabelled the whole table of contents "Copyright" (its own heading is "Contents"), knocking it off the Contents render path
         else if (ownHead && ownHead.length >= 3 && ownHead.length <= 60) title = ownHead; // the file names itself (praise, dedication, …)
         else if (/^(?:table of )?contents\b/u.test(low) || navTitles.filter(t => low.includes(t.toLowerCase())).length >= 3) title = 'Contents';
         else title = 'Front Matter';
@@ -3996,10 +4059,28 @@ const App: React.FC = () => {
       // give every page ONE run-wide contents tier scale, so one source indent = one depth across the TOC.
       const isContentsHeadingPage = (buf: (typeof pageBuffers)[number]): boolean =>
         buf.lines.length >= 6 && buf.lines.slice(0, 3).some(l => /^(?:contents|table of contents)$/iu.test(l.text.replace(/[*_~]/gu, '').trim()));
+      // A Contents WITHOUT page-reference numbers (a chapter list only, e.g. "39. Against the Flow" with no
+      // trailing page) fails isListPage (which needs ≥6 lines ending in a page number), so its CONTINUATION
+      // pages (which carry no "Contents" heading) were dropped from the run and fell to the prose path — a
+      // spurious shrink tier + flush that broke the list at the page seam. Recognise a continuation page as a
+      // run of SHORT numbered entries that dominate the page. Only consulted for a page FOLLOWING a Contents
+      // heading page (the while-loop below), so the blast radius is one book's own contents continuation.
+      const looksLikeNumberedListPage = (buf: (typeof pageBuffers)[number]): boolean => {
+        const nonEmpty = buf.lines.filter(l => l.text.trim() && !isHeadingLine(l));
+        const numberedShort = nonEmpty.filter(l => {
+          const t = l.text.replace(/^[*_~\s ]+/u, '');
+          // The entry may be a LINK ("[39. Against the Flow](#pdfref-p68)") — page ref lives in the href,
+          // not visible trailing text — so tolerate a leading "[" / "**" and measure VISIBLE title length
+          // (strip the ](href) target + md syntax), not the raw line with its long href.
+          const visible = t.replace(/\]\([^)\n]*\)/gu, ']').replace(/[[\]*_~]/gu, '').replace(/\s+/gu, ' ').trim();
+          return /^\[?\**\d{1,3}[.)]\s+\S/u.test(t) && visible.length < 70;
+        }).length;
+        return numberedShort >= 6 && numberedShort >= nonEmpty.length * 0.6;
+      };
       for (let i = 0; i < pageBuffers.length; i++) {
         if (!isContentsHeadingPage(pageBuffers[i])) continue;
         let j = i + 1;
-        while (j < pageBuffers.length && pageBuffers[j].isListPage && !isContentsHeadingPage(pageBuffers[j])) j++;
+        while (j < pageBuffers.length && (pageBuffers[j].isListPage || looksLikeNumberedListPage(pageBuffers[j])) && !isContentsHeadingPage(pageBuffers[j])) j++;
         const freq: { x: number; count: number }[] = [];
         for (let k = i; k < j; k++) for (const l of pageBuffers[k].lines) {
           if (isHeadingLine(l) || !l.text.trim()) continue;
@@ -4054,10 +4135,21 @@ const App: React.FC = () => {
           const tierOf = (x: number): number => { const i = tiers.findIndex(t => Math.abs(t - x) <= INDENT_TOL); return i >= 1 ? Math.min(i, 3) : 0; };
           const blocks = lines
             .filter(line => line.text.replace(/[*_~]/gu, '').trim())
-            .map(line => ({
-              text: '\u00a0'.repeat(4 * tierOf(line.x)) + line.text.replace(/\s+/gu, ' ').trim(),
-              role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '',
-            }));
+            .map(line => {
+              const clean = line.text.replace(/\s+/gu, ' ').trim();
+              // The "Contents" heading line (a larger font, or the literal "Contents") is emitted as a HEADING
+              // (U+E013), not a flush list entry, so the reader renders it centred + enlarged like the source
+              // instead of a small left-aligned row. Everything else stays a list entry with its indent tier.
+              if (isHeadingLine(line) || /^(?:table of )?contents$/iu.test(clean.replace(/[*_~]/gu, '').trim())) {
+                // + U+E01F size tier (~1.5em): the source sets the Contents heading LARGER than its entries
+                // (Elon PDF h≈21 vs body 15 ≈ 1.4×), matching the EPUB's 1.4em <h2>. E013 = heading (centred).
+                return { text: String.fromCharCode(0xE013, 0xE01F) + clean, role: 'heading' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' };
+              }
+              return {
+                text: ' '.repeat(4 * tierOf(line.x)) + clean,
+                role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '',
+              };
+            });
           pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
           continue;
         }

@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v113-dialogue-seam-nbsp';
+const CHAPTER_TEXT_CACHE_VERSION = 'v114-toc-number-hang';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -343,6 +343,9 @@ interface InlineSegment {
   format: InlineFormat;
   href?: string;
   marker?: string;
+  // Emphasis that WRAPPED this segment in the source (a bold/italic TOC entry is a bold LINK, not plain
+  // bold text). Carried so a link/footnote extracted out of a `**…**` run still renders with that weight.
+  emphasis?: 'bold' | 'italic' | 'underline';
 }
 
 interface FootnoteRef {
@@ -784,7 +787,10 @@ const parseInlineFormatting = (value: string, options: InlineParseOptions = {}):
       } else if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, linkMatch[2])) {
         segments.push({ text: label, format: 'referenceMarker', href: linkMatch[2] });
       } else {
-        segments.push({ text: linkMatch[1], format: 'link', href: linkMatch[2] });
+        // Keep the wrapping emphasis on the link — a bold/italic TOC entry ("**[Chapter 1: …](ch1.xhtml)**")
+        // must render as a BOLD clickable link, not plain link text (which is why the TOC looked un-bold).
+        const _emph = format === 'bold' || format === 'italic' || format === 'underline' ? format : undefined;
+        segments.push({ text: linkMatch[1], format: 'link', href: linkMatch[2], emphasis: _emph });
       }
       last = linkRe.lastIndex;
     }
@@ -2869,6 +2875,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // parsed as a reference marker and broken onto its own line. (Mirrors the extraction-side gate.)
   const isIndexChapter = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
     || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
+  // Contents-ONLY (not a back-of-book index): a Table of Contents is where numbered chapter LINKS live, so
+  // only here do we apply the hanging-NUMBER gutter (a real index entry can open with a year like "1984, 42"
+  // and must not be guttered).
+  const isContentsChapter = isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
   const activeNoteTarget =
     typeof pendingNavigationTarget === 'object' && pendingNavigationTarget?.type === 'note'
       ? pendingNavigationTarget
@@ -3480,12 +3490,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     href?: string,
     onFootnoteClick?: (marker: string, event: React.MouseEvent<HTMLElement>, href?: string) => void,
     playbackActive = false,
-    marker?: string
+    marker?: string,
+    emphasis?: 'bold' | 'italic' | 'underline'
   ) => {
     if (format === 'lineBreak') return <br key={key} />;
     const className = [
       inlineFormatClassFor(format),
       inked ? 'transition-colors text-zinc-300' : '',
+      // Source emphasis wrapping a link/marker (a bold TOC entry) — apply the weight ON TOP of the link style.
+      emphasis === 'bold' ? 'font-bold' : emphasis === 'italic' ? 'italic' : emphasis === 'underline' ? 'underline' : '',
     ].filter(Boolean).join(' ');
     const style = {
       ...(inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor]) : {}),
@@ -3783,11 +3796,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     segments.forEach((segment, segmentIndex) => {
       if (segment.format === 'footnote' || segment.format === 'lineBreak') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
         return;
       }
       if (segment.format === 'attributionFootnote') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
         visibleCursor += segment.text.length;
         return;
       }
@@ -3798,21 +3811,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const relevantRanges = inkRanges.filter(range => range.start < segmentEnd && range.end > segmentStart);
 
       if (relevantRanges.length === 0) {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
       } else {
         relevantRanges.forEach((range, rangeIndex) => {
           const localStart = Math.max(0, range.start - segmentStart);
           const localEnd = Math.min(segment.text.length, range.end - segmentStart);
           if (localStart > localCursor) {
-            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker));
+            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
           }
           if (localEnd > localStart) {
-            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker));
+            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
           }
           localCursor = Math.max(localCursor, localEnd);
         });
         if (localCursor < segment.text.length) {
-          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker));
+          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
         }
       }
       visibleCursor = segmentEnd;
@@ -4446,7 +4459,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // heading-like and must never take the body first-line indent, regardless of the source
                   // geometry (which flips when a sub-head shares a page with a differently-margined section).
                   const isSizedHeadingPara = !!para.sizeEm && para.sizeEm > 1;
-                  const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || (para.indent ?? 0) > 0) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
+                  // A Contents entry that opens with a chapter NUMBER ("[10 THE REVENGE…](href)", no period)
+                  // uses a hanging-number layout in the source (negative text-indent + matching margin so the
+                  // TITLE aligns while the wider "10"/"11" hang left of the 1-digit numbers). Reproduce it: put
+                  // the number in a fixed-width LEFT gutter and align every title at ONE column (tocNumColEm),
+                  // so 1- and 2-digit chapters line up at the first letter. Gate on a LONE chapter LINK opening
+                  // with a number (an index locator "1984, 42" is not a lone link, so it's never guttered).
+                  const _tocRaw = para.original.join(' ').replace(/^[\s\u0000-\u001F\uE000-\uF8FF]+/u, '').trim();
+                  const tocNumMarker = isContentsChapter && !isHeadingRole
+                    && /^(?:\*\*|\*)?\[\d{1,3}\s+[^\]]+\]\([^)\n]+\)(?:\*\*|\*)?$/u.test(_tocRaw)
+                    ? (_tocRaw.match(/^(?:\*\*|\*)?\[(\d{1,3})\s/u)?.[1] || '')
+                    : '';
+                  const tocNumColEm = 1.6;
+                  const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || !!tocNumMarker || (para.indent ?? 0) > 0) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
                   // A short Title-Case line that INTRODUCES an indented set-off block (its next paragraph is
                   // block-indented) is a definition-list TERM, not a section subtitle — keep its own
                   // emphasis (usually italic) instead of bolding it. (e.g. "Agentic AI" above its indented
@@ -4482,7 +4507,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const paragraphTextClass = !isListRole && !isHeadingRole && (introducesIndentedBlock || isEmailHeader)
                     ? 'text-zinc-300 font-medium'
                     : !isListRole && (isHeadingRole || isNotesSectionHeadingParagraph(para.original) || (isPlainSubtitleParagraph(para.original) && !isSignatureLine && para.align !== 'center'))
-                    ? 'text-zinc-100 font-bold'
+                    // The CONTENTS heading is NOT bold in either source (EPUB `h1–h6{font-weight:normal}` global
+                    // reset, PDF same non-bold font as the entries) — keep it centred + enlarged but un-bold it.
+                    ? (isContentsChapter && isHeadingRole ? 'text-zinc-100 font-normal' : 'text-zinc-100 font-bold')
                     : 'text-zinc-300 font-medium';
                   const hasParagraphTranslation = para.original.some((_, sIdx) => {
                     const mapping = flatSentenceMap.find(m => m.pIndex === pIdx && m.sIndex === sIdx);
@@ -4501,9 +4528,35 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // RIGHT padding so the whole paragraph is narrower than the body, not just left-indented.
                   // INDEX/TOC chapters: the padding goes on the OUTER wrapper (their text div is w-full, so
                   // it insets correctly). A BODY block-indent must NOT use the wrapper (see bodyBlockPadStyle).
-                  const indexIndentStyle = isIndexChapter && para.indent && !isHeadingRole
-                    ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
-                    : undefined;
+                  // CONTENTS alignment: every entry's TITLE sits on ONE column (tocNumColEm) — the same column
+                  // the numbered chapters' titles land on via the gutter — so front/back matter aligns with the
+                  // chapter titles (the shared source design). Numbered chapters HANG their number, so their own
+                  // para.indent is the number position, not the title column; exclude them and take the shallowest
+                  // NON-numbered indent as the base. That base renders at tocNumColEm; a genuinely deeper entry
+                  // (a nested sub-entry / EPILOGUE) is offset beyond it. This lands BOTH the PDF (front matter
+                  // over-indented by tocTiers → pulled back to the column) and the EPUB (front matter shallow →
+                  // pushed out to the column) on the same column without flattening real hierarchy.
+                  const contentsBaseIndent = isContentsChapter
+                    ? (() => {
+                        const counts: Record<number, number> = {};
+                        for (const p of paragraphData) {
+                          if (p.role === 'heading') continue;
+                          const t = (p.original?.join(' ') || '').replace(/^[\u0000-\u001F\uE000-\uF8FF\s]+/u, '');
+                          if (/^\*{0,2}\[?\**\d{1,3}[.)\s]/u.test(t)) continue; // skip hanging numbered chapters
+                          const iv = p.indent ?? 0; counts[iv] = (counts[iv] || 0) + 1;
+                        }
+                        let best = 0, bestN = -1;
+                        for (const k of Object.keys(counts)) { if (counts[+k] > bestN) { bestN = counts[+k]; best = +k; } }
+                        return best;
+                      })()
+                    : 0;
+                  const indexIndentStyle = tocNumMarker
+                    ? { paddingLeft: `${tocNumColEm}em` }
+                    : isContentsChapter && !isHeadingRole
+                      ? { paddingLeft: `${(tocNumColEm + Math.max(0, (para.indent ?? 0) - contentsBaseIndent) / 4 * 1.5).toFixed(3)}em` }
+                      : isIndexChapter && para.indent && !isHeadingRole
+                        ? { paddingLeft: `${(para.indent / 4) * 1.5}em` }
+                        : undefined;
                   // A BODY block-indent (definition description / block quote) must pad the TEXT element, not
                   // the outer wrapper: in single view the text is max-w-3xl and CENTRED (wrapper padding is
                   // swallowed by the centring); in split view the wrapper holds BOTH the original and its
@@ -4540,7 +4593,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // by `hang` and pad the block by `hang`, so the entry's opening stays at its computed
                   // indent while continuation lines hang under it. Skip the "INDEX" heading.
                   const indexHangStyle: React.CSSProperties | undefined =
-                    isIndexChapter && !isHeadingRole ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
+                    isIndexChapter && !isContentsChapter && !isHeadingRole && !tocNumMarker ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
                   // A bullet-list item ("• Simon Torrance …") arrives as a plain body paragraph whose
                   // text opens with a bullet glyph — role='list' is reserved for whole list PAGES
                   // (index/TOC), not for individual bullets embedded in prose. The source indents such
@@ -4638,7 +4691,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // via isStrayDisplayLine (MYCIN "3." sat next to the mis-centred "4." and inherited it). Suppress
                   // on the FINAL align so both paths are covered.
                   const rawAlign = para.align || (neighborAlign && isStrayDisplayLine ? neighborAlign : undefined);
-                  const effectiveAlign = (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
+                  // The CONTENTS heading is centred in both sources (EPUB `h2.chapter_number{text-align:center}`,
+                  // PDF centred at the page middle). Force-centre it so the shared design's heading matches.
+                  const effectiveAlign = (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
                   // Body-text alignment. 'auto' mirrors the source (justify + hyphenation when the PDF
                   // is justified, else the default left); 'justify'/'left' force it. Never applied to a
@@ -4722,6 +4777,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               // a fixed-width right-aligned box pulled into the left gutter (dots align) and strip
                               // it from the body so the body left-aligns after the gutter.
                               const renderMarker = lineIdx === 0 && sentInLine === 0 && !!rightMarkerText;
+                              // TOC hanging-number gutter: on the entry's FIRST sentence, pull the chapter number
+                              // into a fixed-width LEFT gutter and drop it from the link body, so every title
+                              // aligns at tocNumColEm regardless of 1- vs 2-digit width. The number lives INSIDE
+                              // the link ("[10 THE REVENGE](href)"); lift it out of the brackets, leaving the title
+                              // as the clickable link.
+                              const renderTocNum = lineIdx === 0 && sentInLine === 0 && !!tocNumMarker;
                               // On a right-marker item, trim leading whitespace from every body sentence so the
                               // marker→body gap is uniform. The source right-TABS the marker, so when the item's
                               // body starts with a capital ("i.  Set…") splitIntoSentences peels "i." into its own
@@ -4730,6 +4791,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               // single space added after the gutter below, makes every item read "i. body".
                               const bodySentence = renderMarker
                                 ? sentence.replace(/^\s*(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])(?:\s+|$)/u, '').replace(/^\s+/u, '')
+                                : renderTocNum
+                                ? sentence.replace(/^(\s*(?:\*\*|\*)?\[?)\s*\d{1,3}\s+(?=\S)/u, '$1')
                                 : (rightMarkerText ? sentence.replace(/^\s+/u, '') : sentence);
                               return (
                                 <span
@@ -4743,6 +4806,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 	                                >
                                   {renderMarker && (
                                     <span aria-hidden="true" style={{ display: 'inline-block', width: `${ruleGutterEm}em`, paddingRight: '0.45em', boxSizing: 'border-box', textAlign: 'right', marginLeft: `-${ruleGutterEm}em` }}>{rightMarkerText}</span>
+                                  )}
+                                  {renderTocNum && (
+                                    <span aria-hidden="true" style={{ display: 'inline-block', width: `${tocNumColEm}em`, boxSizing: 'border-box', textAlign: 'left', marginLeft: `-${tocNumColEm}em` }}>{tocNumMarker}</span>
                                   )}
                                   {/* A marker whose body stays on the SAME sentence ("i. the outputs…", lowercase
                                       continuation) strips to a bare body with no leading gap; a marker split into its
