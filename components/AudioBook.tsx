@@ -965,7 +965,7 @@ const positionedFootnoteRefsForText = (value: string): PositionedFootnoteRef[] =
 
 const leadingNoteRefForText = (value: string): LeadingNoteRef | null => {
   const clean = value.trimStart();
-  const linked = clean.match(/^\[([0-9ivxlcdm]{1,8}[.)]?)\]\(([^)]+)\)(?:[.)])?(?:\s+|$)/iu);
+  const linked = clean.match(/^\[((?:fn\.?\s?)?[0-9ivxlcdm]{1,8}[.)]?)\]\(([^)]+)\)(?:[.)])?(?:\s+|$)/iu);
   if (linked) {
     return {
       marker: cleanNoteMarkerLabel(linked[1]),
@@ -973,7 +973,7 @@ const leadingNoteRefForText = (value: string): LeadingNoteRef | null => {
       noteKey: noteKeyFromHref(linked[2]),
     };
   }
-  const bare = clean.match(/^([0-9ivxlcdm]{1,8})[.)](?:\s+|$)/iu);
+  const bare = clean.match(/^((?:fn\.?\s?)?[0-9ivxlcdm]{1,8})[.)](?:\s+|$)/iu);
   if (!bare) return null;
   return { marker: cleanNoteMarkerLabel(bare[1]) };
 };
@@ -3747,20 +3747,22 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     const displayText = shouldStripInheritedMarkerText
       ? stripInheritedFootnoteMarkerText(text, inheritedFootnotes)
       : text;
-    const hasNotesLeadingMarker = Boolean(leadingNoteRef && isNotesChapter);
+    // leadingNoteRef is only passed for a note/footnote ENTRY (Notes chapter OR in-chapter footnote), so
+    // gate the styled+clickable leading marker on its PRESENCE, not isNotesChapter — else an in-chapter
+    // footnote's translation marker renders plain/unclickable (or, for fn-prefixed markers, not at all).
+    const hasNotesLeadingMarker = Boolean(leadingNoteRef);
     const textWithInheritedLeadingMarker =
-      leadingNoteRef && isNotesChapter && sentenceStartsWithNoteMarker(displayText, leadingNoteRef.marker)
+      leadingNoteRef && sentenceStartsWithNoteMarker(displayText, leadingNoteRef.marker)
         ? displayText
-        : leadingNoteRef && isNotesChapter
+        : leadingNoteRef
           ? `${leadingNoteRef.marker}. ${displayText}`
           : displayText;
-    const inheritedLeadingMarker = leadingNoteRef && isNotesChapter
+    const inheritedLeadingMarker = leadingNoteRef
       ? splitLeadingNoteMarker(textWithInheritedLeadingMarker, leadingNoteRef.marker)
       : null;
     const activeLeadingMatches =
       activeNoteTarget &&
       leadingNoteRef &&
-      isNotesChapter &&
       activeNoteTarget.marker === leadingNoteRef.marker &&
       (!activeNoteTarget.noteKey || !leadingNoteRef.noteKey || activeNoteTarget.noteKey === leadingNoteRef.noteKey);
     const backLink =
@@ -3778,7 +3780,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       internalNoteLinksAsFootnotes: !isNotesChapter && !isIndexChapter,
       inferBareFootnotes: !isIndexChapter,
       romanMarkersAsReferences: !isNotesChapter && !isIndexChapter,
-      noteEntryMarkersAsReferences: isNotesChapter,
+      noteEntryMarkersAsReferences: isNotesChapter || Boolean(leadingNoteRef),
       ...inlineOptions,
     };
     const segments = parseInlineFormatting(textToRender, {
