@@ -4856,8 +4856,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           </div>
                           {viewMode === 'split' && (
                             <div
-                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass}`}
-                              style={{ ...paragraphStyle, ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
+                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
+                              /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
+                                 indent + hanging, alignment) so the same entry matches height/indent in split view —
+                                 no vertical gap when the original is a heading/sized/indented paragraph. */
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
@@ -4872,7 +4875,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                     ? translatedSentences
                                     : (tText.trim() ? [tText] : ['']);
                                   const positionedRefs = isIndexChapter ? [] : positionedFootnoteRefsForText(sentence);
-                                  const leadingNoteRef = isNotesChapter ? leadingNoteRefForText(sentence) : null;
+                                  // Show the entry's leading marker on the TRANSLATION too (the translated text
+                                  // drops the "[fnN](#…)" link) — for a Notes-chapter entry AND an in-chapter
+                                  // footnote entry (isFnEntry), so the translation's note hang isn't a marker-less
+                                  // gap next to the original's "fn2 …".
+                                  const leadingNoteRef = (isNotesChapter || isFnEntry) ? leadingNoteRefForText(sentence) : null;
                                   // Match the original's italic/bold in the translation.
                                   const emphasisWrapper = wholeSentenceEmphasisWrapper(sentence);
                                   const refsForTranslatedPart = (partIndex: number): FootnoteRef[] =>
