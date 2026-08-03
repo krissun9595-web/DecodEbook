@@ -2868,39 +2868,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
   const currentReaderPage = pages[currentPage];
   const isNotesChapter = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
-  // A multi-paragraph footnote/note indents ALL of its paragraphs, but only the paragraph that OPENS with the
-  // marker is detected as a note entry — so a long note's 2nd/3rd paragraphs lost the note's left indent and
-  // ran out to the full margin. Mark each CONTINUATION paragraph (a non-heading paragraph inside a note block
-  // that doesn't itself open a marker) so it gets the note's left padding (no hang — there's no marker here).
-  const noteContinuationSet = (() => {
-    const set = new Set<number>();
-    const NOTE_LINK_RE = /^["'\u201c]?\s*\[\s*(?:fn\.?\s?)?[0-9ivxlcdm]{1,8}\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn)/i;
-    const NOTE_NUM_RE = /^["'\u201c]?\s*(?:\[\s*[0-9ivxlcdm]{1,8}\s*\]|[0-9]{1,3}[.)])/;
-    // SEED from PRIOR pages: a footnote can span a page break, so a page that STARTS mid-note (its marker
-    // paragraph paginated onto the previous page) must inherit inNote=true, else its carried-over paragraphs
-    // lose the indent and run to the full margin. Scan earlier pages' raw text (heading resets, entry sets).
-    let inNote = false;
-    for (let pi = 0; pi < currentPage; pi++) {
-      for (const para of (pages[pi]?.text || '').split(/\n{2,}/)) {
-        const lead = (para.match(/^[\u0000-\u001F\uE000-\uF8FF\s]*/u) || [''])[0];
-        const bare = para.slice(lead.length);
-        if (!bare.trim()) continue;
-        if (lead.includes(String.fromCharCode(0xE013))) { inNote = false; continue; }
-        if (NOTE_LINK_RE.test(bare) || (isNotesChapter && NOTE_NUM_RE.test(bare))) { inNote = true; continue; }
-      }
-    }
-    for (let i = 0; i < paragraphData.length; i++) {
-      const p = paragraphData[i];
-      const ht = (p.original || []).join(' ').replace(/\s+/g, ' ').trim();
-      const isHead = p.role === 'heading' && !(ht.length > 90 && /[.!?\u3002\uff01\uff1f]["'\u201d\u2019)\]]?$/u.test(ht));
-      if (isHead) { inNote = false; continue; }
-      const isEntry = paraStartsFootnoteEntry(p)
-        || (isNotesChapter && !isNotesSectionHeadingParagraph(p.original) && NOTE_NUM_RE.test((p.original || []).join(' ').replace(/^[\s\u00a0]+/u, '')));
-      if (isEntry) { inNote = true; continue; }
-      if (inNote && (p.original || []).join('').trim()) set.add(i);
-    }
-    return set;
-  })();
   // A Table of Contents (and List of Figures/Tables) is the SAME structured entry-per-line list as a
   // back-of-book index — it must render with the index's sub-entry INDENTATION (NBSP depth) and, crucially,
   // its page-number links must render as PLAIN links, NOT footnote/reference markers. Without this the TOC
@@ -3353,6 +3320,39 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
   const isNotesSectionHeadingParagraph = (sentences: string[]): boolean =>
     isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
+  // A multi-paragraph footnote/note indents ALL of its paragraphs, but only the paragraph that OPENS with the
+  // marker is detected as a note entry — so a long note's 2nd/3rd paragraphs lost the note's left indent and
+  // ran out to the full margin. Mark each CONTINUATION paragraph (a non-heading paragraph inside a note block
+  // that doesn't itself open a marker) so it gets the note's left padding (no hang — there's no marker here).
+  const noteContinuationSet = (() => {
+    const set = new Set<number>();
+    const NOTE_LINK_RE = /^["'\u201c]?\s*\[\s*(?:fn\.?\s?)?[0-9ivxlcdm]{1,8}\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn)/i;
+    const NOTE_NUM_RE = /^["'\u201c]?\s*(?:\[\s*[0-9ivxlcdm]{1,8}\s*\]|[0-9]{1,3}[.)])/;
+    // SEED from PRIOR pages: a footnote can span a page break, so a page that STARTS mid-note (its marker
+    // paragraph paginated onto the previous page) must inherit inNote=true, else its carried-over paragraphs
+    // lose the indent and run to the full margin. Scan earlier pages' raw text (heading resets, entry sets).
+    let inNote = false;
+    for (let pi = 0; pi < currentPage; pi++) {
+      for (const para of (pages[pi]?.text || '').split(/\n{2,}/)) {
+        const lead = (para.match(/^[\u0000-\u001F\uE000-\uF8FF\s]*/u) || [''])[0];
+        const bare = para.slice(lead.length);
+        if (!bare.trim()) continue;
+        if (lead.includes(String.fromCharCode(0xE013))) { inNote = false; continue; }
+        if (NOTE_LINK_RE.test(bare) || (isNotesChapter && NOTE_NUM_RE.test(bare))) { inNote = true; continue; }
+      }
+    }
+    for (let i = 0; i < paragraphData.length; i++) {
+      const p = paragraphData[i];
+      const ht = (p.original || []).join(' ').replace(/\s+/g, ' ').trim();
+      const isHead = p.role === 'heading' && !(ht.length > 90 && /[.!?\u3002\uff01\uff1f]["'\u201d\u2019)\]]?$/u.test(ht));
+      if (isHead) { inNote = false; continue; }
+      const isEntry = paraStartsFootnoteEntry(p)
+        || (isNotesChapter && !isNotesSectionHeadingParagraph(p.original) && NOTE_NUM_RE.test((p.original || []).join(' ').replace(/^[\s\u00a0]+/u, '')));
+      if (isEntry) { inNote = true; continue; }
+      if (inNote && (p.original || []).join('').trim()) set.add(i);
+    }
+    return set;
+  })();
   const plainParagraphStyleFor = (sentences: string[], align?: 'right' | 'center' | 'left', flushFirstLine?: boolean): React.CSSProperties => {
     const text = sentences.join(' ').replace(/\s+/g, ' ').trim();
     // The source is BLOCK-style (paragraphs flush, separated by space — detected at extraction): render
