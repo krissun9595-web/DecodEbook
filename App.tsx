@@ -3071,6 +3071,20 @@ const App: React.FC = () => {
           for (const h of loneBullets) if (h !== g && !dropBullet.has(h) && nearGlyph(h, g)) dropBullet.add(h);
         }
         if (dropBullet.size) { const kept = glyphs.filter(g => !dropBullet.has(g)); glyphs.length = 0; glyphs.push(...kept); }
+        // De-duplicate list NUMBERS the same way: some tagged-PDF exports draw a numbered item's marker
+        // TWICE at the identical x/y — once inside the item's text run ("1. Validate identity…") and once
+        // as a standalone label ("1.") — so the reflow appends the stray number to the item ("…verified1.",
+        // Agentic Mesh p65). Drop a lone "N."/"N)" (number/roman/letter) marker when a longer run at the
+        // SAME spot already OPENS with that exact marker. A normal list (marker glyph then a SEPARATE text
+        // glyph) is untouched: the text run starts with the word, not the marker, so startsWith fails.
+        const MARKER_DUP_RE = /^(?:\d{1,3}|[ivxlcdm]{1,4}|[a-z])[.)]$/iu;
+        const loneMarkers = glyphs.filter(g => MARKER_DUP_RE.test(g.str.trim()));
+        const dropMarker = new Set<PdfGlyph>();
+        for (const g of loneMarkers) {
+          const m = g.str.trim();
+          if (glyphs.some(h => h !== g && nearGlyph(h, g) && h.str.trim().length > m.length && h.str.trim().startsWith(m))) dropMarker.add(g);
+        }
+        if (dropMarker.size) { const kept = glyphs.filter(g => !dropMarker.has(g)); glyphs.length = 0; glyphs.push(...kept); }
         // pdf.js can return the citation and the URL on a line as ONE text item ("Equipment
         // Corporation, 1963), 10, http://s3data…"), and the loose box links the whole item — so
         // the scheme ends up MID-glyph. Split such a glyph at the scheme so the URL
@@ -4105,7 +4119,7 @@ const App: React.FC = () => {
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
       type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number };
-      const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number }[] = [];
+      const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number; paraLeftMargin: number }[] = [];
 
       // ── Unify TOC indent tiers across the whole run ──
       // A multi-page TOC carries its "Contents" heading only on the FIRST page; continuation pages are
@@ -4207,7 +4221,7 @@ const App: React.FC = () => {
                 role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '',
               };
             });
-          pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
+          pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft, paraLeftMargin });
           continue;
         }
 
@@ -4283,7 +4297,7 @@ const App: React.FC = () => {
           const isTwoColumnListPage = pageTwoColumn;
           const pageText = (isTwoColumnListPage ? '\uE017' : '') + formattedLines.join('\n').replace(/^[ \t\r\n]+/u, '').replace(/[ \t\r\n]+$/u, '');
           // A list page is never a seam-join candidate (its entries are their own lines).
-          pageEmit.push({ pageNum, blocks: pageText ? [{ text: pageText, role: 'list', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }] : [], rightMargin, bodyLeft });
+          pageEmit.push({ pageNum, blocks: pageText ? [{ text: pageText, role: 'list', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }] : [], rightMargin, bodyLeft, paraLeftMargin });
           continue;
         }
 
@@ -4403,7 +4417,7 @@ const App: React.FC = () => {
             } else {
               outBlocks = bodyToBlocks(dispLines);
             }
-            pageEmit.push({ pageNum, blocks: outBlocks, rightMargin, bodyLeft });
+            pageEmit.push({ pageNum, blocks: outBlocks, rightMargin, bodyLeft, paraLeftMargin });
             continue;
           }
         }
@@ -4479,6 +4493,12 @@ const App: React.FC = () => {
           // "**CASSANDRA: …**" (the dialogue is set bold), and the leading "**" trips labelStart's
           // first-character anchor, so every turn missed and the dialogue emitted as one block.
           const labeled = margin.filter(l => labelStart.test(l.text.replace(/[*_~]/gu, '').trim())).length;
+          // A labeled hanging list has SHORT entries (a name/field + a turn/value). When the indented lines
+          // vastly outnumber the labels, each "entry" is really a TITLE followed by a multi-line block
+          // paragraph — a definition list (Agentic Mesh "Layer N: …" + its description, ind/label ≈ 3.7–5.5),
+          // NOT a hanging list (dialogue ≈ 1.3, CIP ≈ 1–2 measured). Excluding it lets the group loop's
+          // justified block-split separate the flush term from its indented description instead of joining them.
+          if (indented.length > margin.length * 3) return false;
           return labeled >= 2 && labeled >= margin.length / 2;
         };
 
@@ -4764,6 +4784,13 @@ const App: React.FC = () => {
               // sentence even at the SAME tier as the previous item — the isIndentedBodyLine "deeper than
               // previous" guard would otherwise merge consecutive items (MYCIN "1.…" / "2.…" at x=133).
               const currentOpensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])(?:\s|$)/u.test(current.text.replace(/^[*_~]+/u, '').trimStart());
+              // The PREVIOUS line also opens with a list marker at (about) the same tier: two adjacent
+              // marker lines are consecutive list items, so the current one starts a new item EVEN WHEN the
+              // previous item ended with no terminal punctuation (Agentic Mesh p65: "…verified" / "2. Confirm
+              // …" — the items carry no full stops, and on this un-justified page prevEndsShort can't split
+              // them either, so without this every item after the first merges into item 1).
+              const previousOpensListMarker = /^(?:IF:|THEN:|\d{1,2}[.)]|(?:[a-z]|[ivxlcdm]{2,7})[.)])(?:\s|$)/u.test(previous.text.replace(/^[*_~]+/u, '').trimStart());
+              const consecutiveListItems = currentOpensListMarker && previousOpensListMarker && Math.abs(current.x - previous.x) < bodyFont;
               // A FONT-SIZE change is a block boundary: a differently-sized line belongs to a different
               // structural element (a figure TITLE above its subtitle, a subhead above body). Without this
               // the group loop merges them, and the per-block size tier washes out to the mode (Singularity
@@ -4788,11 +4815,42 @@ const App: React.FC = () => {
               // used to break a colon-introduced sub-list before its first item.
               const introducesListItem = currentOpensListMarker
                 && (endsWithTerminalPunctuation(previous.text) || /:$/u.test(previous.text.trim().replace(/[*_~]+$/u, '')));
+              // A SET-OFF block (an indented, smaller-font example/quote under an intro line) is a block
+              // boundary even when NEITHER signal alone crosses its threshold: the font shrink is sub-2pt
+              // (below sizeChanged) AND the intro ends in a colon (not terminal punctuation, so the indent
+              // rule below never fires) → the group loop folds the block into the intro (Agentic Mesh p65
+              // "I want to open…" / "You are a customer service AI…" merged into their lead-ins, losing
+              // indent + size). Split when the line is BOTH clearly indented deeper than the block's start
+              // AND set in a smaller cap-height. Same-size first-line indents (ratio ~1) and drop caps
+              // (larger) don't qualify, so normal prose and initials are untouched.
+              const introEndsColon = /:$/u.test(previous.text.trim().replace(/[*_~"'”’)\]]+$/u, ''));
+              const setOffBlock = bodyFont > 0
+                && introEndsColon
+                && current.x > previous.x + bodyFont * 0.9
+                && _chOf(current) <= _chOf(previous) * 0.95
+                && current.text.replace(/[\s*_~`]/gu, '').length >= 4 // a real block, not a stray math/superscript fragment
+                && !isDropInitial(current);
+              // LEAVING a set-off block: the previous line was the indented, smaller-font block and the
+              // current line returns to the body margin at body size (Agentic Mesh p65: the "You are a
+              // customer service AI…" example → "In a single instruction, the LLM is expected to:"). The
+              // mirror of setOffBlock — needed because the block's last line ends with a full stop (not a
+              // colon) and the page isn't justified, so neither setOffBlock nor prevEndsShort catches the
+              // exit and the following body line merges into the example.
+              const exitSetOffBlock = bodyFont > 0
+                && group[0].x > current.x + bodyFont * 0.9        // the whole current group is an indented block
+                && _chOf(group[0]) < bodyFont * 0.95              // …set BELOW body size (a genuine set-off block)
+                && _chOf(group[0]) <= _chOf(current) * 0.95       // …and smaller than the current line
+                && _chOf(current) >= bodyFont * 0.95              // current is back at body size
+                && paraLeftMargin > 0 && Math.abs(current.x - paraLeftMargin) <= bodyFont * 0.6 // and at the body margin
+                && !isDropInitial(current);
               endsBlock =
                 bothShort ||
                 prevEndsShort ||
                 labelPair ||
                 sizeChanged ||
+                setOffBlock ||
+                exitSetOffBlock ||
+                consecutiveListItems ||
                 startsFootnoteEntry(current) ||
                 startsBulletLine(current.text) ||
                 introducesListItem ||
@@ -4977,7 +5035,12 @@ const App: React.FC = () => {
             // firstLineExtra — the two were inconsistent before.
             const firstLineFlush = !groupIsHeading && !isRightAttribution && blockNbsp === 0 && bodyFont > 0 && (
                  isSizedHead
-              || opensListMarker
+              // A top-level list marker is flush at the margin — UNLESS the source sets the item as a
+              // first-line-INDENTED paragraph (the marker sits deeper than its own wrapped lines, e.g. the
+              // Sovereign "1. Direct costs…" enumeration: "1." at x=90, wraps back to the margin x=72).
+              // Forcing flush there wrongly HANGS it (marker at margin, wraps indented) — the opposite of the
+              // source. Keep flush only when the marker is NOT first-line-indented (a genuine hanging list).
+              || (opensListMarker && !(group.length >= 2 && firstLineExtra > bodyFont * 0.6))
               || (group.length >= 2 && firstLineExtra <= bodyFont * 0.6)
               || (group.length < 2 && (group[0].x <= paraLeftMargin + bodyFont * 0.6 || group[0].x <= sectionBodyLeft + bodyFont * 0.6))
             );
@@ -4998,6 +5061,12 @@ const App: React.FC = () => {
             // carries U+E022 so the reader gives it the full set-off top margin; a quote that FLOWS from its
             // lead-in (e.g. a colon-introduced definition, ~1.5x) omits it and gets only a moderate gap.
             const setoffAbove = bodyLineGap > 0 && gapAbove >= bodyLineGap * 1.75;
+            // MEASURED paragraph gap (ANY block, not just block-quotes): reproduce the source's inter-
+            // paragraph spacing from the real gap-above instead of assuming. First-line-indent books
+            // (Elon 0.2%, Sovereign 0.5% of lines) have ~1.0x gaps → nothing emitted; a block-spaced book
+            // (Agentic 13.5%) has >=1.35x gaps → the reader adds a small top margin. Headings keep their own
+            // spacing (excluded). U+E028 = a modest measured gap above.
+            const measuredGapAbove = !groupIsHeading && bodyLineGap > 0 && gapAbove >= bodyLineGap * 1.35;
             // Relative font-size TIER: the block's dominant line height vs the document body size. Encodes
             // the source's size hierarchy (figure title/subtitle, sub-heads, captions, metadata) so the
             // reader can reproduce it as an em-multiple of the user's base size — orthogonal to bold/heading/
@@ -5019,7 +5088,7 @@ const App: React.FC = () => {
               && blockNbsp === 0 && rightMargin > 0 && group.length >= 2
               && group.slice(0, -1).every(l => (rightMargin - l.rightX) > bodyFont * 0.9);
             blocks.push({
-              text: (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
+              text: (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,
@@ -5150,7 +5219,7 @@ const App: React.FC = () => {
             }
           }
         }
-        pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft });
+        pageEmit.push({ pageNum, blocks, rightMargin, bodyLeft, paraLeftMargin });
       }
 
       // Geometry-driven cross-page join: a paragraph that runs off the bottom of one page
@@ -5162,7 +5231,7 @@ const App: React.FC = () => {
       // page marker inline (stripped at display); otherwise the page starts a new block.
       let prevBlock: EmitBlock | null = null;
       let prevRightMargin = 0;
-      for (const { pageNum, blocks, rightMargin, bodyLeft } of pageEmit) {
+      for (const { pageNum, blocks, rightMargin, bodyLeft, paraLeftMargin } of pageEmit) {
         if (blocks.length === 0) continue;
         const marker = `[[PAGE ${pageNum}]]`;
         const first = blocks[0];
@@ -5233,7 +5302,11 @@ const App: React.FC = () => {
             // couldn't be told from a block-indented line, so it got a leading block NBSP. The continuation
             // here opens at the body margin (flush), proving it's a first-line indent, so drop that NBSP from
             // the previous page's tail — the reader re-applies its own default first-line indent.
-            const _prevTail = first.firstX <= bodyLeft + 8
+            // Use the TRUE margin (paraLeftMargin), NOT bodyLeft: on a definition-list page the indented
+            // descriptions OUTNUMBER the flush terms so bodyLeft inverts to the description tier (x=90) and the
+            // "opens at the margin" test wrongly fired for a block-INDENTED page-spanning desc (Agentic "Layer 3"),
+            // stripping its indent NBSP → a spurious first-line indent. paraLeftMargin stays at the real margin (72).
+            const _prevTail = first.firstX <= paraLeftMargin + 8
               ? pages[pages.length - 1].replace(/^((?:\[\[PAGE\s+\d+\]\]\n)?[\uE010-\uE019\uE01B-\uE023]*)\u00A0+(?=\S)/u, '$1')
               : pages[pages.length - 1];
             pages[pages.length - 1] = `${_prevTail} ${marker} ${unit.block.text.replace(/^[  \uE018\uE01B-\uE01F]+/u, '')}`;

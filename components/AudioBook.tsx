@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v116-calc-list-hangs';
+const CHAPTER_TEXT_CACHE_VERSION = 'v117-measured-para-gap';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -234,6 +234,7 @@ interface ParagraphData {
     flushFirstLine?: boolean;
     blockQuote?: boolean;
     setoffAbove?: boolean;
+    paraGap?: boolean;
     setoffBelow?: boolean;
     // Whole-paragraph ITALIC (U+E026) — an epigraph/quote the source sets italic (e.g. `blockquote p{italic}`,
     // a descendant selector). Applied to the whole paragraph so it survives sentence splitting; inner <em>
@@ -583,7 +584,7 @@ const parseLeadingNoteMarker = (
   // Strip leading block sentinels (size tier / flush-first-line / align) as well as whitespace: a footnote
   // entry now opens with its shrink-size sentinel ("<E01B><E018>[fn2](#pdffn…)"), and a bare trimStart left
   // those PUA chars in front of the "[" so the ^-anchored marker match failed and note navigation missed.
-  const clean = value.replace(/^[\s\u00A0\uE010-\uE023]+/u, '');
+  const clean = value.replace(/^[\s\u00A0\uE010-\uE023\uE028]+/u, '');
   const linkedMatch = clean.match(new RegExp(`^\\[(${noteMarkerSourceFor(marker)})\\]\\(([^)]+)\\)(?:[.)])?(?:\\s+|$)`, 'iu'));
   if (linkedMatch) {
     return {
@@ -1194,7 +1195,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[--]+/);
+    const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | 'left' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
@@ -1207,6 +1208,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E022 — the source has a genuine SET-OFF gap above this block-quote (>=1.75x the line gap):
     // a real epigraph/callout. Absent = the quote flows from its lead-in (e.g. a colon-introduced definition).
     const setoffAbove = ctrlChars.includes('');
+    const paraGap = ctrlChars.includes('\uE028'); // U+E028 — measured modest paragraph gap above
     // U+E027 \u2014 the source gives this block a set-off gap BELOW (its own margin-bottom \u2014 a labelled list's
     // closing THEN: label). Reproduced as a bottom margin so the block sets off from the following prose.
     const setoffBelow = ctrlChars.includes('');
@@ -1226,7 +1228,7 @@ const buildPageSentenceData = (pageText: string): {
     const sizeStripped = stripInlineFormatSyntax(rawPText).replace(/^[\s\u00a0]+/u, '');
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026\uE027]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE028]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1258,7 +1260,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, verse: isVerse, italic });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, verse: isVerse, italic });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -1631,7 +1633,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE023-\uE026\uE200-\uE5E8]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023-\uE028\uE200-\uE5E8]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -4806,7 +4808,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // e.g. a labelled list's IF: (margin-top) and THEN: (margin-bottom). Gated to a rule-item
                         // LABEL so blockquotes (which also carry E022) keep their own spacing branch below.
                         const _sourceGap = [(isRuleItem && para.setoffAbove && lineIdx === 0) ? 'mt-5' : '', (isRuleItem && para.setoffBelow && lineIdx === 0) ? 'mb-5' : ''].filter(Boolean).join(' ');
-                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? '' : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : paragraphSpacingClassFor(lineText));
+                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? ((para.paraGap && lineIdx === 0) ? 'mt-2' : '') : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : ((para.paraGap && lineIdx === 0) && (paragraphSpacingClassFor(lineText) === '' || paragraphSpacingClassFor(lineText) === 'mt-5') ? 'mt-2'  // a MEASURED source gap (E028) is authoritative — override a spurious citation-rule mt-5 (the           // "Agent … framework components:" section intro matched it) so it stays consistent with the layer           // terms' mt-2; keep genuine bigger psf gaps (subtitle mt-8, notes mt-10) untouched.
+                        : (paragraphSpacingClassFor(lineText) || '')));
                         // Single view: the reading column is a max-w-3xl child CENTERED in the w-full row
                         // (justify-center). justify-start pins that 768px child to the page's LEFT edge —
                         // correct ONLY for an index chapter, whose child is w-full (fills, justify moot). Any
