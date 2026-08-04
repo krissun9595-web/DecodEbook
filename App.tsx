@@ -2351,7 +2351,7 @@ const App: React.FC = () => {
   };
 
   type ExtractedFigure = { id: string; page: number; wPts: number; hPts: number; wPx: number; hPx: number; mimeType: string; colFrac?: number; blob: Blob };
-  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string; figures: ExtractedFigure[]; justified?: boolean; firstLineIndent?: boolean }> => {
+  const processPdf = async (file: File): Promise<{ content: string; outline: PdfOutlineItem[]; title?: string; figures: ExtractedFigure[]; justified?: boolean; firstLineIndent?: boolean; firstLineIndentEm?: number; hangs?: { bullet?: number; list?: number; index?: number } }> => {
     try {
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
@@ -2587,8 +2587,12 @@ const App: React.FC = () => {
       // the reader should show the marker the book actually printed ("fn3"), not a synthesized "3".
       const markerLabelOf = (raw: string): string => {
         const trimmed = raw.replace(/^[[(\s]+/u, '').replace(/[\].)\s]+$/u, '');
-        const fnPrefix = /^fn\s*/iu.exec(trimmed)?.[0] ? 'fn' : '';
-        const bare = trimmed.replace(/^fn\s*/iu, '');
+        // This book's chapter-end note entries drop the "f" for double digits ("n10"–"n14") while their
+        // body refs keep it ("fn10") — an OCR artifact. Accept a leading "n" as an "fn" alias and NORMALISE
+        // to "fn…" so the entry marker pairs with its body ref (both resolve as "fn10"). No roman marker
+        // starts with "n" (ivxlcdm), and a bare number takes no prefix, so this is a safe widening.
+        const fnPrefix = /^f?n\s*/iu.exec(trimmed)?.[0] ? 'fn' : '';
+        const bare = trimmed.replace(/^f?n\s*/iu, '');
         if (/^\d{1,3}$/.test(bare)) return Number(bare) >= 1 ? `${fnPrefix}${bare}` : ''; // footnotes are 1-indexed
         if (bare.length >= 1 && ROMAN_MARKER_RE.test(bare)) { const v = romanValue(bare); if (v >= 1 && v <= 40) return `${fnPrefix}${bare.toUpperCase()}`; }
         return '';
@@ -2716,7 +2720,17 @@ const App: React.FC = () => {
         const gotoLinks: { rect: number[]; key: string }[] = [];
         for (const a of (annotations as any[]) || []) {
           if (a?.subtype !== 'Link' || !a.rect) continue;
-          if (a.url) { uriLinks.push({ rect: a.rect, url: a.url }); continue; }
+          if (a.url) {
+            // calibre rewrites some in-chapter footnote refs to a fake-domain anchor
+            // ("https://calibre-pdf-anchor.a/#aN") whose named dest doesn't exist in the PDF (0 named dests),
+            // so it can't resolve and was rendered as a DEAD external URL (full underlined link, no
+            // superscript, navigates to nowhere). Route it as a KEYLESS footnote ref (#pdfnote-) so the reader
+            // renders the marker ("fn10") as a superscript and resolves it to the matching in-chapter entry by
+            // pattern — not the broken URL.
+            const _calM = /^https?:\/\/calibre-pdf-anchor\.[^/]*\/#(\S+)/iu.exec(a.url);
+            if (_calM) { gotoLinks.push({ rect: a.rect, key: `pdfnote-cal-${_calM[1]}` }); continue; }
+            uriLinks.push({ rect: a.rect, url: a.url }); continue;
+          }
           if (!a.dest) continue;
           try {
             const dest = typeof a.dest === 'string' ? await pdf.getDestination(a.dest) : a.dest;
@@ -3556,7 +3570,13 @@ const App: React.FC = () => {
                 i = j; continue;
               }
               const label = markerLabelOf(txt);
-              const markerLike = destPage > pageNum && label !== '';
+              // A calibre fake-anchor footnote ref (routed to a KEYLESS "#pdfnote-cal-…" key — its
+              // named dest doesn't exist so it carries no dest page) is still a body marker. Without
+              // this it fails the `destPage > pageNum` gate, falls through to the clear-noteKey else,
+              // and renders as flattened plain text ("fn10" in the body). Treat it as markerLike so it
+              // emits a clickable superscript ref the reader resolves to the in-chapter note by pattern.
+              const isKeylessNote = /^pdfnote-/.test(key);
+              const markerLike = (destPage > pageNum || isKeylessNote) && label !== '';
               if (markerLike) { markerEmit[i] = { label, key }; for (let k = i + 1; k < j; k++) skip[k] = true; }
               else if (label === '' && destPage > 0) {
                 // A go-to link whose text is PROSE (not a bare footnote number/Roman) is a
@@ -3707,11 +3727,34 @@ const App: React.FC = () => {
               // whose separator is just a space ("fn3 The journey…") — the latter is how this
               // book labels its chapter-end footnote entries.
               noteLine.text = noteLine.text.replace(
-                /^(\s*)(fn\s*(?:[ivxlcdm]{1,4}|\d{1,3})|(?:[ivxlcdm]{1,4}|\d{1,3})[.)])\s*/iu,
+                /^(\s*)(f?n\s*(?:[ivxlcdm]{1,4}|\d{1,3})|(?:[ivxlcdm]{1,4}|\d{1,3})[.)])\s*/iu,
                 (m, sp, marker) => markerLabelOf(marker) ? `${sp}[${markerLabelOf(marker)}](#${target.key}) ` : m
               );
             }
           }
+        }
+
+        // Phase B′: orphaned chapter-end note entries. When a body ref is a calibre fake-anchor
+        // (keyless, registers no forward target), Phase B never links/splits its entry, so it merges
+        // into the previous note as run-on prose (Elon "n10"/"n11" glued into fn9). But such an entry
+        // still carries a BACKWARD go-to link (entry marker → body ref) — a reliable "this line is a
+        // note entry" signal that prose and body number-lists lack. Rewrite the leading marker of any
+        // such not-yet-anchored entry into a KEYLESS "#pdfnote-back" marker so startsFootnoteEntry
+        // splits it and the reader hangs + pattern-resolves it exactly like a forward-anchored entry.
+        for (const l of links) {
+          if (!l.key) continue;
+          const dp = Number(l.key.match(/^pdffn-p(\d+)-/)?.[1] || 0);
+          if (dp === 0 || dp >= pageNum) continue; // only a BACKWARD (entry → earlier body) note link
+          const [lx1, ly1, , ly2] = l.rect;
+          let noteLine: { y: number; x: number; text: string } | null = null;
+          for (const line of pageLines) {
+            if (line.y >= ly1 - 2 && line.y <= ly2 + 2 && line.x <= lx1 + 6 && line.x >= lx1 - 24) { noteLine = line; break; }
+          }
+          if (!noteLine || /^\s*\[/.test(noteLine.text)) continue; // no line, or Phase B already anchored it
+          noteLine.text = noteLine.text.replace(
+            /^(\s*)(f?n\s*(?:[ivxlcdm]{1,4}|\d{1,3})|(?:[ivxlcdm]{1,4}|\d{1,3})[.)])\s*/iu,
+            (m, sp, marker) => markerLabelOf(marker) ? `${sp}[${markerLabelOf(marker)}](#pdfnote-back-p${pageNum}-y${Math.round(noteLine!.y)}) ` : m
+          );
         }
 
         const bodyLeft = mostFrequentLeft(pageLines.map(line => line.x));
@@ -4052,6 +4095,11 @@ const App: React.FC = () => {
       // its fixed first-line indent on block-style sources (which the source doesn't have). Conservative:
       // only decided with enough samples, else undefined → reader keeps its default.
       let bodyBlkTotal = 0, bodyBlkFirstLineIndented = 0;
+      const firstLineIndentEms: number[] = []; // per-block first-line indent (em vs bodyFont) → source magnitude
+      // Per-TYPE hanging-indent magnitudes (em vs bodyFont): a multi-line hanging item's continuation
+      // lines sit one hang deeper than its marker. Sampled per list type so the reader reproduces the
+      // printed hang (bullet vs numbered vs index) instead of fixed 1em/1.5em/1em constants.
+      const bulletHangEms: number[] = [], listHangEms: number[] = [], indexHangEms: number[] = [];
 
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
@@ -4776,6 +4824,27 @@ const App: React.FC = () => {
             else text = `${text} ${nxt}`;
           }
           text = text.replace(/\s+/g, ' ').trim();
+          // Sample this block's HANGING-INDENT magnitude by type (see the collector decls). Only a CLEAN
+          // hang qualifies: ≥2 lines, the marker (line 0) is the group's leftmost, and every continuation
+          // sits at ONE consistent deeper tier — so a normal wrapped paragraph (continuations at the SAME
+          // margin, hang≈0) and scattered geometry are excluded. Classified from the leading marker; an
+          // entry with no marker on a list page is an index entry.
+          if (group.length >= 2 && bodyFont > 0 && !groupIsHeading) {
+            const g0x = group[0].x;
+            const contXs = group.slice(1).map(l => l.x);
+            const contMin = Math.min(...contXs);
+            // Divide by the item's OWN font (median line height), not bodyFont, so the em is size-invariant
+            // — a smaller-set list (e.g. a back-of-book index) yields the same em applied against its own
+            // rendered size, reproducing the printed hang instead of a body-relative one that reads short.
+            const blkH = [...group.map(l => l.h)].sort((a, b) => a - b)[Math.floor(group.length / 2)] || bodyFont;
+            const hangEm = (contMin - g0x) / blkH;
+            if (g0x <= contMin + 1 && hangEm >= 0.4 && hangEm <= 3.5 && Math.max(...contXs) - contMin <= blkH) {
+              const lead = text.replace(/^[*_~`\s ]+/u, '');
+              if (/^[•‣▪●◦⁃∙○■]/u.test(lead)) bulletHangEms.push(hangEm);
+              else if (/^\[?(?:\d{1,2}|[ivxlcdm]{1,4}|[a-z])[.)\]]/iu.test(lead)) listHangEms.push(hangEm);
+              else if (isListPage) indexHangEms.push(hangEm);
+            }
+          }
           // De-hyphenate a word split across a line break even when LINK markup separates the halves —
           // the hyphenated word was a hyperlink, so it came out "esti‐](url) [mates](url)". First, when
           // BOTH halves link to the SAME url, MERGE them into one span so the hover/underline stays
@@ -4831,7 +4900,7 @@ const App: React.FC = () => {
             // first-line indent. Exclude blocks that sit deeper than the margin (blockLeftPx > ~0.9em).
             if (pageJustified && !groupIsHeading && !isRightAttribution && blockLeftPx <= bodyFont * 0.9) {
               bodyBlkTotal++;
-              if (firstLineExtra > bodyFont * 0.6) bodyBlkFirstLineIndented++;
+              if (firstLineExtra > bodyFont * 0.6) { bodyBlkFirstLineIndented++; if (bodyFont > 0) firstLineIndentEms.push(firstLineExtra / bodyFont); }
             }
             // A block-indented list ITEM (a numbered/lettered rule condition "1. …", an "IF:"/"THEN:"
             // label) can be a SINGLE line — the group.length>=2 guard (which stops a lone first-line-
@@ -5405,7 +5474,25 @@ const App: React.FC = () => {
       const sourceFirstLineIndent = bodyBlkTotal >= 20
         ? bodyBlkFirstLineIndented / bodyBlkTotal > 0.4
         : undefined;
-      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified, firstLineIndent: sourceFirstLineIndent };
+      // Calculated first-line-indent MAGNITUDE (em, vs body font): the MEDIAN measured indent so the
+      // reader reproduces the printed indent instead of a fixed 1.75em (this book prints 1.0em — the
+      // reader default read ~2x too deep, most visibly on the small chapter-end notes). Applied as em by
+      // the reader, one value scales to body AND note text. Clamped to a sane band; undefined (too few
+      // samples) → reader keeps its 1.75em default.
+      const _medEm = (arr: number[], lo: number, hi: number, min: number): number | undefined => {
+        const s = [...arr].sort((a, b) => a - b);
+        return s.length >= min ? Math.min(hi, Math.max(lo, s[Math.floor(s.length / 2)])) : undefined;
+      };
+      const sourceFirstLineIndentEm = _medEm(firstLineIndentEms, 0.6, 2.5, 8);
+      // Per-type hanging-indent magnitudes (median measured, clamped, enough samples) — undefined falls
+      // back to the reader's constant (bullet 1em, numbered 1.5em, index 1em).
+      const _hangs = {
+        bullet: _medEm(bulletHangEms, 0.4, 2.0, 5),
+        list: _medEm(listHangEms, 0.6, 3.0, 6),
+        index: _medEm(indexHangEms, 0.4, 2.5, 6),
+      };
+      const sourceHangs = (_hangs.bullet ?? _hangs.list ?? _hangs.index) !== undefined ? _hangs : undefined;
+      return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified, firstLineIndent: sourceFirstLineIndent, firstLineIndentEm: sourceFirstLineIndentEm, hangs: sourceHangs };
     } catch (e) {
       console.error('PDF processing error', e);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
@@ -5435,8 +5522,8 @@ const App: React.FC = () => {
         context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
         figures = f.length ? f : undefined;
       } else {
-        const { content, outline, title, figures: f, justified, firstLineIndent } = await processPdf(file);
-        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'pdf', sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION, pdfOutline: outline, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
+        const { content, outline, title, figures: f, justified, firstLineIndent, firstLineIndentEm, hangs } = await processPdf(file);
+        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'pdf', sourceExtractorVersion: PDF_TEXT_EXTRACTION_VERSION, pdfOutline: outline, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent, sourceFirstLineIndentEm: firstLineIndentEm, sourceHangs: hangs };
         figures = f.length ? f : undefined;
       }
       if (figures?.length) context = { ...context, pdfFigures: figures.map(({ blob, ...m }) => m) };
@@ -5663,7 +5750,7 @@ const App: React.FC = () => {
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
        try {
-         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified, firstLineIndent } = await processPdf(file);
+         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified, firstLineIndent, firstLineIndentEm, hangs } = await processPdf(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -5674,6 +5761,8 @@ const App: React.FC = () => {
             docTitle,
             sourceJustified: justified,
             sourceFirstLineIndent: firstLineIndent,
+            sourceFirstLineIndentEm: firstLineIndentEm,
+            sourceHangs: hangs,
          }, figures);
        } catch (err: any) {
          setError(err.message || "Failed to process PDF.");

@@ -148,6 +148,12 @@ export interface FileContext {
   sourceFirstLineIndent?: boolean; // false when the source is BLOCK-style (paragraphs flush, no
   //                            first-line indent — many technical books); the reader then renders prose
   //                            flush instead of forcing its default first-line indent. undefined → default.
+  sourceFirstLineIndentEm?: number; // measured first-line-indent MAGNITUDE (em vs body font); the reader
+  //                            uses it in place of its fixed 1.75em so the printed indent is reproduced
+  //                            (as em it scales to body AND the smaller chapter-end notes). undefined → 1.75.
+  sourceHangs?: { bullet?: number; list?: number; index?: number }; // measured hanging-indent magnitudes
+  //                            (em vs body font) per list type; reader uses each in place of its fixed
+  //                            bullet 1em / numbered 1.5em / index 1em. Any missing member → that constant.
 }
 
 export interface NotebookItem {

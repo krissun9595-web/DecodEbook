@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v114-toc-number-hang';
+const CHAPTER_TEXT_CACHE_VERSION = 'v116-calc-list-hangs';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -3276,7 +3276,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const sizeEmPx = (em?: number) => (em ? `${em * bodyPx}px` : undefined);
   const noIndentStyle: React.CSSProperties = { textIndent: 0, paddingLeft: 0, marginLeft: 0 };
   const noTextIndentStyle: React.CSSProperties = { textIndent: 0, marginLeft: 0 };
-  const bodyParagraphStyle: React.CSSProperties = { textIndent: '1.75em', paddingLeft: 0, marginLeft: 0 };
+  // First-line indent = the source's MEASURED magnitude (em, from extraction) when available, else the
+  // 1.75em default. Applied as em so it scales with each paragraph's font-size — body and the smaller
+  // chapter-end notes both reproduce the printed indent (this book prints 1.0em; 1.75em read ~2x deep).
+  const firstLineIndentEm = fileContext.sourceFirstLineIndentEm ?? 1.75;
+  const bodyParagraphStyle: React.CSSProperties = { textIndent: `${firstLineIndentEm}em`, paddingLeft: 0, marginLeft: 0 };
+  // Per-type hanging-indent magnitudes measured from the source (em, size-invariant), falling back to the
+  // reader's original constants when the book gave too few samples to measure a given list type.
+  const bulletHangEm = fileContext.sourceHangs?.bullet ?? 1;
+  const listHangEm = fileContext.sourceHangs?.list ?? 1.5;
+  const indexHangEm = fileContext.sourceHangs?.index ?? 1;
   const sentenceHoverClass = 'hover:text-white hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.45)] cursor-pointer';
   const normalizeSentenceForMatch = (value: string): string => stripInlineFormatSyntax(value).replace(/\s+/g, ' ').trim();
   const isPlainSubtitleParagraph = (sentences: string[]): boolean => {
@@ -4628,7 +4637,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // by `hang` and pad the block by `hang`, so the entry's opening stays at its computed
                   // indent while continuation lines hang under it. Skip the "INDEX" heading.
                   const indexHangStyle: React.CSSProperties | undefined =
-                    isIndexChapter && !isContentsChapter && !isHeadingRole && !tocNumMarker ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
+                    isIndexChapter && !isContentsChapter && !isHeadingRole && !tocNumMarker ? { textIndent: `-${indexHangEm}em`, paddingLeft: `${indexHangEm}em` } : undefined;
                   // A bullet-list item ("• Simon Torrance …") arrives as a plain body paragraph whose
                   // text opens with a bullet glyph — role='list' is reserved for whole list PAGES
                   // (index/TOC), not for individual bullets embedded in prose. The source indents such
@@ -4639,7 +4648,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     && /^[•‣▪●◦⁃∙○■]/u.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/^[\s ]+/u, ''));
                   const bulletBlockStyle = isBulletParagraph ? { paddingLeft: '1.5em' } : undefined;
                   const bulletHangStyle: React.CSSProperties | undefined =
-                    isBulletParagraph ? { textIndent: '-1em', paddingLeft: '1em' } : undefined;
+                    isBulletParagraph ? { textIndent: `-${bulletHangEm}em`, paddingLeft: `${bulletHangEm}em` } : undefined;
                   // A block-indented rule / numbered-list item ("1. …", "IF:", "THEN:") hangs: the marker
                   // or label sits at the block's left margin and wrapped lines align under the text. Gated
                   // on para.indent>0 so it only fires inside a block-indented rule (a normal paragraph that
@@ -4658,7 +4667,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // value bodyParagraphStyle applies) as a uniform list-start offset so top and sub keep
                   // their geometric gap while the list as a whole aligns with the paragraph indent. A block-
                   // style book (no first-line indent) keeps its lists flush at the margin (offset 0).
-                  const listStartOffsetEm = fileContext.sourceFirstLineIndent ? 1.75 : 0;
+                  const listStartOffsetEm = fileContext.sourceFirstLineIndent ? firstLineIndentEm : 0;
                   // A RIGHT-ALIGNED marker gutter (para.rightMarker, U+E020): the source right-tabs the marker
                   // so the dots align while the marker left edges vary by width (roman i./ii./iii./iv.). Render
                   // the marker in a fixed-width right-aligned gutter (below) and pad the body past it, instead of
@@ -4678,7 +4687,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     !isRuleItem ? undefined
                       : para.rightMarker
                         ? { textIndent: 0, paddingLeft: `calc(2.5em + ${ruleGutterEm}em)` }
-                        : { textIndent: '-1.5em', paddingLeft: `calc(${blockPadEm}em + 1.5em + ${listStartOffsetEm}em)` };
+                        : { textIndent: `-${listHangEm}em`, paddingLeft: `calc(${blockPadEm}em + ${listHangEm}em + ${listStartOffsetEm}em)` };
                   // A NOTE entry HANGS: the "N" marker sits at the left margin and continuation lines
                   // indent under the citation (the source outdents the marker: marker x=89 < text x=103).
                   // The reader was instead applying its first-line indent inconsistently (some notes flush,
@@ -4696,6 +4705,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // a set-off only BEFORE the first one (the gap the source puts between body and the section).
                   const isFnEntry = !isHeadingRole && paraStartsFootnoteEntry(para);
                   const prevFnEntry = paraStartsFootnoteEntry(paragraphData[pIdx - 1]);
+                  // Note hang = 1.5em: the marker sits at the page margin, the note body/wrap tier one hang
+                  // deeper (Elon p242: margin x=72 → wrap x=88.2 = 16.2pt = 1.08× the 15pt body font). The
+                  // note renders at the 0.72 size tier, so 1.5em × 0.72 = 1.08 body-units = the printed hang
+                  // exactly. (The earlier over-indent was the CONTINUATION first-line indent, not this hang —
+                  // fixed via the calculated firstLineIndentEm, which these entries also pick up.)
                   const notesHangStyle: React.CSSProperties | undefined =
                     (isNoteEntry || isFnEntry) ? { textIndent: '-1.5em', paddingLeft: '1.5em' }
                       : noteContinuationSet.has(pIdx) ? { paddingLeft: '1.5em' } : undefined;
