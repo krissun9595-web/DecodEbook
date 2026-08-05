@@ -866,6 +866,7 @@ const App: React.FC = () => {
       // Doc-level layout tally (mirrors the PDF's line-fill measurement, but from the CSS the EPUB declares):
       // count body paragraphs, how many resolve to justified text, and how many carry a first-line indent.
       let bodyParaTally = 0, justifiedParaTally = 0, firstIndentParaTally = 0;
+      const firstIndentEms: number[] = []; // declared first-line-indent magnitudes (em) across body <p> → source median
       const cssBlock = new Set<string>();  // display:block — keep line breaks inside a heading
       const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
       const cssBold = new Set<string>();   // font-weight:bold/700
@@ -1776,7 +1777,7 @@ const App: React.FC = () => {
             const _tiIn = (element as HTMLElement).style?.textIndent;
             let _ti = _tiIn ? (lenToEm(_tiIn) ?? 0) : 0;
             if (_ti <= 0) for (const c of (element.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b?.ti) _ti = Math.max(_ti, b.ti); }
-            if (_ti > 0.1) firstIndentParaTally++;
+            if (_ti > 0.1) { firstIndentParaTally++; firstIndentEms.push(_ti); }
           }
           // Reproduce the source's per-paragraph FIRST-LINE INDENT. The reader indents every body paragraph
           // by default (1.75em); a paragraph the source sets flush (text-indent:0 — e.g. Sovereign's
@@ -1814,7 +1815,46 @@ const App: React.FC = () => {
           // A ruled block (`.footnote` = a solid border-top separating chapter-end notes from the body; or a
           // block that brackets itself with a border) draws the source's decorative rule above/below it.
           const _pr = borderRuleOf(element);
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_pItalic ? '' : ''}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          // MEASURED paragraph gap (ports the PDF's U+E028): reproduce the source's inter-paragraph spacing
+          // from the CSS vertical margin — this paragraph's margin-top OR the previous block's margin-bottom
+          // (CSS adjacent margins collapse to the MAX, e.g. the gap after a <dl>'s margin-bottom lands on the
+          // next <p>). Block-spaced EPUB gets its real gaps; a first-line-indent EPUB (margin:0) adds nothing —
+          // the analogue of the PDF's gapRatio>=1.35 gate. Reader renders E028 (shared path).
+          const _prevSib = element.previousElementSibling;
+          // Read the previous block's margin-bottom ONLY when it is a body block the reader does NOT space
+          // itself — a HEADING already carries its own bottom gap (mt-8 mb-3), so reading its margin-bottom here
+          // would DOUBLE-count (Sovereign's 368 `.noindent` section openers follow an <h*> and have no margin
+          // of their own). Excluding headings keeps a genuine block-spaced book firing while a first-line-indent
+          // book (opener flush after a heading) adds nothing spurious.
+          const _prevBottom = (_prevSib && !/^h[1-6]$/i.test(_prevSib.tagName || '')) ? vMarginEm(_prevSib).bottom : 0;
+          const _gapAbove = Math.max(vMarginEm(element).top, _prevBottom);
+          const gapSentinel = _gapAbove >= 0.35 ? String.fromCharCode(0xE028) : '';
+          // A SET-OFF <p> EXTRACT (O'Reilly `p.extract_*` = inset on BOTH margins + smaller font) is not a
+          // <blockquote> TAG, so it reached this general path with NO block indent -> rendered full-width. Detect
+          // it by its RIGHT inset (body text fills the width, so margin-right>0 is the set-off signal; absolute
+          // margin-LEFT can't tell it from a book with a base body margin, e.g. Agentic has margin-left on every
+          // p) and emit the left margin as a leading NBSP run (same as the <blockquote> handler) so the reader
+          // insets it. Harness scripts/epub-pindent-audit.mjs: 0% on Agentic/Transurfing/Sovereign body.
+          const _mrOf = (el: Element): number => { const d = declProp(el, 'margin-right'); if (d != null) return lenToEm(d.replace(/!important/ig, '')) ?? 0; const sh = (declProp(el, 'margin') || '').replace(/!important/ig, '').trim(); if (!sh) return 0; const q = sh.split(/\s+/); return lenToEm(q.length >= 2 ? q[1] : q[0]) ?? 0; };
+          const _pLeftEm = boxLeftEm(element).m;
+          // Set-off = a RIGHT inset (extracts inset BOTH margins; footnotes/body inset only the left). declProp
+          // resolves the right margin unreliably for the FIRST extract paragraph (`extract_flush_left` -> 0 vs
+          // `extract_indented` -> 2 on IDENTICAL CSS), so ALSO treat a paragraph as set-off when an ADJACENT
+          // sibling at the SAME left margin carries the right inset — the memo's flush opener then insets with
+          // its indented siblings. A footnote (margin-left, no right inset, no right-inset sibling) and body text
+          // stay full-width. Harness scripts/epub-pindent-audit.mjs verifies 0% on Agentic body + footnotes out.
+          const _setoffSib = (sib: Element | null): boolean => !!sib && (sib.tagName || '').toLowerCase() === 'p' && _mrOf(sib) >= 0.5 && Math.abs(boxLeftEm(sib).m - _pLeftEm) < 0.3;
+          const _isSetoff = _mrOf(element) >= 0.5 || _setoffSib(element.previousElementSibling) || _setoffSib(element.nextElementSibling);
+          const _pIndent = (_isSetoff && _pLeftEm >= 0.5) ? '\u00A0'.repeat(Math.max(4, Math.round(_pLeftEm / 0.375))) : '';
+          // Within a SET-OFF extract the source keeps its per-paragraph first-line structure: FIRST paragraph
+          // flush (`extract_flush_left`, text-indent:0 -> the U+E018 flush sentinel) and CONTINUATION paragraphs
+          // first-line-indented (`extract_indented`, text-indent:1em). The block indent (leading NBSP -> para.indent)
+          // otherwise makes the reader drop ALL first-line indent (para.indent>0 => noTextIndent), flattening the
+          // block. Emit U+E029 -- a POSITIVE "first-line indented" flag (complement of E018) -- on a block-indented
+          // paragraph that DECLARES a positive text-indent, so the reader restores its first-line indent ON TOP of
+          // the block padding. Positive signal (not "absence of E018"), so a <dd>/blockquote/index never picks it up.
+          const _firstIndentSentinel = (_isSetoff && _pLeftEm >= 0.5 && _tiDecl.some(v => v > 0.05)) ? String.fromCharCode(0xE029) : '';
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         // A DEFINITION LIST (<dl> of <dt> term / <dd> description) — O'Reilly's "What You Will Learn" and
         // similar. Without a handler the whole list flattens into run-on prose. Emit each <dt> as its OWN
@@ -2342,7 +2382,15 @@ const App: React.FC = () => {
       // (true) vs clearly block-style (false) — undefined when unclear, leaving the reader's default.
       const justified = bodyParaTally >= 8 ? justifiedParaTally / bodyParaTally > 0.6 : undefined;
       const firstLineIndent = bodyParaTally >= 8 ? firstIndentParaTally / bodyParaTally >= 0.25 : undefined;
-      return { content: fullText, outline, title: epubTitle, figures, anchors: epubAnchors, justified, firstLineIndent };
+      // MEASURED first-line-indent magnitude (em): the source declares its own indent (Random House
+      // `p.indented`/`extract_indented` = 1em), which the reader otherwise renders at its fixed 1.75em —
+      // ~2x too deep. Take the MEDIAN declared indent (clamp 0.5–2.5em) so the reader reproduces the real
+      // depth for both normal body prose AND the set-off extract continuations. Needs enough samples.
+      const _sortedTi = firstIndentEms.slice().sort((a, b) => a - b);
+      const firstLineIndentEm = _sortedTi.length >= 8
+        ? Math.min(2.5, Math.max(0.5, _sortedTi[Math.floor(_sortedTi.length / 2)]))
+        : undefined;
+      return { content: fullText, outline, title: epubTitle, figures, anchors: epubAnchors, justified, firstLineIndent, firstLineIndentEm };
 
     } catch (e) {
       console.error("EPUB processing error", e);
@@ -5591,8 +5639,8 @@ const App: React.FC = () => {
       let context: FileContext;
       let figures: ExtractedFigure[] | undefined;
       if (kind === 'epub') {
-        const { content, outline, title, figures: f, anchors, justified, firstLineIndent } = await processEpub(file);
-        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent };
+        const { content, outline, title, figures: f, anchors, justified, firstLineIndent, firstLineIndentEm } = await processEpub(file);
+        context = { content, mimeType: 'text/plain', isText: true, sourceKind: 'epub', sourceExtractorVersion: EPUB_TEXT_EXTRACTION_VERSION, pdfOutline: outline.length ? outline : undefined, epubAnchors: Object.keys(anchors).length ? anchors : undefined, docTitle: title, sourceJustified: justified, sourceFirstLineIndent: firstLineIndent, sourceFirstLineIndentEm: firstLineIndentEm };
         figures = f.length ? f : undefined;
       } else {
         const { content, outline, title, figures: f, justified, firstLineIndent, firstLineIndentEm, hangs } = await processPdf(file);
@@ -5801,7 +5849,7 @@ const App: React.FC = () => {
 
     if (isEpub) {
        try {
-         const { content: textContent, outline: epubOutline, title: epubDocTitle, figures: epubFigures, anchors: epubAnchors, justified: epubJustified, firstLineIndent: epubFirstLineIndent } = await processEpub(file);
+         const { content: textContent, outline: epubOutline, title: epubDocTitle, figures: epubFigures, anchors: epubAnchors, justified: epubJustified, firstLineIndent: epubFirstLineIndent, firstLineIndentEm: epubFirstLineIndentEm } = await processEpub(file);
          await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
@@ -5813,6 +5861,7 @@ const App: React.FC = () => {
             docTitle: epubDocTitle,
             sourceJustified: epubJustified,
             sourceFirstLineIndent: epubFirstLineIndent,
+            sourceFirstLineIndentEm: epubFirstLineIndentEm,
          }, epubFigures.length ? epubFigures : undefined);
        } catch (err: any) {
          setError(err.message || "Failed to process EPUB.");

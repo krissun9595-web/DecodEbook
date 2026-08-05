@@ -58,6 +58,11 @@ const leadingTopicHeadingFor = (chapter: Chapter, sourceText?: string, chapterTe
 // read cleanly. Page boundaries are unchanged — only the matched text is cleaned.
 const stripForSearch = (text: string): string =>
   text
+    // Drop every PRIVATE-USE control sentinel (size tier, block role, flush/indent flags, table position
+    // chars, etc. — all in U+E000–F8FF). They're invisible in the reader but leak into a search snippet as
+    // tofu boxes (e.g. the extract block's size-tier + first-line-indent sentinels after "Musk said,"). NBSP
+    // is whitespace, so the \s+ collapse below already folds a leading block indent into a trimmed space.
+    .replace(/[-]/gu, '')
     .replace(/\[([^\]\n]+)\]\([^)\n]*\)/g, '$1')
     .replace(/[*_~`]/g, '')
     .replace(/\s+/g, ' ');

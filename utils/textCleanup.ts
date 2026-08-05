@@ -211,7 +211,7 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   // (a definition description, an indented set-off definition/quote) — never merge it back into the
   // previous paragraph, even when that paragraph ends with a colon introducing it. (Checked before the
   // .trim() below, which would drop the NBSP and hide the indent.)
-  if (/^[^\S ]* /u.test(current)) return false;
+  if (/^(?:[^\S ]|[-])* /u.test(current)) return false;
   const prev = previous.trim();
   // A PDF page boundary injects a "[[PAGE n]]" marker at the start of the next block, so
   // a sentence that runs across the page break ("…is rapidly" / "[[PAGE 15]] eroding.")

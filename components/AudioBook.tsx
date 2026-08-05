@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v117-measured-para-gap';
+const CHAPTER_TEXT_CACHE_VERSION = 'v120-setoff-nbsp-merge-guard';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -235,6 +235,7 @@ interface ParagraphData {
     blockQuote?: boolean;
     setoffAbove?: boolean;
     paraGap?: boolean;
+    firstLineIndented?: boolean;
     setoffBelow?: boolean;
     // Whole-paragraph ITALIC (U+E026) — an epigraph/quote the source sets italic (e.g. `blockquote p{italic}`,
     // a descendant selector). Applied to the whole paragraph so it survives sentence splitting; inner <em>
@@ -584,7 +585,7 @@ const parseLeadingNoteMarker = (
   // Strip leading block sentinels (size tier / flush-first-line / align) as well as whitespace: a footnote
   // entry now opens with its shrink-size sentinel ("<E01B><E018>[fn2](#pdffn…)"), and a bare trimStart left
   // those PUA chars in front of the "[" so the ^-anchored marker match failed and note navigation missed.
-  const clean = value.replace(/^[\s\u00A0\uE010-\uE023\uE028]+/u, '');
+  const clean = value.replace(/^[\s\u00A0\uE010-\uE023\uE028\uE029]+/u, '');
   const linkedMatch = clean.match(new RegExp(`^\\[(${noteMarkerSourceFor(marker)})\\]\\(([^)]+)\\)(?:[.)])?(?:\\s+|$)`, 'iu'));
   if (linkedMatch) {
     return {
@@ -1195,7 +1196,7 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
-    const ctrl = rawPText.match(/^\s*[--]+/);
+    const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | 'left' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
@@ -1209,6 +1210,11 @@ const buildPageSentenceData = (pageText: string): {
     // a real epigraph/callout. Absent = the quote flows from its lead-in (e.g. a colon-introduced definition).
     const setoffAbove = ctrlChars.includes('');
     const paraGap = ctrlChars.includes('\uE028'); // U+E028 — measured modest paragraph gap above
+    // U+E029 - a block-indented SET-OFF extract paragraph whose source DECLARES a positive first-line
+    // indent (`extract_indented`, text-indent:1em). The block indent (para.indent>0) otherwise drops all
+    // first-line indent; this positive flag restores it (on top of the block padding) so the extract keeps
+    // its per-paragraph structure (first paragraph flush via E018, continuations first-line-indented).
+    const firstLineIndented = ctrlChars.includes('');
     // U+E027 \u2014 the source gives this block a set-off gap BELOW (its own margin-bottom \u2014 a labelled list's
     // closing THEN: label). Reproduced as a bottom margin so the block sets off from the following prose.
     const setoffBelow = ctrlChars.includes('');
@@ -1228,7 +1234,7 @@ const buildPageSentenceData = (pageText: string): {
     const sizeStripped = stripInlineFormatSyntax(rawPText).replace(/^[\s\u00a0]+/u, '');
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE028]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE029]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1260,7 +1266,7 @@ const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, verse: isVerse, italic });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -1633,7 +1639,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // U+E013 heading sentinel, which the section-scope regex's `\s*[*_~]*` prefix does not allow, so
     // without this the resolver finds ZERO chapter sections and every key-less footnote (a
     // geometry-only marker with no anchor) fails to scope → SOURCE_REQUIRED.
-    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023-\uE028\uE200-\uE5E8]/g, ' ');
+    const combinedText = combinedParts.join('\n\n').replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023-\uE029\uE200-\uE5E8]/g, ' ');
     const pageIndexAtOffset = (offset: number): number => {
       let index = 0;
       for (let i = 0; i < pageStarts.length; i++) {
@@ -3282,6 +3288,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // 1.75em default. Applied as em so it scales with each paragraph's font-size — body and the smaller
   // chapter-end notes both reproduce the printed indent (this book prints 1.0em; 1.75em read ~2x deep).
   const firstLineIndentEm = fileContext.sourceFirstLineIndentEm ?? 1.75;
+  // EPUB carries EXPLICIT per-paragraph CSS margins, so its inter-paragraph spacing is MEASURED at
+  // extraction (the U+E028 gap sentinel). The reader's CONTENT-heuristic gaps (paragraphSpacingClassFor's
+  // "starts with a quote → citation → mt-5", "short all-caps → subtitle → mt-8") are a PDF-era backup for
+  // when geometry couldn't see a set-off block; on an EPUB they OVER-FIRE (every quoted body paragraph in a
+  // biography opens with a quote mark) and invent gaps the source's margin:0 doesn't have. Suppress those
+  // guesses for EPUB and let E028 own the spacing — genuine EPUB set-off quotes come through structurally
+  // (blockQuote/extract → E028, headings → heading role), so nothing set-off loses its gap.
+  const isEpubSource = fileContext.sourceKind === 'epub';
   const bodyParagraphStyle: React.CSSProperties = { textIndent: `${firstLineIndentEm}em`, paddingLeft: 0, marginLeft: 0 };
   // Per-type hanging-indent magnitudes measured from the source (em, size-invariant), falling back to the
   // reader's original constants when the book gave too few samples to measure a given list type.
@@ -3419,8 +3433,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // A section subtitle (e.g. "THE END OF NATIONS", "PROMETHEUS UNBOUND: ...") is
     // rendered bold but otherwise got no spacing, so it ran right into the
     // surrounding prose. Give it room above and a little below.
-    if (isPlainSubtitleParagraph([clean])) return 'mt-8 mb-3';
-    if (looksLikeCitationParagraph(clean)) return 'mt-5';
+    if (!isEpubSource && isPlainSubtitleParagraph([clean])) return 'mt-8 mb-3';
+    if (!isEpubSource && looksLikeCitationParagraph(clean)) return 'mt-5';
     // The author/attribution line already carries its own block margins
     // (mt-0.5 mb-4 from the 'attribution' segment style); adding paragraph-level
     // mt-2/mb-5 on top stacked them, leaving too much space above and below. Let
@@ -4517,7 +4531,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     ? (_tocRaw.match(/^(?:\*\*|\*)?\[(\d{1,3})\s/u)?.[1] || '')
                     : '';
                   const tocNumColEm = 1.6;
-                  const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || !!tocNumMarker || (para.indent ?? 0) > 0) ? noTextIndentStyle : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
+                  // A block-indented paragraph (para.indent>0) normally drops ALL first-line indent. But a SET-OFF
+                  // EXTRACT keeps its per-paragraph structure: the source flags a continuation paragraph that carries
+                  // a first-line indent (U+E029 → para.firstLineIndented, e.g. `extract_indented` text-indent:1em),
+                  // so restore its first-line indent ON TOP of the block padding (bodyBlockPadStyle, spread after).
+                  // Positive flag, only on plain body extracts — a blockquote/list/index/dialogue never carries it.
+                  const _extractFirstIndent = (para.indent ?? 0) > 0 && !!para.firstLineIndented && !isListRole && !isHeadingRole && !isSizedHeadingPara && !isParagraphContinuation && !tocNumMarker && !para.blockQuote;
+                  const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || !!tocNumMarker || (para.indent ?? 0) > 0)
+                    ? (_extractFirstIndent ? plainParagraphStyleFor(para.original, para.align, para.flushFirstLine) : noTextIndentStyle)
+                    : plainParagraphStyleFor(para.original, para.align, para.flushFirstLine);
                   // A short Title-Case line that INTRODUCES an indented set-off block (its next paragraph is
                   // block-indented) is a definition-list TERM, not a section subtitle — keep its own
                   // emphasis (usually italic) instead of bolding it. (e.g. "Agentic AI" above its indented
