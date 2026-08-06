@@ -14,7 +14,7 @@ const endsWithTerminalPunctuation = (value: string): boolean =>
 // too so the first-character heading/subtitle tests below see the real text — otherwise a heading
 // that leads with the sentinel (e.g. "THE BIRTH OF AI") fails the `^[A-Z…]` anchor, the
 // heading guard never fires, and the heading is merged into the body paragraph that follows it.
-const stripBlockSentinels = (value: string): string => value.replace(/[-]/g, '');
+const stripBlockSentinels = (value: string): string => value.replace(/[-]/g, '');
 
 const looksLikeHeadingOrStructure = (value: string): boolean => {
   // A block carrying the heading sentinel (U+E013) IS a heading by construction — an EPUB <h1>–<h6> or
@@ -138,14 +138,20 @@ const looksLikeAttributionLine = (value: string): boolean => {
 const markCitationBody = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) return value;
-  const clean = stripDisplayStyleMarkersPreserveLinks(trimmed);
+  // Keep any LEADING block sentinels + NBSP block-indent (an already-structured EPUB set-off blockquote
+  // carries a size tier / block-quote role / set-off gap and an NBSP indent) OUTSIDE the emphasis wrap.
+  // Wrapping the whole thing in `*` would put the marker BEFORE those sentinels — breaking the reader's
+  // ^-anchored parse (the quote then loses its size/set-off/indent) — and the whitespace-collapsing strip
+  // below would flatten the NBSP indent to a space. Hoist them out; emphasise only the text.
+  const lead = trimmed.match(/^[- ]*/u)![0];
+  const clean = stripDisplayStyleMarkersPreserveLinks(trimmed.slice(lead.length));
   const linkedNote = clean.match(/^(.*?)(\s*\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))\s*$/iu);
   if (linkedNote) {
     const body = linkedNote[1].trim();
     const note = linkedNote[2].trim();
-    return body ? `*${body}*${note}` : note;
+    return body ? `${lead}*${body}*${note}` : `${lead}${note}`;
   }
-  return `*${clean}*`;
+  return `${lead}*${clean}*`;
 };
 
 const looksLikeCitationBody = (value: string): boolean => {

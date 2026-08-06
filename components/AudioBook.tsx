@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v120-setoff-nbsp-merge-guard';
+const CHAPTER_TEXT_CACHE_VERSION = 'v126-fig-safetynet-range';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -585,7 +585,7 @@ const parseLeadingNoteMarker = (
   // Strip leading block sentinels (size tier / flush-first-line / align) as well as whitespace: a footnote
   // entry now opens with its shrink-size sentinel ("<E01B><E018>[fn2](#pdffn…)"), and a bare trimStart left
   // those PUA chars in front of the "[" so the ^-anchored marker match failed and note navigation missed.
-  const clean = value.replace(/^[\s\u00A0\uE010-\uE023\uE028\uE029]+/u, '');
+  const clean = value.replace(/^[\s\u00A0\uE010-\uE023\uE028-\uE02A]+/u, '');
   const linkedMatch = clean.match(new RegExp(`^\\[(${noteMarkerSourceFor(marker)})\\]\\(([^)]+)\\)(?:[.)])?(?:\\s+|$)`, 'iu'));
   if (linkedMatch) {
     return {
@@ -618,7 +618,10 @@ const sentenceStartsWithNoteMarker = (value: string, marker: string, noteKey?: s
 // (consecutive footnotes flow like the source's footnote block, with a set-off only before the first).
 const paraStartsFootnoteEntry = (para?: { original?: string[] }): boolean => {
   const t = (para?.original || []).join(' ').replace(/^[\s -]+/u, '');
-  return /^["'“]?\s*\[\s*(?:fn\.?\s?)?[0-9ivxlcdm]{1,8}\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn)/iu.test(t);
+  // Href note-anchor schemes: the reader/PDF's own (#pdffn/#pdfnote/#en/#fn/#ftn) PLUS a calibre EPUB's
+  // chapter-prefixed footnote id (#ch01fn1) — a cross-file in-chapter footnote keyed by the mutual-pair
+  // path. Require a digit after the trailing "fn" so a plain "en"-containing anchor can't false-match.
+  return /^["'“]?\s*\[\s*(?:fn\.?\s?)?[0-9ivxlcdm]{1,8}\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn|[a-z0-9_-]+fn\d)/iu.test(t);
 };
 
 const splitLeadingNoteMarker = (value: string, marker: string, noteKey?: string): { label: string; rest: string } | null => {
@@ -957,11 +960,11 @@ const stripInheritedFootnoteMarkerText = (value: string, refs: FootnoteRef[]): s
   }, value);
 };
 
-const positionedFootnoteRefsForText = (value: string): PositionedFootnoteRef[] => {
+const positionedFootnoteRefsForText = (value: string, options: InlineParseOptions = {}): PositionedFootnoteRef[] => {
   const sentences = splitIntoSentences(value);
   const sentenceTexts = sentences.length ? sentences : (value.trim() ? [value.trim()] : []);
   return sentenceTexts.flatMap((sentence, sentenceIndex) =>
-    footnoteRefsForText(sentence).map(ref => ({ ...ref, sentenceIndex }))
+    footnoteRefsForText(sentence, options).map(ref => ({ ...ref, sentenceIndex }))
   );
 };
 
@@ -1114,7 +1117,7 @@ const buildPageSentenceData = (pageText: string): {
       // Tolerate a leading block-alignment sentinel (U+E010–E013): a CENTERED figure (e.g. this EPUB's
       // `.img_style{text-align:center}`) extracts as "‹E010›[[FIG id]]", and the caption keeps its own
       // sentinel. Pull the marker out as its own (unaligned — the figure centres itself) paragraph.
-      const m = p.trimStart().match(/^([-]*)(\[\[FIG\s+[^\]]+\]\])\s*([\s\S]+)$/i);
+      const m = p.trimStart().match(/^([- ]*)(\[\[FIG\s+[^\]]+\]\])\s*([\s\S]+)$/i);
       return m && m[3].trim() ? [m[2], `${m[1]}${m[3]}`] : [p];
     });
 
@@ -1160,7 +1163,7 @@ const buildPageSentenceData = (pageText: string): {
     // split into its own paragraph upstream (splitFigureMarkerParagraphs), preserving the 1
     // rawParagraph : 1 paragraph mapping the sentence/translation indexing relies on; this only catches
     // a stray mid-paragraph one. (Don't touch a paragraph that IS just the marker — handled next.)
-    if (!/^\s*[-]*\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
+    if (!/^\s*[- ]*\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
       rawPText = rawPText.replace(/\[\[FIG\s+[^\]]+\]\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
       if (!rawPText) return;
     }
@@ -1174,7 +1177,7 @@ const buildPageSentenceData = (pageText: string): {
     }
     // An extracted figure marker "[[FIG id]]" — its own paragraph. No sentences (so it's invisible to
     // TTS/translation/highlighting); the renderer swaps it for the cached image.
-    const figMatch = rawPText.trim().replace(/^[-]+/u, '').match(/^\[\[FIG\s+([^\]]+)\]\]$/i);
+    const figMatch = rawPText.trim().replace(/^[- ]+/u, '').match(/^\[\[FIG\s+([^\]]+)\]\]$/i);
     if (figMatch) {
       paragraphData.push({ original: [], translated: [], figure: { id: figMatch[1].trim() } });
       return;
@@ -1196,6 +1199,13 @@ const buildPageSentenceData = (pageText: string): {
     // U+E010 centre, U+E011 right (display alignment); U+E012 list (block role). They may
     // sit just after a stripped page marker's whitespace, so allow leading space. Capture
     // them as para metadata, then strip every sentinel so none reaches text, TTS, or search.
+    // A leading emphasis marker (*, _, ~) sitting BEFORE the block sentinels (an <i>/<em> that wrapped a
+    // BLOCK-level element in the source, so its * landed OUTSIDE the sentinel run) breaks the ^-anchored
+    // sentinel + NBSP-indent capture below — the whole block then reads as un-styled body (a set-off quote
+    // lost its size tier / block-quote role / indent). Hoist the marker back to just before the text (after
+    // the sentinels + any NBSP indent); the closing marker at the block end stays, so the inline italic/bold
+    // is preserved AND the block role/size/indent parse correctly.
+    rawPText = rawPText.replace(/^([*_~]{1,3})([\uE010-\uE029\s]+)/u, '$2$1');
     const ctrl = rawPText.match(/^\s*[--]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | 'left' | undefined =
@@ -1494,7 +1504,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
         // its book proportion, centred — so it matches the text measure instead of filling the half.
         ? <div className="w-full flex items-start">
             <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div>
-            <div className="w-1/2 min-w-0 pl-2 md:pl-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}</div></div>
+            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}</div></div>
           </div>
         // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
         // centred within at its book proportion.
@@ -4023,7 +4033,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   {renderOriginalRuns(runs)}
                 </p>
                 {viewMode === 'split' && (
-                  <p className={`w-1/2 pl-2 md:pl-6 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={structuredParagraphStyleFor(line)}>
+                  <p className={`w-1/2 pr-2 md:pr-6 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={structuredParagraphStyleFor(line)}>
                     {renderTranslatedRuns(runs)}
                   </p>
                 )}
@@ -4069,7 +4079,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             {renderOriginalRuns(titleRuns, 'text-zinc-100')}
           </h4>
           {viewMode === 'split' && (
-            <div className={`w-1/2 pl-2 md:pl-6 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={noTextIndentStyle}>
+            <div className={`w-1/2 pr-2 md:pr-6 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={noTextIndentStyle}>
               {renderTranslatedRuns(titleRuns)}
             </div>
           )}
@@ -4369,7 +4379,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     return viewMode === 'split' ? (
                       <div key={`div-${pIdx}`} className={`w-full flex ${dm} items-center`}>
                         <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20"><span className={ruleCls()} /></div>
-                        <div className="w-1/2 pl-2 md:pl-6"><span className={ruleCls()} /></div>
+                        <div className="w-1/2 pr-2 md:pr-6"><span className={ruleCls()} /></div>
                       </div>
                     ) : (
                       <div key={`div-${pIdx}`} className={`w-full flex justify-center ${dm}`}><span className={ruleCls('max-w-3xl')} /></div>
@@ -4434,7 +4444,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       return (
                         <div key={`tbl-${pIdx}`} className={`w-full flex items-start ${marginCls}`}>
                           <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{tableGrid(false)}</div>
-                          <div className="w-1/2 pl-2 md:pl-6">{tableGrid(true)}</div>
+                          <div className="w-1/2 pr-2 md:pr-6">{tableGrid(true)}</div>
                         </div>
                       );
                     }
@@ -4531,6 +4541,30 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     ? (_tocRaw.match(/^(?:\*\*|\*)?\[(\d{1,3})\s/u)?.[1] || '')
                     : '';
                   const tocNumColEm = 1.6;
+                  // PARAGRAPH-level emphasis (for the TRANSLATION to inherit the original's italic/bold): a wholly
+                  // italic/bold block — an epigraph or a set-off quote — wraps the WHOLE paragraph in one `*…*`
+                  // (or `**…**`) run. Per-SENTENCE detection (wholeSentenceEmphasisWrapper) then fails on a
+                  // MULTI-sentence quote (each sentence isn't individually wrapped — the opener has the leading `*`,
+                  // the closer the trailing one), so the translated sentences lost the emphasis the original shows
+                  // inline. Compute it once from the combined original so every translated sentence can fall back to it.
+                  const paraEmphasisWrapper = ((): string => {
+                    const c = (para.original ?? []).join(' ').replace(/\[[^\]\n]*\]\([^)\n]*\)/gu, '').trim();
+                    if (!c) return '';
+                    // WHOLLY bold/italic even across MULTIPLE runs: a multi-line PDF epigraph wraps EACH line
+                    // (`*l1* *l2* *l3*`), so a single start/end test misses it. Remove every emphasis run; if no
+                    // letters remain (only spaces/punctuation) and there was at least one run, the whole block
+                    // is that emphasis. Bold checked first (** is a superset of *).
+                    const hasBold = /\*\*[^*]+\*\*|__[^_]+__/u.test(c);
+                    if (hasBold && !/[A-Za-zÀ-ɏ]/u.test(c.replace(/\*\*[^*]+\*\*/gu, '').replace(/__[^_]+__/gu, ''))) return '**';
+                    const hasItal = /\*[^*]+\*|_[^_]+_/u.test(c);
+                    if (hasItal && !/[A-Za-zÀ-ɏ]/u.test(c.replace(/\*[^*]+\*/gu, '').replace(/_[^_]+_/gu, ''))) return '*';
+                    return '';
+                  })();
+                  // A FIGURE / TABLE caption ("Figure 1-3. …", "Table 2. …") is a complete set-off unit — give the
+                  // body that FOLLOWS it a top gap so the caption reads as attached to its figure, not run into the
+                  // prose (they were merged before; the merge fix left them tight). Body-side gap → gated on line 0.
+                  const prevCombined = stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original ?? []).join(' ')).replace(/\s+/g, ' ').trim();
+                  const prevIsFigCaption = /^(?:figure|table|fig\.|plate|exhibit|chart|diagram|scheme|listing)\s+\d/iu.test(prevCombined);
                   // A block-indented paragraph (para.indent>0) normally drops ALL first-line indent. But a SET-OFF
                   // EXTRACT keeps its per-paragraph structure: the source flags a continuation paragraph that carries
                   // a first-line indent (U+E029 → para.firstLineIndented, e.g. `extract_indented` text-indent:1em),
@@ -4753,6 +4787,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // dedication's opening "To …" line above its centred epigraph).
                   const neighborAlign = paragraphData[pIdx + 1]?.align;
                   const isStrayDisplayLine = !para.role
+                    && !para.blockQuote
                     && para.original.length === 1
                     && stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim().length <= 90;
                   // A list item (isRuleItem — opens a numbered/lettered/IF-THEN marker, rendered with a hanging
@@ -4764,7 +4799,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // from its OWN mis-detected centre tag (MYCIN "4.") OR one inherited from a centred neighbour
                   // via isStrayDisplayLine (MYCIN "3." sat next to the mis-centred "4." and inherited it). Suppress
                   // on the FINAL align so both paths are covered.
-                  const rawAlign = para.align || (neighborAlign && isStrayDisplayLine ? neighborAlign : undefined);
+                  // Only inherit a CENTRE neighbour (a display block whose first line lost its sentinel — a
+                  // dedication's "To …" above its centred epigraph). NEVER inherit a RIGHT neighbour: that is
+                  // almost always an ATTRIBUTION ("—JOHAN HUIZINGA"), whose right-align must not bleed UP onto
+                  // the flush-left epigraph quote above it (Sovereign ch2 opener was right-aligned only in PDF —
+                  // the EPUB tags the quote a blockquote so isStrayDisplayLine never fired there).
+                  const rawAlign = para.align || (neighborAlign === 'center' && isStrayDisplayLine ? neighborAlign : undefined);
                   // The CONTENTS heading is centred in both sources (EPUB `h2.chapter_number{text-align:center}`,
                   // PDF centred at the page middle). Force-centre it so the shared design's heading matches.
                   const effectiveAlign = (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
@@ -4830,7 +4870,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // e.g. a labelled list's IF: (margin-top) and THEN: (margin-bottom). Gated to a rule-item
                         // LABEL so blockquotes (which also carry E022) keep their own spacing branch below.
                         const _sourceGap = [(isRuleItem && para.setoffAbove && lineIdx === 0) ? 'mt-5' : '', (isRuleItem && para.setoffBelow && lineIdx === 0) ? 'mb-5' : ''].filter(Boolean).join(' ');
-                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? ((para.paraGap && lineIdx === 0) ? 'mt-2' : '') : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : ((para.paraGap && lineIdx === 0) && (paragraphSpacingClassFor(lineText) === '' || paragraphSpacingClassFor(lineText) === 'mt-5') ? 'mt-2'  // a MEASURED source gap (E028) is authoritative — override a spurious citation-rule mt-5 (the           // "Agent … framework components:" section intro matched it) so it stays consistent with the layer           // terms' mt-2; keep genuine bigger psf gaps (subtitle mt-8, notes mt-10) untouched.
+                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (prevIsFigCaption && lineIdx === 0 ? 'mt-4 ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? ((para.paraGap && lineIdx === 0) ? 'mt-2' : '') : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : ((para.paraGap && lineIdx === 0) && (paragraphSpacingClassFor(lineText) === '' || paragraphSpacingClassFor(lineText) === 'mt-5') ? 'mt-2'  // a MEASURED source gap (E028) is authoritative — override a spurious citation-rule mt-5 (the           // "Agent … framework components:" section intro matched it) so it stays consistent with the layer           // terms' mt-2; keep genuine bigger psf gaps (subtitle mt-8, notes mt-10) untouched.
                         : (paragraphSpacingClassFor(lineText) || '')));
                         // Single view: the reading column is a max-w-3xl child CENTERED in the w-full row
                         // (justify-center). justify-start pins that 768px child to the page's LEFT edge —
@@ -4897,7 +4937,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           </div>
                           {viewMode === 'split' && (
                             <div
-                              className={`w-1/2 pl-2 md:pl-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
+                              className={`w-1/2 pr-2 md:pr-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
@@ -4915,16 +4955,31 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                   const translatedParts = translatedSentences.length
                                     ? translatedSentences
                                     : (tText.trim() ? [tText] : ['']);
-                                  const positionedRefs = isIndexChapter ? [] : positionedFootnoteRefsForText(sentence);
+                                  // Mirror the ORIGINAL render's parse options (romanMarkersAsReferences off in a
+                                  // notes/index chapter) so the translation shows the SAME footnote refs — otherwise
+                                  // a roman marker in a note is detected here and superscripted at the end of the
+                                  // translated note, which the original (roman-off) never shows.
+                                  const positionedRefs = isIndexChapter ? [] : positionedFootnoteRefsForText(sentence, {
+                                    internalNoteLinksAsFootnotes: !isNotesChapter && !isIndexChapter,
+                                    inferBareFootnotes: !isIndexChapter,
+                                    romanMarkersAsReferences: !isNotesChapter && !isIndexChapter,
+                                    noteEntryMarkersAsReferences: isNotesChapter || isFnEntry,
+                                  });
                                   // Show the entry's leading marker on the TRANSLATION too (the translated text
                                   // drops the "[fnN](#…)" link) — for a Notes-chapter entry AND an in-chapter
                                   // footnote entry (isFnEntry), so the translation's note hang isn't a marker-less
                                   // gap next to the original's "fn2 …".
                                   const leadingNoteRef = (isNotesChapter || isFnEntry) ? leadingNoteRefForText(sentence) : null;
-                                  // Match the original's italic/bold in the translation.
-                                  const emphasisWrapper = wholeSentenceEmphasisWrapper(sentence);
+                                  // Match the original's italic/bold in the translation — per-sentence, else the
+                                  // whole-paragraph emphasis (a multi-sentence italic epigraph/quote).
+                                  const emphasisWrapper = wholeSentenceEmphasisWrapper(sentence) || paraEmphasisWrapper;
                                   const refsForTranslatedPart = (partIndex: number): FootnoteRef[] =>
                                     positionedRefs.filter(ref =>
+                                      // The LEADING marker of a note/footnote ENTRY is rendered at the START via
+                                      // leadingNoteRef (a hanging superscript, the navigation-highlight target); it
+                                      // must NOT also be emitted here as a positioned ref, or it doubles as a stray
+                                      // superscript at the END of the translated note (the PDF footnote case).
+                                      !(ref.isLeading && !!leadingNoteRef) &&
                                       Math.min(ref.sentenceIndex, translatedParts.length - 1) === partIndex
                                     );
                                   return (
@@ -4936,10 +4991,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 	                                      onPointerDown={handleSentencePointerDown}
 	                                      onClick={(event) => handleSentenceClick(globalIndex, event)}
 	                                    >
-                                      {translatedParts.map((part, partIndex) => (
+                                      {translatedParts.map((part, partIndex) => {
+                                        // The translator often re-emits the note/footnote marker ("I."/"1.") at the
+                                        // START of its output, but the reader renders the marker itself via
+                                        // leadingNoteRef (a hanging superscript matching the original). Strip the
+                                        // translator's leading marker on the first part so it isn't shown twice
+                                        // (an inline "I." next to the superscript). Only when a note marker is expected.
+                                        const cleanPart = (partIndex === 0 && !!leadingNoteRef)
+                                          ? part.replace(/^\s*(?:[ivxlcdm]{1,8}|\d{1,3})\s*[.).、]\s*/iu, '')
+                                          : part;
+                                        return (
                                         <React.Fragment key={`tp-${partIndex}`}>
                                           {renderInkableText(
-                                            emphasisWrapper && part.trim() ? `${emphasisWrapper}${part}${emphasisWrapper}` : part,
+                                            emphasisWrapper && cleanPart.trim() ? `${emphasisWrapper}${cleanPart}${emphasisWrapper}` : cleanPart,
                                             globalIndex,
                                             isActive,
                                             refsForTranslatedPart(partIndex),
@@ -4948,7 +5012,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                           )}
                                           {partIndex < translatedParts.length - 1 ? ' ' : ''}
                                         </React.Fragment>
-                                      ))}{' '}
+                                        );
+                                      })}{' '}
                                     </span>
                                   );
                                 })

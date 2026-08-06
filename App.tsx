@@ -1328,6 +1328,21 @@ const App: React.FC = () => {
           const targetOffset = noteIdOffsets.get(l.src)?.get(l.frag);
           if (targetOffset != null && targetOffset > l.srcOffset) noteRefLabels.set(l.frag, l.label);
         }
+        // CROSS-FILE in-chapter footnotes below the ≥3 "notes file" threshold: a calibre chapter SPLIT
+        // across files puts a footnote's reference and its body in DIFFERENT files (Sovereign ch1: ref in
+        // …_004, body in …_010) and with only 1–2 footnotes the notes-file heuristic misses them, while the
+        // same-file path (src===tgt) skips them — so the two sides emit DIFFERENT keys (#ch01fn1 vs
+        // #ch01-fn1) and never pair → the note is unreachable and its marker renders as a dead reference.
+        // A MUTUAL pair — a forward note-link A→B#f whose target file B holds the anchor id `f` AND a
+        // reciprocal back-link B→A — is unambiguously a footnote. Key it by f (the body anchor id the reader
+        // derives from the reference's href), exactly like the notes-file and same-file paths above.
+        for (const l of links) {
+          if (noteRefLabels.has(l.frag)) continue;
+          if ((spineIdx.get(l.src) ?? -1) >= (spineIdx.get(l.tgt) ?? -1)) continue; // the reference points forward to the body
+          const bodyHasAnchor = noteIdOffsets.get(l.tgt)?.has(l.frag);
+          const reciprocal = links.some(b => b.src === l.tgt && b.tgt === l.src);
+          if (bodyHasAnchor && reciprocal) noteRefLabels.set(l.frag, l.label);
+        }
       }
 
       // <img>/<image> → a [[FIG id]] marker; the bytes are extracted after the walk and cached like a
@@ -1586,6 +1601,25 @@ const App: React.FC = () => {
         if (/^h[1-6]$/.test(tag)) {
           const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
           if (!clean) return '';
+          // A heading the source sets WHOLLY ITALIC (Sovereign's sub-section titles are `<h3><i>The
+          // Information Revolution</i></h3>`) loses that when the emphasis markers are stripped above (the
+          // reader styles a heading as a whole). Detect it from the DOM — every text-bearing node sits under
+          // an <i>/<em> or an italic-resolving element — and emit the U+E026 whole-paragraph-italic sentinel
+          // so the reader renders the heading italic (its own font-bold + fontStyle:italic = bold italic).
+          const SENT_ITALIC = String.fromCharCode(0xE026);
+          const _hWhollyItalic = ((): boolean => {
+            let hasText = false, allItalic = true;
+            const walkI = (n: Node, inItalic: boolean): void => {
+              if (n.nodeType === 3) { if ((n.textContent || '').trim()) { hasText = true; if (!inItalic) allItalic = false; } return; }
+              if (n.nodeType !== 1) return;
+              const e = n as Element; const t = (e.tagName || '').toLowerCase();
+              const it = inItalic || t === 'i' || t === 'em' || elItalicOf(e);
+              for (const c of Array.from(e.childNodes)) walkI(c, it);
+            };
+            walkI(element, false);
+            return hasText && allItalic;
+          })();
+          const _hItalicMark = _hWhollyItalic ? SENT_ITALIC : '';
           // A "heading" whose text is a LIST-MARKER LABEL ("IF:"/"THEN:", or a bare "1."/"a." marker) is a list
           // head, NOT a section title (Singularity's `.x07-List-Head` <h2>IF:</h2> above a numbered <ol>). Emit
           // it as an INDENTED, non-heading paragraph (leading NBSP from its source left margin, no U+E013) so
@@ -1606,6 +1640,17 @@ const App: React.FC = () => {
             return `\n\n${_hGap}${_hInd}${_hm.replace(/\n/g, ' ')}\n\n`;
           }
           const _lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+          // MAJOR STRUCTURAL DIVISION ON A NEW PAGE: the source begins this section on a fresh page — signalled
+          // by a calibre page-break split id (`calibre_pb_N`) on the heading, or a CSS page-break-before /
+          // break-before of always|page|left|right. Emit the U+E02A hard-break sentinel so the reader's
+          // paginator opens a new page before it, regardless of remaining space (the typographic rule the
+          // Sovereign uses: every in-chapter <h2> sub-section starts a new page). NOT the frequent print
+          // page-NUMBER anchors (`<span epub:type="pagebreak" id="page_213">`) — those are spans, never headings.
+          const _pbId = element.getAttribute('id') || '';
+          const _pbCss = ((element as HTMLElement).style?.pageBreakBefore || (element as HTMLElement).style?.breakBefore
+            || declProp(element, 'page-break-before') || declProp(element, 'break-before') || '').toLowerCase();
+          const _pbMark = (/calibre_pb|(?:^|[_-])pb[_-]?\d/i.test(_pbId) || ['always', 'page', 'left', 'right'].includes(_pbCss))
+            ? String.fromCharCode(0xE02A) : '';
           const _h1em = resolveFontEm(element);
           const _tierOf = (em: number) => { const r = currentBodyEm > 0 ? em / currentBodyEm : 1; return r >= 1.6 ? String.fromCharCode(0xE01F) : r >= 1.25 ? String.fromCharCode(0xE01E) : r > 1.08 ? String.fromCharCode(0xE01D) : ''; };
           // PRINCIPLE FIRST — the file's OWN size signal wins: read each display:block child's CSS font-size
@@ -1622,18 +1667,18 @@ const App: React.FC = () => {
           const _wrapHeadingLine = (l: string, k: number, tier: string): string => {
             const kid = (_off === 0 || _off === 1) ? _kids[k - _off] : undefined;
             const br = kid ? borderRuleOf(kid) : { top: null, bottom: null };
-            return (br.top ? ruleBlock(br.top) : '') + tier + SENT_HEADING + l + (br.bottom ? ruleBlock(br.bottom) : '');
+            return (br.top ? ruleBlock(br.top) : '') + tier + SENT_HEADING + _hItalicMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
           };
           if (_multiSized && (_lines.length === _kidEms.length || _lines.length === _kidEms.length + 1)) {
             const _ems = _lines.length === _kidEms.length ? _kidEms : [_h1em, ..._kidEms];
-            return '\n\n' + _lines.map((l, k) => _wrapHeadingLine(l, k, _tierOf(_ems[k]))).join('\n\n') + '\n\n';
+            return '\n\n' + _pbMark + _lines.map((l, k) => _wrapHeadingLine(l, k, _tierOf(_ems[k]))).join('\n\n') + '\n\n';
           }
           // FLAT — the CSS gives the whole heading ONE font-size (a chapter <h1> stacks number / title / deck
           // all at ~2em; the deck only LOOKS bigger via a distinct sans font, which the single-font reader
           // can't reproduce). Render every line at the heading's OWN tier — a uniform chapter block (all
           // 1.5em) that stays larger than section headings (1.25em) and is faithful to the real font-sizes.
           const _st = _tierOf(_h1em);
-          return '\n\n' + _lines.map((l, k) => _wrapHeadingLine(l, k, _st)).join('\n\n') + '\n\n';
+          return '\n\n' + _pbMark + _lines.map((l, k) => _wrapHeadingLine(l, k, _st)).join('\n\n') + '\n\n';
         }
         if (['p', 'div', 'section', 'article'].includes(tag)) {
           // The publisher's TOC points at this styled paragraph (see navAnchorIds) → it IS a heading, so
@@ -4441,12 +4486,20 @@ const App: React.FC = () => {
                 if (!hrun.length) return;
                 let t = hrun[0].text;
                 for (let k = 1; k < hrun.length; k++) t = /[A-Za-z]-$/.test(t) && /^[a-z]/.test(hrun[k].text) ? t + hrun[k].text : `${t} ${hrun[k].text}`;
+                // A heading the source sets WHOLLY ITALIC (Sovereign's sub-section titles are EBGaramond-
+                // BoldItalic — every glyph italic, so the line builder wrapped each run in `*…*`) would lose
+                // that when the markers are stripped below (headings are styled as a whole, like the EPUB
+                // path). Detect it from the emphasis markers — at least one italic run, no bold `**`, and NO
+                // letters left OUTSIDE the italic runs — and emit the U+E026 whole-paragraph-italic sentinel so
+                // the reader renders it italic (its own font-bold + fontStyle:italic = bold italic). Mirrors
+                // processEpub's wholly-italic <h*> detection; PDF glyph italic comes from the real font name.
+                const _hItalicMark = /\*[^*]+\*/u.test(t) && !/\*\*/u.test(t) && !/[A-Za-zÀ-ɏ]/u.test(t.replace(/\*[^*]*\*/gu, '')) ? String.fromCharCode(0xE026) : '';
                 t = t.replace(/[*_~]/gu, '').replace(/\s+/gu, ' ').trim();
                 const hCentre = (Math.min(...hrun.map(l => l.x)) + Math.max(...hrun.map(l => l.rightX))) / 2;
                 const hRight = Math.max(...hrun.map(l => l.rightX));
                 const headSentinel = align === 'center' && Math.abs(hCentre - bodyCentre) <= tol ? ''
                   : align === 'right' && Math.abs(hRight - bodyRight) <= tol ? '' : '';
-                if (t) outBlocks.push({ text: headSentinel + t, role: 'heading', firstX: Math.min(...hrun.map(l => l.x)), firstRightX: hrun[0].rightX, lastRightX: hrun[hrun.length - 1].rightX, lastText: hrun[hrun.length - 1].text, topY: Math.max(...hrun.map(l => l.pageY)) });
+                if (t) outBlocks.push({ text: _hItalicMark + headSentinel + t, role: 'heading', firstX: Math.min(...hrun.map(l => l.x)), firstRightX: hrun[0].rightX, lastRightX: hrun[hrun.length - 1].rightX, lastText: hrun[hrun.length - 1].text, topY: Math.max(...hrun.map(l => l.pageY)) });
                 hrun = [];
               };
               for (const line of dispLines) {
@@ -4969,8 +5022,17 @@ const App: React.FC = () => {
           // noise. It also actively harms: a bold-only glyph among bold-italic words (e.g.
           // an upright bold chapter number, "Chapter **5.** *The Life…*") leaves a stray
           // "**" that shows literally and breaks the notes "Chapter N" section detection.
-          // Drop emphasis markers from heading blocks (footnote links are left intact).
-          if (groupIsHeading) text = text.replace(/[*_~]/g, '').replace(/\s+/g, ' ').trim();
+          // Drop emphasis markers from heading blocks (footnote links are left intact). But a heading the
+          // source sets WHOLLY ITALIC (Sovereign's sub-section titles are EBGaramond-BoldItalic — every glyph
+          // italic, so the line builder wrapped each run in `*…*`) would lose that. Detect it from the markers
+          // FIRST (≥1 italic run, no bold `**`, no letters OUTSIDE the italic runs) and carry U+E026 so the
+          // reader renders the heading italic (its font-bold + fontStyle:italic = bold italic). Mirrors the
+          // EPUB wholly-italic <h*> path; the PDF glyph italic comes from the real (loaded) font name.
+          let _headItalicMark = '';
+          if (groupIsHeading) {
+            _headItalicMark = /\*[^*]+\*/u.test(text) && !/\*\*/u.test(text) && !/[A-Za-zÀ-ɏ]/u.test(text.replace(/\*[^*]*\*/gu, '')) ? '' : '';
+            text = text.replace(/[*_~]/g, '').replace(/\s+/g, ' ').trim();
+          }
           if (text) {
             const last = group[group.length - 1];
             // A set-off epigraph/quote CREDIT ("—NORMAN COHN", "—EMERSON, The Conduct of Life") is
@@ -5136,7 +5198,7 @@ const App: React.FC = () => {
               && blockNbsp === 0 && rightMargin > 0 && group.length >= 2
               && group.slice(0, -1).every(l => (rightMargin - l.rightX) > bodyFont * 0.9);
             blocks.push({
-              text: (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
+              text: _headItalicMark + (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,
@@ -5297,9 +5359,16 @@ const App: React.FC = () => {
         // block; a running head is a few words. Running heads are already stripped upstream, so this is a
         // light belt-and-suspenders relaxation, length-gated.
         const firstIsSubstantialBody = (first.text || '').replace(/[\s -*_~`]/gu, '').length > 60;
+        // A FIGURE / TABLE CAPTION is a complete unit — it never "wraps" onto the next page. A caption set in
+        // the body font (same size, often italic) reads as role:'body', ends without terminal punctuation
+        // ("Figure 1-3. Agentic mesh, an ecosystem of agents"), and sits last on its page, so the geometric
+        // seam-join wrongly glued it to the next page's opening body ("Agents—…"). Never continue FROM a
+        // caption (leading PUA sentinels / emphasis tolerated before the "Figure N"/"Table N" label).
+        const _isCaption = (b: EmitBlock | null): boolean => !!b && /^[\s-*_~]*(?:figure|table|fig\.|plate|exhibit|chart|diagram|scheme|listing)\s+\d/iu.test(b.text);
         const continues =
           prevBlock !== null &&
           pages.length > 0 &&
+          !_isCaption(prevBlock) &&
           prevBlock.role === 'body' &&
           first.role === 'body' &&
           // A carryover — the top of this page is a hanging-list entry (dialogue turn / CIP field)

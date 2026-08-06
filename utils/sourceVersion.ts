@@ -609,7 +609,7 @@
 //       right-tabbed roman list (Singularity, markers jitter within ONE tier) still fires. MYCIN (firstX≈133
 //       uniform, spread 3) never fired. Validated on the REAL block geometry from the live audit, not the
 //       offline harness (whose block grouping differed). See project_decodebook_pdf_merge_page_seam_only.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v207-defnlist-seam-truemargin';
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v210-figcaption-no-seam-merge';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
@@ -730,7 +730,7 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v207-defnlist-seam-truemarg
 //      indented). Now a/b/c/d are uniform indent-7 paragraphs under item 5. Validated headless by
 //      scripts/epub-list-audit.mjs: touches ONLY 2 sites (Sovereign items 5 & 7) — 0 in the professional
 //      EPUB (Agentic Mesh; its index already separated) and 0 in Elon/Transurfing.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v53-measured-first-line-indent-em';
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v56-section-pagebreak';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

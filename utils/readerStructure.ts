@@ -296,7 +296,7 @@ export const normalizeNotesReaderText = (value: string): string => {
   // (INTRODUCTION + notes 1, 2 merged \u2192 SOURCE_REQUIRED). Strip the whole E010\u2013E020 block. The notes'
   // section headers still render bold via the reader's isNotesSectionHeadingParagraph wording rule, and the
   // note size is uniform in the notes chapter, so dropping the tier here is faithful.
-  text = text.replace(/[\uE010-\uE020\uE023]/g, '');
+  text = text.replace(/[\uE010-\uE02A]/g, '');
   // Page markers ("[[PAGE n]]") are navigation metadata, not note text. A note that spans
   // a page break carries the next page's marker inline (e.g. "…p. 22. [[PAGE 537]]"), and
   // otherwise the marker leaks to screen, so strip them before section/entry detection.
@@ -858,6 +858,28 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
       return value.length;
     };
     const limit = computeLimit(remaining, targetSize);
+    // HARD PAGE-BREAK sentinel (U+E02A): a heading the SOURCE begins on a new page (a major structural
+    // division). Force this reader page to end right before it so the section always opens a fresh page,
+    // regardless of remaining space. Only act when the break falls within this page's budget; a break
+    // farther down is handled once it reaches the top on a later iteration.
+    const pbAt = remaining.indexOf('');
+    if (pbAt >= 0 && pbAt <= limit) {
+      const beforeVisible = remaining.slice(0, pbAt).replace(/[\s-]/gu, '');
+      const beforeTrim = remaining.slice(0, pbAt).trim();
+      // EC1: the marker is already at the page top (only whitespace/sentinels precede it) → just drop it,
+      // no blank page. EC2: the page so far holds ONLY a heading (adjacent section-starts) → don't strand
+      // it on its own page; keep the sections together and let the first break stand.
+      const beforeHeadingOnly = beforeTrim.length > 0 && !beforeTrim.includes('\n\n') && /[-]/u.test(beforeTrim.slice(0, 8));
+      if (beforeVisible.length === 0 || beforeHeadingOnly) {
+        remaining = remaining.slice(0, pbAt) + remaining.slice(pbAt + 1);
+        continue;
+      }
+      const pageText = trimPageText(remaining.slice(0, pbAt));
+      if (pageText) pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }], continuesParagraph });
+      continuesParagraph = false;
+      remaining = trimPageText(remaining.slice(pbAt + 1)); // drop the marker; the next page opens with the heading
+      continue;
+    }
     if (remaining.length <= limit) {
       const pageText = trimPageText(remaining);
       if (pageText) {
@@ -943,7 +965,11 @@ export const paginateReaderText = (
   targetSize: number,
   options: Omit<ReaderPaginationOptions, 'targetSize'> = {}
 ): ReaderPage[] => {
-  return detectPrincipleTopicPages(text, { ...options, targetSize }) || paginatePlainText(text, targetSize, options.measureVisibleLength, options.preferLineBreaks);
+  // The structured (principle-topic) paginator can't consume the U+E02A hard-break sentinel, so strip
+  // it for that branch only; the prose paginator below acts on it.
+  const _structured = detectPrincipleTopicPages(text.replace(//g, ''), { ...options, targetSize });
+  if (_structured) return _structured;
+  return paginatePlainText(text, targetSize, options.measureVisibleLength, options.preferLineBreaks);
 };
 
 // Baseline char budget per page (SSR / no-DOM fallback only). ~2500 chars fills ~700px of readable
