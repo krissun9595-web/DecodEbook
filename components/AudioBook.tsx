@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v126-fig-safetynet-range';
+const CHAPTER_TEXT_CACHE_VERSION = 'v129-notes-inline-marker';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -3353,8 +3353,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       .trim();
     return /^(?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\b/iu.test(clean);
   };
+  // A notes section header ("Chapter N. Title") can SPLIT into multiple sentences — the "Chapter 1."
+  // ordinal is one, the title clause another (and a title with an internal ". " splits further). The old
+  // `length === 1` gate silently dropped every multi-sentence title (most of them) → they rendered as plain
+  // body text while short single-sentence titles enlarged: the inconsistency. Detect on the JOINED text
+  // instead (a note entry opens with its "[n]" marker, never "Chapter n", so it can't false-match).
   const isNotesSectionHeadingParagraph = (sentences: string[]): boolean =>
-    isNotesChapter && sentences.length === 1 && looksLikeNotesSectionHeading(sentences[0]);
+    isNotesChapter && sentences.length >= 1 && looksLikeNotesSectionHeading(sentences.join(' '));
   // A multi-paragraph footnote/note indents ALL of its paragraphs, but only the paragraph that OPENS with the
   // marker is detected as a note entry — so a long note's 2nd/3rd paragraphs lost the note's left indent and
   // ran out to the full margin. Mark each CONTINUATION paragraph (a non-heading paragraph inside a note block
@@ -3667,6 +3672,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     }
 
     if (format === 'referenceMarker') {
+      // In the NOTES chapter the note-ENTRY marker is, in the source, a normal-size INLINE number ("1.")
+      // with a dashed underline (.calibre4) — a note list, NOT raised superscripts. Render it inline at the
+      // note's own size so it reads faithfully; the ACTIVE (navigated-to) state still shows the neon
+      // back-link "shrink" highlight via the backLink <sup> branch, so clicking still has its effect.
+      if (isNotesChapter) {
+        return (
+          <span key={key} data-reference-marker="true" className={`select-none ${className}`} style={{ borderBottom: '1px dashed currentColor' }}>
+            {text}
+          </span>
+        );
+      }
       // Roman reference markers are non-interactive by design — they label the note,
       // they don't navigate. Render plain superscript text with no button/href.
       return (
@@ -4771,6 +4787,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const notesHangStyle: React.CSSProperties | undefined =
                     (isNoteEntry || isFnEntry) ? { textIndent: '-1.5em', paddingLeft: '1.5em' }
                       : noteContinuationSet.has(pIdx) ? { paddingLeft: '1.5em' } : undefined;
+                  // The Notes chapter's per-chapter section header ("Chapter N. …") is, in the source, an
+                  // <h2> (1.29em, bold) whose text is wholly italic (<i>) — so it must render bigger + bold +
+                  // italic, not the body-size bold the wording rule alone gives. (normalizeNotesReaderText
+                  // strips the size/italic/heading sentinels so its note-grouping detection sees clean text,
+                  // so re-apply the styling here.) A NOTE ENTRY is set 0.83em (source .endnotes) — smaller
+                  // than body; the sentinel that would carry that is likewise stripped, so size it here too.
+                  const isNotesHeading = isNotesSectionHeadingParagraph(para.original);
+                  // Gated to EPUB: the sizes/italic are measured from the Sovereign EPUB's CSS (.h2a 1.29em
+                  // bold + <i>, .endnotes 0.83em). PDF notes keep their existing geometry-derived rendering.
+                  const _notesEpub = fileContext.sourceKind === 'epub';
+                  const notesFaithfulSizeStyle: React.CSSProperties | undefined =
+                    _notesEpub && isNotesHeading ? { fontSize: sizeEmPx(1.25), fontStyle: 'italic' as const }
+                      : _notesEpub && (isNoteEntry || noteContinuationSet.has(pIdx)) ? { fontSize: sizeEmPx(0.83) } : undefined;
                   // A hanging-list entry (dialogue speaker turn / CIP field, para.hangingEntry from the
                   // U+E01A sentinel): the label HANGS at the outdent, wrapped lines indent to the tier.
                   // para.indent (the NBSP tier) already gives noTextIndent (drops the 1.75em) + the left
@@ -4870,7 +4899,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // e.g. a labelled list's IF: (margin-top) and THEN: (margin-bottom). Gated to a rule-item
                         // LABEL so blockquotes (which also carry E022) keep their own spacing branch below.
                         const _sourceGap = [(isRuleItem && para.setoffAbove && lineIdx === 0) ? 'mt-5' : '', (isRuleItem && para.setoffBelow && lineIdx === 0) ? 'mb-5' : ''].filter(Boolean).join(' ');
-                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (prevIsFigCaption && lineIdx === 0 ? 'mt-4 ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? ((para.paraGap && lineIdx === 0) ? 'mt-2' : '') : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : ((para.paraGap && lineIdx === 0) && (paragraphSpacingClassFor(lineText) === '' || paragraphSpacingClassFor(lineText) === 'mt-5') ? 'mt-2'  // a MEASURED source gap (E028) is authoritative — override a spurious citation-rule mt-5 (the           // "Agent … framework components:" section intro matched it) so it stays consistent with the layer           // terms' mt-2; keep genuine bigger psf gaps (subtitle mt-8, notes mt-10) untouched.
+                        const spacingClass = (_sourceGap ? _sourceGap + ' ' : '') + (prevIsFigCaption && lineIdx === 0 ? 'mt-4 ' : '') + (isListRole ? '' : isHeadingRole ? (prevIsDivider ? 'mt-2 mb-2' : prevIsHeading ? 'mt-1 mb-3' : 'mt-8 mb-3') : isFnEntry ? (lineIdx === 0 && !prevFnEntry ? 'mt-6' : '') : isNoteEntry ? '' : (para.verse && lineIdx === 0) ? (prevIsVerse ? 'mt-4' : 'mt-6') : (para.blockQuote && lineIdx === 0 && !isAttrLine && !prevIsBlockQuote && !isBulletParagraph && !isRuleItem) ? (prevIsDivider ? '' : 'mt-4') : (introducesIndentedBlock || isEmailHeader) ? ((para.paraGap && lineIdx === 0) ? 'mt-2' : '') : (followsEmailHeader && lineIdx === 0) ? 'mt-5' : (isAttrLine && nextIsDivider) ? '' : (isSignatureLine && lineIdx === 0) ? (prevIsSignatureLine ? 'mt-1' : 'mt-6') : (effectiveAlign === 'center' && lineIdx === 0) ? (paragraphData[pIdx - 1]?.align === 'center' ? 'mt-1' : 'mt-4') : (isAllCapsSectionHeader && lineIdx === 0) ? 'my-6' : (!para.blockQuote && !para.verse && lineIdx === 0 && (prevIsBlockQuote || prevIsVerse)) ? (prevIsVerse ? 'mt-6' : 'mt-4') : ((para.paraGap && lineIdx === 0) && (paragraphSpacingClassFor(lineText) === '' || paragraphSpacingClassFor(lineText) === 'mt-5') ? 'mt-2'  // a MEASURED source gap (E028) is authoritative — override a spurious citation-rule mt-5 (the           // "Agent … framework components:" section intro matched it) so it stays consistent with the layer           // terms' mt-2; keep genuine bigger psf gaps (subtitle mt-8, notes mt-10) untouched.
                         : (paragraphSpacingClassFor(lineText) || '')));
                         // Single view: the reading column is a max-w-3xl child CENTERED in the w-full row
                         // (justify-center). justify-start pins that 768px child to the page's LEFT edge —
@@ -4884,7 +4913,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -4941,7 +4970,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
-                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>

@@ -405,14 +405,18 @@ export const normalizeNotesReaderText = (value: string): string => {
     });
 
     return entries.reduce((result, entry, index) => {
-      if (index === 0) return entry.text;
+      // A per-chapter section header ("Chapter N. ...") begins on a NEW PAGE in the source (each is its
+      // own calibre_pb spine file). Prepend the U+E02A hard-break sentinel so the paginator opens a fresh
+      // page before each chapter's notes group -- the section-page-break rule, extended into the Notes.
+      const _pb = entry.type === 'section' ? '\uE02A' : '';
+      if (index === 0) return `${_pb}${entry.text}`;
       // Each note entry is its OWN paragraph. pdf.js has no explicit paragraph mark, so the
       // extractor INFERS paragraphs from geometry (a wrapped line that fills the measure joins; a
       // short line / new "N." marker / indent change is a hard break) and already separates the
       // notes into blocks. Join entries with a HARD break ('\n\n') to PRESERVE that: a single '\n'
       // is read by the reader's paragraph model as a soft-wrap and FLOWS adjacent notes into one
       // block (notes 80 and 81 ran together).
-      return `${result}\n\n${entry.text}`;
+      return `${result}\n\n${_pb}${entry.text}`;
     }, '');
   };
 
