@@ -277,6 +277,16 @@ const looksLikeContinuationAfterArtificialBreak = (previous: string, current: st
   // roadmap…"). (Lowercase starts are already merged by the /^[a-z]/ rule above; this stays for symmetry
   // and the rare capitalised-but-continuing case is not worth the caption/heading false merges.)
   if (/^(?:and|or|but|nor|for|yet|so|to|of|in|on|at|by|from|with|without|into|through|over|under|than|as|that|which|who|whom|whose)\b/u.test(cur)) return true;
+  // Symmetric to the rule above: a PREVIOUS block ending in a lowercase FUNCTION word (conjunction /
+  // preposition / article) with no terminal punctuation is unambiguously a mid-sentence wrap — a sentence
+  // cannot end on "and"/"of"/"the" — so the next block continues it, whatever it starts with. NOT seam-
+  // gated: a footnote that wraps across a PDF page is stitched by the footnote assembly with a plain \n\n
+  // (no [[PAGE]] marker), so a seam gate would miss it ("…you create CH4 and" | "O2, which gives you
+  // combustion"). Unlike the WEAK name/semicolon rules below, a function-word end is unambiguous, so it is
+  // safe within a page too. NOT a bullet (a wrapped list item is its own case), and safe against the caption
+  // false-merge (a caption ends in a NOUN "…Nielsen Company", never a function word).
+  if (!/^\s*(?:[*_~`]+\s*)?[•‣▪●◦⁃∙○■]/u.test(prev)
+    && /(?:^|\s)(?:and|or|but|nor|yet|so|of|to|in|on|at|by|from|with|without|into|onto|through|over|under|as|than|that|which|the|a|an)\s*$/iu.test(prev)) return true;
   // A comma / semicolon / dash at line end is a mid-sentence wrap → merge. A COLON is different: it
   // INTRODUCES a following block (a list, a definition, a set-off term/quote), so it must NOT pull that
   // block back in ("…key components:" + italic "Endpoints", "…thinking:" + "Agentic"). A genuine
