@@ -4211,7 +4211,7 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number; pbBreak?: boolean };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number; paraLeftMargin: number }[] = [];
 
       // ── Unify TOC indent tiers across the whole run ──
@@ -5339,6 +5339,52 @@ const App: React.FC = () => {
       // whose own first line also fills the measure (so a short running head is not taken
       // for the continuation). When so, the two blocks are emitted as one paragraph with the
       // page marker inline (stripped at display); otherwise the page starts a new block.
+      // ── Section page-break detector ("major structural divisions begin on a new page") ──
+      // A PDF has no explicit page-break marks, so recover the rule from geometry: a heading TIER that
+      // CONSISTENTLY opens a page (its instance is the page's top block, near the top margin) AND
+      // demonstrably follows early-ended pages (the prior page's lowest text sits well above the bottom
+      // margin) is using the convention → emit U+E02A before EVERY instance so the paginator opens a fresh
+      // page (EC1/EC2 already handle blank-page/lone-heading). Grouping per size-tier lets a chapter tier
+      // and a sub-section tier be judged independently; the ≥2 early-prior corroboration blocks a false
+      // positive on a book whose few headings only coincidentally open pages (those priors are FULL).
+      {
+        const _tierRe = new RegExp('[' + String.fromCharCode(0xE01B) + '-' + String.fromCharCode(0xE01F) + ']');
+        const _pua = new RegExp('[' + String.fromCharCode(0xE000) + '-' + String.fromCharCode(0xF8FF) + ']', 'g');
+        const _pageGeom = new Map<number, { ph: number; low: number }>();
+        for (const buf of pageBuffers) if (buf.lines.length) _pageGeom.set(buf.pageNum, { ph: buf.pageHeight, low: Math.min(...buf.lines.map(l => l.pageY)) });
+        const _heads: { b: EmitBlock; pageNum: number; tier: string; isOpener: boolean }[] = [];
+        for (const pe of pageEmit) {
+          const g = _pageGeom.get(pe.pageNum); if (!g) continue;
+          const _tops = pe.blocks.map(b => b.topY).filter((v): v is number => v != null);
+          const _pageTop = _tops.length ? Math.max(..._tops) : -Infinity;
+          for (const b of pe.blocks) {
+            if (b.role !== 'heading' || b.topY == null) continue;
+            const _tm = b.text.match(_tierRe);
+            // Split the tier by CASE: an all-caps (small-caps) heading is a different LEVEL from a mixed-case
+            // one at the same size (Sovereign: small-caps "PREMONITIONS" page-break sub-sections vs italic
+            // Title-Case "The Information Revolution" run-in sub-headings). Judged as separate convention groups.
+            const _let = b.text.replace(_pua, '').replace(/[^A-Za-z]/g, '');
+            const _caps = _let.length >= 3 && _let === _let.toUpperCase();
+            _heads.push({ b, pageNum: pe.pageNum, tier: (_tm ? _tm[0] : 'none') + (_caps ? '' : '~'), isOpener: b.topY === _pageTop && (g.ph - b.topY) < g.ph * 0.20 });
+          }
+        }
+        const _byTier = new Map<string, typeof _heads>();
+        for (const h of _heads) { const a = _byTier.get(h.tier) || []; a.push(h); _byTier.set(h.tier, a); }
+        const _fired = new Set<string>();
+        for (const [tier, hs] of _byTier) {
+          const _openers = hs.filter(h => h.isOpener);
+          const _frac = hs.length ? _openers.length / hs.length : 0;
+          let _early = 0;
+          for (const h of _openers) { const prev = _pageGeom.get(h.pageNum - 1); if (prev && prev.low > prev.ph * 0.25) _early++; }
+          // A page-break tier is CONSISTENTLY openers (frac high — the Sovereign's small-caps sub-sections are
+          // 0.95; its mixed-case run-in sub-headings are 0.13) AND corroborated by ≥4 early-ended priors (so a
+          // book whose headings only coincidentally open pages doesn't fire). Case-split makes frac meaningful.
+          if (_frac >= 0.85 && _early >= 4) _fired.add(tier);
+        }
+        // Mark only the page-OPENERS of a firing tier — precise (no mid-content breaks) and still catches an
+        // opener whose prior page coincidentally filled (Sovereign BANDWIDTH). enc() prepends the U+E02A.
+        for (const h of _heads) if (_fired.has(h.tier) && h.isOpener) h.b.pbBreak = true;
+      }
       let prevBlock: EmitBlock | null = null;
       let prevRightMargin = 0;
       for (const { pageNum, blocks, rightMargin, bodyLeft, paraLeftMargin } of pageEmit) {
@@ -5392,7 +5438,10 @@ const App: React.FC = () => {
         // immediately followed by RIGHT-column (col 1) blocks is a side-by-side TWO-COLUMN region:
         // encode it as U+E014 <left \u00B6s joined by U+E016> U+E015 <right \u00B6s> so the reader can lay the
         // two columns out next to each other (stacking on narrow screens). Everything else is normal.
-        const enc = (b: EmitBlock): string => (b.role === 'list' ? '\uE012' : b.role === 'heading' ? '\uE013' : '') + b.text;
+        // pbBreak \u2192 prepend the U+E02A hard-break sentinel FIRST (before the E013 heading sentinel) so the
+        // paginator breaks at position 0 and strips only E02A, leaving E013+tier+text intact (else the break
+        // strands E013 on the prior page and the heading loses its role \u2192 renders un-bold).
+        const enc = (b: EmitBlock): string => (b.pbBreak ? '' : '') + (b.role === 'list' ? '' : b.role === 'heading' ? '' : '') + b.text;
         type EmitUnit = { two: true; left: EmitBlock[]; right: EmitBlock[] } | { two: false; block: EmitBlock };
         const units: EmitUnit[] = [];
         for (let bi = 0; bi < blocks.length;) {

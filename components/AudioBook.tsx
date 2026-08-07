@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v129-notes-inline-marker';
+const CHAPTER_TEXT_CACHE_VERSION = 'v132-pdf-pagebreak-fracgate';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -3377,14 +3377,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         const lead = (para.match(/^[\u0000-\u001F\uE000-\uF8FF\s]*/u) || [''])[0];
         const bare = para.slice(lead.length);
         if (!bare.trim()) continue;
-        if (lead.includes(String.fromCharCode(0xE013))) { inNote = false; continue; }
+        if (lead.includes(String.fromCharCode(0xE013)) || (isNotesChapter && looksLikeNotesSectionHeading(bare))) { inNote = false; continue; }
         if (NOTE_LINK_RE.test(bare) || (isNotesChapter && NOTE_NUM_RE.test(bare))) { inNote = true; continue; }
       }
     }
     for (let i = 0; i < paragraphData.length; i++) {
       const p = paragraphData[i];
       const ht = (p.original || []).join(' ').replace(/\s+/g, ' ').trim();
-      const isHead = p.role === 'heading' && !(ht.length > 90 && /[.!?\u3002\uff01\uff1f]["'\u201d\u2019)\]]?$/u.test(ht));
+      // A notes section header ("Chapter N.") loses its E013 role in normalizeNotesReaderText, so also
+      // recognise it by wording \u2014 else it isn't a heading NOR a note entry and gets swept into the previous
+      // note's continuation set (\u2192 a spurious 1.5em hang indent from chapter 2 onward).
+      const isHead = (p.role === 'heading' || isNotesSectionHeadingParagraph(p.original)) && !(ht.length > 90 && /[.!?\u3002\uff01\uff1f]["'\u201d\u2019)\]]?$/u.test(ht));
       if (isHead) { inNote = false; continue; }
       const isEntry = paraStartsFootnoteEntry(p)
         || (isNotesChapter && !isNotesSectionHeadingParagraph(p.original) && NOTE_NUM_RE.test((p.original || []).join(' ').replace(/^[\s\u00a0]+/u, '')));
@@ -4794,11 +4797,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // so re-apply the styling here.) A NOTE ENTRY is set 0.83em (source .endnotes) — smaller
                   // than body; the sentinel that would carry that is likewise stripped, so size it here too.
                   const isNotesHeading = isNotesSectionHeadingParagraph(para.original);
-                  // Gated to EPUB: the sizes/italic are measured from the Sovereign EPUB's CSS (.h2a 1.29em
-                  // bold + <i>, .endnotes 0.83em). PDF notes keep their existing geometry-derived rendering.
+                  // The per-chapter notes header ("Chapter N.") is bigger + italic in BOTH sources (Sovereign
+                  // EPUB .h2a 1.29em bold + <i>; the PDF is the same book) — normalizeNotesReaderText strips the
+                  // size/italic sentinels for its detection, so restore them here for PDF and EPUB alike. The
+                  // note-BODY 0.83em shrink stays EPUB-only (measured from .endnotes; PDF note size is uncertain).
                   const _notesEpub = fileContext.sourceKind === 'epub';
                   const notesFaithfulSizeStyle: React.CSSProperties | undefined =
-                    _notesEpub && isNotesHeading ? { fontSize: sizeEmPx(1.25), fontStyle: 'italic' as const }
+                    isNotesHeading ? { fontSize: sizeEmPx(1.25), fontStyle: 'italic' as const }
                       : _notesEpub && (isNoteEntry || noteContinuationSet.has(pIdx)) ? { fontSize: sizeEmPx(0.83) } : undefined;
                   // A hanging-list entry (dialogue speaker turn / CIP field, para.hangingEntry from the
                   // U+E01A sentinel): the label HANGS at the outdent, wrapped lines indent to the tier.
