@@ -68,8 +68,11 @@ const makeTopic = (index: number): string => [
   // into the previous note.
   const text = '[68](x#ch04en68). Tilly, *op. cit.,* p. 20. [69](x#ch04en69). *Ibid.,* p. 22.\n\n*Chapter* 5. *The Life and Death of the Nation-State: Democracy and Nationalism*\n\n[1](x#ch05en1). Quoted in Tilly, *op. cit.,* p. 84.';
   const normalized = normalizeNotesReaderText(text);
-  assert.ok(/p\. 22\.\n\nChapter 5\./.test(normalized), 'italicized "Chapter N" heading should split onto its own line after the previous note');
-  assert.ok(/Nationalism\*\n\n\[1\]/.test(normalized), 'the next chapter\'s notes should start on their own line after the heading');
+  // The notes-section heading carries a U+E02A page-break sentinel (each chapter's notes begin on a new
+  // page); it is invisible and consumed by the paginator, so strip it for the visual line-split asserts.
+  const visible = normalized.replace(/\uE02A/g, '');
+  assert.ok(/p\. 22\.\n\nChapter 5\./.test(visible), 'italicized "Chapter N" heading should split onto its own line after the previous note');
+  assert.ok(/Nationalism\*\n\n\[1\]/.test(visible), 'the next chapter\'s notes should start on their own line after the heading');
 }
 
 {
@@ -144,7 +147,7 @@ const makeTopic = (index: number): string => [
   assert.ok(!/\*An\n/.test(normalized), '"An" and "Introduction" must not be split by a blank line');
   // But a genuine inline section heading after a note IS still set off.
   const heading = 'Some note ends here. Chapter 5. The Title Of The Chapter 1. First note of chapter five here.';
-  assert.ok(/here\.\n\nChapter 5\. The Title Of The Chapter\n\n1\. First note/.test(normalizeNotesReaderText(heading)),
+  assert.ok(/here\.\n\nChapter 5\. The Title Of The Chapter\n\n1\. First note/.test(normalizeNotesReaderText(heading).replace(/\uE02A/g, '')),
     'a real inline "Chapter N" heading should still be separated with blank lines');
 }
 
@@ -343,7 +346,7 @@ const makeTopic = (index: number): string => [
   const text = '43. Boyden, op. cit., p. 118. Chapter 4. The Last Days of Politics: Parallels Between the Senile Decline of the Holy Mother Church and the Nanny State 1. Clarke, op. cit., p. 9. 2. Martin van Creveld, The Transformation of War (New York: The Free Press, 1991), p. 52.';
   const normalized = normalizeNotesReaderText(text);
   assert.ok(
-    normalized.includes('43. Boyden, op. cit., p. 118.\n\nChapter 4. The Last Days of Politics'),
+    normalized.replace(/\uE02A/g, '').includes('43. Boyden, op. cit., p. 118.\n\nChapter 4. The Last Days of Politics'),
     'embedded chapter notes heading should become its own paragraph'
   );
   assert.ok(
@@ -1090,7 +1093,7 @@ const makeTopic = (index: number): string => [
     '69. Ibid., p. 22.\n\n[[PAGE 537]]\n\nChapter 5. The Life and Death of the Nation-State: Democracy and Nationalism as Resource Strategies in the Age of Violence\n\n1. Quoted in Tilly, op. cit., p. 84.',
   );
   assert.ok(!/\[\[PAGE/.test(out), 'page marker stripped from notes text');
-  const blocks = out.split(/\n{2,}/).map(b => b.trim());
+  const blocks = out.split(/\n{2,}/).map(b => b.replace(/\uE02A/g, '').trim());
   assert.ok(blocks.some(b => /^69\. Ibid\., p\. 22\.$/.test(b)), 'note 69 ends cleanly at p. 22.');
   assert.ok(blocks.some(b => /^Chapter 5\. The Life and Death of the Nation-State:/.test(b)), 'Chapter 5 heading is its own block');
   assert.ok(blocks.some(b => /^1\. Quoted in Tilly/.test(b)), "Chapter 5's first note starts fresh");
