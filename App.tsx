@@ -970,14 +970,21 @@ const App: React.FC = () => {
             // subject), not every class in the selector. `div.preface dt em code{font-style:italic}` styles
             // the `code`, NOT `.preface` — over-attributing to `.preface` flat-italicised whole sections.
             const _subjectClasses = new Set<string>();
+            // Classes that are the subject of an UNCONDITIONAL (single-compound) selector. A descendant-scoped
+            // rule (`aside[data-type=sidebar] p.byline{text-align:center}`) is CONDITIONAL, so its alignment
+            // must NOT enter the class fast-path — that over-centred EVERY `.byline`, overriding the byline's
+            // own `p.byline{text-align:left}` (a foreword author byline got the sidebar's centre). Such rules
+            // are still applied IN CONTEXT by the general matcher (cssRules → alignFor's declProp fallback).
+            const _simpleSubjectClasses = new Set<string>();
             for (const _oneSel of rule[1].split(',')) {
-              const _rm = _oneSel.trim().split(/\s*[>+~\s]\s*/).filter(Boolean).pop() || '';
-              for (const cm of _rm.matchAll(/\.([A-Za-z0-9_-]+)/g)) _subjectClasses.add(cm[1]);
+              const _parts = _oneSel.trim().split(/\s*[>+~\s]\s*/).filter(Boolean);
+              const _rm = _parts.pop() || '';
+              for (const cm of _rm.matchAll(/\.([A-Za-z0-9_-]+)/g)) { _subjectClasses.add(cm[1]); if (_parts.length === 0) _simpleSubjectClasses.add(cm[1]); }
             }
             for (const c of _subjectClasses) {
               if (btM && !isBoxSide) cssBorderTop[c] = btM[1].toLowerCase() === 'double' ? 'double' : 'single';
               if (bbM && !isBoxSide) cssBorderBottom[c] = bbM[1].toLowerCase() === 'double' ? 'double' : 'single';
-              if (am) { const av = am[1].toLowerCase(); if (av === 'center' || av === 'right') cssAlign[c] = av; else if (av === 'justify') cssJustify.add(c); else if (av === 'left') cssLeft.add(c); }
+              if (am && _simpleSubjectClasses.has(c)) { const av = am[1].toLowerCase(); if (av === 'center' || av === 'right') cssAlign[c] = av; else if (av === 'justify') cssJustify.add(c); else if (av === 'left') cssLeft.add(c); }
               if (isBlock) cssBlock.add(c);
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
@@ -1231,7 +1238,7 @@ const App: React.FC = () => {
         if (ratio > 1.08) return String.fromCharCode(0xE01D);
         if (allowShrink) {
           if (ratio < 0.80) return String.fromCharCode(0xE01B); // 0.72em
-          if (ratio < 0.90) return String.fromCharCode(0xE01C); // 0.86em
+          if (ratio < 0.905) return String.fromCharCode(0xE01C); // 0.86em — incl. 0.9em footnotes (p.footnote)
         }
         return '';
       };
@@ -1528,7 +1535,9 @@ const App: React.FC = () => {
           // full-size while the SAME book's PDF renders it smaller (measured ratio 0.82 → E01C). Extend the
           // gate to `< 0.97` so any deliberately-sub-body quote hits E01C (body-size quotes at ≥0.97 stay
           // body). Only Agentic Mesh's 95% quotes are affected among the test EPUBs; Sovereign's are 0.833.
-          const sizeTier = _ratio <= 0.78 ? String.fromCharCode(0xE01B) : _ratio < 0.97 ? String.fromCharCode(0xE01C) : '';
+          const _quoteSizeTier = (ratio: number): string =>
+            ratio <= 0.78 ? String.fromCharCode(0xE01B) : ratio < 0.97 ? String.fromCharCode(0xE01C) : '';
+          const sizeTier = _quoteSizeTier(_ratio);
           const E011 = String.fromCharCode(0xE011); // right-align (an attribution p carries this from its own handler)
           // A block quote whose source gives it a real LEFT MARGIN is an INDENTED set-off block (O'Reilly's
           // `blockquote{margin:10px}`, and its PDF insets the "An agent\u2026" definition ~1.6em). Emit a leading
@@ -1540,11 +1549,34 @@ const App: React.FC = () => {
           // least the conventional ~1.5em (4 NBSP, matching the PDF), more if the source margin is larger.
           const _bqLeftEm = boxLeftEm(element).m;
           const _bqIndent = _bqLeftEm > 0.1 ? '\u00A0'.repeat(Math.max(4, Math.round(_bqLeftEm / 0.375))) : '';
+          // Match each E011 block to its source right-aligned child. Its resolved size includes inherited
+          // blockquote sizing (`blockquote{font-size:95%}`), but can still honour an explicit child reset.
+          // The p handler deliberately has a wider shrink dead-zone, so without this propagation the quote
+          // got E01C (0.86 reader tier) while its attribution fell back to full reader body size.
+          const _rightKids = Array.from(element.children).filter(c => alignFor(c) === 'right');
+          let _rightKidIndex = 0;
           const tagged = blocks.map((b, i) => {
-            const lead = b.match(/^[\uE010-\uE027]*/u)![0]; // leading sentinels the p handler set (E010/E011 align, E026 italic, E027 gap)
-            // An ATTRIBUTION block (right-aligned, E011) is NOT a quote \u2014 leave it as-is (right-aligned,
-            // em-dash prefixed by its own handler). Only a real quote gets the block-quote set-off/flush.
-            if (lead.includes(E011)) return b;
+            // Capture the COMPLETE p-handler control run before inserting block indentation. U+E028/E029
+            // were added after this wrapper's old E027 ceiling; leaving them behind put the NBSP indent
+            // before E028 + later controls (including E026 italic), so the reader stopped parsing at NBSP
+            // and rendered an authored italic quote Roman.
+            const lead = b.match(/^[\uE010-\uE029]*/u)![0];
+            // An ATTRIBUTION block (right-aligned, E011) is NOT a quote: keep its own alignment/style and
+            // em-dash, but carry its SOURCE size. Inherited blockquote sizing applies equally to quote and
+            // attribution in CSS, so skipping the tier here made the attribution visibly larger.
+            if (lead.includes(E011)) {
+              const _rightKid = _rightKids[_rightKidIndex++];
+              const _rightRatio = _rightKid && currentBodyEm > 0 ? resolveFontEm(_rightKid) / currentBodyEm : _ratio;
+              const _rightTier = _quoteSizeTier(_rightRatio);
+              // A SOURCE width constraint on the attribution (`p[data-type=attribution]{width:80%}` \u2014 O'Reilly
+              // praise credits) makes it a NARROWER right-aligned block INSET from the edge, not flush. Carry
+              // U+E02B so the reader insets it instead of running every wrapped line to the full right margin.
+              // Only fires when the source declares a percentage width < 95% (other books' credits are full-width).
+              const _wProp = _rightKid ? declProp(_rightKid, 'width') : null;
+              const _wPctM = _wProp ? /^\s*(\d{1,3})\s*%\s*$/.exec(_wProp) : null;
+              const _narrowAttr = _wPctM && +_wPctM[1] >= 30 && +_wPctM[1] < 95 ? String.fromCharCode(0xE02B) : '';
+              return _narrowAttr + (/[\uE01B-\uE01F]/u.test(lead) ? b : _rightTier + b);
+            }
             // A HANGING ENTRY (dialogue speaker turn, U+E01A) is NOT a quote \u2014 the reader renders it hanging
             // (dialogueHangStyle). Leave it verbatim so it isn't re-wrapped flush; its own source gaps (E022/E027)
             // already ride along in `lead`.
@@ -1710,7 +1742,10 @@ const App: React.FC = () => {
           // those as emphasis markers wrongly dropped the source's bold (font-weight:bold on the entry). Strip
           // `](href)` targets before the check so only REAL emphasis in the visible text suppresses the wrap.
           const _emphProbe = trimmed.replace(/\]\([^)\n]*\)/gu, ']');
-          const _bodyBold = elBoldOf(element) && !_pItalic && !/[*_]/u.test(_emphProbe) && !trimmed.includes('[[FIG ');
+          // A whole-paragraph BOLD block → wrap in `**…**`. This coexists with whole-paragraph italic (E026):
+          // a `.byline`/credit set both bold AND italic, so DON'T gate on `!_pItalic` (that dropped the bold,
+          // leaving the byline italic-only). The reader renders the `**` bold run inside the E026 italic para.
+          const _bodyBold = elBoldOf(element) && !/[*_]/u.test(_emphProbe) && !trimmed.includes('[[FIG ');
           let body = _before + (_bodyBold ? `**${trimmed}**` : trimmed);
           // Reproduce CSS `text-transform:uppercase` on a block (a Contents entry, a small-caps section head):
           // upper-case the VISIBLE text but PROTECT link hrefs (a `[Title](09_Chapter_1_…xhtml)` target must
@@ -4729,7 +4764,13 @@ const App: React.FC = () => {
           }
         };
         let i = 0;
+        // Tracks whether the group emitted just before this one was a right-aligned attribution/credit — so a
+        // following flush-right line WITHOUT its own dash (a byline's title line under "— Sean Falconer") is
+        // recognised as its right-aligned CONTINUATION rather than falling back to stray left-aligned body.
+        let prevWasRightAttribution = false;
         while (i < lines.length) {
+          const _prevGroupWasRightAttr = prevWasRightAttribution;
+          prevWasRightAttribution = false; // reset each group; the right-attribution path below re-sets it true
           // A VERSE run (tight italic short lines) — consume it before the prose rules mangle it.
           if (!isHeadingLine(lines[i])) {
             const vEnd = verseRegionEnd(i);
@@ -4805,15 +4846,14 @@ const App: React.FC = () => {
               // detectLabeledHangingList re-splits, and breaking before it would fragment the
               // dialogue into pieces too small to detect (a one-word turn beside a short wrapped
               // continuation otherwise tripped bothShort and merged that run into one paragraph).
-              // A multi-line RIGHT-ALIGNED signature/credit ("— Sean Falconer" / "Head of AI,
-              // Confluent") at the end of prose is not line-structured data — both lines are short but
-              // sit FLUSH-RIGHT. bothShort would split it, and only the dash-led first line then gets
-              // the right-align tag (isRightAttribution below), leaving the title line as stray left-
-              // aligned body. Keep a flush-right continuation (no leading dash) attached to its flush-
-              // right, dash-led opener; a NEW credit (its own leading dash) still splits normally.
-              // The opener/continuation may be ITALIC (a set-off credit is often italic), so the line
-              // text starts with an emphasis marker ("*— Sean Falconer*") — skip a leading */_/~/` run
-              // before the dash, exactly like opensCredit in the display branch.
+              // A multi-line RIGHT-ALIGNED signature/credit ("— Sean Falconer" / "Head of AI, Confluent")
+              // at the end of prose is DELIBERATELY line-broken display (name / title), not one wrapped run —
+              // both lines are short and sit FLUSH-RIGHT, so bothShort SPLITS them one-per-line, faithful to
+              // the source. The dash-less title line keeps its right alignment via prevWasRightAttribution
+              // (isRightAttribution below tags a flush-right line following a right-attribution), so it no
+              // longer falls back to stray left body — which is why the old code had to keep them merged.
+              // The opener/continuation may be ITALIC (a set-off credit is often italic) so the text starts
+              // with an emphasis marker ("*— Sean Falconer*") — skip a leading */_/~/` run before the dash.
               const flushRightEdge = rightMargin - Math.max(6, bodyFont);
               const opensDash = (t: string): boolean => /^\s*(?:[*_~`]+\s*)?[—–]/u.test(t);
               const attributionContinuation =
@@ -4821,8 +4861,7 @@ const App: React.FC = () => {
                 opensDash(group[0].text) && group[0].rightX >= flushRightEdge &&
                 current.rightX >= flushRightEdge && !opensDash(current.text);
               const bothShort = isShortColLine(previous) && isShortColLine(current)
-                && !labelStart.test(current.text.replace(/[*_~]/gu, '').trim())
-                && !attributionContinuation;
+                && !labelStart.test(current.text.replace(/[*_~]/gu, '').trim());
               // JUSTIFIED-TEXT block boundary: in justified prose every line is stretched to the right
               // margin EXCEPT the last line of a block, so a previous line that ends short of the margin
               // (doesn't fill the measure) marks a paragraph/term/heading end and the current line begins
@@ -5042,8 +5081,17 @@ const App: React.FC = () => {
             // chapter titles), the attribution dash is not — so headings/index tails never match.
             const groupMinX = Math.min(...group.map(l => l.x));
             const groupMaxRight = Math.max(...group.map(l => l.rightX));
-            const isRightAttribution = !groupIsHeading && /^\s*(?:[*_~`]+\s*)?[\u2014\u2013]/u.test(text)
-              && groupMinX > bodyLeft + bodyFont * 4 && groupMaxRight >= rightMargin - Math.max(6, bodyFont);
+            const _rightAttrGeom = groupMinX > bodyLeft + bodyFont * 4 && groupMaxRight >= rightMargin - Math.max(6, bodyFont);
+            const _dashLed = /^\s*(?:[*_~`]+\s*)?[\u2014\u2013]/u.test(text);
+            // A dash-led flush-right line is a right-aligned CREDIT. A following flush-right line with NO new
+            // dash is that credit's CONTINUATION (a byline title "Head of AI, Confluent" under "\u2014 Sean
+            // Falconer") \u2014 tag it right too so the split byline stays flush-right on both lines instead of the
+            // title falling back to stray left body. Restrict it to a SINGLE SHORT line: the next endorsement
+            // blurb's multi-line block quote after a credit is NOT a byline title and must stay left/justified.
+            const _shortSingle = group.length === 1 && (groupMaxRight - groupMinX) < (rightMargin - bodyLeft) * 0.5;
+            const isRightAttribution = !groupIsHeading && _rightAttrGeom
+              && (_dashLed || (_prevGroupWasRightAttr && _shortSingle));
+            prevWasRightAttribution = isRightAttribution;
             // Geometry-faithful indent (only trusted on justified pages, where a block's lines share one
             // left tier). first-line indent = the FIRST line sits deeper than the block's continuation
             // lines (novels); block left-indent = ALL lines sit deeper than the body margin (a definition
@@ -5989,9 +6037,9 @@ const App: React.FC = () => {
     }
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
-       try {
-         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified, firstLineIndent, firstLineIndentEm, hangs } = await processPdf(file);
-         await finalizeUpload({
+	       try {
+	         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified, firstLineIndent, firstLineIndentEm, hangs } = await processPdf(file);
+	         await finalizeUpload({
             content: textContent,
             mimeType: 'text/plain',
             isText: true,

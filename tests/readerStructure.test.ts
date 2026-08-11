@@ -1121,12 +1121,12 @@ const makeTopic = (index: number): string => [
 }
 
 // An italic attribution credit extracts with the dash inside the emphasis
-// ("*—Tom Stoppard,* Arcadia"). The leading dash must be stripped even though the line
-// starts with "*", so it doesn't sit under the "—— " prefix as a doubled dash.
+// ("*—Tom Stoppard,* Arcadia"). Normalize the dash while preserving the source emphasis:
+// source-faithful rendering must keep the credit italic and the book title Roman.
 assert.equal(
   rearrangeAndCleanText('*“A quotation long enough to read as a real citation, ending here properly.”*\n\n*—Tom Stoppard,* Arcadia')
     .split(/\n{2,}/).pop(),
-  '—— Tom Stoppard, Arcadia',
+  '*— Tom Stoppard,* Arcadia',
 );
 
 console.log('readerStructure regression tests passed');

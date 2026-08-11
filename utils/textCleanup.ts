@@ -191,9 +191,28 @@ const normalizeAttributionLine = (value: string): string => {
   // PRESERVED and re-emitted at the very start so the reader still aligns the credit — and it must be
   // stripped BEFORE the dash, else the dash regex fails on it and the source's own "—" survives under
   // the "—— " prefix ("—— —HENRY…"), while the sentinel gets buried mid-string and the alignment is
-  // lost. Also strip a leading emphasis marker (an italic credit extracts as "*—Tom Stoppard,*").
+  // lost. An attribution with source emphasis ("*—Tom Stoppard,*") must KEEP that wrapper: the
+  // source-faithful reader deliberately bypasses the generic synthetic-attribution style and relies on
+  // these markers to distinguish italic credits from genuinely Roman ones.
   const sentinel = value.match(/^\s*([-]+)/u)?.[1] ?? '';
-  const body = value.replace(/\s+/g, ' ').trim().replace(/^[-]*[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const sourceStyled = compact.replace(/^[-]*/u, '').match(/^([*_~`]{1,2})\s*(?:——|--|—|–|-)\s*/u);
+  if (sourceStyled) {
+    const rest = compact.replace(/^[-]*/u, '').slice(sourceStyled[0].length);
+    return `${sentinel}${sourceStyled[1]}— ${rest}`;
+  }
+  // A source-aligned Roman attribution can still contain genuine inline emphasis (an EPUB credit with
+  // italic book titles). The alignment sentinel proves this is source structure, so normalize only its
+  // dash and retain the inner markers. Synthetic, untagged attributions continue through the flattening
+  // path below.
+  const sourceAligned = sentinel
+    ? compact.replace(/^[-]*/u, '').match(/^(?:——|--|—|–|-)\s*/u)
+    : null;
+  if (sourceAligned) {
+    const rest = compact.replace(/^[-]*/u, '').slice(sourceAligned[0].length);
+    return `${sentinel}— ${rest}`;
+  }
+  const body = compact.replace(/^[-]*[*_~]*\s*(?:——|--|—|–|-)\s*/u, '');
   const linkedNote = body.match(/^(.*?)\s*(\[\s*[0-9ivxlcdm]{1,8}[.)]?\s*\]\s*\([^)]+\))\s*[*_~]*$/iu);
   if (linkedNote) {
     return `${sentinel}—— ${stripDisplayStyleMarkers(linkedNote[1])}${linkedNote[2]}`;

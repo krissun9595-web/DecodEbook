@@ -408,7 +408,7 @@ export const normalizeNotesReaderText = (value: string): string => {
       // A per-chapter section header ("Chapter N. ...") begins on a NEW PAGE in the source (each is its
       // own calibre_pb spine file). Prepend the U+E02A hard-break sentinel so the paginator opens a fresh
       // page before each chapter's notes group -- the section-page-break rule, extended into the Notes.
-      const _pb = entry.type === 'section' ? '\uE02A' : '';
+      const _pb = entry.type === 'section' && index > 0 ? '\uE02A' : '';
       if (index === 0) return `${_pb}${entry.text}`;
       // Each note entry is its OWN paragraph. pdf.js has no explicit paragraph mark, so the
       // extractor INFERS paragraphs from geometry (a wrapped line that fills the measure joins; a
@@ -850,13 +850,24 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     const computeLimit = (value: string, target: number): number => {
       const linkRe = /\[([^\]\n]*)\]\(([^)\n]+)\)/y;
       let eff = 0, i = 0;
+      // Weight each character by its RENDERED size²: font-size scales BOTH char width AND line height,
+      // so a page of smaller text holds ~1/size² more characters. A 0.86em footnote (U+E01C) char thus
+      // costs ~0.74 of a body char, letting a mixed body+footnote page FILL instead of leaving a blank
+      // band. Only SHRINK tiers are down-weighted; larger tiers stay 1.0 — a one-line heading doesn't
+      // fill the width, so s² would over-count its (single-line) height. Reset per paragraph (\n\n); a
+      // paragraph's lead size sentinel sets its weight (body paragraphs carry none → 1.0). The Notes
+      // chapter is scaled separately (its 0.83em is a render override with no sentinel here).
+      let wsq = 1;
       while (i < value.length) {
         // A figure marker renders as a tall image with ~no text — count a virtual length so a page
         // budgets for its height (else a full page of text plus a figure overflows the viewport).
         if (value.startsWith('[[FIG', i)) { const fe = value.indexOf(']]', i); i = fe < 0 ? value.length : fe + 2; eff += 500; if (eff >= target) return i; continue; }
+        if (value[i] === '\n' && value[i + 1] === '\n') { wsq = 1; eff += 2; i += 2; if (eff >= target) return i; continue; }
+        if (value[i] === '') { wsq = 0.72 * 0.72; i += 1; continue; } // 0.72em tier
+        if (value[i] === '') { wsq = 0.86 * 0.86; i += 1; continue; } // 0.86em tier (footnotes)
         if (value[i] === '') { const be = value.indexOf('\n\n', i); i = be < 0 ? value.length : be; continue; }
-        if (measureVisible) { linkRe.lastIndex = i; const m = linkRe.exec(value); if (m) { eff += m[1].length; i = linkRe.lastIndex; if (eff >= target) return i; continue; } }
-        eff += 1; i += 1;
+        if (measureVisible) { linkRe.lastIndex = i; const m = linkRe.exec(value); if (m) { eff += m[1].length * wsq; i = linkRe.lastIndex; if (eff >= target) return i; continue; } }
+        eff += wsq; i += 1;
         if (eff >= target) return i;
       }
       return value.length;
