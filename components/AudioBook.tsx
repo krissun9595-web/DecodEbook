@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v148-attribution-inset-measured';
+const CHAPTER_TEXT_CACHE_VERSION = 'v152-flush-footnote-body';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -373,6 +373,10 @@ interface InlineSegment {
   // Emphasis that WRAPPED this segment in the source (a bold/italic TOC entry is a bold LINK, not plain
   // bold text). Carried so a link/footnote extracted out of a `**…**` run still renders with that weight.
   emphasis?: 'bold' | 'italic' | 'underline';
+  // A LEADING note-ENTRY marker (the label that opens a footnote/endnote body, e.g. BHI's "*"). In the
+  // source it sits INLINE at the note's own size, not as a raised superscript — so it renders inline even
+  // outside a Notes chapter (where it would otherwise fall to the superscript reference-marker branch).
+  noteEntry?: boolean;
 }
 
 interface FootnoteRef {
@@ -533,6 +537,12 @@ const isNumericNoteMarkerText = (value: string): boolean =>
 const isRomanNoteMarkerText = (value: string): boolean =>
   /^[ivxlcdm]{1,8}[.)]?$/iu.test(cleanNoteMarkerLabel(value));
 
+// A SYMBOL footnote marker (bottom-of-page * † ‡ § ‖ ¶, sometimes doubled **). Trade nonfiction uses these
+// for author footnotes alongside numbered endnotes; they carry a real internal note href, so treat them as
+// footnotes too — the marker is short and paired to a note body, exactly like a numeric marker.
+const isSymbolNoteMarkerText = (value: string): boolean =>
+  /^[*†‡§‖¶]{1,4}$/u.test(cleanNoteMarkerLabel(value));
+
 const noteKeyFromHref = (href?: string): string | undefined => {
   if (!href) return undefined;
   // Two PDF footnote href schemes coexist:
@@ -678,7 +688,7 @@ const paraStartsFootnoteEntry = (para?: { original?: string[] }): boolean => {
   // Href note-anchor schemes: the reader/PDF's own (#pdffn/#pdfnote/#en/#fn/#ftn) PLUS a calibre EPUB's
   // chapter-prefixed footnote id (#ch01fn1) — a cross-file in-chapter footnote keyed by the mutual-pair
   // path. Require a digit after the trailing "fn" so a plain "en"-containing anchor can't false-match.
-  return /^["'“]?\s*\[\s*(?:fn\.?\s?)?[0-9ivxlcdm]{1,8}\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn|[a-z0-9_-]+fn\d)/iu.test(t);
+  return /^["'“]?\s*\[\s*(?:fn\.?\s?)?(?:[0-9ivxlcdm]{1,8}|[*†‡§‖¶]{1,4})\s*\]\s*\(#(?:pdffn|pdfnote|en|fn|ftn|[a-z0-9_-]+fn\d)/iu.test(t);
 };
 
 const splitLeadingNoteMarker = (value: string, marker: string, noteKey?: string): { label: string; rest: string } | null => {
@@ -698,7 +708,7 @@ const isPageAnchorHref = (href?: string): boolean => {
   return /pag(?:e|ina)?[-_]?\d/iu.test(frag);
 };
 const isLikelyInternalNoteLink = (text: string, href?: string): boolean =>
-  Boolean(href && href.includes('#') && isInternalEbookHref(href) && isNumericNoteMarkerText(text) && !isPageAnchorHref(href));
+  Boolean(href && href.includes('#') && isInternalEbookHref(href) && (isNumericNoteMarkerText(text) || isSymbolNoteMarkerText(text)) && !isPageAnchorHref(href));
 
 const isLikelyInternalRomanReferenceLink = (text: string, href?: string): boolean =>
   Boolean(href && href.includes('#') && isInternalEbookHref(href) && isRomanNoteMarkerText(text));
@@ -912,7 +922,7 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
     : null;
   let cursor = 0;
   if (leadingRomanReference) {
-    segments.push({ text: `${cleanNoteMarkerLabel(leadingRomanReference[1])}${leadingRomanReference[2]}`, format: 'referenceMarker' });
+    segments.push({ text: `${cleanNoteMarkerLabel(leadingRomanReference[1])}${leadingRomanReference[2]}`, format: 'referenceMarker', noteEntry: true });
     cursor = leadingRomanReference[0].length;
   }
   const pattern = /\[([^\]]+)\]\s*\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*/g;
@@ -945,7 +955,7 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
       } else if (options.internalNoteLinksAsFootnotes && isLikelyInternalRomanReferenceLink(label, match[2])) {
         const labelPunctuation = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
         const trailingPunctuation = labelPunctuation || (value[pattern.lastIndex] === '.' ? '.' : '');
-        segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker', href: match[2] });
+        segments.push({ text: `${label}${trailingPunctuation}`, format: 'referenceMarker', href: match[2], noteEntry: true });
         if (!labelPunctuation && trailingPunctuation) pattern.lastIndex += 1;
       } else if (
         options.noteEntryMarkersAsReferences && !hasBodyTextBeforeLink && hasTextAfterLink &&
@@ -956,7 +966,7 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
         // translation column, and the PDF), NOT the neon-blue link style. A real URL in the note (its label
         // is the URL text, not a bare number) fails isLikelyInternalNoteLink and stays a real link.
         const _lp = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
-        segments.push({ text: `${label}${_lp}`, format: 'referenceMarker' });
+        segments.push({ text: `${label}${_lp}`, format: 'referenceMarker', noteEntry: true });
       } else {
         // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation
         // rect covers the leading space ("…at [ https://…]"), keep that space as plain text
@@ -1073,7 +1083,7 @@ const positionedFootnoteRefsForText = (value: string, options: InlineParseOption
 
 const leadingNoteRefForText = (value: string): LeadingNoteRef | null => {
   const clean = value.trimStart();
-  const linked = clean.match(/^\[((?:fn\.?\s?)?[0-9ivxlcdm]{1,8}[.)]?)\]\(([^)]+)\)(?:[.)])?(?:\s+|$)/iu);
+  const linked = clean.match(/^\[((?:fn\.?\s?)?(?:[0-9ivxlcdm]{1,8}|[*†‡§‖¶]{1,4})[.)]?)\]\(([^)]+)\)(?:[.)])?(?:\s+|$)/iu);
   if (linked) {
     return {
       marker: cleanNoteMarkerLabel(linked[1]),
@@ -3698,7 +3708,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     onFootnoteClick?: (marker: string, event: React.MouseEvent<HTMLElement>, href?: string) => void,
     playbackActive = false,
     marker?: string,
-    emphasis?: 'bold' | 'italic' | 'underline'
+    emphasis?: 'bold' | 'italic' | 'underline',
+    noteEntry = false
   ) => {
     if (format === 'lineBreak') return <br key={key} />;
     const className = [
@@ -3806,6 +3817,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     }
 
     if (format === 'referenceMarker') {
+      // A note-ENTRY marker that opens a footnote/endnote body OUTSIDE a Notes chapter (e.g. BHI's "*"
+      // footnotes grouped in a back-matter chapter). In the source it sits INLINE at the note's own size
+      // and colour — NOT a raised, shrunken superscript, which floats above the line and collides with the
+      // previous note's last line. Render it inline, inheriting the note text's size/colour, so it reads as
+      // the note's own label. (In a Notes chapter the dashed-underline branch below already handles this.)
+      if (noteEntry && !isNotesChapter) {
+        return (
+          <span key={key} data-reference-marker="true" className="select-none not-italic">
+            {text}
+          </span>
+        );
+      }
       // In the NOTES chapter the note-ENTRY marker is, in the source, a normal-size INLINE number ("1.")
       // with a dashed underline (.calibre4) — a note list, NOT raised superscripts. Render it inline at the
       // note's own size so it reads faithfully; the ACTIVE (navigated-to) state still shows the neon
@@ -4019,11 +4042,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     segments.forEach((segment, segmentIndex) => {
       if (segment.format === 'footnote' || segment.format === 'lineBreak') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
         return;
       }
       if (segment.format === 'attributionFootnote') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
         visibleCursor += segment.text.length;
         return;
       }
@@ -4034,21 +4057,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const relevantRanges = inkRanges.filter(range => range.start < segmentEnd && range.end > segmentStart);
 
       if (relevantRanges.length === 0) {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
       } else {
         relevantRanges.forEach((range, rangeIndex) => {
           const localStart = Math.max(0, range.start - segmentStart);
           const localEnd = Math.min(segment.text.length, range.end - segmentStart);
           if (localStart > localCursor) {
-            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
+            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
           }
           if (localEnd > localStart) {
-            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
+            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
           }
           localCursor = Math.max(localCursor, localEnd);
         });
         if (localCursor < segment.text.length) {
-          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis));
+          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
         }
       }
       visibleCursor = segmentEnd;
@@ -4932,7 +4955,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const _prevContPara = paragraphData[pIdx - 1];
                   const _prevEndsTerminal = !!_prevContPara && /[.!?。！？]["'”’)\]]?$/u.test((_prevContPara.original || []).join(' ').replace(/[^\x20-\x7e。！？”’]/g, '').trim());
                   const notesHangStyle: React.CSSProperties | undefined =
-                    (isNoteEntry || isFnEntry) ? { textIndent: '-1.5em', paddingLeft: '1.5em' }
+                    (isNoteEntry || isFnEntry)
+                      // A note whose SOURCE is flush-left (EPUB `.footnote`/`.notes` with margin-left:0 AND
+                      // text-indent:0 — e.g. "A Brief History of Intelligence"'s * footnotes) must render
+                      // FLUSH, not with the default marker-hanging indent. Only trust this OUTSIDE a Notes
+                      // chapter: normalizeNotesReaderText strips the E01A/indent sentinels there, so
+                      // hangingEntry/indent read false even for genuinely-hanging endnotes (Elon .notes_1/2).
+                      // A truly-hanging footnote in a non-notes chapter carries E01A (para.hangingEntry) from
+                      // the extractor's hang detector (Agentic/Elon p.footnote ml≈-text-indent), so it stays
+                      // hanging; only the flush case (no hang, no block indent) goes flush.
+                      ? ((isEpubSource && isFnEntry && !isNotesChapter && !para.hangingEntry && !para.indent)
+                          ? { textIndent: 0 }
+                          : { textIndent: '-1.5em', paddingLeft: '1.5em' })
                       // A multi-paragraph footnote/note CONTINUATION: the source flows it TIGHT within the note's
                       // text column (no blank line) and marks each NEW paragraph with a FIRST-LINE indent (Elon
                       // fn4: wrap x=88, new-para first line x=99 ≈ 1em), not a gap. A wrap keeps no indent.
@@ -5177,7 +5211,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       own sentence ("i." | "Set…", capital) already gets a space from the {' '} join.
                                       Add one space after the gutter in the former case so both read "i. body". */}
                                   {renderMarker && bodySentence ? ' ' : null}
-                                  {renderInkableText(bodySentence, globalIndex, isAudioActive, [], null, { suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution, suppressBroadItalic: suppressPraiseBodyItalic })}{isAttrLine && nextIsDivider ? null : ' '}
+                                  {renderInkableText(bodySentence, globalIndex, isAudioActive, [], null, { suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution, suppressBroadItalic: suppressPraiseBodyItalic, noteEntryMarkersAsReferences: isNotesChapter || isFnEntry })}{isAttrLine && nextIsDivider ? null : ' '}
                                 </span>
                               );
                             })}

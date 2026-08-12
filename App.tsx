@@ -1270,7 +1270,7 @@ const App: React.FC = () => {
       // shared key is the note body's fragment id, used identically on both the reference and the body.
       const noteRefLabels = new Map<string, string>(); // note-body fragment id -> marker label
       {
-        const MARKER = /^(?:\d{1,3}|[ivxlcdm]{1,4}|fn\.?\d{1,3})\.?$/i;
+        const MARKER = /^(?:\d{1,3}|[ivxlcdm]{1,4}|fn\.?\d{1,3}|[*†‡§‖¶]{1,4})\.?$/i;
         // A NOTE anchor (en/fn/note + digit), not a page-break/cross-ref marker — many EPUBs (Sovereign)
         // emit <a href="#page_213">213</a> for epub:type="pagebreak", which has a numeric label too and
         // would otherwise be mistaken for a footnote reference.
