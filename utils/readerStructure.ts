@@ -280,7 +280,7 @@ const normalizeReaderText = (value: string): string => {
   return paragraphs.join('\n\n');
 };
 
-export const normalizeNotesReaderText = (value: string): string => {
+export const normalizeNotesReaderText = (value: string, preserveParagraphs = false): string => {
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   // Block-role/alignment sentinels (U+E010-E013) prefix a paragraph. The notes' per-chapter
   // "CHAPTER N" section headers are now tagged headings (U+E013) by the notes-header detection,
@@ -464,6 +464,15 @@ export const normalizeNotesReaderText = (value: string): string => {
     // note marker is not mistaken for running text and dropped.
     return !/[.!?。！？"”')\]}][*_~]*$/u.test(before);
   };
+  // EPUB notes chapters carry AUTHORED <p> boundaries — each note is already its own paragraph,
+  // separated by \n\n. The marker-based collapse below is a PDF concern: pdf.js has no paragraph
+  // marks, so it re-infers note blocks from geometry + numeric/roman markers. On PHRASE-keyed EPUB
+  // notes (which have no numeric marker) that heuristic finds zero entry starts and flattens EVERY
+  // note into one flowing block per chapter section — gluing "Introduction"/"Chapter N" onto the
+  // notes AND letting one sentence-split-broken `*…*` run bleed italic across the whole merged blob.
+  // For EPUB, trust the source paragraphs verbatim (the strips above already cleaned sentinels,
+  // page markers and back-links).
+  if (preserveParagraphs) return text.replace(/\n{3,}/g, '\n\n').trim();
   const candidates = [...text.matchAll(NOTE_ENTRY_MARKER_RE)]
     .map(match => {
       const prefix = match[1] || '';

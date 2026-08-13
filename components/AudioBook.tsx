@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v152-flush-footnote-body';
+const CHAPTER_TEXT_CACHE_VERSION = 'v157-notes-continuation-size';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -2109,7 +2109,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
 
       if (isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '')) {
-        cleanText = normalizeNotesReaderText(cleanText);
+        cleanText = normalizeNotesReaderText(cleanText, fileContext.sourceKind === 'epub');
       }
 
 
@@ -4520,7 +4520,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // Does THIS paragraph read as spoken dialogue (a sibling sentence carries a speech verb)?
                   // If so, suppress the standalone-citation italic so a fully-quoted dialogue line
                   // ("Let's thin it up a bit.") stays roman instead of being italicised like an epigraph.
-                  const _suppressCitationItalic = PARAGRAPH_SPEECH_RE.test((para.original || []).join(' '));
+                  // In an EPUB Notes chapter the source ALREADY carries its own italic markup (book/journal
+                  // titles as `*…*`, the keyed phrase as an italic hyperlink). The citation-italic heuristic
+                  // (looksLikeStandaloneCitation → wrap the whole "standalone citation" in italic) then mis-fires
+                  // on a note that reads like a citation ("*[phrase](#note1):* "Rosey's Boyfriend." *The Jetsons,*
+                  // …") — it stripInlineMarkupSyntax'es the body, DESTROYING the phrase-key link and bleeding
+                  // italic across the roman note text. EPUB source markup is authoritative, so suppress the
+                  // auto-italic there and render each note verbatim per its own `*…*`/link markup.
+                  const _suppressCitationItalic = PARAGRAPH_SPEECH_RE.test((para.original || []).join(' ')) || (isNotesChapter && isEpubSource);
                   // A decorative horizontal rule from the source (epigraph/section divider): a thin centred
                   // line in the attribution grey, with room above and below so it reads as a content break.
                   if (para.divider) {
@@ -4744,7 +4751,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // body that FOLLOWS it a top gap so the caption reads as attached to its figure, not run into the
                   // prose (they were merged before; the merge fix left them tight). Body-side gap → gated on line 0.
                   const prevCombined = stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original ?? []).join(' ')).replace(/\s+/g, ' ').trim();
-                  const prevIsFigCaption = /^(?:figure|table|fig\.|plate|exhibit|chart|diagram|scheme|listing)\s+\d/iu.test(prevCombined);
+                  // …but NOT in a Notes chapter: there a "Figure 2.8: Photograph by…" entry is a figure-CREDIT
+                  // ENDNOTE, not a real caption, so it must not push a mt-4 gap onto the following note (BHI's
+                  // notes ran with a stray blank line after every figure-credit note).
+                  const prevIsFigCaption = !isNotesChapter && /^(?:figure|table|fig\.|plate|exhibit|chart|diagram|scheme|listing)\s+\d/iu.test(prevCombined);
                   // A block-indented paragraph (para.indent>0) normally drops ALL first-line indent. But a SET-OFF
                   // EXTRACT keeps its per-paragraph structure: the source flags a continuation paragraph that carries
                   // a first-line indent (U+E029 → para.firstLineIndented, e.g. `extract_indented` text-indent:1em),
@@ -4935,8 +4945,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // marker "[25](#pdffn…)" entirely (leaving "For an excellent…"), so the number is gone
                   // and no note ever matched. Match the bracketed-link marker "[N](href)"/"[N]" OR a bare
                   // "N."/"N)" (Sovereign notes).
+                  const _noteHead = para.original.join(' ').replace(/^[\s ]+/u, '');
+                  const _noteNumericKey = /^["'“]?\s*(?:\[\s*[0-9ivxlcdm]{1,8}\s*\](?:\s*\([^)\n]*\))?|[0-9]{1,3}[.)])/iu.test(_noteHead);
+                  // A PHRASE-keyed endnote (e.g. "A Brief History of Intelligence"): the note opens with its
+                  // keyed phrase as an italic hyperlink back to the reference — "*[phrase](…#note27):*" or the
+                  // figure-credit "[*Figure 1.5*](…#note28):" — NOT a number. It's still a note ENTRY (own
+                  // paragraph, TIGHT spacing), so recognise it here; otherwise it fell through to default body
+                  // rendering and picked up a first-line indent + uneven content-heuristic gaps (a "Figure N"
+                  // credit line matched a citation spacing rule). Since the source `.notes { margin:0;
+                  // text-indent:0 }` flushes it (a long phrase can't hang like a number), it renders FLUSH.
+                  const _notePhraseKey = !_noteNumericKey && /^\*?\[[^\]\n]+\]\([^)\n]*#[^)\n]+\)/u.test(_noteHead);
                   const isNoteEntry = isNotesChapter && !isHeadingRole && !isNotesSectionHeadingParagraph(para.original)
-                    && /^["'“]?\s*(?:\[\s*[0-9ivxlcdm]{1,8}\s*\](?:\s*\([^)\n]*\))?|[0-9]{1,3}[.)])/iu.test(para.original.join(' ').replace(/^[\s ]+/u, ''));
+                    && (_noteNumericKey || _notePhraseKey);
                   // In-chapter footnote entries (a footnote section at the END of a normal chapter, not the
                   // Notes chapter) — same hanging indent as note entries, and reproduced TIGHT: consecutive
                   // footnotes flow like the source's footnote block (measured ~1 line gap, no blank line), with
@@ -4964,7 +4984,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       // A truly-hanging footnote in a non-notes chapter carries E01A (para.hangingEntry) from
                       // the extractor's hang detector (Agentic/Elon p.footnote ml≈-text-indent), so it stays
                       // hanging; only the flush case (no hang, no block indent) goes flush.
-                      ? ((isEpubSource && isFnEntry && !isNotesChapter && !para.hangingEntry && !para.indent)
+                      // Flush when: (a) a non-Notes-chapter EPUB footnote whose source is flush (no hang, no
+                      // indent), or (b) a PHRASE-keyed Notes-chapter endnote (BHI) — its `.notes` source is
+                      // flush and a long phrase key can't hang. NUMERIC endnotes (Singularity `<li>`) keep the
+                      // marker-hanging indent.
+                      ? ((isEpubSource && ((isFnEntry && !isNotesChapter && !para.hangingEntry && !para.indent) || _notePhraseKey))
                           ? { textIndent: 0 }
                           : { textIndent: '-1.5em', paddingLeft: '1.5em' })
                       // A multi-paragraph footnote/note CONTINUATION: the source flows it TIGHT within the note's
@@ -4995,7 +5019,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const notesFaithfulSizeStyle: React.CSSProperties | undefined =
                     isNotesHeading ? { fontSize: sizeEmPx(1.25), fontStyle: 'italic' as const }
                       : _notesEpub && (isFnEntry || isNoteEntry) ? { fontSize: sizeEmPx(para.sizeEm ?? 0.83) }
-                      : _notesEpub && noteContinuationSet.has(pIdx) ? { fontSize: sizeEmPx(noteContinuationSet.get(pIdx) ?? 0.83) } : undefined;
+                      : _notesEpub && noteContinuationSet.has(pIdx) ? { fontSize: sizeEmPx(noteContinuationSet.get(pIdx) ?? 0.83) }
+                      // A note CONTINUATION paragraph (BHI `.notes_in`, font-size:0.9em, text-indent:1.5em) —
+                      // the 2nd+ paragraph of a multi-paragraph endnote. It carries no phrase key, so it isn't a
+                      // note ENTRY, but the WHOLE Notes chapter is set small; without this it reverted to body
+                      // size ("Dopamine generates…" jumped a tier). Every non-heading paragraph in an EPUB Notes
+                      // chapter is note text → size it to match the entries.
+                      : _notesEpub && isNotesChapter && !isHeadingRole ? { fontSize: sizeEmPx(para.sizeEm ?? 0.83) } : undefined;
                   // A hanging-list entry (dialogue speaker turn / CIP field, para.hangingEntry from the
                   // U+E01A sentinel): the label HANGS at the outdent, wrapped lines indent to the tier.
                   // para.indent (the NBSP tier) already gives noTextIndent (drops the 1.75em) + the left
