@@ -1758,8 +1758,12 @@ const App: React.FC = () => {
           // short, heading-length block qualifies.
           const headId = element.getAttribute('id');
           const _navHeadLen = trimmed.replace(/\[\[(?:FIG|PAGE)[^\]]*\]\]/gu, '').replace(/[-]/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim().length;
-          if (headId && navAnchorIds.has(headId) && _navHeadLen > 0 && _navHeadLen < 90 && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
-            const clean = trimmed.replace(/\[\[(?:FIG|PAGE)[^\]]*\]\]/gu, '').replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
+          // A nav-referenced block that CONTAINS a figure is a figure PAGE (this book's "The Basics of
+          // Human Brain Anatomy": <section><h2>title</h2><div class="fig_85"><img/><p>credit</p></div>), NOT a
+          // run-in heading. Flattening it into one heading dropped the [[FIG]] marker (the figure vanished);
+          // let its own <h2>/<img> children render instead.
+          if (headId && navAnchorIds.has(headId) && !/\[\[FIG/u.test(trimmed) && _navHeadLen > 0 && _navHeadLen < 90 && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
+            const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
             if (clean) return `\n\n${sizeTierSentinel(element)}${SENT_HEADING}${clean}\n\n`;
           }
           const a = alignFor(element);
