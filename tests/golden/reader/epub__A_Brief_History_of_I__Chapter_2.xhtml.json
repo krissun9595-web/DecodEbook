@@ -1,0 +1,152 @@
+{
+  "blocks": 79,
+  "roleHist": {
+    "body": 79
+  },
+  "alignHist": {
+    "default": 79
+  },
+  "segHist": {
+    "footnote": 1,
+    "link": 3,
+    "plain": 87,
+    "attribution": 1,
+    "italic": 12
+  },
+  "sample": [
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "footnote"
+      ],
+      "t": "[2](#rch2)"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link"
+      ],
+      "t": "[The Birth of Good and Bad](#rch2)"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Nature has placed mankind under th"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "attribution"
+      ],
+      "t": "—JEREMY BENTHAM, *AN INTRODUCTION "
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "AT FIRST GLANCE, the diversity of "
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "italic",
+        "plain"
+      ],
+      "t": "Evolutionary biologists call anima"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Figure 2.1"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Original art by Rebecca Gelernter"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Figure 2.2"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Original art by Rebecca Gelernter"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "The first animals are believed to "
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Radially symmetrical body plans wo"
+    }
+  ]
+}

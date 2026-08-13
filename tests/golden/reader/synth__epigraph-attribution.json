@@ -1,0 +1,37 @@
+{
+  "blocks": 2,
+  "roleHist": {
+    "body": 2
+  },
+  "alignHist": {
+    "default": 2
+  },
+  "segHist": {
+    "plain": 1,
+    "attribution": 1
+  },
+  "sample": [
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Nature has placed mankind under th"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "attribution"
+      ],
+      "t": "—JEREMY BENTHAM, *AN INTRODUCTION "
+    }
+  ]
+}

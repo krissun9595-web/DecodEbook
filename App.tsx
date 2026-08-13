@@ -46,6 +46,10 @@ const GeneratedFilesPanel = React.lazy(() => lazyRetry(() => import('./component
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).toString();
 
+// Piracy re-distribution watermarks (a URL/domain the SOURCE book never had, stamped at page tops and
+// before notes by the site that leaked it). Never real content — filtered from links AND standalone text.
+export const WATERMARK_RE = /\b(?:oceanofpdf|z-?lib(?:rary)?|1lib|b-ok|libgen|annas?[-\s]?archive|pdfdrive|memoware|dokumen\.pub)\b|z-lib\.\w+|1lib\.\w+/i;
+
 const SOURCE_CACHE_CHAPTER_ID = 0;
 const SOURCE_CACHE_VERSION = 'v4-internal-link-normalization';
 const PREVIOUS_SOURCE_CACHE_VERSION = 'v3-pdf-paragraph-boundary-corrections';
@@ -2905,6 +2909,11 @@ const App: React.FC = () => {
             // pattern — not the broken URL.
             const _calM = /^https?:\/\/calibre-pdf-anchor\.[^/]*\/#(\S+)/iu.exec(a.url);
             if (_calM) { gotoLinks.push({ rect: a.rect, key: `pdfnote-cal-${_calM[1]}` }); continue; }
+            // Piracy watermark injected by the distribution site (OceanofPDF / Z-Library / libgen / Anna's
+            // Archive): a link annotation the SOURCE book never had, sprinkled at page tops + before every
+            // note, rendered as a stray hyperlink. Drop the annotation so it isn't a link (the glyphs are
+            // dropped separately by the watermark line filter). NOT real content.
+            if (WATERMARK_RE.test(a.url)) continue;
             uriLinks.push({ rect: a.rect, url: a.url }); continue;
           }
           if (!a.dest) continue;

@@ -1,0 +1,36 @@
+{
+  "blocks": 2,
+  "roleHist": {
+    "body": 2
+  },
+  "alignHist": {
+    "default": 2
+  },
+  "segHist": {
+    "plain": 2
+  },
+  "sample": [
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "A real body paragraph that mention"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Another real paragraph after the i"
+    }
+  ]
+}

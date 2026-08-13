@@ -1,0 +1,168 @@
+{
+  "blocks": 962,
+  "roleHist": {
+    "body": 962
+  },
+  "alignHist": {
+    "default": 962
+  },
+  "segHist": {
+    "plain": 2728,
+    "italic": 757,
+    "link": 1034
+  },
+  "sample": [
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Notes"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Introduction"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "See the appendix for the sources u"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "italic",
+        "plain"
+      ],
+      "t": "William D. Nordhaus, “Two Centurie"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Chapter 1: Where Are We in the Six"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "italic",
+        "plain"
+      ],
+      "t": "Alan M. Turing, “Computing Machine"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Chapter 2: Reinventing Intelligenc"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "italic",
+        "plain"
+      ],
+      "t": "Alan M. Turing, “Computing Machine"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "italic",
+        "plain",
+        "link",
+        "plain"
+      ],
+      "t": "Alex Shashkevich, “Stanford Resear"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "link",
+        "plain"
+      ],
+      "t": "John McCarthy et al., “A Proposal "
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "McCarthy et al., “Proposal for the"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain",
+        "italic",
+        "plain",
+        "link",
+        "plain",
+        "italic",
+        "plain",
+        "link",
+        "plain"
+      ],
+      "t": "Martin Childs, “John McCarthy: Com"
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "blocks": 589,
+  "roleHist": {
+    "body": 589
+  },
+  "alignHist": {
+    "default": 589
+  },
+  "segHist": {
+    "link": 552,
+    "plain": 610,
+    "italic": 563
+  },
+  "sample": [
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link"
+      ],
+      "t": "[Notes](#rnotes)"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Introduction"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "italic"
+      ],
+      "t": "*[“just like one of the family”](#"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[“on the verge of achieving human"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "[*over one* billion *connections*]"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "italic"
+      ],
+      "t": "*[“to the human brain”](#note4):* "
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[“motor, and other functions”](#n"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[and how it works](#note6):* Cesa"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[“so on to Artificial Human–level"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[faster than a human](#note8):* H"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "plain"
+      ],
+      "t": "Chapter 1: The World Before Brains"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[an unremarkable hydrothermal ven"
+    }
+  ]
+}

@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v161-epigraph-split-gutter';
+const CHAPTER_TEXT_CACHE_VERSION = 'v162-watermark-filter';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1212,7 +1212,7 @@ const processQueue = async <T, R>(
   return results;
 };
 
-const buildPageSentenceData = (pageText: string): {
+export const buildPageSentenceData = (pageText: string): {
   paragraphData: ParagraphData[];
   flatSentenceMap: SentenceMap[];
 } => {
@@ -1224,6 +1224,11 @@ const buildPageSentenceData = (pageText: string): {
   // U+E017 marks a two-column index page (drives the reader's 2-col grid); strip it from display text.
   const cleanedPageText = pageText.replace(//gu, '').replace(/[^\S\n]*\[\[PAGE\s+\d+\]\][^\S\n]*/gi, ' ');
   const rawParagraphs = cleanedPageText.split(/\n\s*\n/).filter(p => p.trim().length > 0)
+    // Drop a paragraph that is ONLY a piracy re-distribution watermark ("OceanofPDF.com" / Z-Library / … —
+    // a stray line/link the SOURCE never had, stamped at page tops + before notes). Reader-side so it clears
+    // on reload for already-uploaded files; ≤40 visible chars guards against nuking real prose that mentions
+    // a site. (Kept in sync with App.tsx WATERMARK_RE — a tiny duplication to avoid a circular import.)
+    .filter(p => { const v = p.replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1').replace(/[*_~`]/g, '').replace(/[^\x20-\x7e]/g, '').trim(); return !(v.length <= 40 && /\b(?:oceanofpdf|z-?lib(?:rary)?|1lib|b-ok|libgen|annas?[-\s]?archive|pdfdrive|dokumen\.pub)\b/i.test(v)); })
     // A figure marker can arrive GLUED to its caption ("[[FIG p14n1]] To maximize comparability…").
     // Split it into two paragraphs — the marker (→ figure) and the caption (→ text) — so every
     // rawParagraph still maps to exactly ONE rendered paragraph, keeping sentence/translation/highlight

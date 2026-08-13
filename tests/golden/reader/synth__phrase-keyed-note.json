@@ -1,0 +1,54 @@
+{
+  "blocks": 3,
+  "roleHist": {
+    "body": 3
+  },
+  "alignHist": {
+    "default": 3
+  },
+  "segHist": {
+    "link": 3,
+    "italic": 2,
+    "plain": 3
+  },
+  "sample": [
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[the tree of life](#note26):* Tim"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "plain"
+      ],
+      "t": "[*Figure 1.5*](#note28): Illustrat"
+    },
+    {
+      "role": "body",
+      "align": "default",
+      "indent": 0,
+      "bq": false,
+      "size": null,
+      "segs": [
+        "link",
+        "italic",
+        "plain"
+      ],
+      "t": "*[whom all neurons descend](#note2"
+    }
+  ]
+}
