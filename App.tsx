@@ -50,6 +50,40 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mj
 // before notes by the site that leaked it). Never real content — filtered from links AND standalone text.
 export const WATERMARK_RE = /\b(?:oceanofpdf|z-?lib(?:rary)?|1lib|b-ok|libgen|annas?[-\s]?archive|pdfdrive|memoware|dokumen\.pub)\b|z-lib\.\w+|1lib\.\w+/i;
 
+// EPUB 3 Structural Semantics (epub:type) + W3C DPUB-ARIA (role="doc-*") — the publisher's OWN, standardized
+// declaration of a section's purpose. Authoritative where present, so it's the FIRST signal for naming a
+// spine file (ahead of the content heuristics, which only exist for EPUBs that carry no semantics — Elon,
+// Transurfing). Maps a specific type token → the canonical reader name. Matter GROUP tokens (frontmatter/
+// bodymatter/backmatter) and a bare chapter/part are intentionally absent → caller falls back to the heading.
+const EPUB_TYPE_NAME: Record<string, string> = {
+  cover: 'Cover', titlepage: 'Title Page', 'copyright-page': 'Copyright', copyright: 'Copyright',
+  dedication: 'Dedication', epigraph: 'Epigraph', toc: 'Contents', colophon: 'Colophon',
+  acknowledgments: 'Acknowledgments', acknowledgements: 'Acknowledgments', foreword: 'Foreword',
+  preface: 'Preface', prologue: 'Prologue', introduction: 'Introduction', epilogue: 'Epilogue',
+  afterword: 'Afterword', conclusion: 'Conclusion', bibliography: 'Bibliography', glossary: 'Glossary',
+  index: 'Index', endnotes: 'Notes', footnotes: 'Notes', notes: 'Notes', appendix: 'Appendix',
+};
+const DPUB_ROLE_TYPE: Record<string, string> = {
+  'doc-cover': 'cover', 'doc-toc': 'toc', 'doc-dedication': 'dedication', 'doc-acknowledgments': 'acknowledgments',
+  'doc-foreword': 'foreword', 'doc-preface': 'preface', 'doc-introduction': 'introduction', 'doc-epilogue': 'epilogue',
+  'doc-afterword': 'afterword', 'doc-conclusion': 'conclusion', 'doc-bibliography': 'bibliography', 'doc-glossary': 'glossary',
+  'doc-index': 'index', 'doc-endnotes': 'endnotes', 'doc-appendix': 'appendix', 'doc-epigraph': 'epigraph',
+};
+const EPUB_MATTER_GROUP = new Set(['frontmatter', 'bodymatter', 'backmatter']);
+// Canonical semantic name for a spine file from its epub:type / DPUB-ARIA role, or '' when it carries no
+// SPECIFIC type (a plain chapter, or a semantics-free EPUB) — caller then falls back to nav/heading/heuristics.
+export const epubSemanticName = (doc: Document): string => {
+  const els = [doc.body, ...Array.from(doc.querySelectorAll('section, nav'))].filter(Boolean) as Element[];
+  for (const el of els) {
+    for (const ty of (el.getAttribute('epub:type') || '').toLowerCase().split(/\s+/)) {
+      if (!EPUB_MATTER_GROUP.has(ty) && EPUB_TYPE_NAME[ty]) return EPUB_TYPE_NAME[ty];
+    }
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (DPUB_ROLE_TYPE[role]) return EPUB_TYPE_NAME[DPUB_ROLE_TYPE[role]] || '';
+  }
+  return '';
+};
+
 const SOURCE_CACHE_CHAPTER_ID = 0;
 const SOURCE_CACHE_VERSION = 'v4-internal-link-normalization';
 const PREVIOUS_SOURCE_CACHE_VERSION = 'v3-pdf-paragraph-boundary-corrections';
@@ -2158,6 +2192,8 @@ const App: React.FC = () => {
       // — a clean, authoritative name for pages the TOC omits, so they don't fold together under a guessed
       // "Cover"/"Front Matter" (this book's Cover + Title Page — both a lone linked image — merged into one).
       const fileSectionTitle = new Map<string, string>();
+      // Canonical name from the file's OWN epub:type / DPUB-ARIA role (authoritative when present).
+      const fileSemanticName = new Map<string, string>();
       let fullText = "";
       for (const filename of sortedFiles) {
         const rawContent = await zip.files[filename].async("string");
@@ -2184,6 +2220,8 @@ const App: React.FC = () => {
         const doc = parser.parseFromString(content, "text/html");
         const _secTitle = (doc.querySelector('section[title]')?.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
         if (_secTitle && _secTitle.length >= 3 && _secTitle.length <= 60 && !/^\d+$/.test(_secTitle) && !/\.(x?html?|opf)$/i.test(_secTitle)) fileSectionTitle.set(filename, _secTitle);
+        const _semName = epubSemanticName(doc);
+        if (_semName) fileSemanticName.set(filename, _semName);
         currentBodyEm = resolveFontEm(doc.body) || 1; // this file's base size, so the tier ratio is relative to ITS body
         const text = nodeToMarkedText(doc.body, dirOf(filename))
           .replace(/[ \t]+\n/g, '\n')
@@ -2355,11 +2393,16 @@ const App: React.FC = () => {
           }
           return hs.join(' ').replace(/\s+/g, ' ').trim();
         })();
+        const semName = fileSemanticName.get(file);
         const secTitle = fileSectionTitle.get(file);
         let title: string;
+        // FIRST signal: the file's own epub:type / DPUB-ARIA role (EPUB 3 / W3C standards, publisher-authored).
+        // Authoritative when present, so it beats every heuristic below — a titlepage/copyright/dedication/
+        // toc page names itself correctly regardless of its content or class names. Falls through when absent.
+        if (semName) title = semName;
         // A lone linked cover/title image is < 30 chars of text, so the length heuristic named BOTH 'Cover'
         // and merged them — only fall back to it when the page has no authoritative <section title>.
-        if (file === coverFull || (low.length < 30 && !secTitle)) title = 'Cover';
+        else if (file === coverFull || (low.length < 30 && !secTitle)) title = 'Cover';
         else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)
           && !/^(?:table of )?contents\b/u.test(low)
           && !/^(?:table of )?contents$/iu.test(ownHead)) title = 'Copyright'; // copyright markers win over an h1 title — UNLESS this IS the Contents page: a TOC lists a "COPYRIGHT" entry, so the bare copyright test mislabelled the whole table of contents "Copyright" (its own heading is "Contents"), knocking it off the Contents render path
