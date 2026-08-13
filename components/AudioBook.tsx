@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v157-notes-continuation-size';
+const CHAPTER_TEXT_CACHE_VERSION = 'v161-epigraph-split-gutter';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -447,7 +447,9 @@ const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/\*([^*]+)\*/g, '$1');
 
 const stripOrphanDisplayMarkers = (value: string): string =>
-  value.replace(/[*_~]/g, '');
+  // Strip orphan emphasis markers — but KEEP a tilde used as an approximation sign ("~1.1", "~50"): a lone
+  // `~` directly before a digit is math (this book's footnote "2⁵⁰ = ~1.1 x 10¹⁵"), not a stray strikethrough.
+  value.replace(/[*_]/g, '').replace(/~(?!\d)/g, '');
 
 const normalizeInternalLinkMarkup = (value: string): string =>
   value.replace(/\[\s*([^\]\n]{1,120}?)\s*\]\s*\(([^)\n]+)\)/g, (match, rawLabel: string, rawHref: string) => {
@@ -4876,6 +4878,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         paddingLeft: `${blockPadEm}em`,
                         ...(para.blockQuote
                           ? { paddingRight: viewMode === 'split' ? `calc(${blockPadEm}em + 1.5rem)` : `${blockPadEm}em` }
+                          // A CENTRED set-off block with a source left margin is inset on BOTH sides (this book's
+                          // epigraph `.epic`/`.epicr`: margin-left AND margin-right 1.5em) — mirror the padding so
+                          // it narrows symmetrically. In SPLIT view the div's paddingRight ALSO carries the
+                          // column gutter (className pr-6), so the block indent must be ADDED to it
+                          // (calc(indent + 1.5rem)) — otherwise the 1.5em just re-creates the gutter and the
+                          // right inset vanishes (right margin looked narrower than the left).
+                          : para.align === 'center'
+                          ? { paddingRight: viewMode === 'split' ? `calc(${blockPadEm}em + 1.5rem)` : `${blockPadEm}em` }
                           : {}),
                       }
                     : undefined;
@@ -5146,7 +5156,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // paragraphs. The first opens the mt-8 chapter-top break; the rest stack TIGHT under it
                         // (mt-1) so the number/title/deck read as one cohesive heading block, not three gaps.
                         const prevIsHeading = paragraphData[pIdx - 1]?.role === 'heading';
-                        const isAttrLine = looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim());
+                        // An attribution the SOURCE explicitly centres (this book's epigraph `.epicr`
+                        // "—JEREMY BENTHAM, …" is text-align:center, emitted as E010) must stay centred — the
+                        // `—CREDIT` content heuristic otherwise force-right-aligns it, unfaithfully. Respect an
+                        // explicit centre; a genuinely right/unaligned attribution still right-aligns.
+                        const isAttrLine = looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim()) && effectiveAlign !== 'center';
                         // The attribution ("—MATTHEW 10:26") is itself inside the block-quote (bq=1), so exclude
                         // it from the mt-8 break — it sits TIGHT under its quote, not a paragraph-gap below it.
                         // When a divider follows the attribution, cancel the attribution segment's own mb-4 with
@@ -5241,7 +5255,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       own sentence ("i." | "Set…", capital) already gets a space from the {' '} join.
                                       Add one space after the gutter in the former case so both read "i. body". */}
                                   {renderMarker && bodySentence ? ' ' : null}
-                                  {renderInkableText(bodySentence, globalIndex, isAudioActive, [], null, { suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution, suppressBroadItalic: suppressPraiseBodyItalic, noteEntryMarkersAsReferences: isNotesChapter || isFnEntry })}{isAttrLine && nextIsDivider ? null : ' '}
+                                  {renderInkableText(bodySentence, globalIndex, isAudioActive, [], null, { suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution || effectiveAlign === 'center', suppressBroadItalic: suppressPraiseBodyItalic, noteEntryMarkersAsReferences: isNotesChapter || isFnEntry })}{isAttrLine && nextIsDivider ? null : ' '}
                                 </span>
                               );
                             })}
@@ -5319,7 +5333,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                             isActive,
                                             refsForTranslatedPart(partIndex),
                                             partIndex === 0 ? leadingNoteRef : null,
-                                            { internalNoteLinksAsFootnotes: false, inferBareFootnotes: false, romanMarkersAsReferences: false, suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution, suppressBroadItalic: suppressPraiseBodyItalic }
+                                            { internalNoteLinksAsFootnotes: false, inferBareFootnotes: false, romanMarkersAsReferences: false, suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution || effectiveAlign === 'center', suppressBroadItalic: suppressPraiseBodyItalic }
                                           )}
                                           {partIndex < translatedParts.length - 1 ? ' ' : ''}
                                         </React.Fragment>

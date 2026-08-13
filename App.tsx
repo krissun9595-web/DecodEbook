@@ -1595,7 +1595,27 @@ const App: React.FC = () => {
         if (tag === 'strong' || tag === 'b') return `**${trimmed}**`;
         if (tag === 'em' || tag === 'i') return `*${trimmed}*`;
         if (tag === 'u') return `__${trimmed}__`;
-        if (tag === 's' || tag === 'strike' || tag === 'del') return `~~${trimmed}~~`;
+        // A superscript. A NUMERIC one is math — an exponent like "2⁵⁰" or "10¹⁵" (the reader has no
+        // superscript styling, so it flattened "2<sup>50</sup>" to "250"): map the digits to Unicode
+        // superscript glyphs so they render raised in any font, extraction-only. A superscript that carries a
+        // NOTE marker (a footnote ref `<sup><a>*</a></sup>`) is non-numeric → stay transparent so the inner
+        // <a> emits the note reference unchanged.
+        if (tag === 'sup') {
+          const _sc = trimmed.replace(/\s+/g, '');
+          if (/^[0-9]{1,4}$/.test(_sc)) {
+            const SUP: Record<string, string> = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+            return [..._sc].map(c => SUP[c]).join('');
+          }
+          return childText;
+        }
+        if (tag === 'sub') {
+          const _sc = trimmed.replace(/\s+/g, '');
+          if (/^[0-9]{1,4}$/.test(_sc)) {
+            const SUB: Record<string, string> = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' };
+            return [..._sc].map(c => SUB[c]).join('');
+          }
+          return childText;
+        }
         if (tag === 'a') {
           const href = element.getAttribute('href') || '';
           // A back-link ("BACK TO NOTE REFERENCE N", role="doc-backlink") is source navigation the reader
@@ -1616,6 +1636,10 @@ const App: React.FC = () => {
             return `[${lbl}](#${frag})`;
           }
           const label = trimmed.replace(/\s+/g, ' ').trim();
+          // A FIGURE/IMAGE wrapped in a (navigation) link — a cover/title-page image linking back to the
+          // Contents. A figure is a block, not clickable text; keeping the wrapper emitted a raw
+          // "[[[FIG …]]](…Contents.xhtml#rtitle)" that leaked as the page's catalogue name. Drop the link.
+          if (/^\[\[FIG\b/u.test(label) && /\]\]$/u.test(label)) return childText;
           if (href) return `[${label}](${href})`;
           // An href-less <a> is a zero-width index MARKER — a self-closing `<a data-type="indexterm" …/>`
           // that text/html parsing does NOT self-close, so the open <a> swallows the following flow content
@@ -1631,7 +1655,12 @@ const App: React.FC = () => {
         // headings are authoritative (unlike PDF font-size guessing). Strip inner emphasis markers,
         // as the reader styles a heading as a whole (matches the PDF heading path).
         if (/^h[1-6]$/.test(tag)) {
-          const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
+          // A heading's text is a TITLE, not a hyperlink: this book wraps the chapter NUMBER and TITLE in a
+          // link back to the Contents (`<h1 class="chap_head"><a href="…Contents.xhtml#rch1">…</a></h1>`).
+          // Kept as `[1](…)`/`[Title](…)`, the number tripped the reader's bare-footnote inference (cyan
+          // superscript) and the title rendered as a dead underlined cross-chapter link. Strip the link to
+          // its text so the heading renders plain (the reader has its own chapter nav).
+          const clean = trimmed.replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1').replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
           if (!clean) return '';
           // A heading the source sets WHOLLY ITALIC (Sovereign's sub-section titles are `<h3><i>The
           // Information Revolution</i></h3>`) loses that when the emphasis markers are stripped above (the
@@ -1696,10 +1725,15 @@ const App: React.FC = () => {
           // child (offset 1 when a leading text node like "CHAPTER 3" precedes the first child) and emit that
           // child's rules as their OWN divider paragraphs around the line (never inside the heading sentinel).
           const _off = _lines.length - _kids.length; // 0 (line↔child) or 1 (leading text node first)
+          // A heading carries its own text-align (this book's `.chap_num`/`.chap_head` are text-align:center;
+          // the reader left-aligns a heading unless it sees the align sentinel). Emit it so a centred chapter
+          // number/title stays centred instead of collapsing to the left.
+          const _hAlign = alignFor(element);
+          const _hAlignSent = _hAlign === 'center' ? SENT_CENTER : _hAlign === 'right' ? String.fromCharCode(0xE011) : '';
           const _wrapHeadingLine = (l: string, k: number, tier: string): string => {
             const kid = (_off === 0 || _off === 1) ? _kids[k - _off] : undefined;
             const br = kid ? borderRuleOf(kid) : { top: null, bottom: null };
-            return (br.top ? ruleBlock(br.top) : '') + tier + SENT_HEADING + _hItalicMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
+            return (br.top ? ruleBlock(br.top) : '') + _hAlignSent + tier + SENT_HEADING + _hItalicMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
           };
           if (_multiSized && (_lines.length === _kidEms.length || _lines.length === _kidEms.length + 1)) {
             const _ems = _lines.length === _kidEms.length ? _kidEms : [_h1em, ..._kidEms];
@@ -1723,9 +1757,9 @@ const App: React.FC = () => {
           // all its inner \n\n to \n (via / *\n+ */→\n) and stamps the whole chapter bold+oversized. Only a
           // short, heading-length block qualifies.
           const headId = element.getAttribute('id');
-          const _navHeadLen = trimmed.replace(/[-]/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim().length;
+          const _navHeadLen = trimmed.replace(/\[\[(?:FIG|PAGE)[^\]]*\]\]/gu, '').replace(/[-]/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim().length;
           if (headId && navAnchorIds.has(headId) && _navHeadLen > 0 && _navHeadLen < 90 && !/[.!?。！？]["'”’)\]]?$/u.test(trimmed.replace(/[*_~`]+$/u, '').trim())) {
-            const clean = trimmed.replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
+            const clean = trimmed.replace(/\[\[(?:FIG|PAGE)[^\]]*\]\]/gu, '').replace(/[*_~`]/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n+ */g, '\n').replace(/^\n+|\n+$/g, '');
             if (clean) return `\n\n${sizeTierSentinel(element)}${SENT_HEADING}${clean}\n\n`;
           }
           const a = alignFor(element);
@@ -2112,6 +2146,10 @@ const App: React.FC = () => {
 
       const dirOf = (p: string): string => p.slice(0, p.lastIndexOf('/') + 1);
       const fileStartOffset = new Map<string, number>(); // spine file → offset where its content begins
+      // A front-matter page's own <section title="…"> attribute (Cover / Title Page / Dedication / Epigraph)
+      // — a clean, authoritative name for pages the TOC omits, so they don't fold together under a guessed
+      // "Cover"/"Front Matter" (this book's Cover + Title Page — both a lone linked image — merged into one).
+      const fileSectionTitle = new Map<string, string>();
       let fullText = "";
       for (const filename of sortedFiles) {
         const rawContent = await zip.files[filename].async("string");
@@ -2136,6 +2174,8 @@ const App: React.FC = () => {
         // closing tags into newlines REMOVED them, which left an <h1> unclosed so it swallowed the whole
         // chapter body — and the heading handler then flattened + bolded all of it.
         const doc = parser.parseFromString(content, "text/html");
+        const _secTitle = (doc.querySelector('section[title]')?.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+        if (_secTitle && _secTitle.length >= 3 && _secTitle.length <= 60 && !/^\d+$/.test(_secTitle) && !/\.(x?html?|opf)$/i.test(_secTitle)) fileSectionTitle.set(filename, _secTitle);
         currentBodyEm = resolveFontEm(doc.body) || 1; // this file's base size, so the tier ratio is relative to ITS body
         const text = nodeToMarkedText(doc.body, dirOf(filename))
           .replace(/[ \t]+\n/g, '\n')
@@ -2307,13 +2347,17 @@ const App: React.FC = () => {
           }
           return hs.join(' ').replace(/\s+/g, ' ').trim();
         })();
+        const secTitle = fileSectionTitle.get(file);
         let title: string;
-        if (file === coverFull || low.length < 30) title = 'Cover';
+        // A lone linked cover/title image is < 30 chars of text, so the length heuristic named BOTH 'Cover'
+        // and merged them — only fall back to it when the page has no authoritative <section title>.
+        if (file === coverFull || (low.length < 30 && !secTitle)) title = 'Cover';
         else if (/©|\bcopyright\b|all rights reserved|\bisbn\b/u.test(low)
           && !/^(?:table of )?contents\b/u.test(low)
           && !/^(?:table of )?contents$/iu.test(ownHead)) title = 'Copyright'; // copyright markers win over an h1 title — UNLESS this IS the Contents page: a TOC lists a "COPYRIGHT" entry, so the bare copyright test mislabelled the whole table of contents "Copyright" (its own heading is "Contents"), knocking it off the Contents render path
         else if (ownHead && ownHead.length >= 3 && ownHead.length <= 60) title = ownHead; // the file names itself (praise, dedication, …)
         else if (/^(?:table of )?contents\b/u.test(low) || navTitles.filter(t => low.includes(t.toLowerCase())).length >= 3) title = 'Contents';
+        else if (secTitle) title = secTitle; // authoritative <section title="Title Page"/"Dedication"/"Epigraph">
         else title = 'Front Matter';
         if (title === lastFront) continue; // merge consecutive same-kind pages into one entry
         lastFront = title;
