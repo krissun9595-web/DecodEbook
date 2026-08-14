@@ -29,3 +29,4 @@ package-lock.json
 # Synthetic fixtures live inline in scripts/regression-chapters.mjs and their goldens ARE committed.
 tests/fixtures/chapters/*.json
 tests/golden/chapters/real__*.json
+tests/golden/reader/real__*.json

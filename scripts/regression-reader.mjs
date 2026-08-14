@@ -70,6 +70,34 @@ const digestChapter = (text, { isNotes }) => {
   return { blocks: paragraphData.length, roleHist, alignHist, segHist, sample };
 };
 
+// ── Digest a whole REAL captured extraction (tests/fixtures/chapters/*.json `content`, which — unlike the
+// linkedom serialize path above — carries the extractor's layout SENTINELS: U+E010 center, E011 right, E013
+// heading, E018 flush-first, E019 blockquote, E01B–E01F size tiers, E022 set-off, E014–E016 two-column …).
+// Running the reader pipeline over it and snapshotting the aggregate role/align/segment/blockquote/size/indent
+// histograms guards sentinel-DRIVEN layout (epigraph centering, heading roles, block indent, size tiers) on
+// real books — the class of regression the serialize-based fixtures above can't see. Whole-content (not per
+// chapter) so it's independent of the fixture's chapter offsets (which may be pre-fix/broken).
+const digestReal = (content) => {
+  const { paragraphData } = buildPageSentenceData(content);
+  const roleHist = {}, alignHist = {}, segHist = {}, sizeHist = {}, indentHist = {};
+  const bump = (h, k) => { h[k] = (h[k] || 0) + 1; };
+  const opts = { internalNoteLinksAsFootnotes: true, inferBareFootnotes: true, romanMarkersAsReferences: true, noteEntryMarkersAsReferences: false };
+  let bqCount = 0;
+  for (const p of paragraphData) {
+    bump(roleHist, p.role || 'body'); bump(alignHist, p.align || 'default');
+    if (p.blockQuote) bqCount++;
+    bump(sizeHist, p.sizeEm != null ? String(p.sizeEm) : 'none');
+    bump(indentHist, String(p.indent || 0));
+    for (const s of parseInlineFormatting((p.original || [])[0] || '', opts)) bump(segHist, s.format);
+  }
+  const sample = paragraphData.slice(0, 12).map(p => ({
+    role: p.role || 'body', align: p.align || 'default', indent: p.indent || 0,
+    bq: !!p.blockQuote, size: p.sizeEm ?? null,
+    t: (p.original || []).join(' ').replace(/\s+/g, ' ').slice(0, 34),
+  }));
+  return { blocks: paragraphData.length, roleHist, alignHist, segHist, bqCount, sizeHist, indentHist, sample };
+};
+
 // ── Synthetic behaviour fixtures: precise guards for specific fixes (format-agnostic reader behaviour).
 const SYNTH = {
   'watermark-filter': { isNotes: false, text:
@@ -97,6 +125,18 @@ for (const t of EPUB_TARGETS) {
   const xhtml = execSync(`find "${dir}" -iname '*${t.file}'`).toString().trim().split('\n')[0];
   if (xhtml) digests[`epub/${epub.slice(0, 20).replace(/\W+/g, '_')}/${t.file}`] = digestChapter(chapterText(xhtml), t);
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// ── real captured extractions (sentinel-bearing) — LOCAL dev guard; fixtures + their goldens are gitignored
+// (whole copyrighted book text). Drop tests/fixtures/chapters/*.json in (localStorage.dbgCaptureChapters='1'),
+// run --update once. Keys prefixed `real/` → goldens land at tests/golden/reader/real__*.json (gitignored).
+const CHAP_FIX = path.join(ROOT, 'tests/fixtures/chapters');
+if (fs.existsSync(CHAP_FIX)) for (const f of fs.readdirSync(CHAP_FIX).filter(f => f.endsWith('.json'))) {
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(CHAP_FIX, f), 'utf8'));
+    if (typeof d.content !== 'string' || !d.content.length) continue;
+    digests[`real/${f.replace(/\.json$/, '')}`] = digestReal(d.content);
+  } catch (e) { console.log(`  (bad chapters fixture ${f}: ${e.message})`); }
 }
 
 // ── compare vs golden
