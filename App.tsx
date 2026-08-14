@@ -5869,6 +5869,12 @@ const App: React.FC = () => {
           const figShow = _figDbg.filter(f => f.ok || (f.w as number) * (f.h as number) > 2500);
           console.log('[fig] candidates=' + _figDbg.length + ' captured=' + _figDbg.filter(f => f.ok).length + ' (showing captured + skipped>2500pt²)\n' +
             figShow.map(f => `p${String(f.page).padStart(4)} ${f.w}x${f.h} ${f.ok ? 'OK ' + f.ok : 'SKIP:' + f.skip}`).join('\n'));
+          // Decisive: which CAPTURED figures never made it into the assembled content (marker not injected —
+          // a page-emit branch that skips figure injection)? And dump page 103 (Breakthrough #2 divider) raw.
+          const figMissing = _figDbg.filter(f => f.ok && !fullText.includes(`[[FIG ${f.ok}]]`));
+          console.log('[fig-missing] captured-but-NOT-in-content: ' + (figMissing.length ? figMissing.map(f => `${f.ok}(p${f.page})`).join(', ') : 'none'));
+          const _p103 = fullText.indexOf('[[PAGE 103]]');
+          if (_p103 >= 0) console.log('[content@103] ' + JSON.stringify(fullText.slice(_p103, _p103 + 300)));
         } catch { /* audit only */ }
       }
 
