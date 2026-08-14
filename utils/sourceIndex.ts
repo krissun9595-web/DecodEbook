@@ -929,7 +929,11 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
   // fallback offset (e.g. BHI ch.6 "The Evolution of Temporal Difference | Learning"). Let `gap` also swallow
   // a whole `(href)` group (the `]`/`[`/whitespace around it are already in the class); group form FIRST so
   // it consumes the parenthesized href atomically instead of the class eating a lone `(`.
-  const gap = `(?:\\([^)\\n]*\\)|[\\s'’‘\\-‐‑–—.,()\\[\\]${junk}])+`;
+  // `#` — a PART heading numbers itself with a hash the body prints literally ("Breakthrough #3"), so the
+  // gap between the word and its number must cross it (else all Part containers went unresolved → collapsed
+  // onto a figure-cluster fallback, grabbing the previous chapter's tail). Safe: `#` between two title words
+  // in body prose is vanishingly rare, and the prose-after guard rejects the Contents occurrence regardless.
+  const gap = `(?:\\([^)\\n]*\\)|[\\s'’‘\\-‐‑–—.,()#\\[\\]${junk}])+`;
   // `\\[?` — a chapter title is often emitted as a markdown LINK `[The World Before Brains](#pdfref-…)` (its
   // Contents back-link). The brackets aren't in the junk classes, so the opener was UNfindable and the
   // chapter dropped to the figure-cluster fallback (title absorbed into the previous chapter). Absorb the

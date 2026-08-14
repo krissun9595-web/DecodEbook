@@ -615,3 +615,24 @@ console.log('sourceIndex regression tests passed');
   assert.ok(off != null, 'a title whose final wrapped segment is emphasised (**word**](href)) is found');
   assert.ok(content.slice(off!).includes('WITH THE EMERGENCE'), 'anchors the real Conclusion opener, not the Contents entry');
 }
+
+// A PART container heading numbers itself with a literal hash the body prints ("Breakthrough #3"), and its
+// title wraps to a second link line. Both the "#" between the word and its number AND the link seam must be
+// crossed, else every Part went unresolved → collapsed onto a figure-cluster fallback and grabbed the
+// previous chapter's tail (BHI: Breakthrough #3's page opened with ch.9's Figure 9.3 + closing paragraph).
+{
+  const content = [
+    'Contents',
+    '    [Breakthrough #3: Simulating and the First Mammals](#pdfref-p165)',
+    '',
+    '[[PAGE 165]]',
+    '[Breakthrough #3](#pdfref-p8)',
+    '',
+    '[Simulating and the First Mammals](#pdfref-p8)',
+    '',
+    'THE MAMMALS THAT scurried beneath the feet of dinosaurs evolved a new trick and this Part opener carries ample lowercase prose so it passes the prose gate rather than matching the contents list above it.',
+  ].join('\n');
+  const off = findHeadingOffsetByTitle(content, 'Breakthrough #3: Simulating and the First Mammals', 0);
+  assert.ok(off != null, 'a "Breakthrough #N" Part heading (literal # + wrapped title) is found');
+  assert.ok(content.slice(off!).includes('THE MAMMALS THAT'), 'anchors the real Part opener, not the Contents entry');
+}
