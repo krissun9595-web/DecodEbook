@@ -885,7 +885,13 @@ const offsetForPage = (content: string, page: number): number | null => {
 // emphasis markers, unify apostrophe/dash variants, collapse whitespace, uppercase.
 // "2 Africa" and "**AFRICA**" both → "AFRICA"; "4 Elon’s First Start-Up" → "ELON'S FIRST START-UP".
 const normalizeHeadingText = (s: string): string =>
-  s.replace(/[*_`~]/gu, '')
+  // A heading extracted from a PDF/EPUB is often a markdown LINK (its Contents back-link),
+  // "[Breakthrough #3](#pdfref-p8)". The bracket+href noise is not part of the heading, so strip
+  // it to the visible text FIRST. Without this, headingMatchesTitle compared "[BREAKTHROUGH #3](…)"
+  // against the title "BREAKTHROUGH #3: SIMULATING …" and rejected the (correct) bookmark destination
+  // — forcing the symbol-fragile title-string matcher (the "#" gap) to carry Part/divider headings.
+  s.replace(/\[([^\]\n]*)\]\([^)\n]*\)/gu, '$1')
+    .replace(/[*_`~]/gu, '')
     .replace(/^\s*\d+[.)\s]+/u, '')
     .replace(/[’‘`]/gu, "'")
     .replace(/[‐‑–—]/gu, '-')

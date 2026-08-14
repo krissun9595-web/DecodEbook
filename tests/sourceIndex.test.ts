@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildChaptersFromOutline, buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, findHeadingOffsetByTitle, isUsablePdfOutline, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
+import { buildChaptersFromOutline, buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, findHeadingOffsetByTitle, headingMatchesTitle, isUsablePdfOutline, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
 import type { Chapter } from '../types.ts';
 
 const chapterBody = (name: string) => [
@@ -635,4 +635,19 @@ console.log('sourceIndex regression tests passed');
   const off = findHeadingOffsetByTitle(content, 'Breakthrough #3: Simulating and the First Mammals', 0);
   assert.ok(off != null, 'a "Breakthrough #N" Part heading (literal # + wrapped title) is found');
   assert.ok(content.slice(off!).includes('THE MAMMALS THAT'), 'anchors the real Part opener, not the Contents entry');
+}
+
+// headingMatchesTitle decides whether to TRUST a bookmark's page destination. The heading found on the
+// destination page is often a markdown LINK (its Contents back-link) whose bracket/href noise must be
+// stripped, else a Part title (longer than its heading line) is rejected and falls to the fragile title
+// matcher. This is the principled anchor for "Breakthrough #N" — resolve via the structural dest, no # gap.
+{
+  // Part headings: the found heading is a PREFIX of the title (title has the ": subtitle" too).
+  assert.ok(headingMatchesTitle('[Breakthrough #1](#pdfref-p7)', 'Breakthrough #1: Steering and the First Bilaterians'), 'link-wrapped Part heading matches its longer title');
+  assert.ok(headingMatchesTitle('[Conclusion](#pdfref-p8)', 'Conclusion: The Sixth Breakthrough'), 'link-wrapped Conclusion heading matches its longer title');
+  // Front matter still matches (heading text equals / contains the title).
+  assert.ok(headingMatchesTitle('[Dedication](#pdfref-p7)', 'Dedication'), 'link-wrapped front-matter heading still matches');
+  assert.ok(headingMatchesTitle('[The Basics of Human Brain Anatomy](#pdfref-p7)', 'The Basics of Human Brain Anatomy'), 'full link-wrapped heading matches its title');
+  // A genuinely different heading is still rejected (a broken /Fit bookmark pointing at the wrong page).
+  assert.ok(!headingMatchesTitle('[The Origin of Emotion](#pdfref-p71)', 'Breakthrough #2: Reinforcing and the First Vertebrates'), 'a mismatched destination heading is still rejected');
 }
