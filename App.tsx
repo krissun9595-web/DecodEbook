@@ -5880,6 +5880,14 @@ const App: React.FC = () => {
           console.log('[fig-missing] captured-but-NOT-in-content: ' + (figMissing.length ? figMissing.map(f => `${f.ok}(p${f.page})`).join(', ') : 'none'));
           const _p103 = fullText.indexOf('[[PAGE 103]]');
           if (_p103 >= 0) console.log('[content@103] ' + JSON.stringify(fullText.slice(_p103, _p103 + 300)));
+          // Front-matter figure trace: for the first pages, is the page in pageEmit, how many blocks, does
+          // figuresByPage have a figure, and did its marker reach fullText? Pinpoints where cover/title art drops.
+          const _peByPage = new Map(pageEmit.map(pe => [pe.pageNum, pe.blocks.length] as const));
+          console.log('[frontmatter] ' + [1, 2, 3, 4, 5, 6].map(p => {
+            const figs = (figuresByPage.get(p) || []).map(f => f.id);
+            const inFt = figs.filter(id => fullText.includes(`[[FIG ${id}]]`));
+            return `p${p}: emitBlocks=${_peByPage.has(p) ? _peByPage.get(p) : 'NONE'} figs=[${figs.join(',') || '-'}] inContent=[${inFt.join(',') || '-'}]`;
+          }).join('\n'));
         } catch { /* audit only */ }
       }
 
