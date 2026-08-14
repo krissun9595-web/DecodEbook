@@ -5865,7 +5865,7 @@ const App: React.FC = () => {
       if (_dbgAudit) {
         try {
           console.log('[anchor] monotonic=' + outlineMonotonic + '  (' + resolvedOutline.length + '/' + outline.length + ' resolved)\n' +
-            _anchorDbg.map(r => `p${String(r.page).padStart(4)} ${String(r.via).padEnd(13)}${r.pass2 ? '+' + r.pass2 : ''} geom=${r.geom ? 1 : 0} destOff=${r.destOff} final=${r.final} "${r.title}"`).join('\n'));
+            _anchorDbg.map(r => `p${String(r.page).padStart(4)} ${String(r.via).padEnd(13)}${r.pass2 ? '+' + r.pass2 : ''} geom=${r.geom ? 1 : 0} destOff=${r.destOff} destHead="${r.destHead}" final=${r.final} "${r.title}"`).join('\n'));
           const figShow = _figDbg.filter(f => f.ok || (f.w as number) * (f.h as number) > 2500);
           console.log('[fig] candidates=' + _figDbg.length + ' captured=' + _figDbg.filter(f => f.ok).length + ' (showing captured + skipped>2500pt²)\n' +
             figShow.map(f => `p${String(f.page).padStart(4)} ${f.w}x${f.h} ${f.ok ? 'OK ' + f.ok : 'SKIP:' + f.skip}`).join('\n'));
