@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildChaptersFromOutline, buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, isUsablePdfOutline, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
+import { buildChaptersFromOutline, buildSourceIndexedChapters, expandTopicSectionsIntoChapters, extractChapterFromSource, findHeadingOffsetByTitle, isUsablePdfOutline, splitDetectedBackMatter } from '../utils/sourceIndex.ts';
 import type { Chapter } from '../types.ts';
 
 const chapterBody = (name: string) => [
@@ -550,4 +550,27 @@ console.log('sourceIndex regression tests passed');
   assert.equal(chapters[1].sourceStart, oStart, 'chapter starts at its Y-resolved heading offset, not the page top');
   assert.equal(chapters[1].sourceEnd, oTwo);
   assert.deepEqual(chapters.map(c => c.title), ['Transurfing Principles', '1. Awakening', '2. Hacking the Dream']);
+}
+
+// findHeadingOffsetByTitle must resolve a chapter title emitted as a markdown LINK
+// "[The World Before Brains](#pdfref-…)" (its Contents back-link) — the bracket wrapping made real PDF/EPUB
+// openers unfindable, dropping the chapter to a figure-cluster fallback (title absorbed into the previous
+// chapter). Also: a "N: Title" bookmark separator, and the number on its own line above the title.
+{
+  const content = [
+    'Contents',
+    '    [1: The World Before Brains](#pdfref-a)',
+    '    [Introduction](#pdfref-b)',
+    '',
+    '[[PAGE 29]]',
+    '            **1**',
+    '',
+    '            [The World Before Brains](#pdfref-p7)',
+    '',
+    'LIFE EXISTED ON Earth for a long time and this chapter has plenty of lowercase prose so the real opener passes the prose gate and is distinguished from the table of contents entry above it.',
+  ].join('\n');
+  const off = findHeadingOffsetByTitle(content, '1: The World Before Brains', 0);
+  assert.ok(off != null, 'a link-wrapped chapter title is found, not undefined');
+  assert.ok(content.slice(off!).includes('LIFE EXISTED'), 'anchors the real opener (prose follows), not the Contents entry');
+  assert.ok(content.slice(0, off!).lastIndexOf('Contents') === content.indexOf('Contents'), 'offset is AFTER the Contents list, not on the TOC line');
 }

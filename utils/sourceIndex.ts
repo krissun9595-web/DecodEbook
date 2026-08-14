@@ -923,8 +923,13 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
   // number, and any emphasis/NBSP/sentinel run; `gap` between words also allows line-wraps and
   // sentinels; `post` allows trailing junk before the line end.
   const junk = "*_~`\\u00A0\\uE000-\\uF8FF";
-  const gap = `[\\s'’‘\\-‐‑–—.,()${junk}]+`;
-  const pre = `[ \\t\\u00A0]*(?:\\d+[.)]?[ \\t\\u00A0]*)?[${junk}]*`;
+  const gap = `[\\s'’‘\\-‐‑–—.,()\\[\\]${junk}]+`;
+  // `\\[?` — a chapter title is often emitted as a markdown LINK `[The World Before Brains](#pdfref-…)` (its
+  // Contents back-link). The brackets aren't in the junk classes, so the opener was UNfindable and the
+  // chapter dropped to the figure-cluster fallback (title absorbed into the previous chapter). Absorb the
+  // leading `[` here and the trailing `](href)` via `linkClose` below.
+  const pre = `[ \\t\\u00A0]*(?:\\d+[.)]?[ \\t\\u00A0]*)?[${junk}]*\\[?[${junk}]*`;
+  const linkClose = `(?:\\][ \\t\\u00A0]*\\([^)\\n]*\\))?`;
   const post = `[ \\t${junk}]*`;
   // A chapter heading often sets its NUMBER on its OWN line above the title ("2" ¶ "AFRICA").
   // normalizeHeadingText drops the number, and `pre` only reaches a number on the SAME line, so the
@@ -936,13 +941,13 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
   // decorative divider image between them ("<h2>2</h2><div><img></div><h2>AFRICA</h2>"), and the image's
   // marker is blanked to an offset-preserving SPACES line — a second blank line a single `\n+` can't
   // cross, which was re-orphaning the number (and leaving a blank divider page) at the chapter end.
-  const numMatch = title.match(/^\s*(\d{1,3})[.)]?\s+\S/u);
+  const numMatch = title.match(/^\s*(\d{1,3})[.):]?\s+\S/u); // ':' — a "1: Title" bookmark separator
   const numLine = numMatch
     ? `(?:[ \\t\\u00A0${junk}]*${numMatch[1]}[.)]?[ \\t\\u00A0${junk}]*(?:\\n+[ \\t\\u00A0${junk}]*){1,3})?`
     : '';
   let pat: RegExp;
   try {
-    pat = new RegExp(`(^|\\n)(${numLine}${pre}${parts.join(gap)}${post})(?=\\n|$)`, 'giu');
+    pat = new RegExp(`(^|\\n)(${numLine}${pre}${parts.join(gap)}${linkClose}${post})(?=\\n|$)`, 'giu');
   } catch {
     return undefined;
   }
