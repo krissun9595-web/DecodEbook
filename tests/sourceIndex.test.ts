@@ -574,3 +574,44 @@ console.log('sourceIndex regression tests passed');
   assert.ok(content.slice(off!).includes('LIFE EXISTED'), 'anchors the real opener (prose follows), not the Contents entry');
   assert.ok(content.slice(0, off!).lastIndexOf('Contents') === content.indexOf('Contents'), 'offset is AFTER the Contents list, not on the TOC line');
 }
+
+// A chapter title that WRAPS across two display lines is emitted as TWO adjacent markdown links, so between
+// two of its words sits a link SEAM "](#pdfref-p7)\n\n   [" (BHI ch.6 "The Evolution of Temporal Difference"
+// | "Learning"). The href content broke the word-gap → the opener was unfindable → ch.5 swallowed ch.6.
+{
+  const content = [
+    'Contents',
+    '    [6: The Evolution of Temporal Difference Learning](#pdfref-p114)',
+    '',
+    '[[PAGE 114]]',
+    '            **6**',
+    '',
+    '       [The Evolution of Temporal Difference](#pdfref-p7)',
+    '',
+    '            [Learning](#pdfref-p7)',
+    '',
+    'THE FIRST REINFORCEMENT learning computer algorithm was built in 1951 and this opener has ample lowercase prose so it passes the prose gate and is not mistaken for the table of contents entry above.',
+  ].join('\n');
+  const off = findHeadingOffsetByTitle(content, '6: The Evolution of Temporal Difference Learning', 0);
+  assert.ok(off != null, 'a title split across two link-wrapped lines is found (mid-title link seam crossed)');
+  assert.ok(content.slice(off!).includes('THE FIRST REINFORCEMENT'), 'anchors the real ch.6 opener, not the Contents entry');
+}
+
+// The LAST wrapped line is often emphasised, so the title ends "…Breakthrough**](#pdfref-p8)": the closing
+// "**" sits between the final word and the link-close bracket (BHI "Conclusion: The Sixth Breakthrough").
+{
+  const content = [
+    'Contents',
+    '    [Conclusion: The Sixth Breakthrough](#pdfref-p364)',
+    '',
+    '[[PAGE 364]]',
+    '            [Conclusion](#pdfref-p8)',
+    '',
+    '            [**The Sixth Breakthrough**](#pdfref-p8)',
+    '',
+    'WITH THE EMERGENCE of the modern human brain in our ancestors, we have reached the conclusion of our long evolutionary story and this opener has plenty of lowercase prose to pass the gate.',
+  ].join('\n');
+  const off = findHeadingOffsetByTitle(content, 'Conclusion: The Sixth Breakthrough', 0);
+  assert.ok(off != null, 'a title whose final wrapped segment is emphasised (**word**](href)) is found');
+  assert.ok(content.slice(off!).includes('WITH THE EMERGENCE'), 'anchors the real Conclusion opener, not the Contents entry');
+}

@@ -923,13 +923,22 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
   // number, and any emphasis/NBSP/sentinel run; `gap` between words also allows line-wraps and
   // sentinels; `post` allows trailing junk before the line end.
   const junk = "*_~`\\u00A0\\uE000-\\uF8FF";
-  const gap = `[\\s'’‘\\-‐‑–—.,()\\[\\]${junk}]+`;
+  // A title that WRAPS across two display lines is emitted as TWO adjacent markdown links, so between two
+  // of its words sits a link SEAM `](#pdfref-p7)\n\n   [` (each line its own back-link). The href content
+  // (`#pdfref-p7`) isn't in the gap's char class, so the seam broke the match and the chapter dropped to a
+  // fallback offset (e.g. BHI ch.6 "The Evolution of Temporal Difference | Learning"). Let `gap` also swallow
+  // a whole `(href)` group (the `]`/`[`/whitespace around it are already in the class); group form FIRST so
+  // it consumes the parenthesized href atomically instead of the class eating a lone `(`.
+  const gap = `(?:\\([^)\\n]*\\)|[\\s'’‘\\-‐‑–—.,()\\[\\]${junk}])+`;
   // `\\[?` — a chapter title is often emitted as a markdown LINK `[The World Before Brains](#pdfref-…)` (its
   // Contents back-link). The brackets aren't in the junk classes, so the opener was UNfindable and the
   // chapter dropped to the figure-cluster fallback (title absorbed into the previous chapter). Absorb the
   // leading `[` here and the trailing `](href)` via `linkClose` below.
   const pre = `[ \\t\\u00A0]*(?:\\d+[.)]?[ \\t\\u00A0]*)?[${junk}]*\\[?[${junk}]*`;
-  const linkClose = `(?:\\][ \\t\\u00A0]*\\([^)\\n]*\\))?`;
+  // `[${junk}]*` before the `\\]` — the LAST wrapped line is often emphasised, so the title ends
+  // `…Breakthrough**](#pdfref-p8)`: the closing `**` sits between the word and the link-close bracket
+  // (BHI "Conclusion: The Sixth Breakthrough"). Absorb that trailing emphasis so linkClose still fires.
+  const linkClose = `(?:[${junk}]*\\][ \\t\\u00A0]*\\([^)\\n]*\\))?`;
   const post = `[ \\t${junk}]*`;
   // A chapter heading often sets its NUMBER on its OWN line above the title ("2" ¶ "AFRICA").
   // normalizeHeadingText drops the number, and `pre` only reaches a number on the SAME line, so the
