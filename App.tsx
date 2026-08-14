@@ -5924,6 +5924,14 @@ const App: React.FC = () => {
             });
             return `p${p}: emit=${_peByPage.has(p) ? _peByPage.get(p) : 'NONE'} [${figs.join(' ') || '-'}]`;
           }).join('\n'));
+          // TOC geometry: dump the Contents page + its continuation so the column layout is visible (are the
+          // entries at one x or two? are two entries on the SAME baseline y = two-column?). Pinpoints why the
+          // continuation merges (not in the TOC run → prose branch, or two-column read as one line).
+          const _tocIdx = pageBuffers.findIndex(b => b.lines.slice(0, 3).some(l => /^(?:contents|table of contents)$/iu.test(l.text.replace(/[*_~]/gu, '').trim())));
+          if (_tocIdx >= 0) for (const b of pageBuffers.slice(_tocIdx, _tocIdx + 2)) {
+            console.log(`[toc p${b.pageNum} isToc=${(b as any).isTocPage ? 1 : 0} isList=${b.isListPage ? 1 : 0}]\n` +
+              b.lines.filter(l => l.text.trim()).slice(0, 30).map(l => `  x${Math.round(l.x)} y${Math.round(l.pageY)} ${JSON.stringify(l.text.replace(/\]\([^)]*\)/g, ']').slice(0, 46))}`).join('\n'));
+          }
         } catch { /* audit only */ }
       }
 
