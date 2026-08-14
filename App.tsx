@@ -5794,6 +5794,20 @@ const App: React.FC = () => {
       // matches the title) or, for broken bookmarks, by searching the content for the title itself.
       let lastResolvedOffset = 0; // outline entries are in reading order; re-anchor searches forward from here
       const _anchorDbg: Array<Record<string, unknown>> = []; // [anchor] audit (localStorage.dbgAnchor='1')
+      // The Contents/TOC region (its detected pages' offset span). A title-match landing HERE is a TOC LIST
+      // ENTRY, not the real opener — reject it for an entry that doesn't itself live on a TOC page, so a
+      // front-matter entry whose real target is an IMAGE (the title page has no heading text to match) isn't
+      // pinned to its TOC line (which chopped the Contents chapter right after it, e.g. "Contents"+"Cover"
+      // alone). Structural (page-based), so it also catches a Title-Case TOC the case-based prose gate can't.
+      const _tocPageNums = new Set(pageBuffers.filter(b => (b as any).isTocPage).map(b => b.pageNum));
+      let _tocStart = Infinity, _tocEnd = -Infinity;
+      for (const pn of _tocPageNums) {
+        const s = fullText.indexOf(`[[PAGE ${pn}]]`);
+        if (s < 0) continue;
+        _tocStart = Math.min(_tocStart, s);
+        const e = fullText.indexOf('[[PAGE ', s + 1);
+        _tocEnd = Math.max(_tocEnd, e < 0 ? fullText.length : e);
+      }
       const prelim = outlineEntries.map(entry => {
         // (1) Destination-based resolution: find the heading on the bookmark's destination
         // page and locate it in the content. Reliable when the PDF carries proper /XYZ
@@ -5835,7 +5849,9 @@ const App: React.FC = () => {
           offset = destOffset; _via = 'dest';
         } else {
           offset = findHeadingOffsetByTitle(fullText, entry.title, lastResolvedOffset);
-          if (offset != null) _via = 'title'; else if (destOffset != null) _via = 'dest-mismatch';
+          const _tocHit = offset != null && offset >= _tocStart && offset < _tocEnd && !_tocPageNums.has(entry.page);
+          if (_tocHit) offset = undefined; // a TOC list-entry match — let pass 2 place it by its page marker
+          if (offset != null) _via = 'title'; else _via = _tocHit ? 'toc-reject' : (destOffset != null ? 'dest-mismatch' : 'unresolved');
           // Only a FORWARD match (from the previous entry) is accepted — outline entries are in
           // reading order, so a title that only appears BEFORE the previous entry is a Contents/TOC
           // false match (the TOC lists every title once, and the tail entries are immediately followed
