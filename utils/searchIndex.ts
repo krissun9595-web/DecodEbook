@@ -63,6 +63,10 @@ const stripForSearch = (text: string): string =>
     // tofu boxes (e.g. the extract block's size-tier + first-line-indent sentinels after "Musk said,"). NBSP
     // is whitespace, so the \s+ collapse below already folds a leading block indent into a trimmed space.
     .replace(/[-]/gu, '')
+    // Drop the extractor's structural markers "[[FIG id]]" (a figure — the reader swaps it for the image) and
+    // "[[PAGE n]]" (a page boundary). They're invisible in the reader but leaked into a search snippet as
+    // literal "[[FIG p13n1]]" text (and a bare "FIG"/"PAGE" could even be matched).
+    .replace(/\[\[(?:FIG|PAGE)\b[^\]]*\]\]/gi, ' ')
     .replace(/\[([^\]\n]+)\]\([^)\n]*\)/g, '$1')
     .replace(/[*_~`]/g, '')
     .replace(/\s+/g, ' ');
