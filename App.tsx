@@ -3452,7 +3452,18 @@ const App: React.FC = () => {
           glyphs.length = 0;
           glyphs.push(...rebuilt);
         }
-        if (glyphs.length === 0) continue;
+        if (glyphs.length === 0) {
+          // An image-only page (cover, title-page art, a full-page plate) has NO text glyphs, but it may
+          // carry a captured figure. Skipping it outright orphaned that figure — it never reached pageEmit,
+          // so the cover/title art was dropped from the reading flow. Emit a minimal, text-less page buffer
+          // so the figure-injection in the emit loop drops its [[FIG]] marker into the content in page order
+          // (the reader then renders it inline). Default margins (no text to measure); the prose branch just
+          // splices the figure. Pages with neither text nor a figure (a truly blank leaf) are still skipped.
+          if ((figuresByPage.get(pageNum) || []).length) {
+            pageBuffers.push({ pageNum, lines: [], bodyLeft: 0, paraLeftMargin: 0, listMarginLeft: undefined, lineGap: 0, isListPage: false, indentTiers: [], pageHeight, pageTwoColumn: false, hRules: [] });
+          }
+          continue;
+        }
 
         // Cluster glyphs into visual lines by baseline with a tolerance, so a raised
         // superscript footnote marker (smaller font, a few points above the baseline)
