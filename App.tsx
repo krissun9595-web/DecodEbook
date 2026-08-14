@@ -4674,6 +4674,19 @@ const App: React.FC = () => {
             } else {
               outBlocks = bodyToBlocks(dispLines);
             }
+            // A DISPLAY page (centred/right — e.g. a Part-divider: centred heading + centred figure caption)
+            // can carry a figure too (the brain illustration on BHI's "Breakthrough #2" page). The prose
+            // branch injects figures by top-Y below (~5455), but this branch `continue`s before reaching it,
+            // so the captured [[FIG]] marker was dropped and the image vanished. Inject here as well: the
+            // heading block carries topY, the caption blocks don't (→ -Infinity), so the figure splices in
+            // right after the heading and before the caption — matching its physical place on the page.
+            const _dispFigs = figuresByPage.get(pageNum);
+            if (_dispFigs) for (const f of _dispFigs) {
+              const fb: EmitBlock = { text: `[[FIG ${f.id}]]`, role: 'body', firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '', topY: f.yTop, bodyX: bodyLeft };
+              let at = outBlocks.findIndex(b => (b.topY ?? -Infinity) < f.yTop);
+              if (at < 0) at = outBlocks.length;
+              outBlocks.splice(at, 0, fb);
+            }
             pageEmit.push({ pageNum, blocks: outBlocks, rightMargin, bodyLeft, paraLeftMargin });
             continue;
           }
