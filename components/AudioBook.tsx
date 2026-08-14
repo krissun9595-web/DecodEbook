@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v162-watermark-filter';
+const CHAPTER_TEXT_CACHE_VERSION = 'v163-semantictype-routing';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1919,7 +1919,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // Paginate the current chapter's cleaned text with the reader's live page size (viewport + text/
   // line settings). Shared by the initial load and re-pagination so both stay identical.
   const paginateChapterText = (cleanText: string): ReaderPage[] => {
-    const isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
+    const isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '') || ['endnotes', 'footnotes', 'notes'].includes(chapter.semanticType || '');
     const isIndex = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
       || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
     const baseSize = computePageTargetSize(settings.textSize, settings.lineHeight);
@@ -2115,7 +2115,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         }).catch(e => console.warn('Text cache save failed:', e));
       }
 
-      if (isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '')) {
+      if (isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '') || ['endnotes', 'footnotes', 'notes'].includes(chapter.semanticType || '')) {
         cleanText = normalizeNotesReaderText(cleanText, fileContext.sourceKind === 'epub');
       }
 
@@ -3014,7 +3014,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
 
   const currentReaderPage = pages[currentPage];
-  const isNotesChapter = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
+  const isNotesChapter = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '') || ['endnotes', 'footnotes', 'notes'].includes(chapter.semanticType || '');
   const isPraiseChapter = isPraiseChapterTitle(chapter.title) || isPraiseChapterTitle(chapter.sourceHeading || '');
   const isPdfReaderSource = fileContext.sourceKind === 'pdf';
   const isStructuredReaderSource = fileContext.sourceKind === 'pdf' || fileContext.sourceKind === 'epub';
@@ -3036,7 +3036,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // chapter fell to the prose render path: indentation dropped, and each "[76](#pdfref)" page number was
   // parsed as a reference marker and broken onto its own line. (Mirrors the extraction-side gate.)
   const isIndexChapter = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '')
-    || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '');
+    || isContentsChapterTitle(chapter.title) || isContentsChapterTitle(chapter.sourceHeading || '')
+    || chapter.semanticType === 'index' || chapter.semanticType === 'toc';
   // Contents-ONLY (not a back-of-book index): a Table of Contents is where numbered chapter LINKS live, so
   // only here do we apply the hanging-NUMBER gutter (a real index entry can open with a year like "1984, 42"
   // and must not be guttered).

@@ -70,18 +70,20 @@ const DPUB_ROLE_TYPE: Record<string, string> = {
   'doc-index': 'index', 'doc-endnotes': 'endnotes', 'doc-appendix': 'appendix', 'doc-epigraph': 'epigraph',
 };
 const EPUB_MATTER_GROUP = new Set(['frontmatter', 'bodymatter', 'backmatter']);
-// Canonical semantic name for a spine file from its epub:type / DPUB-ARIA role, or '' when it carries no
-// SPECIFIC type (a plain chapter, or a semantics-free EPUB) — caller then falls back to nav/heading/heuristics.
-export const epubSemanticName = (doc: Document): string => {
+// Canonical semantic { type token, reader name } for a spine file from its epub:type / DPUB-ARIA role, or
+// null when it carries no SPECIFIC type (a plain chapter, or a semantics-free EPUB) — caller then falls back
+// to nav/heading/heuristics. `type` is the raw token (endnotes/index/toc/cover/…) for structural routing;
+// `name` is the display name.
+export const epubSemantic = (doc: Document): { type: string; name: string } | null => {
   const els = [doc.body, ...Array.from(doc.querySelectorAll('section, nav'))].filter(Boolean) as Element[];
   for (const el of els) {
     for (const ty of (el.getAttribute('epub:type') || '').toLowerCase().split(/\s+/)) {
-      if (!EPUB_MATTER_GROUP.has(ty) && EPUB_TYPE_NAME[ty]) return EPUB_TYPE_NAME[ty];
+      if (!EPUB_MATTER_GROUP.has(ty) && EPUB_TYPE_NAME[ty]) return { type: ty, name: EPUB_TYPE_NAME[ty] };
     }
     const role = (el.getAttribute('role') || '').toLowerCase();
-    if (DPUB_ROLE_TYPE[role]) return EPUB_TYPE_NAME[DPUB_ROLE_TYPE[role]] || '';
+    if (DPUB_ROLE_TYPE[role]) { const t = DPUB_ROLE_TYPE[role]; return { type: t, name: EPUB_TYPE_NAME[t] || '' }; }
   }
-  return '';
+  return null;
 };
 
 const SOURCE_CACHE_CHAPTER_ID = 0;
@@ -2192,8 +2194,8 @@ const App: React.FC = () => {
       // — a clean, authoritative name for pages the TOC omits, so they don't fold together under a guessed
       // "Cover"/"Front Matter" (this book's Cover + Title Page — both a lone linked image — merged into one).
       const fileSectionTitle = new Map<string, string>();
-      // Canonical name from the file's OWN epub:type / DPUB-ARIA role (authoritative when present).
-      const fileSemanticName = new Map<string, string>();
+      // Canonical { type, name } from the file's OWN epub:type / DPUB-ARIA role (authoritative when present).
+      const fileSemantic = new Map<string, { type: string; name: string }>();
       let fullText = "";
       for (const filename of sortedFiles) {
         const rawContent = await zip.files[filename].async("string");
@@ -2220,8 +2222,8 @@ const App: React.FC = () => {
         const doc = parser.parseFromString(content, "text/html");
         const _secTitle = (doc.querySelector('section[title]')?.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
         if (_secTitle && _secTitle.length >= 3 && _secTitle.length <= 60 && !/^\d+$/.test(_secTitle) && !/\.(x?html?|opf)$/i.test(_secTitle)) fileSectionTitle.set(filename, _secTitle);
-        const _semName = epubSemanticName(doc);
-        if (_semName) fileSemanticName.set(filename, _semName);
+        const _sem = epubSemantic(doc);
+        if (_sem) fileSemantic.set(filename, _sem);
         currentBodyEm = resolveFontEm(doc.body) || 1; // this file's base size, so the tier ratio is relative to ITS body
         const text = nodeToMarkedText(doc.body, dirOf(filename))
           .replace(/[ \t]+\n/g, '\n')
@@ -2393,7 +2395,7 @@ const App: React.FC = () => {
           }
           return hs.join(' ').replace(/\s+/g, ' ').trim();
         })();
-        const semName = fileSemanticName.get(file);
+        const semName = fileSemantic.get(file)?.name;
         const secTitle = fileSectionTitle.get(file);
         let title: string;
         // FIRST signal: the file's own epub:type / DPUB-ARIA role (EPUB 3 / W3C standards, publisher-authored).
@@ -2565,6 +2567,19 @@ const App: React.FC = () => {
       const firstLineIndentEm = _sortedTi.length >= 8
         ? Math.min(2.5, Math.max(0.5, _sortedTi[Math.floor(_sortedTi.length / 2)]))
         : undefined;
+      // Stamp each outline entry with its spine file's epub:type / DPUB-ARIA token (endnotes/index/toc/…) by
+      // resolving its offset to the file it falls in. One post-pass covers BOTH the front-matter loop and the
+      // nav-built entries; buildChaptersFromOutline then carries it onto each Chapter so the reader can route
+      // notes/index handling on the publisher's declaration instead of matching the title.
+      {
+        const _ranges = [...fileStartOffset.entries()].sort((a, b) => a[1] - b[1]); // [file, startOffset] ascending
+        const _typeAt = (off: number): string | undefined => {
+          let f: string | undefined;
+          for (const [file, start] of _ranges) { if (start <= off) f = file; else break; }
+          return f ? fileSemantic.get(f)?.type : undefined;
+        };
+        for (const it of outline) if (it.offset != null) { const t = _typeAt(it.offset); if (t) it.semanticType = t; }
+      }
       return { content: fullText, outline, title: epubTitle, figures, anchors: epubAnchors, justified, firstLineIndent, firstLineIndentEm };
 
     } catch (e) {

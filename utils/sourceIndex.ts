@@ -999,8 +999,9 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
       start: item.offset ?? offsetForPage(content, item.page),
       resolved: item.offset != null,
       level: item.level || 0,
+      semanticType: item.semanticType,
     }))
-    .filter((item): item is { title: string; page: number; start: number; resolved: boolean; level: number } => Boolean(item.title) && item.start != null)
+    .filter((item): item is { title: string; page: number; start: number; resolved: boolean; level: number; semanticType?: string } => Boolean(item.title) && item.start != null)
     .sort((a, b) => a.start - b.start);
 
   // Collapse entries that still resolve to the same (or earlier) offset — e.g. same-page
@@ -1019,6 +1020,7 @@ export const buildChaptersFromOutline = (content: string, outline: PdfOutlineIte
     sourcePageStart: item.page,
     sourceMethod: 'outline' as const,
     level: item.level,
+    semanticType: item.semanticType,
   }));
 
   // Drop entries whose page range holds no extractable text — image-only front matter (a

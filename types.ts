@@ -18,6 +18,10 @@ export interface Chapter {
   // Part divider); level 1 = a Chapter nested under a Part. parentId points at the enclosing Part.
   level?: number;
   parentId?: number;
+  // EPUB only: the publisher's canonical epub:type / DPUB-ARIA token for this chapter's spine file
+  // (endnotes/footnotes/index/toc/glossary/bibliography/cover/…). Authoritative structural signal —
+  // the reader routes notes/index handling on THIS instead of matching the title/content.
+  semanticType?: string;
 }
 
 // A PDF's built-in outline (bookmarks) entry, resolved to a 1-based page number.
@@ -28,6 +32,7 @@ export interface PdfOutlineItem {
   page: number;            // 1-based page number the bookmark points to
   level: number;           // 0 = top-level chapter/section, 1+ = nested sub-heading
   offset?: number;         // exact heading offset in the extracted content (Y-resolved), if found
+  semanticType?: string;   // EPUB: the epub:type/DPUB-ARIA token for the spine file this entry falls in
 }
 
 export type ReaderPageTarget =
