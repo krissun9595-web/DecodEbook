@@ -2886,9 +2886,12 @@ const App: React.FC = () => {
       const metaTitleRaw = ((meta?.info as { Title?: string })?.Title || '').replace(/\s+/g, ' ').trim();
       const metaTitle = metaTitleRaw.length >= 3 && !/\.(pdf|docx?|indd)$/i.test(metaTitleRaw) ? metaTitleRaw : undefined;
 
+      let seenTextPage = false; // first page bearing real text — a full-bleed image before it is the COVER
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
-        const pageHeight = page.getViewport({ scale: 1 }).height;
+        const _vp1 = page.getViewport({ scale: 1 });
+        const pageHeight = _vp1.height;
+        const _pageW = _vp1.width;
         const pageWidth = page.getViewport({ scale: 1 }).width;
         // getOperatorList loads the page's fonts (so their real italic/bold names are
         // resolvable); getTextContent gives the glyph runs. Run both together.
@@ -3459,11 +3462,20 @@ const App: React.FC = () => {
           // so the figure-injection in the emit loop drops its [[FIG]] marker into the content in page order
           // (the reader then renders it inline). Default margins (no text to measure); the prose branch just
           // splices the figure. Pages with neither text nor a figure (a truly blank leaf) are still skipped.
-          if ((figuresByPage.get(pageNum) || []).length) {
+          const _pageFigs = figuresByPage.get(pageNum) || [];
+          // The COVER is the leading FULL-BLEED image (fills the page) appearing BEFORE any text page: it's
+          // already the library thumbnail, and for text-cover books it duplicates the title page — so keep it
+          // out of the reading flow. A title page (has margins) and full-page plates AFTER text begins stay.
+          const _isCover = !seenTextPage && _pageFigs.some(f => {
+            const af = allFigures.find(x => x.id === f.id);
+            return !!af && af.wPts >= _pageW * 0.9 && af.hPts >= pageHeight * 0.9;
+          });
+          if (_pageFigs.length && !_isCover) {
             pageBuffers.push({ pageNum, lines: [], bodyLeft: 0, paraLeftMargin: 0, listMarginLeft: undefined, lineGap: 0, isListPage: false, indentTiers: [], pageHeight, pageTwoColumn: false, hRules: [] });
           }
           continue;
         }
+        seenTextPage = true;
 
         // Cluster glyphs into visual lines by baseline with a tolerance, so a raised
         // superscript footnote marker (smaller font, a few points above the baseline)
