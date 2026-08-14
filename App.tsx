@@ -4426,7 +4426,12 @@ const App: React.FC = () => {
           // not visible trailing text — so tolerate a leading "[" / "**" and measure VISIBLE title length
           // (strip the ](href) target + md syntax), not the raw line with its long href.
           const visible = t.replace(/\]\([^)\n]*\)/gu, ']').replace(/[[\]*_~]/gu, '').replace(/\s+/gu, ' ').trim();
-          return /^\[?\**\d{1,3}[.)]\s+\S/u.test(t) && visible.length < 70;
+          if (!visible || visible.length >= 70) return false;
+          // A TOC-continuation entry is a SHORT line that is EITHER a numbered entry ("39." or, as in this
+          // book, a colon chapter "10: The Neural Dark Ages") OR a markdown-LINK entry (its title points at a
+          // page-ref href). Counting only "N." numbered entries missed BHI's colon chapters AND its Part/
+          // back-matter LINK entries, so the 2nd Contents page fell below the 60% bar → prose path → merged.
+          return /^\[?\**\d{1,3}[.):]\s+\S/u.test(t) || /\]\([^)\n]*\)/u.test(t);
         }).length;
         return numberedShort >= 6 && numberedShort >= nonEmpty.length * 0.6;
       };
