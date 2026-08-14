@@ -5906,10 +5906,13 @@ const App: React.FC = () => {
           // Front-matter figure trace: for the first pages, is the page in pageEmit, how many blocks, does
           // figuresByPage have a figure, and did its marker reach fullText? Pinpoints where cover/title art drops.
           const _peByPage = new Map(pageEmit.map(pe => [pe.pageNum, pe.blocks.length] as const));
-          console.log('[frontmatter] ' + [1, 2, 3, 4, 5, 6].map(p => {
-            const figs = (figuresByPage.get(p) || []).map(f => f.id);
-            const inFt = figs.filter(id => fullText.includes(`[[FIG ${id}]]`));
-            return `p${p}: emitBlocks=${_peByPage.has(p) ? _peByPage.get(p) : 'NONE'} figs=[${figs.join(',') || '-'}] inContent=[${inFt.join(',') || '-'}]`;
+          console.log('[frontmatter] ' + [1, 2, 3, 4, 5, 6, 7, 8].map(p => {
+            const figs = (figuresByPage.get(p) || []).map(f => {
+              const af = allFigures.find(x => x.id === f.id);
+              const inFt = fullText.includes(`[[FIG ${f.id}]]`);
+              return `${f.id}(${af ? Math.round(af.wPts) + 'x' + Math.round(af.hPts) : '?'} ${(af?.blob as any)?.size ?? '?'}b ${inFt ? 'IN' : 'out'})`;
+            });
+            return `p${p}: emit=${_peByPage.has(p) ? _peByPage.get(p) : 'NONE'} [${figs.join(' ') || '-'}]`;
           }).join('\n'));
         } catch { /* audit only */ }
       }
