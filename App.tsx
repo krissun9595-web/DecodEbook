@@ -4612,13 +4612,18 @@ const App: React.FC = () => {
                   cur.push(src[i]);
                 }
                 if (cur.length) groups.push(cur);
+                // topY (top-most source-line Y of the group) so a figure injected into a display page lands
+                // at its real vertical position among these blocks — else, with no topY, the yTop insertion
+                // defaults to index 0 (page top) and the figure is stranded ABOVE the heading, on the wrong
+                // side of the chapter boundary (BHI "Breakthrough #2" brain art). Only heading blocks' topY
+                // is read downstream, so tagging body/list blocks is inert except for figure placement.
                 return groups.map(g => {
                   let t = g[0].text;
                   for (let k = 1; k < g.length; k++) t = /[A-Za-z]-$/.test(t) && /^[a-z]/.test(g[k].text) ? t + g[k].text : `${t} ${g[k].text}`;
-                  return { text: sentinel + t.replace(/\s+/gu, ' ').trim(), role: 'body' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' };
+                  return { text: sentinel + t.replace(/\s+/gu, ' ').trim(), role: 'body' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '', topY: Math.max(...g.map(l => l.pageY)) };
                 });
               }
-              return src.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '' }));
+              return src.map(line => ({ text: sentinel + line.text.replace(/\s+/gu, ' ').trim(), role: 'list' as const, firstX: bodyLeft, firstRightX: 0, lastRightX: 0, lastText: '', topY: line.pageY }));
             };
             let outBlocks: EmitBlock[];
             if (useBody) {
