@@ -2606,6 +2606,10 @@ const App: React.FC = () => {
       // a raster XObject); [anchor] logs how each outline entry resolved. Both dumped after resolvedOutline.
       const _dbgAudit = (() => { try { return typeof localStorage !== 'undefined' && localStorage.getItem('dbgAnchor') === '1'; } catch { return false; } })();
       const _figDbg: Array<Record<string, unknown>> = [];
+      // Figure de-dup: a piracy re-distribution (OceanofPDF) duplicates front-matter pages, so the same
+      // picture is captured twice on nearby pages (BHI's title page on p3 AND p4, byte-identical). Fingerprint
+      // = pixel dims + encoded byte length → drop a repeat within a few pages, keeping the first.
+      const _figFp = new Map<string, number>();
       const figuresByPage = new Map<number, { id: string; yTop: number }[]>();
       // A row-major DATA TABLE detected on a page (a ditto/numeric table like the Sovereign dice
       // frequencies): the whole table encoded as a single positioned-token payload (U+E025 …) so the
@@ -2949,6 +2953,12 @@ const App: React.FC = () => {
                 const img = await getImageObj(page, a[0]);
                 const enc = img ? await encodeFigure(img) : null;
                 if (!enc) { if (_dbgAudit) _figDbg.push({ page: pageNum, w: Math.round(wPts), h: Math.round(hPts), skip: img ? 'encode' : 'noimg' }); continue; }
+                // Skip a byte-identical image that recurs within 3 pages (a duplicated page from the pirate
+                // re-render); keep the first. Far-apart recurrences (a chapter ornament) are left alone.
+                const _fp = `${enc.wPx}x${enc.hPx}x${(enc.blob as any).size}`;
+                const _fpPrev = _figFp.get(_fp);
+                _figFp.set(_fp, pageNum);
+                if (_fpPrev != null && pageNum - _fpPrev <= 3) { if (_dbgAudit) _figDbg.push({ page: pageNum, w: Math.round(wPts), h: Math.round(hPts), skip: 'dup' }); continue; }
                 const id = `p${pageNum}n${++n}`;
                 allFigures.push({ id, page: pageNum, wPts, hPts, wPx: enc.wPx, hPx: enc.hPx, mimeType: 'image/jpeg', colFrac: colW > 0 ? Math.min(1, wPts / colW) : undefined, blob: enc.blob });
                 const list = figuresByPage.get(pageNum) || []; list.push({ id, yTop }); figuresByPage.set(pageNum, list);
