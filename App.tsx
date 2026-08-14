@@ -2612,11 +2612,6 @@ const App: React.FC = () => {
       // The bytes go to the file cache after upload; the content gets a [[FIG id]] marker at the
       // figure's Y so the reader drops it into the reading flow.
       const allFigures: ExtractedFigure[] = [];
-      // One-shot dev audits (set localStorage.dbgAnchor='1' before upload): [fig] logs every image-XObject
-      // candidate + its gate/encode decision (a page with NO candidate = the art is a vector drawing, never
-      // a raster XObject); [anchor] logs how each outline entry resolved. Both dumped after resolvedOutline.
-      const _dbgAudit = (() => { try { return typeof localStorage !== 'undefined' && localStorage.getItem('dbgAnchor') === '1'; } catch { return false; } })();
-      const _figDbg: Array<Record<string, unknown>> = [];
       // Figure de-dup: a piracy re-distribution (OceanofPDF) duplicates front-matter pages, so the same
       // picture is captured twice on nearby pages (BHI's title page on p3 AND p4, byte-identical). Fingerprint
       // = pixel dims + encoded byte length → drop a repeat within a few pages, keeping the first.
@@ -2959,21 +2954,20 @@ const App: React.FC = () => {
               else if (fn === OPS.transform) ctm = mulMat(ctm, a);
               else if (fn === OPS.paintImageXObject || fn === OPS.paintImageXObjectRepeat) {
                 const wPts = Math.abs(ctm[0]), hPts = Math.abs(ctm[3]);
-                if (wPts * hPts < FIG_MIN_AREA || Math.min(wPts, hPts) < FIG_MIN_SIDE) { if (_dbgAudit) _figDbg.push({ page: pageNum, w: Math.round(wPts), h: Math.round(hPts), skip: 'gate' }); continue; } // rule / underline / tiny icon
+                if (wPts * hPts < FIG_MIN_AREA || Math.min(wPts, hPts) < FIG_MIN_SIDE) continue; // rule / underline / tiny icon
                 const yTop = Math.max(ctm[5], ctm[5] + ctm[3]);
                 const img = await getImageObj(page, a[0]);
                 const enc = img ? await encodeFigure(img) : null;
-                if (!enc) { if (_dbgAudit) _figDbg.push({ page: pageNum, w: Math.round(wPts), h: Math.round(hPts), skip: img ? 'encode' : 'noimg' }); continue; }
+                if (!enc) continue;
                 // Skip a byte-identical image that recurs within 3 pages (a duplicated page from the pirate
                 // re-render); keep the first. Far-apart recurrences (a chapter ornament) are left alone.
                 const _fp = `${enc.wPx}x${enc.hPx}x${(enc.blob as any).size}`;
                 const _fpPrev = _figFp.get(_fp);
                 _figFp.set(_fp, pageNum);
-                if (_fpPrev != null && pageNum - _fpPrev <= 3) { if (_dbgAudit) _figDbg.push({ page: pageNum, w: Math.round(wPts), h: Math.round(hPts), skip: 'dup' }); continue; }
+                if (_fpPrev != null && pageNum - _fpPrev <= 3) continue;
                 const id = `p${pageNum}n${++n}`;
                 allFigures.push({ id, page: pageNum, wPts, hPts, wPx: enc.wPx, hPx: enc.hPx, mimeType: 'image/jpeg', colFrac: colW > 0 ? Math.min(1, wPts / colW) : undefined, blob: enc.blob });
                 const list = figuresByPage.get(pageNum) || []; list.push({ id, yTop }); figuresByPage.set(pageNum, list);
-                if (_dbgAudit) _figDbg.push({ page: pageNum, w: Math.round(wPts), h: Math.round(hPts), ok: id });
               }
             }
           } catch { /* figure extraction is best-effort — never block text extraction */ }
@@ -5807,7 +5801,6 @@ const App: React.FC = () => {
       // Pass 1: resolve each entry by its bookmark destination (trusted only when the heading there
       // matches the title) or, for broken bookmarks, by searching the content for the title itself.
       let lastResolvedOffset = 0; // outline entries are in reading order; re-anchor searches forward from here
-      const _anchorDbg: Array<Record<string, unknown>> = []; // [anchor] audit (localStorage.dbgAnchor='1')
       // The Contents/TOC region (its detected pages' offset span). A title-match landing HERE is a TOC LIST
       // ENTRY, not the real opener — reject it for an entry that doesn't itself live on a TOC page, so a
       // front-matter entry whose real target is an IMAGE (the title page has no heading text to match) isn't
@@ -5858,14 +5851,13 @@ const App: React.FC = () => {
         // mismatch and locate the real opener by searching the content for the title itself, forward
         // from the previous entry (outline order is reliable even when the destinations are not).
         let offset: number | undefined;
-        let _via = 'unresolved';
         if (destOffset != null && headingMatchesTitle(destHeadingText, entry.title)) {
-          offset = destOffset; _via = 'dest';
+          offset = destOffset;
         } else {
           offset = findHeadingOffsetByTitle(fullText, entry.title, lastResolvedOffset);
-          const _tocHit = offset != null && offset >= _tocStart && offset < _tocEnd && !_tocPageNums.has(entry.page);
-          if (_tocHit) offset = undefined; // a TOC list-entry match — let pass 2 place it by its page marker
-          if (offset != null) _via = 'title'; else _via = _tocHit ? 'toc-reject' : (destOffset != null ? 'dest-mismatch' : 'unresolved');
+          // A title-match landing in the Contents/TOC region is a TOC LIST ENTRY, not the real opener — drop
+          // it for an entry that doesn't itself live on a TOC page; pass 2 places it by its own page marker.
+          if (offset != null && offset >= _tocStart && offset < _tocEnd && !_tocPageNums.has(entry.page)) offset = undefined;
           // Only a FORWARD match (from the previous entry) is accepted — outline entries are in
           // reading order, so a title that only appears BEFORE the previous entry is a Contents/TOC
           // false match (the TOC lists every title once, and the tail entries are immediately followed
@@ -5875,7 +5867,6 @@ const App: React.FC = () => {
           // /Fit pointer. Truly unresolved entries are handled in pass 2 (image-only plate sections).
         }
         if (offset != null) lastResolvedOffset = Math.max(lastResolvedOffset, offset);
-        _anchorDbg.push({ title: entry.title.slice(0, 46), page: entry.page, hasY: entry.y != null, geom: !!(geom && geom.length), destOff: destOffset ?? null, destHead: destHeadingText.slice(0, 26), via: _via, off: offset ?? null });
         return { entry, offset };
       });
 
@@ -5905,16 +5896,15 @@ const App: React.FC = () => {
           let nextOff = fullText.length;
           for (let j = i + 1; j < prelim.length; j++) { const o = prelim[j].offset; if (o != null && o > prevOff && o < nextOff) nextOff = o; }
           const cluster = findFigureClusterStart(prevOff + 1);
-          if (cluster != null && cluster < nextOff) { offset = cluster; if (_anchorDbg[i]) _anchorDbg[i].pass2 = 'figcluster'; }
+          if (cluster != null && cluster < nextOff) offset = cluster;
           else if (outlineMonotonic) {
             let pageOff: number | null = null;
             for (let p = item.entry.page; p < item.entry.page + 12; p++) {
               const idx = fullText.indexOf(`[[PAGE ${p}]]`);
               if (idx >= 0) { pageOff = idx; break; }
             }
-            if (pageOff != null && pageOff >= prevOff && pageOff < nextOff) { offset = pageOff; if (_anchorDbg[i]) _anchorDbg[i].pass2 = 'pagemarker'; }
-            else if (_anchorDbg[i]) _anchorDbg[i].pass2 = 'page-outside-gap';
-          } else if (_anchorDbg[i]) _anchorDbg[i].pass2 = 'nonmono-drop';
+            if (pageOff != null && pageOff >= prevOff && pageOff < nextOff) offset = pageOff;
+          }
         }
         // The resolved offset (a bookmark Y-destination or a page marker) lands on the heading's first
         // GLYPH — just AFTER the extractor's injected role/size sentinels (U+E013 heading + U+E01x tier)
@@ -5924,7 +5914,6 @@ const App: React.FC = () => {
         // role + size. (Chapters are [offset[i], offset[i+1]) with shared boundaries, so this just moves the
         // boundary back onto the sentinels — no gap, overlap, or bleed into the previous chapter.)
         if (offset != null) { while (offset > 0) { const c = fullText.charCodeAt(offset - 1); if (c >= 0xE000 && c <= 0xF8FF) offset--; else break; } }
-        if (_anchorDbg[i]) _anchorDbg[i].final = offset ?? null;
         return { title: item.entry.title, page: item.entry.page, level: item.entry.level, offset };
       });
 
@@ -5934,41 +5923,6 @@ const App: React.FC = () => {
       // real chapter. Every surviving entry now carries a real offset (a resolved heading, a figure
       // cluster, or — for reliable monotonic outlines — its in-gap page marker).
       const resolvedOutline = outline.filter(o => o.offset != null);
-
-      if (_dbgAudit) {
-        try {
-          console.log('[anchor] monotonic=' + outlineMonotonic + '  (' + resolvedOutline.length + '/' + outline.length + ' resolved)\n' +
-            _anchorDbg.map(r => `p${String(r.page).padStart(4)} ${String(r.via).padEnd(13)}${r.pass2 ? '+' + r.pass2 : ''} geom=${r.geom ? 1 : 0} destOff=${r.destOff} destHead="${r.destHead}" final=${r.final} "${r.title}"`).join('\n'));
-          const figShow = _figDbg.filter(f => f.ok || (f.w as number) * (f.h as number) > 2500);
-          console.log('[fig] candidates=' + _figDbg.length + ' captured=' + _figDbg.filter(f => f.ok).length + ' (showing captured + skipped>2500pt²)\n' +
-            figShow.map(f => `p${String(f.page).padStart(4)} ${f.w}x${f.h} ${f.ok ? 'OK ' + f.ok : 'SKIP:' + f.skip}`).join('\n'));
-          // Decisive: which CAPTURED figures never made it into the assembled content (marker not injected —
-          // a page-emit branch that skips figure injection)? And dump page 103 (Breakthrough #2 divider) raw.
-          const figMissing = _figDbg.filter(f => f.ok && !fullText.includes(`[[FIG ${f.ok}]]`));
-          console.log('[fig-missing] captured-but-NOT-in-content: ' + (figMissing.length ? figMissing.map(f => `${f.ok}(p${f.page})`).join(', ') : 'none'));
-          const _p103 = fullText.indexOf('[[PAGE 103]]');
-          if (_p103 >= 0) console.log('[content@103] ' + JSON.stringify(fullText.slice(_p103, _p103 + 300)));
-          // Front-matter figure trace: for the first pages, is the page in pageEmit, how many blocks, does
-          // figuresByPage have a figure, and did its marker reach fullText? Pinpoints where cover/title art drops.
-          const _peByPage = new Map(pageEmit.map(pe => [pe.pageNum, pe.blocks.length] as const));
-          console.log('[frontmatter] ' + [1, 2, 3, 4, 5, 6, 7, 8].map(p => {
-            const figs = (figuresByPage.get(p) || []).map(f => {
-              const af = allFigures.find(x => x.id === f.id);
-              const inFt = fullText.includes(`[[FIG ${f.id}]]`);
-              return `${f.id}(${af ? Math.round(af.wPts) + 'x' + Math.round(af.hPts) : '?'} ${(af?.blob as any)?.size ?? '?'}b ${inFt ? 'IN' : 'out'})`;
-            });
-            return `p${p}: emit=${_peByPage.has(p) ? _peByPage.get(p) : 'NONE'} [${figs.join(' ') || '-'}]`;
-          }).join('\n'));
-          // TOC geometry: dump the Contents page + its continuation so the column layout is visible (are the
-          // entries at one x or two? are two entries on the SAME baseline y = two-column?). Pinpoints why the
-          // continuation merges (not in the TOC run → prose branch, or two-column read as one line).
-          const _tocIdx = pageBuffers.findIndex(b => b.lines.slice(0, 3).some(l => /^(?:contents|table of contents)$/iu.test(l.text.replace(/[*_~]/gu, '').trim())));
-          if (_tocIdx >= 0) for (const b of pageBuffers.slice(_tocIdx, _tocIdx + 2)) {
-            console.log(`[toc p${b.pageNum} isToc=${(b as any).isTocPage ? 1 : 0} isList=${b.isListPage ? 1 : 0}]\n` +
-              b.lines.filter(l => l.text.trim()).slice(0, 30).map(l => `  x${Math.round(l.x)} y${Math.round(l.pageY)} ${JSON.stringify(l.text.replace(/\]\([^)]*\)/g, ']').slice(0, 46))}`).join('\n'));
-          }
-        } catch { /* audit only */ }
-      }
 
       // Caption-based missing-figure check (best-effort, never throws). Every "Figure N" / "Table N"
       // caption should have a captured [[FIG]] image on its page; a page with more such captions than
