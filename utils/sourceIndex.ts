@@ -978,8 +978,12 @@ export const findHeadingOffsetByTitle = (content: string, title: string, fromOff
     // lead-in at most). A table-of-contents line is followed by a long run of OTHER uppercase
     // titles before any prose — so requiring the first lowercase letter to appear within ~50
     // chars, plus a healthy lowercase count, rejects the TOC occurrence and keeps the opener.
+    // STRIP link markup first: a TOC entry is "[**DEDICATION**](#pdfref-p7) [**ACKNOWLEDGMENTS**]…" and the
+    // href "#pdfref-p7" is lowercase — counted as prose it FOOLED this gate into accepting a TOC line
+    // (Singularity "Dedication" anchored onto its Contents entry, not the real page). Keep the visible title
+    // text, drop the href, so the gate sees the true all-uppercase TOC run and rejects it.
     const after = content.slice(m.index + m[0].length, m.index + m[0].length + 400)
-      .replace(PAGE_MARKER_RE, '').replace(/[\u00A0\uE000-\uF8FF]/gu, ' ');
+      .replace(PAGE_MARKER_RE, '').replace(/\[([^\]\n]*)\]\([^)\n]*\)/gu, '$1').replace(/[\u00A0\uE000-\uF8FF]/gu, ' ');
     const firstLower = after.search(/[a-z]/);
     const lowercaseRun = (after.match(/[a-z]/g) || []).length;
     if (firstLower >= 0 && firstLower <= 50 && lowercaseRun >= 40) return headStart;

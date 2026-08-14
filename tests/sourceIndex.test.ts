@@ -637,6 +637,26 @@ console.log('sourceIndex regression tests passed');
   assert.ok(content.slice(off!).includes('THE MAMMALS THAT'), 'anchors the real Part opener, not the Contents entry');
 }
 
+// The prose-gate that rejects a Table-of-Contents match must not be fooled by markdown link HREFS: a TOC
+// entry "[**DEDICATION**](#pdfref-p7)" is followed by more link entries whose hrefs ("#pdfref-p8") are
+// lowercase — counted as prose, they made the gate ACCEPT the TOC line (Singularity anchored "Dedication"
+// onto its Contents entry, not the real page). With no real "Dedication" heading, this must return undefined.
+{
+  const content = [
+    'CONTENTS',
+    '',
+    '[**DEDICATION**](#pdfref-p7)',
+    '',
+    '[**ACKNOWLEDGMENTS**](#pdfref-p8)',
+    '',
+    '[**INTRODUCTION**](#pdfref-p11)',
+    '',
+    '[**CHAPTER 1: WHERE ARE WE?**](#pdfref-p18)',
+  ].join('\n');
+  const off = findHeadingOffsetByTitle(content, 'Dedication', 0);
+  assert.equal(off, undefined, 'a TOC entry is not accepted as a heading just because its neighbours\' link hrefs are lowercase');
+}
+
 // headingMatchesTitle decides whether to TRUST a bookmark's page destination. The heading found on the
 // destination page is often a markdown LINK (its Contents back-link) whose bracket/href noise must be
 // stripped, else a Part title (longer than its heading line) is rejected and falls to the fragile title
