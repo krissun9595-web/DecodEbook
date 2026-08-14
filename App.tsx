@@ -6050,6 +6050,20 @@ const App: React.FC = () => {
                   )
                 )
               : structure.chapters;
+            // DEV capture for the chapter-boundary regression harness (scripts/regression-chapters.mjs):
+            // localStorage.dbgCaptureChapters='1' downloads {mode, content, outline?, llmChapters?} so a REAL
+            // book becomes a golden fixture (tests/fixtures/chapters/). Off by default; never affects users.
+            try {
+              if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgCaptureChapters') === '1') {
+                const fx = useOutline
+                  ? { mode: 'outline', content: preparedContext.content, outline: preparedContext.pdfOutline }
+                  : { mode: 'llm', content: preparedContext.content, llmChapters: structure.chapters };
+                const url = URL.createObjectURL(new Blob([JSON.stringify(fx)], { type: 'application/json' }));
+                const a = document.createElement('a');
+                a.href = url; a.download = `${(structure.title || 'book').replace(/\W+/g, '_').slice(0, 30)}.chapters.json`;
+                a.click(); URL.revokeObjectURL(url);
+              }
+            } catch { /* capture is best-effort */ }
             const newItem: LibraryItem = {
                 book: { ...structure, chapters: indexedChapters },
                 fileContext: preparedContext,
