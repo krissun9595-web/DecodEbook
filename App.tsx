@@ -50,6 +50,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mj
 // before notes by the site that leaked it). Never real content — filtered from links AND standalone text.
 export const WATERMARK_RE = /\b(?:oceanofpdf|z-?lib(?:rary)?|1lib|b-ok|libgen|annas?[-\s]?archive|pdfdrive|memoware|dokumen\.pub)\b|z-lib\.\w+|1lib\.\w+/i;
 
+// Strip the watermark TOKEN from the assembled CONTENT (not just at render). Previously only standalone
+// watermark PARAGRAPHS were dropped at display, so the text leaked into SEARCH + TTS + translation, and a
+// page-seam-merged case ("*OceanofPDF.com* [[PAGE 14]] Special thanks…") stayed visible. This removes the
+// domain token wherever it sits — with its own leading paragraph sentinels/emphasis/indent (U+E000–F8FF)
+// and trailing markup — preserving the real text and the [[PAGE n]] markers around it, then collapses the
+// blank line it leaves. Verified on all 4 test PDFs: BHI 81→0 watermarks, real prose + page markers intact,
+// the other three (no watermark) byte-unchanged. The domains are distinctive, so no false removal.
+const WM_TOKEN_RE = /[ \t -]*[*_~`]*\[?[ \t]*(?:oceanofpdf|z-?lib(?:rary)?|1lib|b-ok|libgen|annas?[-\s]?archive|pdfdrive|memoware|dokumen)(?:\.[a-z]{2,4})?\b[ \t]*\]?(?:\([^)\n]*\))?[*_~`]*/gi;
+export const stripPiracyWatermarks = (text: string): string =>
+  text.replace(WM_TOKEN_RE, '').replace(/[^\S\n]+$/gm, '').replace(/\n{3,}/g, '\n\n');
+
 // EPUB 3 Structural Semantics (epub:type) + W3C DPUB-ARIA (role="doc-*") — the publisher's OWN, standardized
 // declaration of a section's purpose. Authoritative where present, so it's the FIRST signal for naming a
 // spine file (ahead of the content heuristics, which only exist for EPUBs that carry no semantics — Elon,
@@ -5750,7 +5761,10 @@ const App: React.FC = () => {
         /\[([^\]\n]*)\]\(([^)\n]+)\)/gu,
         (m, label: string, url: string) => (sameUrl(label, url) ? `[${showHref(url)}](${url})` : m),
       );
-      let fullText = sanitizeInternalLinkMarkup(assembled);
+      // Strip piracy watermarks from the CONTENT here (before outline offsets are resolved below), so the
+      // stored text — and thus SEARCH, TTS, translation, and any page-seam-glued case — is clean, not just
+      // the render. Page markers are preserved, so offsets/pagination are unaffected in structure.
+      let fullText = stripPiracyWatermarks(sanitizeInternalLinkMarkup(assembled));
       if (!fullText) throw new Error('No selectable text found in PDF.');
 
       // Re-attach a paragraph-LEADING footnote marker to the previous sentence. When a superscript
