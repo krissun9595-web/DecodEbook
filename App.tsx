@@ -4463,16 +4463,6 @@ const App: React.FC = () => {
       let sectionBodyLeft = docBodyLeft;
       for (const buf of pageBuffers) {
         const { pageNum, lines, bodyLeft, paraLeftMargin, listMarginLeft, lineGap, isListPage, indentTiers, pageTwoColumn } = buf;
-        // One-shot dialogue geometry probe (localStorage.dbgDlg='1') — dump the raw lines (x/y/rightX/text)
-        // on any page that carries the Ch.8 "give us meaning" / RAY:/CASSANDRA: dialogue, to see whether the
-        // last RAY: turn is its OWN margin line (an emission bug) or clustered/indented (a line-geometry bug).
-        try {
-          const _dlgOn = typeof localStorage !== 'undefined' && Object.keys(localStorage).some(k => k.toLowerCase() === 'dbgdlg' && localStorage.getItem(k) === '1');
-          if (_dlgOn && lines.some(l => /give us meaning/i.test(l.text))) {
-            console.log('[dlg] page ' + pageNum + ' bodyLeft=' + Math.round(bodyLeft) + ' paraLeft=' + Math.round(paraLeftMargin) + '\n' +
-              lines.map(l => `  x${Math.round(l.x)} rx${Math.round(l.rightX)} y${Math.round(l.pageY)} ${JSON.stringify(l.text.replace(/[-]/g, '·').slice(0, 54))}`).join('\n'));
-          }
-        } catch { /* probe only */ }
         const tocPage = !!(buf as any).isTocPage;
         const tocTiers: number[] = (buf as any).tocTiers || [];
         const proseLines = lines.filter(line => !isHeadingLine(line));
