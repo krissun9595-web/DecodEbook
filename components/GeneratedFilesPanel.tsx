@@ -329,15 +329,11 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
                 {/* File Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-xs md:text-sm text-zinc-200 font-medium truncate">{file.filename}</span>
-                    <span className={`hidden md:inline text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full border border-zinc-800 shrink-0 ${config.color}`}>
-                      {moduleLabel(file.componentSource)}
-                    </span>
+                  <div className="mb-0.5">
+                    <span className="text-xs md:text-sm text-zinc-200 font-medium truncate block">{file.filename}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] md:text-[10px] font-mono text-zinc-600">
-                    <span className={`md:hidden ${config.color}`}>{moduleLabel(file.componentSource)}</span>
-                    <span className="truncate max-w-[100px] md:max-w-[150px]">{file.bookTitle || getBookTitle(file.bookId)}</span>
+                    <span className="truncate max-w-[140px] md:max-w-[220px]">{file.bookTitle || getBookTitle(file.bookId)}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
                     <span>{formatDateTime(file.timestamp)}</span>
                     <span className="hidden md:inline text-zinc-500">|</span>
