@@ -423,6 +423,7 @@ const App: React.FC = () => {
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
@@ -6341,18 +6342,7 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (activeTab === Tab.GEN_FILES) {
-      return (
-        <div className="h-full animate-fade-in">
-          <ErrorBoundary>
-            <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
-              <GeneratedFilesPanel library={library} />
-            </Suspense>
-          </ErrorBoundary>
-        </div>
-      );
-    }
-
+    // GEN_FILES is no longer a main-content tab — it opens as a modal (isFilesOpen) from the sidebar.
     if (activeTab === Tab.NOTEBOOK) {
         return (
             <Notebook
@@ -6592,6 +6582,27 @@ const App: React.FC = () => {
         proAnnualPriceId={localStorage.getItem('stripe_pro_annual_price_id') || ''}
         key={isAccountOpen ? 'open' : 'closed'}
       />
+      {isFilesOpen && (
+        <div role="dialog" aria-modal="true" aria-label="Generated Files" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans" onClick={() => setIsFilesOpen(false)}>
+          <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-sm">
+                <HardDrive size={16} className="text-neon-cyan" />
+                <span>Gen_Files</span>
+              </div>
+              <button onClick={() => setIsFilesOpen(false)} className="text-zinc-500 hover:text-neon-cyan transition-colors" aria-label="Close"><X size={18} /></button>
+            </div>
+            <div className="flex-1 min-h-0 p-4">
+              <ErrorBoundary>
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
+                  <GeneratedFilesPanel library={library} />
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
@@ -6811,6 +6822,13 @@ const App: React.FC = () => {
             <span>SYS_CONFIG</span>
           </button>
           <button
+            onClick={() => setIsFilesOpen(true)}
+            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+          >
+            <HardDrive size={14} />
+            <span>GEN_FILES</span>
+          </button>
+          <button
             onClick={() => setIsAccountOpen(true)}
             className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-neon-cyan hover:text-white' : 'text-zinc-500 hover:text-neon-cyan'}`}
           >
@@ -6858,7 +6876,6 @@ const App: React.FC = () => {
                 { id: Tab.CONCEPTS, icon: ImageIcon, label: "VISUAL_CORE" },
                 { id: Tab.ANIMATION, icon: Film, label: "CINE_RENDER" },
                 { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "MEM_LOG" },
-                { id: Tab.GEN_FILES, icon: HardDrive, label: "GEN_FILES" },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -6884,7 +6901,6 @@ const App: React.FC = () => {
               { id: Tab.CONCEPTS, icon: ImageIcon, label: "IMAGE" },
               { id: Tab.ANIMATION, icon: Film, label: "VIDEO" },
               { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "NOTES" },
-              { id: Tab.GEN_FILES, icon: HardDrive, label: "FILES" },
             ].map((tab) => (
               <button
                 key={tab.id}
