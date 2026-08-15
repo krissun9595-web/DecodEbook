@@ -6613,7 +6613,8 @@ const App: React.FC = () => {
                 now the DATA_BANKS entrance: click toggles the library list ↔ catalogue.
                 Colour states: no book in app → `>_` white; reading the active book → `>_` neon-blue;
                 bank open → `>` neon-blue + `_` white (blinking, terminal-caret style). */}
-            <div className="h-12 md:h-14 px-4 flex items-center justify-between border-b border-zinc-900">
+            <div className="border-b border-zinc-900">
+              <div className="h-12 md:h-14 px-4 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                     <button
                         onClick={() => setShowLibraryList(!showLibraryList)}
@@ -6635,6 +6636,7 @@ const App: React.FC = () => {
                 >
                     <Upload size={14} />
                 </button>
+              </div>
             </div>
             {/* Active-book info block — plain, function-less (the >_ owns the toggle now). */}
             {!showLibraryList && activeBook && (
