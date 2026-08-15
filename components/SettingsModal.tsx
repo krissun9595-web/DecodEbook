@@ -113,7 +113,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Settings" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans">
-      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl h-[80vh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative">
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative">
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between shrink-0">
@@ -123,7 +123,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 p-6 space-y-8 overflow-y-auto custom-scrollbar">
+        <div className="p-6 space-y-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
           {/* LLM Engines */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-neon-cyan mb-2">

@@ -175,7 +175,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
-      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl h-[80vh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between shrink-0">
@@ -183,7 +183,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
           <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition active:scale-90"><X size={24} /></button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        <div className="h-[70vh] overflow-y-auto custom-scrollbar">
           {user ? (
             <div className="p-6 space-y-8">
 
