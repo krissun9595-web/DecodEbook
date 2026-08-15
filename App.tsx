@@ -4826,7 +4826,16 @@ const App: React.FC = () => {
           // paragraph — a definition list (Agentic Mesh "Layer N: …" + its description, ind/label ≈ 3.7–5.5),
           // NOT a hanging list (dialogue ≈ 1.3, CIP ≈ 1–2 measured). Excluding it lets the group loop's
           // justified block-split separate the flush term from its indented description instead of joining them.
-          if (indented.length > margin.length * 3) return false;
+          if (indented.length > margin.length * 3) {
+            // ...UNLESS it's a long-turn DIALOGUE: its label (margin) lines are long speaker TURNS that FILL
+            // the measure (Ch.8 CASSANDRA/RAY wraps ~4-5 lines per turn → ratio ≈4.5, all turn-opening lines
+            // reach the right margin), whereas a definition list's label is a SHORT FLUSH TERM ("Layer N:")
+            // that stops well short. So only treat a high-ratio labeled run as a NON-hanging (definition)
+            // block when its labels DON'T fill the measure — otherwise a wordy dialogue fell to the prose
+            // path and merged a turn whose last line happened to fill ("…give us meaning? RAY: Well…").
+            const labelsFill = rightMargin > 0 ? margin.filter(l => l.rightX >= rightMargin - bodyFont * 1.5).length : 0;
+            if (labelsFill < Math.max(2, margin.length / 2)) return false;
+          }
           return labeled >= 2 && labeled >= margin.length / 2;
         };
 
