@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v176-pdf-phrasekeyed-notes-preserve';
+const CHAPTER_TEXT_CACHE_VERSION = 'v177-pdf-notes-audit';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -2102,6 +2102,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             ? formatPdfIndexEntries(rawText)
             : normalizeInternalLinkMarkup(normalizeInternalLinkMarkup(rawText).replace(/\n{3,}/g, '\n\n').trim())
           : normalizeInternalLinkMarkup(rearrangeAndCleanText(normalizeInternalLinkMarkup(rawText)));
+        // TEMP audit (localStorage.dbgNotes='1'): on a NOTES chapter, dump the RAW extraction and the
+        // post-rearrange text so we can see whether notes are separated by \n\n (geometry) or run together
+        // as prose, and the exact phrase-key link marker format. Fires only on a cache MISS (fresh pass).
+        try {
+          const _isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
+          if (_isNotes && typeof localStorage !== 'undefined' && localStorage.getItem('dbgNotes') === '1') {
+            const vis = (s: string) => s.slice(0, 900).replace(/\n/g, '⏎').replace(/[-]/g, '·');
+            const links = (s: string) => (s.match(/\[[^\]]+\]\(#?[^)]*\)/g) || []).length;
+            // eslint-disable-next-line no-console
+            console.log('[dbgNotes] RAW  nn=', (rawText.match(/\n\n/g) || []).length, 'n=', (rawText.match(/\n/g) || []).length, 'links=', links(rawText), '::', JSON.stringify(vis(rawText)));
+            // eslint-disable-next-line no-console
+            console.log('[dbgNotes] CLEAN nn=', (cleanText.match(/\n\n/g) || []).length, 'links=', links(cleanText), '::', JSON.stringify(vis(cleanText)));
+          }
+        } catch {}
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });
         saveFile(textCacheKey, textBlob, {
