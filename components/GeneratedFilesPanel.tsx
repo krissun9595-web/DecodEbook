@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, Notebook as NotebookIcon, Map, FileDown, Save, Share2, Languages, File as FileIcon, Check, Minus, FileType2 } from 'lucide-react';
+import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, Notebook as NotebookIcon, Map, FileDown, Save, Share2, Languages, File as FileIcon, Check, Minus, FileType2, Archive } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
 import { listFiles, deleteFile, getFile } from '../services/fileCache';
@@ -197,7 +197,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
   };
 
   return (
-    <div className="h-full flex flex-col animate-fade-in font-sans text-left overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col animate-fade-in font-sans text-left overflow-hidden">
       {/* FILES_SCOPE — narrow the list by book / type / format. Vertical, mirroring SettingsModal LLM_Engines. */}
       <div className="shrink-0 space-y-3 mb-3">
         <div className="flex items-center justify-between">
@@ -258,7 +258,13 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
         </div>
       </div>
 
-      {/* Batch bar — overall (tri-state) checkbox + save_all / delete_all on the CHECKED items */}
+      {/* FILE_LIST header — mirrors the FILES_SCOPE header (Archive icon + label) */}
+      <div className="flex items-center gap-2 text-neon-cyan shrink-0 mb-2 pt-3 border-t border-zinc-900">
+        <Archive size={18} />
+        <label className="text-xs font-bold uppercase tracking-widest font-mono">File_List</label>
+      </div>
+
+      {/* Batch bar — overall (tri-state) checkbox + save / delete on the CHECKED items */}
       <div className="mb-1.5 md:mb-2 flex items-center justify-between shrink-0 w-full gap-2 px-1">
         <button
           onClick={toggleAll}
@@ -293,8 +299,8 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
         </div>
       </div>
 
-      {/* File List */}
-      <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+      {/* File List — scrolls independently; FILES_SCOPE + FILE_LIST header + batch bar stay fixed above */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 custom-scrollbar">
         {filteredFiles.length === 0 ? (
           <EmptyState icon={HardDrive} label="Cache_Empty" sublabel="Generated files will appear here after creation" className="h-full" />
         ) : (
