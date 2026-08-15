@@ -6623,7 +6623,7 @@ const App: React.FC = () => {
                         className="font-tech font-bold text-lg leading-none tracking-tight transition active:scale-90 cursor-pointer"
                     >
                         <span className={library.length > 0 ? 'text-neon-cyan' : 'text-white'}>{'>'}</span>
-                        <span className={library.length === 0 ? 'text-white' : (showLibraryList ? 'text-white animate-blink' : 'text-neon-cyan')}>{'_'}</span>
+                        <span className={`relative -top-[0.14em] ${library.length === 0 ? 'text-white' : (showLibraryList ? 'text-white animate-blink' : 'text-neon-cyan')}`}>{'_'}</span>
                     </button>
                     <span className="text-lg font-tech font-bold tracking-[0.06em] leading-none">
                         <span className="text-white">Decod</span><span className="text-neon-cyan">Ebook</span>
