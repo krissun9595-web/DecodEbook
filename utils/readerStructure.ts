@@ -281,6 +281,16 @@ const normalizeReaderText = (value: string): string => {
 };
 
 export const normalizeNotesReaderText = (value: string, preserveParagraphs = false): string => {
+  // TEMP audit (localStorage.dbgNotes='1'): confirm whether the PDF extractor emits \n\n between
+  // phrase-keyed notes (so the empty-markers preserve-paragraphs fix has boundaries to keep). ⏎ = \n,
+  // · = a PUA sentinel. Guarded for node (the regression harness bundles this file).
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgNotes') === '1') {
+      const vis = (s: string) => s.slice(0, 1400).replace(/\n/g, '⏎').replace(/[-]/g, '·');
+      // eslint-disable-next-line no-console
+      console.log('[dbgNotes] preserveParagraphs=', preserveParagraphs, 'rawIn:', JSON.stringify(vis(value)));
+    }
+  } catch {}
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   // Block-role/alignment sentinels (U+E010-E013) prefix a paragraph. The notes' per-chapter
   // "CHAPTER N" section headers are now tagged headings (U+E013) by the notes-header detection,
@@ -389,7 +399,22 @@ export const normalizeNotesReaderText = (value: string, preserveParagraphs = fal
       .trim();
   const collapseNoteEntries = (source: string, starts: number[]): string => {
     const sortedStarts = [...new Set(starts)].sort((a, b) => a - b);
-    if (sortedStarts.length === 0) return collapseNoteEntryText(source);
+    // No numeric/roman entry markers => PHRASE-keyed notes (e.g. "A Brief History of Intelligence":
+    // "a grain of rice: For fossil evidence, see …"). The old flatten — collapseNoteEntryText over the
+    // WHOLE source — joined every line with spaces, DESTROYING the \n\n paragraph breaks the PDF
+    // extractor already inferred from geometry, merging the entire Notes chapter into one blob (a
+    // sentence-split *…* run then bled italic across it, and each per-chapter "Chapter N" header glued
+    // inline). EPUB dodges this via the preserveParagraphs early-return above; the PDF path must too.
+    // Keep the geometry paragraph boundaries (each note is its own \n\n block), collapsing only the
+    // wrapped lines WITHIN each note. This branch is reached ONLY when a Notes chapter has zero markers,
+    // so numeric/roman-keyed books (Sovereign, Kurzweil, Elon) — which have starts — are untouched.
+    if (sortedStarts.length === 0) {
+      return source
+        .split(/\n{2,}/)
+        .map(block => collapseNoteEntryText(block))
+        .filter(Boolean)
+        .join('\n\n');
+    }
 
     const sectionStartSet = new Set(sectionStarts);
     const entries: Array<{ text: string; type: 'prefix' | 'section' | 'note' }> = [];
