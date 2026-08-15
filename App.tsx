@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Database, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -6606,27 +6606,43 @@ const App: React.FC = () => {
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-64' : 'md:w-0'} bg-void-1 flex flex-col overflow-hidden border-r border-zinc-900`}
       >
-        <div className="px-4 pt-4 pb-1.5 border-b border-zinc-900 shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
+        <div className="shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-neon-cyan opacity-20"></div>
-            <div className="flex items-center justify-between mb-6">
+            {/* Brand header — its own block, aligned to the module bar height (h-12 md:h-14),
+                closed off by the same grey rule used under the sidebar toggle. The `>_` glyph is
+                now the DATA_BANKS entrance: click toggles the library list ↔ catalogue.
+                Colour states: no book in app → `>_` white; reading the active book → `>_` neon-blue;
+                bank open → `>` neon-blue + `_` white (blinking, terminal-caret style). */}
+            <div className="h-12 md:h-14 px-4 flex items-center justify-between border-b border-zinc-900">
                 <div className="flex items-center gap-1.5">
-                    <span className="font-tech font-bold text-neon-cyan text-lg leading-none">{'>_'}</span>
+                    <button
+                        onClick={() => setShowLibraryList(!showLibraryList)}
+                        aria-label={showLibraryList ? "Close data banks" : "Open data banks"}
+                        title={showLibraryList ? "SESSION_DATA — back to catalogue" : "DATA_BANKS — browse library"}
+                        className="font-tech font-bold text-lg leading-none tracking-tight transition active:scale-90 cursor-pointer"
+                    >
+                        <span className={library.length > 0 ? 'text-neon-cyan' : 'text-white'}>{'>'}</span>
+                        <span className={library.length === 0 ? 'text-white' : (showLibraryList ? 'text-white animate-blink' : 'text-neon-cyan')}>{'_'}</span>
+                    </button>
                     <span className="text-lg font-tech font-bold tracking-[0.06em] leading-none">
                         <span className="text-white">Decod</span><span className="text-neon-cyan">Ebook</span>
                     </span>
                 </div>
-                <button 
-                    onClick={() => setView(AppView.UPLOAD)} 
+                <button
+                    onClick={() => setView(AppView.UPLOAD)}
                     className="p-1.5 rounded-sm hover:bg-zinc-900 text-zinc-600 hover:text-neon-cyan transition active:scale-90"
                     title="Upload New"
                 >
                     <Upload size={14} />
                 </button>
             </div>
+            {/* Active-book info block — plain, function-less (the >_ owns the toggle now). */}
             {!showLibraryList && activeBook && (
-                <div className="mt-4 h-[53px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border group cursor-default">
-                    <h1 className="font-bold text-xs text-white truncate leading-tight mb-0.5 font-tech uppercase tracking-wide">{activeBook.title}</h1>
-                    <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
+                <div className="px-4 py-3">
+                    <div className="h-[53px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border cursor-default">
+                        <h1 className="font-bold text-xs text-white truncate leading-tight mb-0.5 font-tech uppercase tracking-wide">{activeBook.title}</h1>
+                        <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
+                    </div>
                 </div>
             )}
         </div>
@@ -6799,18 +6815,6 @@ const App: React.FC = () => {
           )}
         </div>
         <div className="p-0 border-t border-zinc-900 bg-black flex flex-col shrink-0">
-          <button 
-            onClick={() => setShowLibraryList(!showLibraryList)}
-            className={`w-full flex items-center justify-between p-4 transition-all text-[10px] font-bold font-tech uppercase tracking-widest border-b border-zinc-900/30 ${
-                showLibraryList ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:bg-zinc-900 hover:text-neon-cyan'
-            }`}
-          >
-             <div className="flex items-center gap-3">
-                <Database size={14} />
-                <span>{showLibraryList ? "SESSION_DATA" : "DATA_BANKS"}</span>
-             </div>
-             <span className={`text-[8px] animate-pulse ${showLibraryList ? 'text-neon-cyan' : 'text-zinc-500'}`}>●</span>
-          </button>
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
