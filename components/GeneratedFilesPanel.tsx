@@ -198,51 +198,60 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
   return (
     <div className="h-full flex flex-col animate-fade-in font-sans text-left overflow-hidden">
-      {/* FILES_SCOPE — narrow the list by book / type / format */}
-      <div className="hud-panel mb-1.5 md:mb-2 flex items-center justify-between shrink-0 w-full flex-wrap gap-2 z-20">
-        <div className="hidden md:flex items-center gap-4">
-          <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
-            <HardDrive size={16} className="text-neon-cyan" />
-            <span>Files_Scope</span>
+      {/* FILES_SCOPE — narrow the list by book / type / format. Vertical, mirroring SettingsModal LLM_Engines. */}
+      <div className="shrink-0 space-y-3 mb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-neon-cyan">
+            <HardDrive size={18} />
+            <label className="text-xs font-bold uppercase tracking-widest font-mono">Files_Scope</label>
           </div>
           <span className="text-[10px] font-mono text-zinc-600 uppercase">{formatFileSize(totalSize)} // {files.length} files</span>
         </div>
-        <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
-          <div className="select-group">
-            <div className="p-1 md:p-1.5 text-zinc-500"><HardDrive size={13} /></div>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-zinc-500">
+              <HardDrive size={12} />
+              <span className="text-[9px] font-mono uppercase">Book_Scope</span>
+            </div>
             <select
               value={filterBook}
               onChange={(e) => setFilterBook(e.target.value)}
-              className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[72px] md:w-[96px] bg-void-1"
+              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
             >
               <option value="all">ALL BOOKS</option>
               {library.map(item => (
-                <option key={item.book.id} value={item.book.id}>
-                  {item.book.title.substring(0, 15)}
-                </option>
+                <option key={item.book.id} value={item.book.id}>{item.book.title.substring(0, 44)}</option>
               ))}
             </select>
-            <div className="w-[1px] h-3.5 bg-zinc-700"></div>
-            <div className="p-1 md:p-1.5 text-zinc-500"><FileText size={13} /></div>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-zinc-500">
+              <FileText size={12} />
+              <span className="text-[9px] font-mono uppercase">Type_Scope</span>
+            </div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as FilterType)}
-              className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[72px] md:w-[96px] bg-void-1"
+              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
             >
               {FILTER_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <div className="w-[1px] h-3.5 bg-zinc-700"></div>
-            <div className="p-1 md:p-1.5 text-zinc-500"><FileType2 size={13} /></div>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-zinc-500">
+              <FileType2 size={12} />
+              <span className="text-[9px] font-mono uppercase">Format_Scope</span>
+            </div>
             <select
               value={filterFormat}
               onChange={(e) => setFilterFormat(e.target.value)}
-              className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[60px] md:w-[78px] bg-void-1"
+              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
             >
-              <option value="all">ALL FMT</option>
+              <option value="all">ALL FORMATS</option>
               {formatOptions.map(fmt => (
-                <option key={fmt} value={fmt}>.{fmt}</option>
+                <option key={fmt} value={fmt}>.{fmt.toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -269,7 +278,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             className="flex items-center gap-1.5 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center border text-neon-cyan border-neon-cyan/30 hover:bg-neon-cyan/10 disabled:opacity-40 disabled:hover:bg-transparent"
             title="Save the checked files as one .zip"
           >
-            <Save size={13} /> SAVE_ALL
+            <Save size={13} /> SAVE
           </button>
           <button
             onClick={handleDeleteSelected}
@@ -279,7 +288,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             }`}
             title="Delete the checked files (click twice to confirm)"
           >
-            <Trash2 size={13} /> {confirmClear ? 'CONFIRM?' : 'DELETE_ALL'}
+            <Trash2 size={13} /> {confirmClear ? 'CONFIRM' : 'DELETE'}
           </button>
         </div>
       </div>
