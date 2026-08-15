@@ -226,7 +226,7 @@ export interface LibraryItem {
   uploadDate: number;
 }
 
-export type CachedFileType = 'source-file' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation' | 'figure-image' | 'notebook-figure';
+export type CachedFileType = 'source-file' | 'original-file' | 'audio' | 'podcast-audio' | 'podcast-script' | 'video' | 'concept-image' | 'sticky-note' | 'mind-map-pdf' | 'mind-map-docx' | 'mind-map-xmind' | 'chapter-text' | 'translation' | 'figure-image' | 'notebook-figure';
 
 export interface CachedFileMetadata {
   key: string;
