@@ -281,7 +281,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
           <button
             onClick={handleSaveSelected}
             disabled={selectedFiles.length === 0}
-            className="flex items-center gap-1.5 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center border text-neon-cyan border-neon-cyan/30 hover:bg-neon-cyan/10 disabled:opacity-40 disabled:hover:bg-transparent"
+            className="flex items-center gap-1.5 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center min-w-[96px] border text-neon-cyan border-neon-cyan/30 hover:bg-neon-cyan/10 disabled:opacity-40 disabled:hover:bg-transparent"
             title="Save the checked files as one .zip"
           >
             <Save size={13} /> SAVE
@@ -289,7 +289,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
           <button
             onClick={handleDeleteSelected}
             disabled={selectedFiles.length === 0}
-            className={`flex items-center gap-1.5 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center border disabled:opacity-40 disabled:hover:bg-transparent ${
+            className={`flex items-center gap-1.5 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center min-w-[96px] border disabled:opacity-40 disabled:hover:bg-transparent ${
               confirmClear ? 'bg-neon-red text-white border-neon-red animate-pulse hover:bg-rose-600' : 'text-neon-red border-neon-red/30 hover:bg-neon-red/10'
             }`}
             title="Delete the checked files (click twice to confirm)"

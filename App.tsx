@@ -6584,7 +6584,7 @@ const App: React.FC = () => {
       />
       {isFilesOpen && (
         <div role="dialog" aria-modal="true" aria-label="Generated Files" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans" onClick={() => setIsFilesOpen(false)}>
-          <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative h-[80vh]" onClick={(e) => e.stopPropagation()}>
             <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
             <div className="p-6 border-b border-zinc-800 flex items-center justify-between shrink-0">
               <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">Gen_Files</h2>
