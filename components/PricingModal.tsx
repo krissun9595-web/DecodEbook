@@ -183,7 +183,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
           <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition active:scale-90"><X size={24} /></button>
         </div>
 
-        <div className="h-[70vh] overflow-y-auto custom-scrollbar">
+        <div className="h-[calc(70vh+69px)] overflow-y-auto custom-scrollbar">
           {user ? (
             <div className="p-6 space-y-8">
 

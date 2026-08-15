@@ -6590,7 +6590,7 @@ const App: React.FC = () => {
               <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">Gen_Files</h2>
               <button onClick={() => setIsFilesOpen(false)} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
             </div>
-            <div className="h-[70vh] p-6 flex flex-col">
+            <div className="h-[calc(70vh+69px)] p-6 flex flex-col">
               <ErrorBoundary>
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
                   <GeneratedFilesPanel library={library} />
