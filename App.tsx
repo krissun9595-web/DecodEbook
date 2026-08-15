@@ -4467,7 +4467,8 @@ const App: React.FC = () => {
         // on any page that carries the Ch.8 "give us meaning" / RAY:/CASSANDRA: dialogue, to see whether the
         // last RAY: turn is its OWN margin line (an emission bug) or clustered/indented (a line-geometry bug).
         try {
-          if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgDlg') === '1' && lines.some(l => /give us meaning/i.test(l.text))) {
+          const _dlgOn = typeof localStorage !== 'undefined' && Object.keys(localStorage).some(k => k.toLowerCase() === 'dbgdlg' && localStorage.getItem(k) === '1');
+          if (_dlgOn && lines.some(l => /give us meaning/i.test(l.text))) {
             console.log('[dlg] page ' + pageNum + ' bodyLeft=' + Math.round(bodyLeft) + ' paraLeft=' + Math.round(paraLeftMargin) + '\n' +
               lines.map(l => `  x${Math.round(l.x)} rx${Math.round(l.rightX)} y${Math.round(l.pageY)} ${JSON.stringify(l.text.replace(/[-]/g, '·').slice(0, 54))}`).join('\n'));
           }
