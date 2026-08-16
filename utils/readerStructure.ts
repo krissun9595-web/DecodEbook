@@ -281,16 +281,6 @@ const normalizeReaderText = (value: string): string => {
 };
 
 export const normalizeNotesReaderText = (value: string, preserveParagraphs = false): string => {
-  // TEMP audit (localStorage.dbgNotes='1'): confirm whether the PDF extractor emits \n\n between
-  // phrase-keyed notes (so the empty-markers preserve-paragraphs fix has boundaries to keep). ⏎ = \n,
-  // · = a PUA sentinel. Guarded for node (the regression harness bundles this file).
-  try {
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgNotes') === '1') {
-      const vis = (s: string) => s.slice(0, 1400).replace(/\n/g, '⏎').replace(/[-]/g, '·');
-      // eslint-disable-next-line no-console
-      console.log('[dbgNotes] preserveParagraphs=', preserveParagraphs, 'rawIn:', JSON.stringify(vis(value)));
-    }
-  } catch {}
   let text = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   // Block-role/alignment sentinels (U+E010-E013) prefix a paragraph. The notes' per-chapter
   // "CHAPTER N" section headers are now tagged headings (U+E013) by the notes-header detection,

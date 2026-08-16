@@ -1549,7 +1549,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
   const aspect = meta && meta.wPx && meta.hPx ? meta.wPx / meta.hPx : 4 / 3;
   // Size the figure by its real fraction of the page's text column (from extraction), so it reads
   // proportionally to the surrounding text. Falls back to a nominal column width for older manifests.
-  const widthPct = meta?.colFrac ? Math.round(Math.min(1, meta.colFrac) * 100) // (A) no min-40 clamp — faithful
+  const widthPct = meta?.colFrac ? Math.max(40, Math.min(100, Math.round(meta.colFrac * 100)))
     : meta?.wPts ? Math.max(40, Math.min(100, Math.round((meta.wPts / 380) * 100)))
     : 100;
   const openMenu = (x: number, y: number) => setMenu({ x, y });
@@ -1637,7 +1637,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
           </div>
         // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
         // centred within at its book proportion.
-        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div ref={(el) => { try { if (el && typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1') console.log('[dbgFigW]', JSON.stringify({ figOff: el.offsetWidth, parent: el.parentElement?.offsetWidth, widthPct })); } catch {} }} style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div></div>}
+        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div></div>}
       {menu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
@@ -1662,27 +1662,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // change without re-fetching, preserving the reading position.
   const cleanTextRef = useRef<string>('');
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
-  // Map each figure CAPTION → its figure's manifest, built from the FULL chapter text (cleanTextRef) so
-  // the link SURVIVES pagination — a caption often paginates to the top of the next page, away from its
-  // [[FIG]] marker (paragraphData holds only the current page). Keyed by the caption's leading
-  // alphanumerics. Used to size the caption box to the figure width (colFrac for PDF; the image's
-  // intrinsic wPx for EPUB, which carries no colFrac). Rebuilt whenever the chapter re-paginates.
-  const captionFigByKey = React.useMemo(() => {
-    const m = new Map<string, PdfFigure>();
-    const figs = fileContext.pdfFigures;
-    const text = cleanTextRef.current || '';
-    if (figs?.length && text) {
-      const re = /\[\[FIG\s+(\w+)\]\]\s*\n+\s*([^\n]{2,80})/g;
-      let mm: RegExpExecArray | null;
-      while ((mm = re.exec(text)) !== null) {
-        const fig = figs.find(f => f.id === mm![1]);
-        if (!fig) continue;
-        const key = mm[2].replace(/[^a-z0-9]/gi, '').slice(0, 28).toLowerCase();
-        if (key) m.set(key, fig);
-      }
-    }
-    return m;
-  }, [pages, fileContext.pdfFigures]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
   // The exact page text that flatSentenceMap was built from. flatSentenceMap is rebuilt one render AFTER
   // currentPage/pages change, so during re-pagination it briefly belongs to the PREVIOUS page — this ref
@@ -2131,20 +2110,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             ? formatPdfIndexEntries(rawText)
             : normalizeInternalLinkMarkup(normalizeInternalLinkMarkup(rawText).replace(/\n{3,}/g, '\n\n').trim())
           : normalizeInternalLinkMarkup(rearrangeAndCleanText(normalizeInternalLinkMarkup(rawText)));
-        // TEMP audit (localStorage.dbgNotes='1'): on a NOTES chapter, dump the RAW extraction and the
-        // post-rearrange text so we can see whether notes are separated by \n\n (geometry) or run together
-        // as prose, and the exact phrase-key link marker format. Fires only on a cache MISS (fresh pass).
-        try {
-          const _isNotes = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '');
-          if (_isNotes && typeof localStorage !== 'undefined' && localStorage.getItem('dbgNotes') === '1') {
-            const vis = (s: string) => s.slice(0, 900).replace(/\n/g, '⏎').replace(/[-]/g, '·');
-            const links = (s: string) => (s.match(/\[[^\]]+\]\(#?[^)]*\)/g) || []).length;
-            // eslint-disable-next-line no-console
-            console.log('[dbgNotes] RAW  nn=', (rawText.match(/\n\n/g) || []).length, 'n=', (rawText.match(/\n/g) || []).length, 'links=', links(rawText), '::', JSON.stringify(vis(rawText)));
-            // eslint-disable-next-line no-console
-            console.log('[dbgNotes] CLEAN nn=', (cleanText.match(/\n\n/g) || []).length, 'links=', links(cleanText), '::', JSON.stringify(vis(cleanText)));
-          }
-        } catch {}
         // Cache the extracted text for future visits
         const textBlob = new Blob([cleanText], { type: 'text/plain' });
         saveFile(textCacheKey, textBlob, {
@@ -2161,21 +2126,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       if (isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '') || ['endnotes', 'footnotes', 'notes'].includes(chapter.semanticType || '')) {
         cleanText = normalizeNotesReaderText(cleanText, fileContext.sourceKind === 'epub');
       }
-
-      // TEMP audit (localStorage.dbgFig='1'): dump the raw extraction around a figure caption
-      // (Roomba / "Figure 2.8") with sentinels visible — E010 ‹C›=centre, E011 ‹R›=right, [[FIG]] marker,
-      // ⏎=\n — to see whether the caption is split into blocks and/or carries a centre/right sentinel.
-      try {
-        if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgFig') === '1' && fileContext.content) {
-          const c = fileContext.content;
-          const hit = c.search(/Photograph by Larry|navigated in a way similar/);
-          if (hit >= 0) {
-            const vis = (s: string) => s.replace(/\n/g, '⏎').replace(//g, '‹C›').replace(//g, '‹R›').replace(//g, '‹H›').replace(/[-]/g, '·');
-            // eslint-disable-next-line no-console
-            console.log('[dbgFig]', JSON.stringify(vis(c.slice(Math.max(0, hit - 1000), hit + 400))));
-          }
-        }
-      } catch {}
 
       cleanTextRef.current = cleanText;
       const paginatedPages = paginateChapterText(cleanText);
@@ -4831,54 +4781,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // a first-line indent (U+E029 → para.firstLineIndented, e.g. `extract_indented` text-indent:1em),
                   // so restore its first-line indent ON TOP of the block padding (bodyBlockPadStyle, spread after).
                   // Positive flag, only on plain body extracts — a blockquote/list/index/dialogue never carries it.
-                  // Constrain a figure CAPTION (and its following attribution) to the FIGURE's width: the
-                  // source sets the caption in a column the width of the figure — centred, text flush-left —
-                  // NOT full body width or centred text. Reuse the SAME widthPct the figure renders at
-                  // (measured colFrac for PDF; wPts/intrinsic fallback for EPUB) so the caption box lines up
-                  // with the figure. Gated out of the Notes chapter (a "Figure 2.8: Photograph…" figure-credit
-                  // endnote is not a caption). Applied last in the style so it overrides any centre align.
-                  const _figCapRe = /^(?:figure|fig\.|table|plate|exhibit|chart|diagram)\s+\d/iu;
-                  const _capText = stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim();
-                  const _capPrevText = stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original || []).join(' ')).replace(/\s+/g, ' ').trim();
-                  const _capSelf = _figCapRe.test(_capText);
-                  const _capPrev = _figCapRe.test(_capPrevText);
-                  let _figCaptionStyle: React.CSSProperties = {};
-                  let _capFm: PdfFigure | undefined;
-                  if (!isNotesChapter && (_capSelf || _capPrev)) {
-                    // Key on the CAPTION's leading alphanumerics — this paragraph if it's the caption, else the
-                    // previous paragraph (this is the attribution, which shares the figure). Look the figure up
-                    // in the pagination-proof map so the box sizes to the figure even when they're on
-                    // different pages.
-                    const _key = (_capSelf ? _capText : _capPrevText).replace(/[^a-z0-9]/gi, '').slice(0, 28).toLowerCase();
-                    _capFm = captionFigByKey.get(_key);
-                    if (_capFm?.colFrac) {
-                      // PDF: mirror the figure's OWN sizing exactly (PdfFigureBlock ~1640): widthPct% of the
-                      // text column, capped at that fraction of the 48rem column. width:% alone resolves against
-                      // the variable flex parent (full content in single, half in split) → too wide; a fixed
-                      // maxWidth alone doesn't shrink with a narrow window → wider than the figure there.
-                      // BOTH together = min(pct% of parent, pct% of 48rem) = pct% of the ACTUAL column in every
-                      // window/view, matching the figure. pct uses the same max(40,…) clamp the figure uses.
-                      const _fr = Math.min(1, _capFm.colFrac); // (A) no min-40 clamp — faithful to the source width
-                      const _pct = Math.round(_fr * 100);
-                      // SPLIT view: the caption div is a w-1/2 PANE, but an inline width:% resolves against the
-                      // full ROW (both panes), so pct% would be ~2× the figure (which is pct% of its half-pane).
-                      // Halve it so the caption tracks the figure's pane-relative width. SINGLE view: pct% of the
-                      // flex parent, capped at pct% of the 48rem text column (matches the figure there).
-                      const _wpct = viewMode === 'split' ? _pct / 2 : _pct;
-                      _figCaptionStyle = { width: `${_wpct}%`, ...(viewMode === 'split' ? {} : { maxWidth: `calc(48rem * ${_fr.toFixed(3)})` }), marginLeft: 'auto', marginRight: 'auto', textAlign: 'justify', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
-                    } else if (_capFm?.wPx) {
-                      // EPUB (no colFrac): cap the box at the image's intrinsic width so caption + figure align.
-                      _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'justify', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
-                    }
-                  }
-                  const _hasCapBox = !!(_figCaptionStyle.width || _figCaptionStyle.maxWidth);
-                  try {
-                    if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1'
-                      && (_hasCapBox || para.figure || /Figure 2\.8|vacuum-cleaning|Photograph|Moore in 2006|Wikipedia|Roomba/u.test(_capText))) {
-                      // eslint-disable-next-line no-console
-                      console.log('[dbgP]', pIdx, para.figure ? 'FIGURE' : _hasCapBox ? 'BOX' : 'flush', 'self=' + _capSelf, 'prev=' + _capPrev, JSON.stringify(_capText.slice(0, 40)));
-                    }
-                  } catch {}
                   const _extractFirstIndent = (para.indent ?? 0) > 0 && !!para.firstLineIndented && !isListRole && !isHeadingRole && !isSizedHeadingPara && !isParagraphContinuation && !tocNumMarker && !para.blockQuote;
                   const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || !!tocNumMarker || (para.indent ?? 0) > 0)
                     ? (_extractFirstIndent ? plainParagraphStyleFor(para.original, para.align, para.flushFirstLine) : noTextIndentStyle)
@@ -5189,16 +5091,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const rawAlign = para.align || (neighborAlign === 'center' && isStrayDisplayLine ? neighborAlign : undefined);
                   // The CONTENTS heading is centred in both sources (EPUB `h2.chapter_number{text-align:center}`,
                   // PDF centred at the page middle). Force-centre it so the shared design's heading matches.
-                  // A figure caption sized to its figure (_figCaptionStyle set) must NOT keep the extraction's
-                  // centre align: a centred line renders full-width with centred text, which swallows the
-                  // width:X% box (the attribution, un-centred, honours the same width — the caption didn't).
-                  // Drop the centre so the caption box narrows to the figure width with flush-left text.
-                  const _isCapBox = !!(_figCaptionStyle.width || _figCaptionStyle.maxWidth);
-                  const effectiveAlign = _isCapBox ? undefined : (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
+                  const effectiveAlign = (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
-                  const _capRef = (_isCapBox && typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1')
-                    ? (el: HTMLDivElement | null) => { if (el) { try { const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); const p = el.parentElement?.getBoundingClientRect(); console.log('[dbgCapDOM]', JSON.stringify({ pIdx, off: el.offsetWidth, ml: cs.marginLeft, mr: cs.marginRight, pl: cs.paddingLeft, pr: cs.paddingRight, leftIndent: p ? Math.round(r.left - p.left) : null, rightIndent: p ? Math.round(p.right - r.right) : null, parentW: Math.round(p?.width || 0), cls: el.className.replace(/\s+/g, ' ').slice(0, 55) })); } catch {} } }
-                    : undefined;
                   const cleanParagraphText = stripInlineFormatSyntax((para.original || []).join(' ')).replace(/\s+/g, ' ').trim();
                   const prevParagraph = paragraphData[pIdx - 1];
                   const nextParagraph = paragraphData[pIdx + 1];
@@ -5251,7 +5145,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     : (alignPref === 'left' && !effectiveAlign ? { textAlign: 'left' } : {});
 
                   return (
-                    <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={{ ...bulletBlockStyle, ...indexIndentStyle, ...(isIndexChapter ? { breakInside: 'avoid' } : {}), ...(viewMode !== 'split' ? _figCaptionStyle : {}) }}>
+                    <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={{ ...bulletBlockStyle, ...indexIndentStyle, ...(isIndexChapter ? { breakInside: 'avoid' } : {}) }}>
                       {lineRuns.map((line, lineIdx) => {
                         const lineText = line.map(run => run.sentence).join(' ');
                         // A heading-role block (U+E013) gets the section-heading spacing directly — the
@@ -5285,10 +5179,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // "—JEREMY BENTHAM, …" is text-align:center, emitted as E010) must stay centred — the
                         // `—CREDIT` content heuristic otherwise force-right-aligns it, unfaithfully. Respect an
                         // explicit centre; a genuinely right/unaligned attribution still right-aligns.
-                        // A figure caption/attribution box (_isCapBox) is NOT an epigraph attribution — exclude it
-                        // so its "Photograph by …" credit doesn't pick up the right-align + narrowAttribution
-                        // paddingRight, which made the attribution narrower than the caption above it.
-                        const isAttrLine = !_isCapBox && looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim()) && effectiveAlign !== 'center';
+                        const isAttrLine = looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim()) && effectiveAlign !== 'center';
                         // The attribution ("—MATTHEW 10:26") is itself inside the block-quote (bq=1), so exclude
                         // it from the mt-8 break — it sits TIGHT under its quote, not a paragraph-gap below it.
                         // When a divider follows the attribution, cancel the attribution segment's own mb-4 with
@@ -5336,9 +5227,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
-                            ref={_capRef}
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ...(viewMode === 'split' ? _figCaptionStyle : {}) }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -5395,7 +5285,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
-                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ...(viewMode === 'split' ? _figCaptionStyle : {}) }}
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
