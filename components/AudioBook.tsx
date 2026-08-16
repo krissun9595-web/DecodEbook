@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v181-caption-figwidth-map';
+const CHAPTER_TEXT_CACHE_VERSION = 'v182-caption-drop-center';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -5176,7 +5176,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const rawAlign = para.align || (neighborAlign === 'center' && isStrayDisplayLine ? neighborAlign : undefined);
                   // The CONTENTS heading is centred in both sources (EPUB `h2.chapter_number{text-align:center}`,
                   // PDF centred at the page middle). Force-centre it so the shared design's heading matches.
-                  const effectiveAlign = (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
+                  // A figure caption sized to its figure (_figCaptionStyle set) must NOT keep the extraction's
+                  // centre align: a centred line renders full-width with centred text, which swallows the
+                  // width:X% box (the attribution, un-centred, honours the same width — the caption didn't).
+                  // Drop the centre so the caption box narrows to the figure width with flush-left text.
+                  const _isCapBox = !!(_figCaptionStyle.width || _figCaptionStyle.maxWidth);
+                  const effectiveAlign = _isCapBox ? undefined : (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
                   const cleanParagraphText = stripInlineFormatSyntax((para.original || []).join(' ')).replace(/\s+/g, ' ').trim();
                   const prevParagraph = paragraphData[pIdx - 1];
