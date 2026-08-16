@@ -5549,6 +5549,38 @@ const App: React.FC = () => {
           if (at < 0) at = blocks.length;
           blocks.splice(at, 0, rb);
         }
+        // FIGURE-CAPTION re-join. A caption set in a NARROW column symmetrically inset under the figure
+        // (BHI "Figure 2.8: The Roomba…", x≈237 inside a 77..535 body) is shattered one-block-per-line by
+        // the short-line test (bothShort measures each line against the PAGE width, not its own narrow
+        // column) and then centred one-per-line by the per-line centring below. Re-join it: from a
+        // "Figure/Table/Plate/Chart N" opener that is ITSELF inset, absorb the following body blocks in the
+        // SAME inset column (same firstX) until a new italic block (the attribution), a new caption, a
+        // column change, or a terminal-punctuated line — so the caption renders as ONE left-aligned
+        // paragraph (its length then skips the per-line centring). Scoped to an inset caption opener +
+        // same-column continuation, so a body "Figure 2 shows…" sentence (at the body margin), the italic
+        // attribution, tables/index/TOC and inset blockquotes (no "Figure N" opener) are all untouched —
+        // validated across every test PDF by scripts/pdf-caption-audit.mjs (only BHI figure captions match).
+        {
+          const stripSent = (t: string): string => t.replace(/^[-]+/u, '');
+          const capOpener = /^[*_~\s]*(?:Figure|Fig\.|Table|Plate|Chart)\s*\d/i;
+          for (let bi = 0; bi < blocks.length; bi++) {
+            const b = blocks[bi];
+            if (b.role !== 'body' || b.firstX <= bodyLeft + bodyFont * 1.5 || !capOpener.test(stripSent(b.text))) continue;
+            const capX = b.firstX;
+            while (bi + 1 < blocks.length) {
+              const nb = blocks[bi + 1];
+              const nbare = stripSent(nb.text);
+              if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || /^[*_~]/u.test(nbare) || capOpener.test(nbare)) break;
+              const prevT = b.text.replace(/\s+$/u, '');
+              b.text = /[A-Za-z][-‐‑­]$/u.test(prevT) && /^\s*[a-z]/u.test(nbare)
+                ? prevT.replace(/[-‐‑­]$/u, '') + nbare.replace(/^\s+/u, '')
+                : `${prevT} ${nbare.trim()}`;
+              b.lastRightX = nb.lastRightX; b.lastText = nb.lastText;
+              blocks.splice(bi + 1, 1);
+              if (endsWithTerminalPunctuation(nbare.replace(/[*_~]+$/u, '').trim())) break;
+            }
+          }
+        }
         // PER-LINE CENTRING on a MIXED page. The whole-page display classifier above only fires when the
         // ENTIRE page shares one alignment, so a centred line among left-aligned prose (a back-matter promo
         // page — "A TOUCHSTONE BOOK", "FOR MORE ON THESE AUTHORS:") stayed flush-left (the PDF, unlike EPUB,
