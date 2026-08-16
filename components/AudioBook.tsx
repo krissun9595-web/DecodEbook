@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v185-caption-mirror-figure';
+const CHAPTER_TEXT_CACHE_VERSION = 'v186-caption-unclamped-indentaudit';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1549,7 +1549,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
   const aspect = meta && meta.wPx && meta.hPx ? meta.wPx / meta.hPx : 4 / 3;
   // Size the figure by its real fraction of the page's text column (from extraction), so it reads
   // proportionally to the surrounding text. Falls back to a nominal column width for older manifests.
-  const widthPct = meta?.colFrac ? Math.max(40, Math.min(100, Math.round(meta.colFrac * 100)))
+  const widthPct = meta?.colFrac ? Math.round(Math.min(1, meta.colFrac) * 100) // (A) no min-40 clamp — faithful
     : meta?.wPts ? Math.max(40, Math.min(100, Math.round((meta.wPts / 380) * 100)))
     : 100;
   const openMenu = (x: number, y: number) => setMenu({ x, y });
@@ -4858,8 +4858,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       // maxWidth alone doesn't shrink with a narrow window → wider than the figure there.
                       // BOTH together = min(pct% of parent, pct% of 48rem) = pct% of the ACTUAL column in every
                       // window/view, matching the figure. pct uses the same max(40,…) clamp the figure uses.
-                      const _pct = Math.max(40, Math.min(100, Math.round(_capFm.colFrac * 100)));
-                      _figCaptionStyle = { width: `${_pct}%`, maxWidth: `calc(48rem * ${(_pct / 100).toFixed(3)})`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                      const _fr = Math.min(1, _capFm.colFrac); // (A) no min-40 clamp — faithful to the source width
+                      const _pct = Math.round(_fr * 100);
+                      _figCaptionStyle = { width: `${_pct}%`, maxWidth: `calc(48rem * ${_fr.toFixed(3)})`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
                     } else if (_capFm?.wPx) {
                       // EPUB (no colFrac): cap the box at the image's intrinsic width so caption + figure align.
                       _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
@@ -5190,7 +5191,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const effectiveAlign = _isCapBox ? undefined : (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
                   const _capRef = (_isCapBox && typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1')
-                    ? (el: HTMLDivElement | null) => { if (el) { try { console.log('[dbgCapDOM]', JSON.stringify({ pIdx, off: el.offsetWidth, parent: el.parentElement?.offsetWidth, cssW: getComputedStyle(el).width, styleW: el.style.width, cls: el.className.replace(/\s+/g, ' ').slice(0, 70) })); } catch {} } }
+                    ? (el: HTMLDivElement | null) => { if (el) { try { const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); const p = el.parentElement?.getBoundingClientRect(); console.log('[dbgCapDOM]', JSON.stringify({ pIdx, off: el.offsetWidth, ml: cs.marginLeft, mr: cs.marginRight, pl: cs.paddingLeft, pr: cs.paddingRight, leftIndent: p ? Math.round(r.left - p.left) : null, rightIndent: p ? Math.round(p.right - r.right) : null, parentW: Math.round(p?.width || 0), cls: el.className.replace(/\s+/g, ' ').slice(0, 55) })); } catch {} } }
                     : undefined;
                   const cleanParagraphText = stripInlineFormatSyntax((para.original || []).join(' ')).replace(/\s+/g, ' ').trim();
                   const prevParagraph = paragraphData[pIdx - 1];
