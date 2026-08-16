@@ -5563,21 +5563,54 @@ const App: React.FC = () => {
         {
           const stripSent = (t: string): string => t.replace(/^[-]+/u, '');
           const capOpener = /^[*_~\s]*(?:Figure|Fig\.|Table|Plate|Chart)\s*\d/i;
+          // Join `add` onto `prev` the way the source wrapped it: a trailing hyphen (word split) OR a
+          // trailing "/" (a URL split across lines, e.g. ".../wiki/" + "Roomba") continues with NO space;
+          // otherwise a single space. Emphasis markers are handled by the callers.
+          const joinWrap = (prev: string, add: string): string => {
+            const p = prev.replace(/\s+$/u, ''); const a = add.replace(/^\s+/u, '');
+            const pv = p.replace(/[*_~]+$/u, '');
+            return (/[A-Za-z][-‐‑­]$/u.test(pv) && /^[*_~]*[a-z]/u.test(a)) || /\/$/u.test(pv)
+              ? p.replace(/[-‐‑­]([*_~]*)$/u, '$1') + a
+              : `${p} ${a}`;
+          };
           for (let bi = 0; bi < blocks.length; bi++) {
             const b = blocks[bi];
             if (b.role !== 'body' || b.firstX <= bodyLeft + bodyFont * 1.5 || !capOpener.test(stripSent(b.text))) continue;
             const capX = b.firstX;
+            // Phase 1 — the CAPTION (roman): same-column non-italic wrapped lines → one paragraph.
             while (bi + 1 < blocks.length) {
               const nb = blocks[bi + 1];
               const nbare = stripSent(nb.text);
               if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || /^[*_~]/u.test(nbare) || capOpener.test(nbare)) break;
-              const prevT = b.text.replace(/\s+$/u, '');
-              b.text = /[A-Za-z][-‐‑­]$/u.test(prevT) && /^\s*[a-z]/u.test(nbare)
-                ? prevT.replace(/[-‐‑­]$/u, '') + nbare.replace(/^\s+/u, '')
-                : `${prevT} ${nbare.trim()}`;
+              b.text = joinWrap(b.text, nbare);
               b.lastRightX = nb.lastRightX; b.lastText = nb.lastText;
               blocks.splice(bi + 1, 1);
               if (endsWithTerminalPunctuation(nbare.replace(/[*_~]+$/u, '').trim())) break;
+            }
+            // Phase 2 — the ATTRIBUTION (italic): the source sets the credit ("Photograph by Larry D. Moore
+            // in 2006…") as ONE short paragraph, but geometry shatters it one-block-per-line. Merge the
+            // consecutive same-column ITALIC lines right after the caption into a single italic paragraph so
+            // it reflows in its box (matching the caption). Rebuilt as one *…* run (strip the per-line
+            // emphasis/sentinels, re-wrap once) so the reader can't break it at the run boundaries.
+            const ai = bi + 1;
+            if (ai < blocks.length) {
+              const first = blocks[ai];
+              const fbare = stripSent(first.text);
+              if (first.role === 'body' && Math.abs(first.firstX - capX) <= bodyFont && /^[*_~]/u.test(fbare) && !capOpener.test(fbare)) {
+                const lead = (first.text.match(/^[-]+/u) || [''])[0].slice(0, 1);
+                let joined = fbare.replace(/[*_~]/gu, '').trim();
+                while (ai + 1 < blocks.length) {
+                  const nb = blocks[ai + 1];
+                  const nbare = stripSent(nb.text);
+                  if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || capOpener.test(nbare)) break;
+                  joined = joinWrap(joined, nbare.replace(/[*_~]/gu, '').trim());
+                  first.lastRightX = nb.lastRightX; first.lastText = nb.lastText;
+                  const term = endsWithTerminalPunctuation(nbare.replace(/[*_~]+$/u, '').trim());
+                  blocks.splice(ai + 1, 1);
+                  if (term) break;
+                }
+                first.text = lead + '*' + joined + '*';
+              }
             }
           }
         }

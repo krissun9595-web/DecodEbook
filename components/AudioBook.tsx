@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v188-caption-split-justify';
+const CHAPTER_TEXT_CACHE_VERSION = 'v190-caption-wrapper-box';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4871,11 +4871,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'justify', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
                     }
                   }
+                  const _hasCapBox = !!(_figCaptionStyle.width || _figCaptionStyle.maxWidth);
                   try {
                     if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1'
-                      && (_capSelf || _capPrev || /Figure 2\.8|vacuum-cleaning|Photograph by Larry/u.test(_capText))) {
+                      && (_hasCapBox || para.figure || /Figure 2\.8|vacuum-cleaning|Photograph|Moore in 2006|Wikipedia|Roomba/u.test(_capText))) {
                       // eslint-disable-next-line no-console
-                      console.log('[dbgCap]', JSON.stringify({ pIdx, capSelf: _capSelf, capPrev: _capPrev, isNotes: isNotesChapter, fm: _capFm ? { id: _capFm.id, colFrac: _capFm.colFrac, wPx: _capFm.wPx } : null, mapSize: captionFigByKey.size, style: _figCaptionStyle, txt: _capText.slice(0, 44) }));
+                      console.log('[dbgP]', pIdx, para.figure ? 'FIGURE' : _hasCapBox ? 'BOX' : 'flush', 'self=' + _capSelf, 'prev=' + _capPrev, JSON.stringify(_capText.slice(0, 40)));
                     }
                   } catch {}
                   const _extractFirstIndent = (para.indent ?? 0) > 0 && !!para.firstLineIndented && !isListRole && !isHeadingRole && !isSizedHeadingPara && !isParagraphContinuation && !tocNumMarker && !para.blockQuote;
@@ -5250,7 +5251,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     : (alignPref === 'left' && !effectiveAlign ? { textAlign: 'left' } : {});
 
                   return (
-                    <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={{ ...bulletBlockStyle, ...indexIndentStyle, ...(isIndexChapter ? { breakInside: 'avoid' } : {}) }}>
+                    <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={{ ...bulletBlockStyle, ...indexIndentStyle, ...(isIndexChapter ? { breakInside: 'avoid' } : {}), ...(viewMode !== 'split' ? _figCaptionStyle : {}) }}>
                       {lineRuns.map((line, lineIdx) => {
                         const lineText = line.map(run => run.sentence).join(' ');
                         // A heading-role block (U+E013) gets the section-heading spacing directly — the
@@ -5337,7 +5338,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             data-reader-text=""
                             ref={_capRef}
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ..._figCaptionStyle }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ...(viewMode === 'split' ? _figCaptionStyle : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -5394,7 +5395,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
-                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ..._figCaptionStyle }}
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ...(viewMode === 'split' ? _figCaptionStyle : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
