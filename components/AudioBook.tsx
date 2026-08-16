@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v179-pdf-note-phrasekey-link';
+const CHAPTER_TEXT_CACHE_VERSION = 'v180-note-italic-caption-width';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -908,8 +908,16 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
       } else {
         // Keep the wrapping emphasis on the link — a bold/italic TOC entry ("**[Chapter 1: …](ch1.xhtml)**")
         // must render as a BOLD clickable link, not plain link text (which is why the TOC looked un-bold).
-        const _emph = format === 'bold' || format === 'italic' || format === 'underline' ? format : undefined;
-        segments.push({ text: linkMatch[1], format: 'link', href: linkMatch[2], emphasis: _emph });
+        // ALSO carry INNER emphasis: a phrase-keyed note opens with its keyed phrase as an ITALIC link
+        // ("[*"just like one of the family"*](#pdfref-p16)") — the `*` is INSIDE the brackets, so the outer
+        // `format` is plain. Detect a wholly-italic link TEXT and render the link italic (emphasis→'italic'
+        // maps to the `italic` class), stripping the inner markers, so the phrase-key is italic while the
+        // roman interpretation after it stays roman — matching the source.
+        const _lt = linkMatch[1].trim();
+        const _innerItalic = /^\*[^*]+\*$/u.test(_lt) || /^_[^_]+_$/u.test(_lt);
+        const _emph = (format === 'bold' || format === 'italic' || format === 'underline' ? format : undefined)
+          || (_innerItalic ? 'italic' : undefined);
+        segments.push({ text: _innerItalic ? _lt.replace(/^[*_]|[*_]$/gu, '') : linkMatch[1], format: 'link', href: linkMatch[2], emphasis: _emph });
       }
       last = linkRe.lastIndex;
     }
@@ -4802,6 +4810,26 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // a first-line indent (U+E029 → para.firstLineIndented, e.g. `extract_indented` text-indent:1em),
                   // so restore its first-line indent ON TOP of the block padding (bodyBlockPadStyle, spread after).
                   // Positive flag, only on plain body extracts — a blockquote/list/index/dialogue never carries it.
+                  // Constrain a figure CAPTION (and its following attribution) to the FIGURE's width: the
+                  // source sets the caption in a column the width of the figure — centred, text flush-left —
+                  // NOT full body width or centred text. Reuse the SAME widthPct the figure renders at
+                  // (measured colFrac for PDF; wPts/intrinsic fallback for EPUB) so the caption box lines up
+                  // with the figure. Gated out of the Notes chapter (a "Figure 2.8: Photograph…" figure-credit
+                  // endnote is not a caption). Applied last in the style so it overrides any centre align.
+                  const _figCapRe = /^(?:figure|fig\.|table|plate|exhibit|chart|diagram)\s+\d/iu;
+                  const _capSelf = _figCapRe.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim());
+                  const _capPrev = _figCapRe.test(stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original || []).join(' ')).replace(/\s+/g, ' ').trim());
+                  let _figCaptionStyle: React.CSSProperties = {};
+                  if (!isNotesChapter && (_capSelf || _capPrev)) {
+                    let _fm: PdfFigure | undefined;
+                    for (const _k of [pIdx - 1, pIdx - 2, pIdx + 1, pIdx - 3, pIdx + 2]) {
+                      const _fp = paragraphData[_k];
+                      if (_fp?.figure) { _fm = fileContext.pdfFigures?.find(f => f.id === _fp.figure!.id); break; }
+                    }
+                    const _wp = _fm?.colFrac ? Math.max(40, Math.min(100, Math.round(_fm.colFrac * 100)))
+                      : _fm?.wPts ? Math.max(40, Math.min(100, Math.round((_fm.wPts / 380) * 100))) : undefined;
+                    if (_wp != null) _figCaptionStyle = { width: `${_wp}%`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                  }
                   const _extractFirstIndent = (para.indent ?? 0) > 0 && !!para.firstLineIndented && !isListRole && !isHeadingRole && !isSizedHeadingPara && !isParagraphContinuation && !tocNumMarker && !para.blockQuote;
                   const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || !!tocNumMarker || (para.indent ?? 0) > 0)
                     ? (_extractFirstIndent ? plainParagraphStyleFor(para.original, para.align, para.flushFirstLine) : noTextIndentStyle)
@@ -5249,7 +5277,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ..._figCaptionStyle }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -5306,7 +5334,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
-                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ..._figCaptionStyle }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
