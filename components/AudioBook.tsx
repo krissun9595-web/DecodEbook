@@ -2133,7 +2133,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         cleanText = normalizeNotesReaderText(cleanText, fileContext.sourceKind === 'epub');
       }
 
-
+      // TEMP audit (localStorage.dbgFig='1'): dump the raw extraction around a figure caption
+      // (Roomba / "Figure 2.8") with sentinels visible — E010 ‹C›=centre, E011 ‹R›=right, [[FIG]] marker,
+      // ⏎=\n — to see whether the caption is split into blocks and/or carries a centre/right sentinel.
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgFig') === '1' && fileContext.content) {
+          const c = fileContext.content;
+          const hit = c.search(/Roomba|Figure 2\.8/);
+          if (hit >= 0) {
+            const vis = (s: string) => s.replace(/\n/g, '⏎').replace(//g, '‹C›').replace(//g, '‹R›').replace(//g, '‹H›').replace(/[-]/g, '·');
+            // eslint-disable-next-line no-console
+            console.log('[dbgFig]', JSON.stringify(vis(c.slice(Math.max(0, hit - 700), hit + 500))));
+          }
+        }
+      } catch {}
 
       cleanTextRef.current = cleanText;
       const paginatedPages = paginateChapterText(cleanText);
