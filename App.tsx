@@ -1407,6 +1407,7 @@ const App: React.FC = () => {
       // <img>/<image> → a [[FIG id]] marker; the bytes are extracted after the walk and cached like a
       // PDF figure, so the existing reader figure block renders them. baseDir resolves relative srcs.
       const figSrc = new Map<string, string>(); // figId -> resolved zip key
+      const figWidthFrac = new Map<string, number>(); // figId -> width fraction from the wrapping div.fig_NN (NN% of the column)
       let figSeq = 0;
       // The reader's block-role/alignment sentinels (PUA chars), defined via char codes so they can't
       // be lost in transit: heading U+E013, centre U+E010, right U+E011.
@@ -1479,6 +1480,14 @@ const App: React.FC = () => {
           if (full && /\.(jpe?g|png|gif|webp|svg)$/i.test(full)) {
             const id = `epub${++figSeq}`;
             figSrc.set(id, full);
+            // The publisher sizes the figure by a width TIER encoded in the wrapping div's class
+            // ("div.fig_30 { width:30% }" … up to fig_85), covering the image AND its caption/credit box.
+            // Walk up to that wrapper and record the fraction so the reader renders the figure UNIT (image +
+            // caption + attribution) at its true source width instead of the full-column fallback.
+            for (let p: HTMLElement | null = element.parentElement; p; p = p.parentElement) {
+              const m = (p.getAttribute('class') || '').match(/\bfig_(\d{2,3})\b/);
+              if (m) { figWidthFrac.set(id, Math.min(1, Number(m[1]) / 100)); break; }
+            }
             return `\n\n[[FIG ${id}]]\n\n`;
           }
           return '';
@@ -2323,7 +2332,7 @@ const App: React.FC = () => {
           try { const bmp = await createImageBitmap(blob); wPx = bmp.width; hPx = bmp.height; (bmp as any).close?.(); } catch { /* dims unknown (e.g. SVG) */ }
           if (wPx && hPx && Math.min(wPx, hPx) < 48) { blankMarker(id); continue; }
           const mimeType = blob.type || (/\.png$/i.test(key) ? 'image/png' : /\.gif$/i.test(key) ? 'image/gif' : /\.svg$/i.test(key) ? 'image/svg+xml' : 'image/jpeg');
-          figures.push({ id, page: 0, wPts: 0, hPts: 0, wPx, hPx, mimeType, blob });
+          figures.push({ id, page: 0, wPts: 0, hPts: 0, wPx, hPx, mimeType, colFrac: figWidthFrac.get(id), blob });
         } catch { blankMarker(id); }
       }
 

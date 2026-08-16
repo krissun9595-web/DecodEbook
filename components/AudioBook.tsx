@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v192-pdf-phrasekey-link-italic';
+const CHAPTER_TEXT_CACHE_VERSION = 'v193-figure-unit-caption-attribution';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1530,7 +1530,7 @@ const buildFigureTranslationBase = (caption: string, figId: string, chapterLabel
 // double-click / long-press menu. Translating (redraw or overlay) auto-saves the result to the file
 // cache as a 'translation'. In split view it renders in both halves; the right half shows the
 // translated figure (on demand). Carries no text — invisible to TTS/translation.
-const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string }> = ({ figId, bookId, bookTitle, meta, split, targetLang, chapterLabel, caption }) => {
+const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string; captionOrig?: React.ReactNode; captionTrans?: React.ReactNode; attribOrig?: React.ReactNode; attribTrans?: React.ReactNode; captionFontPx?: number; captionTextClass?: string }> = ({ figId, bookId, bookTitle, meta, split, targetLang, chapterLabel, caption, captionOrig, captionTrans, attribOrig, attribTrans, captionFontPx, captionTextClass }) => {
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1647,18 +1647,31 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
     : tr.state === 'done' && tr.url ? imageBox(tr.url, false, '', true)
     : box;
 
+  // The publisher sets the caption + credit in a column the WIDTH OF THE FIGURE (source `div.fig_NN`
+  // wraps image + caption + credit), 0.9em, justified/flush, no indent — the credit additionally italic.
+  // Render them INSIDE the same width box, directly under the image, so they inherit the figure width and
+  // centring for free (no main-loop cascade). In split view the ORIGINAL caption/credit sit under the
+  // original image and the TRANSLATED ones under the translated image, each still carrying their sentence
+  // ids/handlers (audio highlight, click, translation flow untouched — the parent renders the nodes).
+  const capStyle: React.CSSProperties = { fontSize: captionFontPx ? `${captionFontPx}px` : undefined, textAlign: 'justify' };
+  const texts = (cap: React.ReactNode, attr: React.ReactNode) => (cap || attr) ? (
+    <div className={`w-full ${captionTextClass || ''} break-words`}>
+      {cap ? <div className="mt-2" style={capStyle}>{cap}</div> : null}
+      {attr ? <div className="mt-1" style={{ ...capStyle, fontStyle: 'italic' }}>{attr}</div> : null}
+    </div>
+  ) : null;
   return (
     <div className="w-full my-4">
       {split
         // Split view: each half mirrors the text pane's padding (pr-6 / pl-6) and sizes the figure at
         // its book proportion, centred — so it matches the text measure instead of filling the half.
         ? <div className="w-full flex items-start">
-            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div>
-            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}</div></div>
+            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}{texts(captionOrig, attribOrig)}</div></div>
+            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}{texts(captionTrans, attribTrans)}</div></div>
           </div>
         // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
         // centred within at its book proportion.
-        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div></div>}
+        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}{texts(captionOrig, attribOrig)}</div></div></div>}
       {menu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
@@ -4226,6 +4239,46 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     });
   };
 
+  // Render-runs for a WHOLE paragraph BY INDEX (no structuredSentenceCursor): paragraphData[pIdx].original
+  // (marked sentences) and flatSentenceMap's entries for that pIndex are the same splitIntoSentences pass in
+  // the same order, so zip them to recover each sentence's globalIndex. Lets a figure render its caption /
+  // attribution paragraphs INSIDE the figure box (audio highlight + click + split translation all intact,
+  // since the parent renders the nodes with the real machinery) while the body loop skips them.
+  const runsForParagraph = (pIdx: number): SentenceRun[] => {
+    const marked = paragraphData[pIdx]?.original || [];
+    const maps = flatSentenceMap.filter(m => m.pIndex === pIdx);
+    return marked.map((text, i) => ({ text, globalIndex: maps[i]?.globalIndex ?? -1 }));
+  };
+  // FIGURE UNIT association: the publisher sets image + caption + credit in ONE box (source `div.fig_NN`),
+  // so render the caption/attribution INSIDE the figure block at the figure's width. Pair each figure with
+  // the nearest FOLLOWING caption paragraph (a page marker / blank can intervene) and, after it, a credit
+  // paragraph (whole-italic, or a "Photograph/Courtesy/Source…" line). `figConsumed` are then skipped by the
+  // body loop so they don't ALSO render full-width below. Only FORWARD pairing (matches the source order;
+  // never reorders a caption that sits above its figure — that just renders normally as before).
+  const FIG_UNIT_CAP_RE = /^\s*(figure|fig\.?|table|chart|diagram|plate|exhibit)\b/i;
+  const figUnitByFig = new Map<number, { cap: number; attr: number }>();
+  const figConsumed = new Set<number>();
+  const usableFigPara = (j: number): ParagraphData | null => {
+    const p = paragraphData[j];
+    return p && !p.figure && !p.table && !p.columns && !p.divider && p.original.length ? p : null;
+  };
+  for (let i = 0; i < paragraphData.length; i++) {
+    if (!paragraphData[i]?.figure) continue;
+    let cap = -1;
+    for (const j of [i + 1, i + 2]) { const p = usableFigPara(j); if (p && FIG_UNIT_CAP_RE.test(p.original.join(' '))) { cap = j; break; } }
+    if (cap < 0) continue;
+    let attr = -1;
+    const ap = usableFigPara(cap + 1);
+    if (ap) {
+      const bare = ap.original.join(' ').replace(/^[-\s]+/u, '').trim();
+      const isCredit = !!ap.italic || /^\*[^*][\s\S]*\*$/u.test(bare)
+        || /^(?:photograph|photo|illustration|image|drawing|diagram|courtesy|source|credit|reprinted|adapted|©|copyright|figure by|art by|map by)\b/i.test(stripInlineFormatSyntax(bare));
+      if (isCredit && !FIG_UNIT_CAP_RE.test(bare)) attr = cap + 1;
+    }
+    figUnitByFig.set(i, { cap, attr });
+    figConsumed.add(cap); if (attr >= 0) figConsumed.add(attr);
+  }
+
   const renderStructuredTextParagraphs = (text: string, tone: 'body' | 'muted' = 'body') => {
     const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
     return paragraphs.map((paragraph, idx) => {
@@ -4552,6 +4605,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
+                  // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
+                  // block (at the figure width) — skip it here so it doesn't also render full-width below.
+                  if (figConsumed.has(pIdx)) return null;
                   // Does THIS paragraph read as spoken dialogue (a sibling sentence carries a speech verb)?
                   // If so, suppress the standalone-citation italic so a fully-quoted dialogue line
                   // ("Let's thin it up a bit.") stays roman instead of being italicised like an epigraph.
@@ -4626,7 +4682,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     const capText = (j: number) => paragraphData[j]?.original.join(' ') || '';
                     const caption = [pIdx + 1, pIdx + 2, pIdx - 1, pIdx + 3]
                       .map(capText).find(t => capRe.test(t)) || '';
-                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} bookTitle={bookTitle} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={viewMode === 'split'} targetLang={settings.targetLanguage} chapterLabel={chapterLabel} caption={caption} />;
+                    // Render the caption + credit that belong to THIS figure inside the figure box (the body
+                    // loop skips them). Original nodes always; translated nodes only in split view (they read
+                    // translationByIndex, which the page translation pass fills for these sentences' indices).
+                    const _unit = figUnitByFig.get(pIdx);
+                    const _split = viewMode === 'split';
+                    const capOrig = _unit && _unit.cap >= 0 ? renderOriginalRuns(runsForParagraph(_unit.cap)) : undefined;
+                    const capTrans = _unit && _unit.cap >= 0 && _split ? renderTranslatedRuns(runsForParagraph(_unit.cap)) : undefined;
+                    const attrOrig = _unit && _unit.attr >= 0 ? renderOriginalRuns(runsForParagraph(_unit.attr)) : undefined;
+                    const attrTrans = _unit && _unit.attr >= 0 && _split ? renderTranslatedRuns(runsForParagraph(_unit.attr)) : undefined;
+                    return <PdfFigureBlock key={`fig-${pIdx}`} figId={para.figure.id} bookId={bookId} bookTitle={bookTitle} meta={fileContext.pdfFigures?.find(f => f.id === para.figure!.id)} split={_split} targetLang={settings.targetLanguage} chapterLabel={chapterLabel} caption={caption} captionOrig={capOrig} captionTrans={capTrans} attribOrig={attrOrig} attribTrans={attrTrans} captionFontPx={Math.round(bodyPx * 0.9)} captionTextClass={TEXT_SIZES[settings.textSize]} />;
                   }
                   // A row-major DATA TABLE (ditto/numeric frequency table). Each token is absolutely
                   // positioned at its source x-fraction so every column aligns exactly as the original —
