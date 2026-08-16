@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v178-pdf-phrasekey-note-split';
+const CHAPTER_TEXT_CACHE_VERSION = 'v179-pdf-note-phrasekey-link';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4562,7 +4562,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // …") — it stripInlineMarkupSyntax'es the body, DESTROYING the phrase-key link and bleeding
                   // italic across the roman note text. EPUB source markup is authoritative, so suppress the
                   // auto-italic there and render each note verbatim per its own `*…*`/link markup.
-                  const _suppressCitationItalic = PARAGRAPH_SPEECH_RE.test((para.original || []).join(' ')) || (isNotesChapter && isEpubSource);
+                  // Same fabrication hits a PDF phrase-keyed note: its first entry ("just like one of the
+                  // family": "Rosey's Boyfriend."…) reads like a standalone citation, so the heuristic strips
+                  // its leading phrase-key link ([*"phrase"*](#pdfref-pN):) and italicises the roman body.
+                  // Suppress whenever a Notes paragraph LEADS with a keyed-phrase link (EPUB or PDF) — that
+                  // link markup is authoritative; a numeric endnote leads with a number, not a link, so it
+                  // is unaffected.
+                  const _leadsPhraseKeyLink = isNotesChapter && /^\s*\*?\[[^\]\n]+\]\(#[^)\n]+\)/u.test((para.original || []).join(' '));
+                  const _suppressCitationItalic = PARAGRAPH_SPEECH_RE.test((para.original || []).join(' ')) || (isNotesChapter && isEpubSource) || _leadsPhraseKeyLink;
                   // A decorative horizontal rule from the source (epigraph/section divider): a thin centred
                   // line in the attribution grey, with room above and below so it reads as a content break.
                   if (para.divider) {
