@@ -4817,19 +4817,27 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // with the figure. Gated out of the Notes chapter (a "Figure 2.8: Photograph…" figure-credit
                   // endnote is not a caption). Applied last in the style so it overrides any centre align.
                   const _figCapRe = /^(?:figure|fig\.|table|plate|exhibit|chart|diagram)\s+\d/iu;
-                  const _capSelf = _figCapRe.test(stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim());
+                  const _capText = stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim();
+                  const _capSelf = _figCapRe.test(_capText);
                   const _capPrev = _figCapRe.test(stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original || []).join(' ')).replace(/\s+/g, ' ').trim());
                   let _figCaptionStyle: React.CSSProperties = {};
+                  let _capFm: PdfFigure | undefined; let _capWp: number | undefined; let _capFigK: number | undefined;
                   if (!isNotesChapter && (_capSelf || _capPrev)) {
-                    let _fm: PdfFigure | undefined;
                     for (const _k of [pIdx - 1, pIdx - 2, pIdx + 1, pIdx - 3, pIdx + 2]) {
                       const _fp = paragraphData[_k];
-                      if (_fp?.figure) { _fm = fileContext.pdfFigures?.find(f => f.id === _fp.figure!.id); break; }
+                      if (_fp?.figure) { _capFigK = _k; _capFm = fileContext.pdfFigures?.find(f => f.id === _fp.figure!.id); break; }
                     }
-                    const _wp = _fm?.colFrac ? Math.max(40, Math.min(100, Math.round(_fm.colFrac * 100)))
-                      : _fm?.wPts ? Math.max(40, Math.min(100, Math.round((_fm.wPts / 380) * 100))) : undefined;
-                    if (_wp != null) _figCaptionStyle = { width: `${_wp}%`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                    _capWp = _capFm?.colFrac ? Math.max(40, Math.min(100, Math.round(_capFm.colFrac * 100)))
+                      : _capFm?.wPts ? Math.max(40, Math.min(100, Math.round((_capFm.wPts / 380) * 100))) : undefined;
+                    if (_capWp != null) _figCaptionStyle = { width: `${_capWp}%`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
                   }
+                  try {
+                    if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1'
+                      && (_capSelf || _capPrev || /Figure 2\.8|vacuum-cleaning|Photograph by Larry/u.test(_capText))) {
+                      // eslint-disable-next-line no-console
+                      console.log('[dbgCap]', JSON.stringify({ pIdx, capSelf: _capSelf, capPrev: _capPrev, isNotes: isNotesChapter, hasFigureFlag: !!para.figure, figK: _capFigK, fm: _capFm ? { id: _capFm.id, colFrac: _capFm.colFrac, wPts: _capFm.wPts } : null, wp: _capWp, nFigs: fileContext.pdfFigures?.length ?? 0, txt: _capText.slice(0, 44) }));
+                    }
+                  } catch {}
                   const _extractFirstIndent = (para.indent ?? 0) > 0 && !!para.firstLineIndented && !isListRole && !isHeadingRole && !isSizedHeadingPara && !isParagraphContinuation && !tocNumMarker && !para.blockQuote;
                   const paragraphStyle = (isListRole || isHeadingRole || isSizedHeadingPara || isParagraphContinuation || !!tocNumMarker || (para.indent ?? 0) > 0)
                     ? (_extractFirstIndent ? plainParagraphStyleFor(para.original, para.align, para.flushFirstLine) : noTextIndentStyle)
