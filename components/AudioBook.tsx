@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v191-note-phrasekey-italic-flush';
+const CHAPTER_TEXT_CACHE_VERSION = 'v192-pdf-phrasekey-link-italic';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -982,6 +982,22 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
         const _mt = match[1].trim();
         const _phraseItalic = /^\*[^*]+\*$/u.test(_mt) || /^_[^_]+_$/u.test(_mt);
         segments.push({ text: `${label}${_lp}`, format: 'referenceMarker', noteEntry: true, ...(_phraseItalic ? { emphasis: 'italic' as const } : {}) });
+      } else if (
+        options.noteEntryMarkersAsReferences && !hasBodyTextBeforeLink && hasTextAfterLink &&
+        /#(?:pdffn|pdffnn|pdfref|note|fn)/i.test(match[2]) &&
+        /[A-Za-z]/u.test(match[1]) && (/\s/u.test(match[1].trim()) || /["'“”‘’]/u.test(match[1]))
+      ) {
+        // A PHRASE-keyed note ENTRY opens with its keyed phrase as a clickable link whose TEXT is set
+        // ITALIC in the source ("["just like one of the family"](#pdffn-p16): …"). The PDF font subset
+        // drops the italic glyph flag so the extractor emits a bare (or inner-`*`) link — it fell through
+        // to the generic link render below UPRIGHT. (The EPUB form "*[phrase](#note):*" italicises via the
+        // emphasis path, so only the PDF was broken; 4c71bca's _innerItalic only reaches pushEmphasisContent,
+        // never a top-level link.) A leading, NON-numeric/roman (phrase-like: has a space or quote) note-entry
+        // link IS the italic keyed phrase — render it italic, matching the source; the roman interpretation
+        // after the colon stays roman. Keep it a real clickable LINK (like the source / EPUB / other readers).
+        const _pk = match[1].trim();
+        const _pkInner = /^\*[^*]+\*$/u.test(_pk) || /^_[^_]+_$/u.test(_pk);
+        segments.push({ text: _pkInner ? _pk.replace(/^[*_]|[*_]$/gu, '') : match[1], format: 'link', href: match[2], emphasis: 'italic' });
       } else {
         // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation
         // rect covers the leading space ("…at [ https://…]"), keep that space as plain text
