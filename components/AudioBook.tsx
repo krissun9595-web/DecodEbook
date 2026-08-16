@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v187-caption-zero-blockpad';
+const CHAPTER_TEXT_CACHE_VERSION = 'v188-caption-split-justify';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4860,10 +4860,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       // window/view, matching the figure. pct uses the same max(40,…) clamp the figure uses.
                       const _fr = Math.min(1, _capFm.colFrac); // (A) no min-40 clamp — faithful to the source width
                       const _pct = Math.round(_fr * 100);
-                      _figCaptionStyle = { width: `${_pct}%`, maxWidth: `calc(48rem * ${_fr.toFixed(3)})`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
+                      // SPLIT view: the caption div is a w-1/2 PANE, but an inline width:% resolves against the
+                      // full ROW (both panes), so pct% would be ~2× the figure (which is pct% of its half-pane).
+                      // Halve it so the caption tracks the figure's pane-relative width. SINGLE view: pct% of the
+                      // flex parent, capped at pct% of the 48rem text column (matches the figure there).
+                      const _wpct = viewMode === 'split' ? _pct / 2 : _pct;
+                      _figCaptionStyle = { width: `${_wpct}%`, ...(viewMode === 'split' ? {} : { maxWidth: `calc(48rem * ${_fr.toFixed(3)})` }), marginLeft: 'auto', marginRight: 'auto', textAlign: 'justify', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
                     } else if (_capFm?.wPx) {
                       // EPUB (no colFrac): cap the box at the image's intrinsic width so caption + figure align.
-                      _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
+                      _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'justify', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
                     }
                   }
                   try {
