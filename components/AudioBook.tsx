@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v180-note-italic-caption-width';
+const CHAPTER_TEXT_CACHE_VERSION = 'v181-caption-figwidth-map';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1662,6 +1662,27 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // change without re-fetching, preserving the reading position.
   const cleanTextRef = useRef<string>('');
   const [paragraphData, setParagraphData] = useState<ParagraphData[]>([]);
+  // Map each figure CAPTION → its figure's manifest, built from the FULL chapter text (cleanTextRef) so
+  // the link SURVIVES pagination — a caption often paginates to the top of the next page, away from its
+  // [[FIG]] marker (paragraphData holds only the current page). Keyed by the caption's leading
+  // alphanumerics. Used to size the caption box to the figure width (colFrac for PDF; the image's
+  // intrinsic wPx for EPUB, which carries no colFrac). Rebuilt whenever the chapter re-paginates.
+  const captionFigByKey = React.useMemo(() => {
+    const m = new Map<string, PdfFigure>();
+    const figs = fileContext.pdfFigures;
+    const text = cleanTextRef.current || '';
+    if (figs?.length && text) {
+      const re = /\[\[FIG\s+(\w+)\]\]\s*\n+\s*([^\n]{2,80})/g;
+      let mm: RegExpExecArray | null;
+      while ((mm = re.exec(text)) !== null) {
+        const fig = figs.find(f => f.id === mm![1]);
+        if (!fig) continue;
+        const key = mm[2].replace(/[^a-z0-9]/gi, '').slice(0, 28).toLowerCase();
+        if (key) m.set(key, fig);
+      }
+    }
+    return m;
+  }, [pages, fileContext.pdfFigures]);
   const [flatSentenceMap, setFlatSentenceMap] = useState<SentenceMap[]>([]);
   // The exact page text that flatSentenceMap was built from. flatSentenceMap is rebuilt one render AFTER
   // currentPage/pages change, so during re-pagination it briefly belongs to the PREVIOUS page — this ref
@@ -4818,24 +4839,31 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // endnote is not a caption). Applied last in the style so it overrides any centre align.
                   const _figCapRe = /^(?:figure|fig\.|table|plate|exhibit|chart|diagram)\s+\d/iu;
                   const _capText = stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/g, ' ').trim();
+                  const _capPrevText = stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original || []).join(' ')).replace(/\s+/g, ' ').trim();
                   const _capSelf = _figCapRe.test(_capText);
-                  const _capPrev = _figCapRe.test(stripInlineFormatSyntax((paragraphData[pIdx - 1]?.original || []).join(' ')).replace(/\s+/g, ' ').trim());
+                  const _capPrev = _figCapRe.test(_capPrevText);
                   let _figCaptionStyle: React.CSSProperties = {};
-                  let _capFm: PdfFigure | undefined; let _capWp: number | undefined; let _capFigK: number | undefined;
+                  let _capFm: PdfFigure | undefined;
                   if (!isNotesChapter && (_capSelf || _capPrev)) {
-                    for (const _k of [pIdx - 1, pIdx - 2, pIdx + 1, pIdx - 3, pIdx + 2]) {
-                      const _fp = paragraphData[_k];
-                      if (_fp?.figure) { _capFigK = _k; _capFm = fileContext.pdfFigures?.find(f => f.id === _fp.figure!.id); break; }
+                    // Key on the CAPTION's leading alphanumerics — this paragraph if it's the caption, else the
+                    // previous paragraph (this is the attribution, which shares the figure). Look the figure up
+                    // in the pagination-proof map so the box sizes to the figure even when they're on
+                    // different pages.
+                    const _key = (_capSelf ? _capText : _capPrevText).replace(/[^a-z0-9]/gi, '').slice(0, 28).toLowerCase();
+                    _capFm = captionFigByKey.get(_key);
+                    if (_capFm?.colFrac) {
+                      // PDF: figure width as a fraction of the text column.
+                      _figCaptionStyle = { width: `${Math.max(40, Math.min(100, Math.round(_capFm.colFrac * 100)))}%`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                    } else if (_capFm?.wPx) {
+                      // EPUB (no colFrac): cap the box at the image's intrinsic width so caption + figure align.
+                      _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
                     }
-                    _capWp = _capFm?.colFrac ? Math.max(40, Math.min(100, Math.round(_capFm.colFrac * 100)))
-                      : _capFm?.wPts ? Math.max(40, Math.min(100, Math.round((_capFm.wPts / 380) * 100))) : undefined;
-                    if (_capWp != null) _figCaptionStyle = { width: `${_capWp}%`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
                   }
                   try {
                     if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1'
                       && (_capSelf || _capPrev || /Figure 2\.8|vacuum-cleaning|Photograph by Larry/u.test(_capText))) {
                       // eslint-disable-next-line no-console
-                      console.log('[dbgCap]', JSON.stringify({ pIdx, capSelf: _capSelf, capPrev: _capPrev, isNotes: isNotesChapter, hasFigureFlag: !!para.figure, figK: _capFigK, fm: _capFm ? { id: _capFm.id, colFrac: _capFm.colFrac, wPts: _capFm.wPts } : null, wp: _capWp, nFigs: fileContext.pdfFigures?.length ?? 0, txt: _capText.slice(0, 44) }));
+                      console.log('[dbgCap]', JSON.stringify({ pIdx, capSelf: _capSelf, capPrev: _capPrev, isNotes: isNotesChapter, fm: _capFm ? { id: _capFm.id, colFrac: _capFm.colFrac, wPx: _capFm.wPx } : null, mapSize: captionFigByKey.size, style: _figCaptionStyle, txt: _capText.slice(0, 44) }));
                     }
                   } catch {}
                   const _extractFirstIndent = (para.indent ?? 0) > 0 && !!para.firstLineIndented && !isListRole && !isHeadingRole && !isSizedHeadingPara && !isParagraphContinuation && !tocNumMarker && !para.blockQuote;
