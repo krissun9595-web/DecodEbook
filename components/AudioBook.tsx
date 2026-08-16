@@ -1637,7 +1637,7 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
           </div>
         // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
         // centred within at its book proportion.
-        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div></div>}
+        : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div ref={(el) => { try { if (el && typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1') console.log('[dbgFigW]', JSON.stringify({ figOff: el.offsetWidth, parent: el.parentElement?.offsetWidth, widthPct })); } catch {} }} style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}</div></div></div>}
       {menu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
