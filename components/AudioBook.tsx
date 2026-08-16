@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v182-caption-drop-center';
+const CHAPTER_TEXT_CACHE_VERSION = 'v183-caption-column-maxwidth';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4852,8 +4852,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     const _key = (_capSelf ? _capText : _capPrevText).replace(/[^a-z0-9]/gi, '').slice(0, 28).toLowerCase();
                     _capFm = captionFigByKey.get(_key);
                     if (_capFm?.colFrac) {
-                      // PDF: figure width as a fraction of the text column.
-                      _figCaptionStyle = { width: `${Math.max(40, Math.min(100, Math.round(_capFm.colFrac * 100)))}%`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                      // PDF: size the caption to the figure width as a fraction of the TEXT COLUMN (max-w-3xl =
+                      // 48rem), NOT `width:%` — a percentage resolves against the variable flex parent (the full
+                      // content area in single view, half of it in split), so it drifts far from the figure,
+                      // which is always a fraction of the 48rem column. A fixed calc(48rem * frac) matches the
+                      // figure in BOTH views. Clamp to the figure's own floor (0.40) so caption ≈ figure width.
+                      const _fr = Math.max(0.40, Math.min(1, _capFm.colFrac));
+                      _figCaptionStyle = { maxWidth: `calc(48rem * ${_fr.toFixed(3)})`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
                     } else if (_capFm?.wPx) {
                       // EPUB (no colFrac): cap the box at the image's intrinsic width so caption + figure align.
                       _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
