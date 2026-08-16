@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v183-caption-column-maxwidth';
+const CHAPTER_TEXT_CACHE_VERSION = 'v184-caption-attr-consistent';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -5277,7 +5277,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         // "—JEREMY BENTHAM, …" is text-align:center, emitted as E010) must stay centred — the
                         // `—CREDIT` content heuristic otherwise force-right-aligns it, unfaithfully. Respect an
                         // explicit centre; a genuinely right/unaligned attribution still right-aligns.
-                        const isAttrLine = looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim()) && effectiveAlign !== 'center';
+                        // A figure caption/attribution box (_isCapBox) is NOT an epigraph attribution — exclude it
+                        // so its "Photograph by …" credit doesn't pick up the right-align + narrowAttribution
+                        // paddingRight, which made the attribution narrower than the caption above it.
+                        const isAttrLine = !_isCapBox && looksLikeAttributionLine(lineText.replace(/\s+/g, ' ').trim()) && effectiveAlign !== 'center';
                         // The attribution ("—MATTHEW 10:26") is itself inside the block-quote (bq=1), so exclude
                         // it from the mt-8 break — it sits TIGHT under its quote, not a paragraph-gap below it.
                         // When a divider follows the attribution, cancel the attribution segment's own mb-4 with
