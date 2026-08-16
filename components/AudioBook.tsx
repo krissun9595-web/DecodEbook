@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v186-caption-unclamped-indentaudit';
+const CHAPTER_TEXT_CACHE_VERSION = 'v187-caption-zero-blockpad';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4860,10 +4860,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       // window/view, matching the figure. pct uses the same max(40,…) clamp the figure uses.
                       const _fr = Math.min(1, _capFm.colFrac); // (A) no min-40 clamp — faithful to the source width
                       const _pct = Math.round(_fr * 100);
-                      _figCaptionStyle = { width: `${_pct}%`, maxWidth: `calc(48rem * ${_fr.toFixed(3)})`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                      _figCaptionStyle = { width: `${_pct}%`, maxWidth: `calc(48rem * ${_fr.toFixed(3)})`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
                     } else if (_capFm?.wPx) {
                       // EPUB (no colFrac): cap the box at the image's intrinsic width so caption + figure align.
-                      _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' };
+                      _figCaptionStyle = { maxWidth: `${_capFm.wPx}px`, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left', paddingLeft: 0, paddingRight: 0, textIndent: 0 };
                     }
                   }
                   try {
