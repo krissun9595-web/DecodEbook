@@ -2139,11 +2139,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       try {
         if (typeof localStorage !== 'undefined' && localStorage.getItem('dbgFig') === '1' && fileContext.content) {
           const c = fileContext.content;
-          const hit = c.search(/Roomba|Figure 2\.8/);
+          const hit = c.search(/Photograph by Larry|navigated in a way similar/);
           if (hit >= 0) {
             const vis = (s: string) => s.replace(/\n/g, '⏎').replace(//g, '‹C›').replace(//g, '‹R›').replace(//g, '‹H›').replace(/[-]/g, '·');
             // eslint-disable-next-line no-console
-            console.log('[dbgFig]', JSON.stringify(vis(c.slice(Math.max(0, hit - 700), hit + 500))));
+            console.log('[dbgFig]', JSON.stringify(vis(c.slice(Math.max(0, hit - 1000), hit + 400))));
           }
         }
       } catch {}
