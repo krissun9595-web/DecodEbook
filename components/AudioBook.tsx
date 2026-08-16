@@ -5183,6 +5183,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const _isCapBox = !!(_figCaptionStyle.width || _figCaptionStyle.maxWidth);
                   const effectiveAlign = _isCapBox ? undefined : (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
                   const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
+                  const _capRef = (_isCapBox && typeof localStorage !== 'undefined' && localStorage.getItem('dbgCap') === '1')
+                    ? (el: HTMLDivElement | null) => { if (el) { try { console.log('[dbgCapDOM]', JSON.stringify({ pIdx, off: el.offsetWidth, parent: el.parentElement?.offsetWidth, cssW: getComputedStyle(el).width, styleW: el.style.width, cls: el.className.replace(/\s+/g, ' ').slice(0, 70) })); } catch {} } }
+                    : undefined;
                   const cleanParagraphText = stripInlineFormatSyntax((para.original || []).join(' ')).replace(/\s+/g, ' ').trim();
                   const prevParagraph = paragraphData[pIdx - 1];
                   const nextParagraph = paragraphData[pIdx + 1];
@@ -5317,6 +5320,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
+                            ref={_capRef}
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                             style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}), ..._figCaptionStyle }}
                           >
