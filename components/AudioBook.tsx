@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v190-caption-wrapper-box';
+const CHAPTER_TEXT_CACHE_VERSION = 'v191-note-phrasekey-italic-flush';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -976,7 +976,12 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
         // translation column, and the PDF), NOT the neon-blue link style. A real URL in the note (its label
         // is the URL text, not a bare number) fails isLikelyInternalNoteLink and stays a real link.
         const _lp = match[1].match(/[.)]\s*$/u)?.[0]?.trim() || '';
-        segments.push({ text: `${label}${_lp}`, format: 'referenceMarker', noteEntry: true });
+        // A PHRASE-keyed note marker is the keyed phrase set ITALIC in the source (e.g.
+        // *"just like one of the family"*) — keep it italic (the notes-chapter referenceMarker render
+        // applies the emphasis class); a numeric/roman marker isn't italic.
+        const _mt = match[1].trim();
+        const _phraseItalic = /^\*[^*]+\*$/u.test(_mt) || /^_[^_]+_$/u.test(_mt);
+        segments.push({ text: `${label}${_lp}`, format: 'referenceMarker', noteEntry: true, ...(_phraseItalic ? { emphasis: 'italic' as const } : {}) });
       } else {
         // A link's boundary whitespace belongs OUTSIDE the link: when a URL's annotation
         // rect covers the leading space ("…at [ https://…]"), keep that space as plain text
@@ -5013,11 +5018,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       // A truly-hanging footnote in a non-notes chapter carries E01A (para.hangingEntry) from
                       // the extractor's hang detector (Agentic/Elon p.footnote ml≈-text-indent), so it stays
                       // hanging; only the flush case (no hang, no block indent) goes flush.
-                      // Flush when: (a) a non-Notes-chapter EPUB footnote whose source is flush (no hang, no
-                      // indent), or (b) a PHRASE-keyed Notes-chapter endnote (BHI) — its `.notes` source is
-                      // flush and a long phrase key can't hang. NUMERIC endnotes (Singularity `<li>`) keep the
-                      // marker-hanging indent.
-                      ? ((isEpubSource && ((isFnEntry && !isNotesChapter && !para.hangingEntry && !para.indent) || _notePhraseKey))
+                      // Flush when: (a) a PHRASE-keyed Notes endnote (BHI, EPUB *or* PDF) — its `.notes`/source
+                      // is flush and a long phrase key can't hang; or (b) a non-Notes-chapter EPUB footnote
+                      // whose source is flush (no hang, no indent). NUMERIC endnotes (Singularity `<li>`) keep
+                      // the marker-hanging indent.
+                      ? ((_notePhraseKey || (isEpubSource && isFnEntry && !isNotesChapter && !para.hangingEntry && !para.indent))
                           ? { textIndent: 0 }
                           : { textIndent: '-1.5em', paddingLeft: '1.5em' })
                       // A multi-paragraph footnote/note CONTINUATION: the source flows it TIGHT within the note's
