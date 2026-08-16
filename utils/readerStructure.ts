@@ -534,9 +534,21 @@ export const normalizeNotesReaderText = (value: string, preserveParagraphs = fal
       /\n{2,}\s*(?:chapter\s+\d+|afterword|epilogue|prologue|introduction)\b/iu.test(between);
   });
   if (ordered.length < 2) {
+    // PHRASE-keyed PDF notes (e.g. "A Brief History of Intelligence") carry NO numeric/roman markers, so
+    // `ordered` is empty and the ONLY starts are the section headers ("Introduction"/"Chapter N"). That
+    // makes collapseNoteEntries slice per-SECTION and collapseNoteEntryText flatten every note in a chapter
+    // into one blob (a sentence-split *…* run then bleeds italic across it). But each such note is its own
+    // \n\n block already (the extractor separated them by geometry) LEADING with a phrase-key link
+    // ("[*“phrase”*](#pdfref-pN):"). Use those paragraph-leading internal-ref links as the note-entry starts
+    // so each note stays its own paragraph. The link must be paragraph-leading with an internal (#…) href —
+    // a numeric-keyed note starts with its number, not a link, and a citation URL isn't paragraph-leading —
+    // and we require ≥3 of them, so numeric-keyed books (Sovereign/Kurzweil/Elon) are untouched.
+    const phraseKeyStarts = [...text.matchAll(/(^|\n{2,})[ \t]*\*?\[[^\]\n]+\]\(#[^)\n]*\)/gu)]
+      .map(match => (match.index ?? 0) + match[1].length);
     const starts = [
       ...ordered.map(candidate => candidate.start),
       ...sectionStarts,
+      ...(phraseKeyStarts.length >= 3 ? phraseKeyStarts : []),
     ];
     return starts.length > 0 ? collapseNoteEntries(text, starts) : collapseNoteEntryText(text.trim());
   }
