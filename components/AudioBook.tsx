@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v197-descriptive-caption-credit-anchor';
+const CHAPTER_TEXT_CACHE_VERSION = 'v198-heading-family-normalize';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4617,15 +4617,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
-                  // [dbgFigUnit] targeted audit — logs the Breakthrough divider TITLE + figure paragraphs
-                  // (role/sizeEm) so the #1 title-size cause is visible without depending on para.figure.
-                  try {
-                    const _tx = (para.original || []).join(' ');
-                    if (/breakthrough|reinforcing|steering|vertebrates|bilaterians|your brain \d/i.test(_tx) || para.figure) {
-                      // eslint-disable-next-line no-console
-                      console.log('[dbgFigUnit]', pIdx, para.figure ? 'FIGURE' : '', 'role=' + para.role, 'sizeEm=' + para.sizeEm, 'align=' + para.align, JSON.stringify(_tx.slice(0, 60)));
-                    }
-                  } catch { /* audit only */ }
                   // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
                   // block (at the figure width) — skip it here so it doesn't also render full-width below.
                   if (figConsumed.has(pIdx)) return null;
@@ -4707,20 +4698,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // loop skips them). Original nodes always; translated nodes only in split view (they read
                     // translationByIndex, which the page translation pass fills for these sentences' indices).
                     const _unit = figUnitByFig.get(pIdx);
-                    // [dbgFigUnit] ground-truth audit: dump the figure's own text + its paired caption/attribution
-                    // paragraphs + the two paragraphs after, so a merge (caption swallowed body) vs a mis-pairing
-                    // is unambiguous. Also logs the stored extraction version (confirms a re-upload took effect).
-                    try {
-                      const _g: any = globalThis as any;
-                      const _snap = (j: number) => { const q = paragraphData[j]; return q ? { t: (q.original || []).join(' ').slice(0, 90), role: q.role, sizeEm: q.sizeEm, align: q.align, italic: q.italic } : null; };
-                      (_g.__dbgFigUnit = _g.__dbgFigUnit || []).push({
-                        figId: para.figure.id,
-                        ver: (fileContext as any)?.sourceExtractorVersion,
-                        cap: _unit?.cap, attr: _unit?.attr,
-                        pMinus2: _snap(pIdx - 2), pMinus1: _snap(pIdx - 1),
-                        pPlus1: _snap(pIdx + 1), pPlus2: _snap(pIdx + 2), pPlus3: _snap(pIdx + 3),
-                      });
-                    } catch { /* audit only */ }
                     const _split = viewMode === 'split';
                     const capOrig = _unit && _unit.cap >= 0 ? renderOriginalRuns(runsForParagraph(_unit.cap)) : undefined;
                     const capTrans = _unit && _unit.cap >= 0 && _split ? renderTranslatedRuns(runsForParagraph(_unit.cap)) : undefined;

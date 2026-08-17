@@ -4317,14 +4317,16 @@ const App: React.FC = () => {
       // catches body prose on a figure-heavy page (wrong family). TOGETHER: the size-15 notes header
       // (large vs the h11 notes) and the big titles pass; the size-15 callout/dialogue (not large vs
       // the h15 body) do not. (Falls back to the size rule when no contents page / no heading family.)
+      // Foundry-suffix normalisation for font-FAMILY comparison: the SAME face is embedded under naming
+      // variants that differ only by a PostScript/Monotype suffix — a heading in "TimesNewRomanPSMT" vs a
+      // headingFamily learned as "TimesNewRomanPS" is the same font (BHI's Part titles "…and the First…"
+      // are PSMT at 27.5 vs body 15 = 1.83×, but the exact-string match rejected them → the title fell to a
+      // list line and lost its heading size). Strip a trailing PS/MT/PSMT so same-face variants unify; a
+      // genuinely different display family (Helvetica vs Times) stays distinct, and the 1.2× size gate still
+      // keeps body text (at 1.0×) out, so this only ADMITS same-face headings, never body.
+      const normFam = (f: string | undefined): string => (f || '').replace(/(?:PSMT|PS|MT)$/i, '');
       const isHeadingLine = (line: PdfLine): boolean => {
         const ch = line.capH ?? line.h;
-        // [dbgHead] targeted extraction audit for the BHI Part-divider titles — dump every input to the
-        // heading decision so the "Reinforcing…" (Bk#2) mis-classification is unambiguous. Tightly gated.
-        if (/and the First (Bilaterians|Vertebrates|Mammals|Primates)|^Breakthrough #\d/i.test(line.text.replace(/[*_~]/gu, '').trim())) {
-          // eslint-disable-next-line no-console
-          console.log('[dbgHead]', JSON.stringify(line.text.replace(/[*_~]/gu, '').slice(0, 34)), 'ch=' + ch, 'h=' + line.h, 'capH=' + line.capH, 'localFont=' + line.localFont, 'bodyFont=' + bodyFont, 'family=' + line.family, 'headFam=' + headingFamily, 'outline=' + line.outlineHeading, 'mcRole=' + line.mcRole);
-        }
         if (line.mcRole) return /^H[1-6]?$/u.test(line.mcRole);
         if (line.outlineHeading === true) return true;
         const scText = line.text.replace(/[*_~`\s ]+$/u, '');
@@ -4332,7 +4334,7 @@ const App: React.FC = () => {
         // Primary rule: a display-font heading (family learned from the contents page) LARGER than the body
         // of its own section (1.2×); else the plain size rule (no display family learned).
         if (headingFamily
-          ? (line.family === headingFamily && line.localFont > 0 && ch >= line.localFont * 1.2)
+          ? (normFam(line.family) === normFam(headingFamily) && line.localFont > 0 && ch >= line.localFont * 1.2)
           : (bodyFont > 0 && ch >= bodyFont * 1.2)) return true;
         // SUB-HEADING below the 1.2× gate (Transurfing's "Principle"/"Interpretation": bold, 16.9 vs body 15
         // = 1.13×, each on its own short line above its paragraph — otherwise MERGED into the body). These
