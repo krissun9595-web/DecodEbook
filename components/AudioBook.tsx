@@ -4617,6 +4617,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
+                  try {
+                    const _tx = (para.original || []).join(' ');
+                    if (/bentham|legislation|introduction to the principles|sovereign masters/i.test(_tx)) {
+                      // eslint-disable-next-line no-console
+                      console.log('[dbgAttr]', pIdx, 'role=' + para.role, 'sizeEm=' + para.sizeEm, 'align=' + para.align, 'italic=' + para.italic, JSON.stringify(_tx.slice(0, 100)));
+                    }
+                  } catch { /* audit only */ }
                   // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
                   // block (at the figure width) — skip it here so it doesn't also render full-width below.
                   if (figConsumed.has(pIdx)) return null;
