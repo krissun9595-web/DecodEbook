@@ -4636,23 +4636,10 @@ const App: React.FC = () => {
           const leftVaries = span(alignSrc.map(l => l.x)) > bodyFont * 2;
           const rightSpan = span(alignSrc.map(l => l.rightX));
           const centreSpan = span(alignSrc.map(l => (l.x + l.rightX) / 2));
-          // CENTRE fallback over ALL display lines (headings included). The body-only basis EXCLUDES the
-          // heading (right — a centred head above flush-right prose defeats right detection), but a Part-
-          // DIVIDER page (BHI "Breakthrough #N" + its centred title + a centred caption/credit) is centred
-          // AS A WHOLE, and the title is the load-bearing centre evidence — once it became a heading the
-          // body-only centreSpan lost it and the page fell to the prose path (left-aligned title, caption+
-          // credit merged). A right-aligned page's centres still vary (shared right, varying left), so this
-          // can't mis-fire there; normal prose has a constant left (leftVaries false), so it can't either.
-          // Gated on the page carrying a HEADING (dispLines has more than dispBody ⇒ ≥1 heading line): a
-          // title/divider page, so a stray centred prose block without a heading can't newly trip this —
-          // bounds the blast radius to the target scenario.
-          const allLeftVaries = span(dispLines.map(l => l.x)) > bodyFont * 2;
-          const allCentreSpan = span(dispLines.map(l => (l.x + l.rightX) / 2));
           const align: 'right' | 'center' | null =
             leftVaries && rightSpan <= tol ? 'right'
               : leftVaries && rightSpan > tol && centreSpan <= tol ? 'center'
-                : dispLines.length > dispBody.length && allLeftVaries && allCentreSpan <= tol ? 'center'
-                  : null;
+                : null;
           if (align) {
             const sentinel = align === 'right' ? '\uE011' : '\uE010'; // U+E011 right, U+E010 centre — stripped by the reader
             // A right- OR centre-aligned block can be WRAPPED PROSE (a "Praise for…" page: multi-line
