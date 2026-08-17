@@ -5663,22 +5663,25 @@ const App: React.FC = () => {
             }
           }
         }
-        // PER-LINE CENTRING on a MIXED page. The whole-page display classifier above only fires when the
-        // ENTIRE page shares one alignment, so a centred line among left-aligned prose (a back-matter promo
-        // page — "A TOUCHSTONE BOOK", "FOR MORE ON THESE AUTHORS:") stayed flush-left (the PDF, unlike EPUB,
-        // has NO align metadata). Tag a SHORT single-line body block as centred (U+E010) when it's indented
-        // on BOTH sides by a similar, significant amount (its centre ≈ the body centre). Tight gates keep
-        // signatures (flush-right: one-sided), headings/lists (own sentinel), hanging entries (left-only
-        // indent) and first-line-indented prose (centre sits left) out.
-        if (rightMargin > bodyLeft) {
-          const bodyCentre = (bodyLeft + rightMargin) / 2;
-          for (const b of blocks) {
-            if (b.role !== 'body' || /[-]/u.test(b.text)) continue;
-            const bare = b.text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[-*_~`]/gu, '').trim(); // visible text (strip md link URL)
-            if (!bare || bare.length > 60) continue; // a genuinely centred display line is short (one line)
-            const left = b.firstX - bodyLeft, right = rightMargin - b.lastRightX;
+        // ROBUST CENTRING. A line is centred when its LEFT inset ≈ its RIGHT inset (both significant)
+        // measured against the DOC body margins, AND its centre ≈ the page centre. This holds for the
+        // chapter/part TITLE (a heading; source text-align:center), the chapter NUMBER, and a one-line
+        // epigraph/attribution, and EXCLUDES justified prose (insets ≈ 0), left- (insetL ≈ 0) and right-
+        // aligned (insetR ≈ 0) lines. It uses the DOC margins, not the per-page ones, so a SPARSE figure
+        // page (a Part-divider, whose per-page margin is the caption's inset x) still measures correctly —
+        // that skew is why the divider AND chapter titles weren't centred. Applies to HEADINGS too (the old
+        // rule was body-only + <=60 chars, so it centred the number but never the title). A multi-line
+        // block's first/last line have different widths so its centre test fails — only single-line-centred
+        // blocks (title, number, one-line attribution) are tagged, which is exactly what we want.
+        {
+          const docCentre = (docBodyLeft + bodyRightEdge) / 2;
+          if (bodyRightEdge > docBodyLeft) for (const b of blocks) {
+            if (b.role === 'list' || b.text.includes('')) continue; // list has its own structure; already right-aligned
+            const bare = b.text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[-\uE02A*_~`]/gu, '').trim();
+            if (!bare || bare.length > 90) continue; // single-line-ish (a multi-line block's first/last-line centre is invalid)
+            const left = b.firstX - docBodyLeft, right = bodyRightEdge - b.lastRightX;
             const centre = (b.firstX + b.lastRightX) / 2;
-            if (left > bodyFont * 2 && right > bodyFont * 2 && Math.abs(left - right) <= bodyFont && Math.abs(centre - bodyCentre) <= bodyFont) {
+            if (left > bodyFont && right > bodyFont && Math.abs(left - right) <= bodyFont && Math.abs(centre - docCentre) <= bodyFont) {
               b.text = '' + b.text;
             }
           }
