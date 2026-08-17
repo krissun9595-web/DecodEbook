@@ -5611,7 +5611,12 @@ const App: React.FC = () => {
                 while (ai + 1 < blocks.length) {
                   const nb = blocks[ai + 1];
                   const nbare = stripSent(nb.text);
-                  if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || capOpener.test(nbare)) break;
+                  // A credit is set ITALIC on every wrapped line, so a continuation must ALSO be italic. Without
+                  // this, a ROMAN body paragraph whose first-line indent lands near the (inset) caption column —
+                  // a WIDE figure's caption sits close to the body margin (BHI "Figure 2" fig_85, capX≈111 vs the
+                  // body's indented first line x≈99, within bodyFont) — got swallowed into the "*…*" attribution.
+                  // Requiring italic breaks at the first roman body line; a genuine credit wrap (all italic) stays.
+                  if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || capOpener.test(nbare) || !/^[*_~]/u.test(nbare)) break;
                   joined = joinWrap(joined, nbare.replace(/[*_~]/gu, '').trim());
                   first.lastRightX = nb.lastRightX; first.lastText = nb.lastText;
                   const term = endsWithTerminalPunctuation(nbare.replace(/[*_~]+$/u, '').trim());
