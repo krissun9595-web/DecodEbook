@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v195-attribution-italic-continuation';
+const CHAPTER_TEXT_CACHE_VERSION = 'v196-caption-column-tolerance';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4686,6 +4686,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // loop skips them). Original nodes always; translated nodes only in split view (they read
                     // translationByIndex, which the page translation pass fills for these sentences' indices).
                     const _unit = figUnitByFig.get(pIdx);
+                    // [dbgFigUnit] ground-truth audit: dump the figure's own text + its paired caption/attribution
+                    // paragraphs + the two paragraphs after, so a merge (caption swallowed body) vs a mis-pairing
+                    // is unambiguous. Also logs the stored extraction version (confirms a re-upload took effect).
+                    try {
+                      const _g: any = globalThis as any;
+                      (_g.__dbgFigUnit = _g.__dbgFigUnit || []).push({
+                        figId: para.figure.id,
+                        ver: (fileContext as any)?.sourceExtractorVersion,
+                        cap: _unit?.cap, attr: _unit?.attr,
+                        pPlus1: (paragraphData[pIdx + 1]?.original || []).join(' ').slice(0, 120),
+                        pPlus2: (paragraphData[pIdx + 2]?.original || []).join(' ').slice(0, 120),
+                        pPlus3: (paragraphData[pIdx + 3]?.original || []).join(' ').slice(0, 120),
+                      });
+                    } catch { /* audit only */ }
                     const _split = viewMode === 'split';
                     const capOrig = _unit && _unit.cap >= 0 ? renderOriginalRuns(runsForParagraph(_unit.cap)) : undefined;
                     const capTrans = _unit && _unit.cap >= 0 && _split ? renderTranslatedRuns(runsForParagraph(_unit.cap)) : undefined;

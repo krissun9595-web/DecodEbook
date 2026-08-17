@@ -5590,7 +5590,12 @@ const App: React.FC = () => {
             while (bi + 1 < blocks.length) {
               const nb = blocks[bi + 1];
               const nbare = stripSent(nb.text);
-              if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || /^[*_~]/u.test(nbare) || capOpener.test(nbare)) break;
+              // The continuation must sit at the caption column. A caption's own wrap lines start at EXACTLY
+              // capX (or, when justified, extend rightward — never LEFT of it); a following BODY paragraph
+              // starts at its own, SHALLOWER first-line indent, i.e. LEFT of the inset caption column (BHI
+              // wide "Figure 2" fig_85: capX≈111, body first line x≈99). The old symmetric `> bodyFont`
+              // tolerance let that 11pt offset pass and swallowed the whole body paragraph into the caption.
+              if (nb.role !== 'body' || nb.firstX < capX - bodyFont * 0.5 || nb.firstX > capX + bodyFont || /^[*_~]/u.test(nbare) || capOpener.test(nbare)) break;
               b.text = joinWrap(b.text, nbare);
               b.lastRightX = nb.lastRightX; b.lastText = nb.lastText;
               blocks.splice(bi + 1, 1);
@@ -5616,7 +5621,7 @@ const App: React.FC = () => {
                   // a WIDE figure's caption sits close to the body margin (BHI "Figure 2" fig_85, capX≈111 vs the
                   // body's indented first line x≈99, within bodyFont) — got swallowed into the "*…*" attribution.
                   // Requiring italic breaks at the first roman body line; a genuine credit wrap (all italic) stays.
-                  if (nb.role !== 'body' || Math.abs(nb.firstX - capX) > bodyFont || capOpener.test(nbare) || !/^[*_~]/u.test(nbare)) break;
+                  if (nb.role !== 'body' || nb.firstX < capX - bodyFont * 0.5 || nb.firstX > capX + bodyFont || capOpener.test(nbare) || !/^[*_~]/u.test(nbare)) break;
                   joined = joinWrap(joined, nbare.replace(/[*_~]/gu, '').trim());
                   first.lastRightX = nb.lastRightX; first.lastText = nb.lastText;
                   const term = endsWithTerminalPunctuation(nbare.replace(/[*_~]+$/u, '').trim());
