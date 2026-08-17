@@ -4009,7 +4009,12 @@ const App: React.FC = () => {
               // The TALLEST glyph's font size (cap height), EXCLUDING drop caps — for a small-caps line this
               // exceeds the char-weighted `h` (the small caps sit at a reduced em); heading detection + a
               // heading block's size read off this so small-caps heads aren't seen as body / shrunk below it.
-              capH: (() => { const cs = items.filter(it => !it.dropCap).map(it => it.h); return cs.length ? Math.max(...cs) : group.baseH; })(),
+              // Tallest LETTER/DIGIT glyph only — PUNCTUATION is excluded. A leading em-dash "—" is drawn
+              // full-height but is not a cap; on an all-small-caps line (a wrapped epigraph attribution
+              // "—JEREMY BENTHAM, …") it would otherwise inflate capH above the small-caps text, tripping
+              // sizeChanged so the attribution splits at its wrap AND its continuation ("AND LEGISLATION")
+              // shrinks below its own first line. Fall back to all non-dropcap glyphs for a punctuation-only line.
+              capH: (() => { const L = items.filter(it => !it.dropCap && /[\p{L}\p{N}]/u.test(it.str || '')); const src = L.length ? L : items.filter(it => !it.dropCap); return src.length ? Math.max(...src.map(it => it.h)) : group.baseH; })(),
               bold: items.filter(it => it.bold).length > items.length / 2,
               family: modeStr(items.map(it => it.family)),
               localFont: 0, // set after the document body font is known (see the windowed pass)
