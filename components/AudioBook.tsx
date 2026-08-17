@@ -4617,6 +4617,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
+                  // [dbgFigUnit] targeted audit — logs the Breakthrough divider TITLE + figure paragraphs
+                  // (role/sizeEm) so the #1 title-size cause is visible without depending on para.figure.
+                  try {
+                    const _tx = (para.original || []).join(' ');
+                    if (/breakthrough|reinforcing|steering|vertebrates|bilaterians|your brain \d/i.test(_tx) || para.figure) {
+                      // eslint-disable-next-line no-console
+                      console.log('[dbgFigUnit]', pIdx, para.figure ? 'FIGURE' : '', 'role=' + para.role, 'sizeEm=' + para.sizeEm, 'align=' + para.align, JSON.stringify(_tx.slice(0, 60)));
+                    }
+                  } catch { /* audit only */ }
                   // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
                   // block (at the figure width) — skip it here so it doesn't also render full-width below.
                   if (figConsumed.has(pIdx)) return null;
