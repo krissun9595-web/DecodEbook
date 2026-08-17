@@ -4319,6 +4319,12 @@ const App: React.FC = () => {
       // the h15 body) do not. (Falls back to the size rule when no contents page / no heading family.)
       const isHeadingLine = (line: PdfLine): boolean => {
         const ch = line.capH ?? line.h;
+        // [dbgHead] targeted extraction audit for the BHI Part-divider titles — dump every input to the
+        // heading decision so the "Reinforcing…" (Bk#2) mis-classification is unambiguous. Tightly gated.
+        if (/and the First (Bilaterians|Vertebrates|Mammals|Primates)|^Breakthrough #\d/i.test(line.text.replace(/[*_~]/gu, '').trim())) {
+          // eslint-disable-next-line no-console
+          console.log('[dbgHead]', JSON.stringify(line.text.replace(/[*_~]/gu, '').slice(0, 34)), 'ch=' + ch, 'h=' + line.h, 'capH=' + line.capH, 'localFont=' + line.localFont, 'bodyFont=' + bodyFont, 'family=' + line.family, 'headFam=' + headingFamily, 'outline=' + line.outlineHeading, 'mcRole=' + line.mcRole);
+        }
         if (line.mcRole) return /^H[1-6]?$/u.test(line.mcRole);
         if (line.outlineHeading === true) return true;
         const scText = line.text.replace(/[*_~`\s ]+$/u, '');
