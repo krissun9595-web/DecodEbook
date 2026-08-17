@@ -5694,11 +5694,15 @@ const App: React.FC = () => {
         {
           const docCentre = (docBodyLeft + bodyRightEdge) / 2;
           if (bodyRightEdge > docBodyLeft) for (const b of blocks) {
-            if (b.role === 'list' || b.text.includes('')) continue; // list has its own structure; already right-aligned
+            if (b.role === 'list' || b.firstRightX <= b.firstX || b.text.includes('')) continue; // list has its own structure; already right-aligned
             const bare = b.text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[-\uE02A*_~`]/gu, '').trim();
-            if (!bare || bare.length > 90) continue; // single-line-ish (a multi-line block's first/last-line centre is invalid)
-            const left = b.firstX - docBodyLeft, right = bodyRightEdge - b.lastRightX;
-            const centre = (b.firstX + b.lastRightX) / 2;
+            if (!bare || bare.length > 300) continue; // paranoia cap only; the symmetric-inset test below is the real filter
+            // Measure the FIRST LINE's insets (firstX..firstRightX) — valid for a MULTI-LINE block too (a centred
+            // epigraph and its wrapped attribution): every line is symmetrically inset, but the block's first-line-x
+            // paired with its LAST-line-rightX is off-centre, which LOST the centring once the wrapped attribution
+            // merged into one block (→ the reader then fell back to right-aligned/grey/italic attribution styling).
+            const left = b.firstX - docBodyLeft, right = bodyRightEdge - b.firstRightX;
+            const centre = (b.firstX + b.firstRightX) / 2;
             if (left > bodyFont && right > bodyFont && Math.abs(left - right) <= bodyFont && Math.abs(centre - docCentre) <= bodyFont) {
               b.text = '' + b.text;
             }
