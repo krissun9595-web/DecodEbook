@@ -4617,6 +4617,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
+                  try {
+                    const _tx = (para.original || []).join(' ');
+                    if (/reinforcing|steering|simulating|mentalizing|vertebrates|bilaterians|mammals|primates|your brain \d|breakthrough #\d/i.test(_tx) || para.figure) {
+                      // eslint-disable-next-line no-console
+                      console.log('[dbgDiv]', pIdx, para.figure ? 'FIG' : '', 'role=' + para.role, 'sizeEm=' + para.sizeEm, 'align=' + para.align, 'consumed=' + figConsumed.has(pIdx), 'unit=' + JSON.stringify(figUnitByFig.get(pIdx) || null), JSON.stringify(_tx.slice(0, 80)));
+                    }
+                  } catch { /* audit only */ }
                   // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
                   // block (at the figure width) — skip it here so it doesn't also render full-width below.
                   if (figConsumed.has(pIdx)) return null;
