@@ -875,6 +875,30 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
     return -1;
   };
 
+  // A figure UNIT — "[[FIG id]]" + its caption ("Figure N…") + its credit (italic / "Photograph…") — is
+  // set page-break-inside:avoid in the source (div.fig_NN), so pagination must not split it. Given a break
+  // offset, if it lands INSIDE a unit, return the offset of the "\n\n" BEFORE the figure so the whole unit
+  // moves to the next page together; else -1. (Reader-side keep-together, mirrors the source box.)
+  const FIG_CAP_RE = /^[-\s]*(?:figure|fig\.|table|plate|chart|exhibit|diagram)\s*\d/i;
+  const FIG_CREDIT_RE = /^[-\s]*(?:[*_]|original art|photograph|illustration|drawing|painting|courtesy|source|credit|art by|map by|©|copyright)/i;
+  const figureUnitPullback = (value: string, cut: number): number => {
+    const figStart = value.lastIndexOf('[[FIG', cut > 0 ? cut - 1 : 0);
+    if (figStart < 0) return -1;
+    let p = value.indexOf(']]', figStart); p = p < 0 ? value.length : p + 2;
+    // Absorb the caption + credit paragraphs that immediately follow the figure marker.
+    for (let k = 0; k < 2; k++) {
+      const nl = value.indexOf('\n\n', p);
+      if (nl < 0 || value.slice(p, nl).trim().length) break; // not a contiguous figure→caption→credit run
+      const ps = nl + 2;
+      const pe = value.indexOf('\n\n', ps);
+      const para = value.slice(ps, pe < 0 ? value.length : pe);
+      if ((k === 0 && FIG_CAP_RE.test(para)) || (k === 1 && FIG_CREDIT_RE.test(para))) p = pe < 0 ? value.length : pe;
+      else break;
+    }
+    if (cut > figStart && cut < p) { const pb = value.lastIndexOf('\n\n', figStart); return pb < 0 ? 0 : pb; }
+    return -1;
+  };
+
   let continuesParagraph = false; // does the CURRENT page start mid-paragraph (prev split was not a boundary)?
   while (remaining.length > 0) {
     // The raw offset that holds ~targetSize of *visible* text. For normal chapters
@@ -989,6 +1013,11 @@ export const paginatePlainText = (text: string, targetSize: number, measureVisib
       }
       // brokeAtBoundary stays false — this split is inside a paragraph.
     }
+    // Keep a figure with its caption/credit (source page-break-inside:avoid): if the chosen break splits a
+    // figure unit, move the WHOLE unit to the next page. Skip when the pullback would leave the page nearly
+    // empty (figure sits at the page top — nothing we can do, let it break).
+    const _figPull = figureUnitPullback(remaining, splitIdx);
+    if (_figPull > keepWholeFloor * 0.5) { splitIdx = _figPull; brokeAtBoundary = true; }
     const pageText = trimPageText(remaining.substring(0, splitIdx));
     if (pageText) {
       pages.push({ mode: 'plain', text: pageText, blocks: [{ type: 'paragraph', text: pageText }], continuesParagraph });

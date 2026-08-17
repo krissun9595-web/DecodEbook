@@ -5621,6 +5621,22 @@ const App: React.FC = () => {
                 first.text = lead + '*' + joined + '*';
               }
             }
+            // Phase 3 — a SHORT caption whose CREDIT sits on the SAME line ("Figure 2.4: The Ediacaran
+            // world *Original art by Rebecca Gelernter*") clusters into ONE block, so Phase 2 (which needs a
+            // SEPARATE italic block) never split it and it renders merged. The source treats the credit as a
+            // distinct element (EPUB has a separate <p class="image_credit">). If the caption block ENDS with
+            // an italic run that reads like a credit, split it into its own attribution block so the reader
+            // shows caption + credit on two lines (matching EPUB). Gated on a credit KEYWORD so a caption that
+            // merely ends in an italic term (a species/book name, e.g. "…nematode *C. elegans*") is untouched.
+            {
+              const m = b.text.match(/^(.+?\S)\s+(\*[^*\n]+\*|_[^_\n]+_)\s*$/u);
+              const creditInner = m ? m[2].replace(/^[*_]|[*_]$/gu, '').trim() : '';
+              if (m && !capOpener.test(creditInner) &&
+                  /^(?:original art|photograph|photo|illustration|image|drawing|painting|courtesy|source|credit|reprinted|adapted|art by|map by|diagram by|©|copyright|by\s+[A-Z])/i.test(creditInner)) {
+                b.text = m[1];
+                blocks.splice(bi + 1, 0, { ...b, text: m[2] });
+              }
+            }
           }
         }
         // PER-LINE CENTRING on a MIXED page. The whole-page display classifier above only fires when the
