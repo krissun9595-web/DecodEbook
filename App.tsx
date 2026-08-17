@@ -4782,7 +4782,13 @@ const App: React.FC = () => {
         }
         const isShortColLine = (line: PdfLine): boolean => {
           const b = line.col !== undefined ? colBounds.get(line.col) : undefined;
-          const left = b ? b.left : bodyLeft;
+          // For a single-column line, measure against the DOC body margin, not the per-page bodyLeft: on a
+          // sparse figure page (a Part-divider) the only body text is the inset caption/credit, so the page
+          // bodyLeft is measured as THEIR indent (BHI Bk#2 fig_35: bodyLeft≈226 vs the true margin ~77). That
+          // shrank the measure so an identical-width caption (148.5pt) read as NOT short and merged with its
+          // credit — while Bk#1 (caption at 169) stayed short and split. `min` only widens a skewed-high page;
+          // a normal page has bodyLeft≈docBodyLeft (unchanged), and a full block-indented line still isn't short.
+          const left = b ? b.left : Math.min(bodyLeft, docBodyLeft);
           const right = b ? b.right : bodyRightEdge;
           const measure = right - left;
           return measure > 0 && (line.rightX - line.x) < measure * 0.5;
