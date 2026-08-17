@@ -5117,9 +5117,22 @@ const App: React.FC = () => {
               const raggedWrapSameMargin =
                 !endsWithTerminalPunctuation(previous.text) && Math.abs(current.x - previous.x) <= bodyFont * 0.5
                 && !currentStartsNewBlock;
+              // A CENTRED multi-line block (an epigraph attribution, a centred title/quote) has each line
+              // SYMMETRICALLY inset — it ends short of the right margin BY DESIGN, not as a justified-block
+              // boundary. attributionContinuation only covers a RIGHT-aligned (flush-right) attribution; a
+              // CENTRED one (BHI "—JEREMY BENTHAM, …MORALS" / "AND LEGISLATION") isn't flush-right, so without
+              // this prevEndsShort splits the wrapped centred attribution into two paragraphs (blank line
+              // between) on a page whose BODY is justified. Justified prose lines start at the margin
+              // (leftInset≈0) → not centred, so this can't suppress a real justified-block boundary.
+              const _isCentred = (l: PdfLine): boolean => {
+                const li = l.x - docBodyLeft, ri = bodyRightEdge - l.rightX;
+                return bodyRightEdge > docBodyLeft && li > bodyFont && ri > bodyFont
+                  && Math.abs(li - ri) <= bodyFont && Math.abs((l.x + l.rightX) / 2 - (docBodyLeft + bodyRightEdge) / 2) <= bodyFont;
+              };
+              const centredWrap = _isCentred(previous) && _isCentred(current);
               const prevEndsShort = pageJustified && rightMargin > 0
                 && !fillsMeasure(previous.rightX, rightMargin) && runLen < 3 && !attributionContinuation
-                && !raggedWrapSameMargin;
+                && !raggedWrapSameMargin && !centredWrap;
               // A FLUSH labeled list — consecutive lines that BOTH open with a short "Label:" (an email
               // header From:/Date:/To:/Subject:, an address, a spec sheet) — has each entry as its own
               // line, but with no hanging indent detectLabeledHangingList misses it and the splitter

@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v203-capH-letters-only';
+const CHAPTER_TEXT_CACHE_VERSION = 'v204-centred-wrap-nosplit';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
