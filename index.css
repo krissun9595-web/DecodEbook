@@ -333,3 +333,16 @@ body {
     font-size: 16px;
   }
 }
+
+/* EPUB drop cap — a chapter opener whose source floats an oversized ::first-letter
+   (e.g. Singularity `p.x03-CO-Body-Text::first-letter{float:left;font-size:3.2em}`).
+   Applied via a class because an inline style can't target the ::first-letter pseudo;
+   `--drop-cap-size` lets a future book override the size (default matches the source). */
+.epub-drop-cap::first-letter {
+  float: left;
+  font-size: var(--drop-cap-size, 3.2em);
+  line-height: 0.7;
+  margin: 0 0.06em 0 0;
+  font-weight: 400;
+  font-style: normal;
+}

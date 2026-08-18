@@ -923,6 +923,7 @@ const App: React.FC = () => {
       const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
       const cssBold = new Set<string>();   // font-weight:bold/700
       const cssSmallCaps = new Set<string>(); // font-variant:small-caps — a class the reader renders small-caps
+      const cssDropCap = new Set<string>();   // a class whose ::first-letter is a floated drop cap (chapter opener)
       const cssIndent: Record<string, number> = {}; // left indent (px) — for TOC/Contents sub-entries
       // The effective LEFT indent (px) a declaration block sets, from margin-left/padding-left OR the
       // `margin`/`padding` SHORTHAND's left value (4 values → 4th; 2–3 values → 2nd = left). Only a
@@ -1011,6 +1012,11 @@ const App: React.FC = () => {
               || isSmallCaps || isNormalVariant
               || li || mE != null || pE != null || tiE != null || fs != null || btM || bbM || hasListStyle;
             const _beforeContent = /::?(?:before|after)\b/i.test(rule[1]) ? /content\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/i.exec(rule[2]) : null;
+            // A `::first-letter` rule that FLOATS its initial is a drop cap (a chapter-opener's oversized
+            // first letter — Singularity `p.x03-CO-Body-Text::first-letter{float:left;font-size:3.2em}`).
+            // Record the base class so the block emitting it carries the drop-cap sentinel; the reader
+            // reproduces it via a `::first-letter` CSS class (an inline style can't target the pseudo).
+            const _isDropCapFL = /::?first-letter\b/i.test(rule[1]) && /float\s*:\s*(?:left|right)/i.test(rule[2]);
             for (const rawSel of rule[1].split(',')) {
               const sel = rawSel.replace(/\s+/g, ' ').trim();
               if (!sel) continue;
@@ -1019,6 +1025,7 @@ const App: React.FC = () => {
               // (font-style:normal) wipe out all italic. Never a document element selector.
               if (sel.startsWith('@')) continue;
               if (/::?(?:before|after)\b/i.test(sel)) { if (_beforeContent) cssBeforeRules.push({ sel: sel.replace(/\s*::?(?:before|after)\b/ig, '').trim() || '*', content: _beforeContent[2] }); continue; }
+              if (/::?first-letter\b/i.test(sel)) { if (_isDropCapFL) for (const cm of sel.replace(/\s*::?first-letter\b/ig, '').matchAll(/\.([A-Za-z0-9_-]+)/g)) cssDropCap.add(cm[1]); continue; }
               if (/::?[a-z]/i.test(sel)) continue; // an un-evaluable pseudo-element on a non-before rule — skip
               // A selector with no tag AND no class AND no attribute (a bare combinator artefact or `*`) would
               // match every element — skip it so a stray universal rule can't blanket the whole book.
@@ -1857,6 +1864,9 @@ const App: React.FC = () => {
           // Whole-paragraph small-caps (an epigraph attribution `p.x03-Chapter-Epigraph-Source`, a chart-data
           // title) → the U+E02C sentinel, same leading-flag mechanism as whole-para italic.
           const _pSmallCaps = elSmallCapsOf(element);
+          // Drop cap — a chapter-opener <p> whose class has a floated ::first-letter → the U+E02E sentinel so
+          // the reader floats an oversized initial (via a ::first-letter CSS class, reproducing the source).
+          const _pDropCap = (element.getAttribute('class') || '').split(/\s+/).some(c => cssDropCap.has(c));
           const _before = beforeContentOf(element);
           // The "already emphasised" guard must ignore a LINK's href — a TOC/Contents entry is a single
           // link "[Chapter 1: …](09_Chapter_1_Where_Are_W.xhtml)" whose href is full of underscores; counting
@@ -2055,7 +2065,7 @@ const App: React.FC = () => {
           // paragraph that DECLARES a positive text-indent, so the reader restores its first-line indent ON TOP of
           // the block padding. Positive signal (not "absence of E018"), so a <dd>/blockquote/index never picks it up.
           const _firstIndentSentinel = (_isSetoff && _pLeftEm >= 0.5 && _tiDecl.some(v => v > 0.05)) ? String.fromCharCode(0xE029) : '';
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pDropCap ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         // A DEFINITION LIST (<dl> of <dt> term / <dd> description) — O'Reilly's "What You Will Learn" and
         // similar. Without a handler the whole list flattens into run-on prose. Emit each <dt> as its OWN
