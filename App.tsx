@@ -922,6 +922,7 @@ const App: React.FC = () => {
       const cssBlock = new Set<string>();  // display:block — keep line breaks inside a heading
       const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
       const cssBold = new Set<string>();   // font-weight:bold/700
+      const cssSmallCaps = new Set<string>(); // font-variant:small-caps — a class the reader renders small-caps
       const cssIndent: Record<string, number> = {}; // left indent (px) — for TOC/Contents sub-entries
       // The effective LEFT indent (px) a declaration block sets, from margin-left/padding-left OR the
       // `margin`/`padding` SHORTHAND's left value (4 values → 4th; 2–3 values → 2nd = left). Only a
@@ -986,6 +987,12 @@ const App: React.FC = () => {
             const isBold = /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(rule[2]);
             const isNormalWeight = /font-weight\s*:\s*(?:normal|[1-4]00)/i.test(rule[2]);
             const isNormalStyle = /font-style\s*:\s*normal/i.test(rule[2]);
+            // font-variant:small-caps (or font-variant-caps) — a true typographic small-caps run/block the
+            // reader can reproduce with `font-variant:small-caps` on the ORIGINAL mixed-case text (unlike a
+            // `text-transform:uppercase` simulation, which is already reproduced by upper-casing). Section
+            // heads, epigraph attributions, chart-data titles use it.
+            const isSmallCaps = /font-variant(?:-caps)?\s*:\s*(?:all-)?small-caps/i.test(rule[2]);
+            const isNormalVariant = /font-variant(?:-caps)?\s*:\s*normal/i.test(rule[2]);
             const li = leftIndentPx(rule[2]);
             const mE = sideLeftEm(rule[2], 'margin'), pE = sideLeftEm(rule[2], 'padding');
             const tiM = /text-indent\s*:\s*([^;}]+)/i.exec(rule[2]); const tiE = tiM ? lenToEm(tiM[1]) : null;
@@ -1001,6 +1008,7 @@ const App: React.FC = () => {
             // A `::before/::after` rule with `content` goes to cssBeforeRules (e.g. the attribution em-dash);
             // everything else (tag/attr/descendant/class) goes to cssRules for general matching.
             const _relevant = am || isBlock || isItalic || isBold || isNormalWeight || isNormalStyle
+              || isSmallCaps || isNormalVariant
               || li || mE != null || pE != null || tiE != null || fs != null || btM || bbM || hasListStyle;
             const _beforeContent = /::?(?:before|after)\b/i.test(rule[1]) ? /content\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/i.exec(rule[2]) : null;
             for (const rawSel of rule[1].split(',')) {
@@ -1017,7 +1025,7 @@ const App: React.FC = () => {
               if (!/[a-zA-Z]|\[|\./.test(sel.replace(/[>+~\s*]/g, ''))) continue;
               if (_relevant) { const _rt = (sel.split(/\s*>\s*|\s+/).pop() || '').match(/^([a-zA-Z][\w-]*)/); cssRules.push({ sel, decl: rule[2], spec: specOf(sel), tag: _rt ? _rt[1].toLowerCase() : '' }); }
             }
-            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !isSmallCaps && !isNormalVariant && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
             // Attribute a property ONLY to the class(es) in the RIGHTMOST compound (the rule's actual
             // subject), not every class in the selector. `div.preface dt em code{font-style:italic}` styles
             // the `code`, NOT `.preface` — over-attributing to `.preface` flat-italicised whole sections.
@@ -1040,6 +1048,7 @@ const App: React.FC = () => {
               if (isBlock) cssBlock.add(c);
               if (isItalic) cssItalic.add(c); else if (isNormalStyle) cssItalic.delete(c);
               if (isBold) cssBold.add(c); else if (isNormalWeight) cssBold.delete(c);
+              if (isSmallCaps) cssSmallCaps.add(c); else if (isNormalVariant) cssSmallCaps.delete(c);
               if (li > 0) cssIndent[c] = Math.max(cssIndent[c] || 0, li);
               if (mE != null || pE != null || tiE != null) { const cur = cssBoxLeftEm[c] || { m: 0, p: 0, ti: 0 }; cssBoxLeftEm[c] = { m: mE ?? cur.m, p: pE ?? cur.p, ti: tiE ?? cur.ti }; }
               if (tiE != null) cssTiDeclared.add(c);
@@ -1221,6 +1230,12 @@ const App: React.FC = () => {
         if (/^(?:bold|[6-9]00)$/.test(inline)) return true; if (/^(?:normal|[1-4]00)$/.test(inline)) return false;
         if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssBold.has(c))) return true;
         return /^(?:bold|[6-9]00)$/.test((declProp(el, 'font-weight') || '').toLowerCase());
+      };
+      const elSmallCapsOf = (el: Element): boolean => {
+        const inline = ((el as HTMLElement).style?.fontVariant || (el as HTMLElement).style?.fontVariantCaps || '').toLowerCase();
+        if (/small-caps/.test(inline)) return true; if (inline === 'normal') return false;
+        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssSmallCaps.has(c))) return true;
+        return /small-caps/.test((declProp(el, 'font-variant') || declProp(el, 'font-variant-caps') || '').toLowerCase());
       };
       // CSS-driven emphasis: an element italicised/bolded via a class/tag/attribute (not <i>/<b>) — wrap its
       // text in the markdown the reader renders. Guard against double-wrapping when a nested <i>/<em> did.
@@ -1742,6 +1757,10 @@ const App: React.FC = () => {
             return hasText && allItalic;
           })();
           const _hItalicMark = _hWhollyItalic ? SENT_ITALIC : '';
+          // A heading the source sets small-caps (Singularity's `h2.x07-List-Unnumbered-Head` chart-data
+          // titles, `font-variant:small-caps`) → the U+E02C whole-paragraph small-caps sentinel so the reader
+          // renders it small-caps on the ORIGINAL mixed-case text (not the flat all-caps it decoded to before).
+          const _hSmallCapsMark = elSmallCapsOf(element) ? String.fromCharCode(0xE02C) : '';
           // A "heading" whose text is a LIST-MARKER LABEL ("IF:"/"THEN:", or a bare "1."/"a." marker) is a list
           // head, NOT a section title (Singularity's `.x07-List-Head` <h2>IF:</h2> above a numbered <ol>). Emit
           // it as an INDENTED, non-heading paragraph (leading NBSP from its source left margin, no U+E013) so
@@ -1794,7 +1813,7 @@ const App: React.FC = () => {
           const _wrapHeadingLine = (l: string, k: number, tier: string): string => {
             const kid = (_off === 0 || _off === 1) ? _kids[k - _off] : undefined;
             const br = kid ? borderRuleOf(kid) : { top: null, bottom: null };
-            return (br.top ? ruleBlock(br.top) : '') + _hAlignSent + tier + SENT_HEADING + _hItalicMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
+            return (br.top ? ruleBlock(br.top) : '') + _hAlignSent + tier + SENT_HEADING + _hItalicMark + _hSmallCapsMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
           };
           if (_multiSized && (_lines.length === _kidEms.length || _lines.length === _kidEms.length + 1)) {
             const _ems = _lines.length === _kidEms.length ? _kidEms : [_h1em, ..._kidEms];
@@ -1835,6 +1854,9 @@ const App: React.FC = () => {
           // wrapped inline. A ::before pseudo-element's content (an attribution em-dash, never in textContent)
           // is prepended.
           const _pItalic = elItalicOf(element);
+          // Whole-paragraph small-caps (an epigraph attribution `p.x03-Chapter-Epigraph-Source`, a chart-data
+          // title) → the U+E02C sentinel, same leading-flag mechanism as whole-para italic.
+          const _pSmallCaps = elSmallCapsOf(element);
           const _before = beforeContentOf(element);
           // The "already emphasised" guard must ignore a LINK's href — a TOC/Contents entry is a single
           // link "[Chapter 1: …](09_Chapter_1_Where_Are_W.xhtml)" whose href is full of underscores; counting
@@ -2033,7 +2055,7 @@ const App: React.FC = () => {
           // paragraph that DECLARES a positive text-indent, so the reader restores its first-line indent ON TOP of
           // the block padding. Positive signal (not "absence of E018"), so a <dd>/blockquote/index never picks it up.
           const _firstIndentSentinel = (_isSetoff && _pLeftEm >= 0.5 && _tiDecl.some(v => v > 0.05)) ? String.fromCharCode(0xE029) : '';
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         // A DEFINITION LIST (<dl> of <dt> term / <dd> description) — O'Reilly's "What You Will Learn" and
         // similar. Without a handler the whole list flattens into run-on prose. Emit each <dt> as its OWN
@@ -2049,7 +2071,7 @@ const App: React.FC = () => {
             const raw = Array.from(kid.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('');
             if (kt === 'dt') {
               const term = raw.replace(/[\u{E000}-\u{F8FF}]/gu, '').replace(/\s+/g, ' ').trim();
-              if (term) parts.push((elItalicOf(kid) ? E026 : '') + term);
+              if (term) parts.push((elItalicOf(kid) ? E026 : '') + (elSmallCapsOf(kid) ? String.fromCharCode(0xE02C) : '') + term);
             } else {
               // Keep the description's inline emphasis/links; drop its inner block sentinels, then indent it.
               const desc = raw.replace(/[\u{E010}-\u{E026}]/gu, '').replace(/\s+/g, ' ').trim();
