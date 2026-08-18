@@ -5003,6 +5003,37 @@ const App: React.FC = () => {
             blocks.push({ text: tier + st.map(l => l.text.trim()).join(VLB), role: 'body', firstX: st[0].x, firstRightX: st[0].rightX, lastRightX: last.rightX, lastText: last.text, topY: Math.max(...st.map(l => l.pageY)), bodyX: st[0].x });
           }
         };
+        // DATA COLUMN: a chart's "YYYY: value" table (Kurzweil income/poverty charts — "2020: $191.00",
+        // "1950: ~30%"), a run of >=3 tight roman lines sharing a left edge, each a bare year label + a
+        // currency/percent/number value. Like verse it must render TIGHT (one entry per line, NO blank line
+        // between), else the prose grouping's `bothShort` splits every short data line into its own paragraph
+        // → blank-line-spaced. Emit the run as ONE block joined with U+E024 (the same tight-<br> path verse
+        // uses) so the reader renders a compact left-aligned roman column. The pattern is the exact one
+        // endsWithPageRef excludes from the index test, so prose / notes ("129. …") / real index entries
+        // ("Topic, 316") never match (value must be purely numeric — a "2020: Smith, J." bibliography line has
+        // letters and is left alone).
+        const isDataColumnLine = (l: PdfLine): boolean =>
+          /^\s*\d{4}:\s*[~<>≈]?\$?[\d.,]+%?\s*$/u.test(l.text.replace(/[*_~`]/gu, '').trim());
+        const dataColumnRegionEnd = (start: number): number => {
+          if (isHeadingLine(lines[start]) || !isDataColumnLine(lines[start])) return start - 1;
+          const x0 = lines[start].x; let end = start;
+          while (end + 1 < lines.length) {
+            const b = lines[end + 1];
+            if (isHeadingLine(b) || !isDataColumnLine(b) || Math.abs(b.x - x0) > bodyFont * 1.5) break;
+            if (Math.abs(lines[end].pageY - b.pageY) > Math.max(lines[end].h, b.h) * 3) break;
+            end++;
+          }
+          // >=2 (not 3): the "YYYY: value" pattern is so specific it never fires on prose (swept: only the two
+          // Kurzweil chart pages across all test PDFs), and a data column that STRADDLES a PDF page break leaves
+          // a short 2-row remnant at the foot of the first page (income: "2020…/2015…" on one page, the rest on
+          // the next) — that remnant must render tight too, not as two blank-spaced paragraphs.
+          return end - start + 1 >= 2 ? end : start - 1;
+        };
+        const emitDataColumn = (group: PdfLine[]): void => {
+          const VLB = String.fromCharCode(0xE024);
+          const last = group[group.length - 1];
+          blocks.push({ text: group.map(l => l.text.trim()).join(VLB), role: 'body', firstX: group[0].x, firstRightX: group[0].rightX, lastRightX: last.rightX, lastText: last.text, topY: Math.max(...group.map(l => l.pageY)), bodyX: group[0].x });
+        };
         let i = 0;
         // Tracks whether the group emitted just before this one was a right-aligned attribution/credit — so a
         // following flush-right line WITHOUT its own dash (a byline's title line under "— Sean Falconer") is
@@ -5015,6 +5046,11 @@ const App: React.FC = () => {
           if (!isHeadingLine(lines[i])) {
             const vEnd = verseRegionEnd(i);
             if (vEnd >= i) { emitVerseLines(lines.slice(i, vEnd + 1)); i = vEnd + 1; continue; }
+          }
+          // A DATA COLUMN run ("YYYY: value" chart table) — consume it tight before bothShort blank-splits it.
+          if (!isHeadingLine(lines[i])) {
+            const dEnd = dataColumnRegionEnd(i);
+            if (dEnd >= i) { emitDataColumn(lines.slice(i, dEnd + 1)); i = dEnd + 1; continue; }
           }
           // Consume a whole hanging-list region up front so it isn't fragmented by the prose rules below.
           if (!isHeadingLine(lines[i])) {
