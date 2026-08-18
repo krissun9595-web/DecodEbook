@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v213-data-audit';
+const CHAPTER_TEXT_CACHE_VERSION = 'v214-data-audit-removed';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4617,13 +4617,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
-                  try {
-                    const _tx = (para.original || []).join(' ');
-                    if (/income per person|dollars\), by|20\d0: ?\$|19\d0: ?\$|18\d0: ?\$|17\d0: ?\$|: ?~?\d+(\.\d+)?%/i.test(_tx)) {
-                      // eslint-disable-next-line no-console
-                      console.log('[dbgData]', pIdx, 'role=' + para.role, 'sizeEm=' + para.sizeEm, 'align=' + para.align, 'indent=' + para.indent, 'flush1=' + para.firstLineIndented, JSON.stringify(_tx.slice(0, 60)));
-                    }
-                  } catch { /* audit */ }
                   // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
                   // block (at the figure width) — skip it here so it doesn't also render full-width below.
                   if (figConsumed.has(pIdx)) return null;
