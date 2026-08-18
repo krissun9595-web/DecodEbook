@@ -5198,7 +5198,19 @@ const App: React.FC = () => {
               // NOT a real size change — comparing `h` wrongly split it into its own block (→ a shrink tier +
               // reader bolding). A genuine sub-head/caption differs in CAP height too, so it still splits.
               const _chOf = (l: PdfLine) => l.capH ?? l.h;
-              const sizeChanged = bodyFont > 0 && Math.abs(_chOf(current) - _chOf(group[0])) >= Math.max(2, bodyFont * 0.18)
+              const _sizeT = Math.max(2, bodyFont * 0.18);
+              // Require BOTH the cap height AND the char-weighted (dominant) height to change. A real size
+              // change moves the DOMINANT height of a line; a mere CAPS-PRESENCE difference moves only capH.
+              // A wrapped SMALL-CAPS title ("AVERAGE DAILY INCOME … (2023" then "dollars), by year") is set
+              // in synthesised small caps — source-UPPERCASE letters draw at the full em (15) and source-
+              // lowercase at a reduced em (10.5). Line 1 happens to contain capitals (A, U.S.) so its capH
+              // reads 15; the all-lowercase continuation has none, so its capH reads 10.5 — a phantom size
+              // drop that capH-alone split, then shrank line 2 (capRatio < 0.92). Both lines' DOMINANT height
+              // is 10.5, so requiring l.h to differ too keeps the wrap together. A genuine sub-head/caption
+              // differs in dominant height as well (and a short heading is already cut by prevEndsShort), so
+              // this only suppresses the phantom small-caps split.
+              const sizeChanged = bodyFont > 0 && Math.abs(_chOf(current) - _chOf(group[0])) >= _sizeT
+                && Math.abs(current.h - group[0].h) >= _sizeT
                 && !isDropInitial(current) && !isDropInitial(group[0]);
               // A list marker (numbered/lettered/roman/IF-THEN) always opens a new list item — after a
               // line that ENDED a sentence OR INTRODUCED the list with a trailing colon ("The output,
