@@ -4371,7 +4371,13 @@ const App: React.FC = () => {
         // SMALL-CAPS section head set in the BODY font (missed by the family rule — Sovereign's "PREMONITIONS",
         // Transurfing chapter titles): full caps clearly taller than the char-weighted body height AND heading-
         // sized vs body; capH >> h keeps a full-caps body line out. A body phrase ending a clause is prose.
-        if (!scEndsClause && bodyFont > 0 && ch >= bodyFont * 1.3 && ch >= line.h * 1.25) return true;
+        // Require actual small-caps LETTERS: `ch >= line.h*1.25` (capH >> char-weighted h) genuinely means
+        // small caps only when the reduced-height glyphs are letters. A line like "10[111]" (a wrapped chart
+        // TITLE's numeric tail + a small footnote MARKER) has the SAME inflated ratio — capH from "10", char-h
+        // dragged down by the tiny "[111]" — but it's not a heading; without the letter test it split off as a
+        // spurious small-caps head from its title line ("…and 10"). Genuine small-caps heads (PREMONITIONS) pass.
+        if (!scEndsClause && bodyFont > 0 && ch >= bodyFont * 1.3 && ch >= line.h * 1.25
+          && /[A-Za-zÀ-ɏ]{2,}/u.test(scText)) return true;
         return false;
       };
       // A line "fills the measure" if its right edge reaches the page's text right margin
