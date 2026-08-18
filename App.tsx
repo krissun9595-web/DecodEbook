@@ -2840,6 +2840,11 @@ const App: React.FC = () => {
       // canonical strict regex (one form per value) and bound the value (a marker is small,
       // never "MIX"=1009), so a stray word made of i/v/x/l/c/d/m letters can't pass.
       const ROMAN_MARKER_RE = /^m{0,3}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/i;
+      // Unicode super/subscript digit maps for MATH scripts (10^20, H2O) that pdf.js flattens to the
+      // baseline. The EPUB path maps <sup>/<sub> the same way; the PDF path has no tag, so it keys off
+      // glyph geometry (a small digit run vertically offset from its base) — see the emit loop below.
+      const SUPERSCRIPT_DIGITS: Record<string, string> = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+      const SUBSCRIPT_DIGITS: Record<string, string> = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' };
       const romanValue = (s: string): number => {
         const r: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
         let total = 0, prev = 0;
@@ -3982,6 +3987,27 @@ const App: React.FC = () => {
                 const label = romMarker ? trimmed.toUpperCase() : trimmed;
                 out += `[${label}](#pdfnote-${pageNum}-${label})`;
                 return;
+              }
+              // A small DIGIT run adjacent to a DIGIT is a MATH super/subscript ("10²⁰", "H₂O"), which the
+              // footnote-marker check above deliberately excluded (prevEndsDigit). pdf.js gives no <sup>/<sub>
+              // tag, so it otherwise fell through to a flat baseline digit ("1020"), corrupting the value. Map
+              // it to the Unicode super/subscript by the sign of its baseline offset from the base glyph:
+              // raised → superscript, lowered → subscript. Require a CLEAR offset (>0.12× body) so a same-
+              // baseline small digit isn't transformed, and no link (a linked number is a routed marker).
+              const mathScript = small && prevEndsDigit && !it.linkUrl && /^\d{1,4}$/.test(trimmed);
+              if (mathScript) {
+                // Offset from the LINE baseline (group.baseY = the tallest/body glyph's baseline, never raised
+                // by a script), not the previous glyph — so a multi-glyph exponent's 2nd+ digit (whose prev is
+                // the 1st raised digit) is still measured against the base, not a sibling script.
+                const dy = it.y - group.baseY; // PDF y grows upward: >0 raised (super), <0 lowered (sub)
+                const thr = lineBodyHeight * 0.12;
+                if (dy > thr || dy < -thr) {
+                  if (open) { out += MARK[open]; open = null; }
+                  if (openLink) { out += `](${wireHref(openLink)})`; openLink = null; }
+                  const MAP = dy > 0 ? SUPERSCRIPT_DIGITS : SUBSCRIPT_DIGITS;
+                  out += (glue ? '' : (out === '' ? '' : ' ')) + [...trimmed].map(c => MAP[c] || c).join('');
+                  return;
+                }
               }
 
               // Wrap maximal runs of one emphasis style / one external link once, so a
