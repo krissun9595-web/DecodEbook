@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v210-semibold-title-bold';
+const CHAPTER_TEXT_CACHE_VERSION = 'v211-title-audit';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -4617,6 +4617,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                 })() : (
                 <div style={{ display: 'contents' }}>
                 {paragraphData.map((para, pIdx) => {
+                  try {
+                    const _tx = (para.original || []).join(' ');
+                    if (/poverty rate in the united|income per person|declining poverty|decline in extreme|life expectancy|labor force|education expenditures/i.test(_tx)) {
+                      // eslint-disable-next-line no-console
+                      console.log('[dbgTitle]', pIdx, 'role=' + para.role, 'sizeEm=' + para.sizeEm, 'ital=' + para.italic, 'bold**=' + /\*\*/.test(_tx), JSON.stringify(_tx.slice(0, 80)));
+                    }
+                  } catch { /* audit */ }
                   // A figure caption / credit that belongs to a figure UNIT is rendered INSIDE its figure
                   // block (at the figure width) — skip it here so it doesn't also render full-width below.
                   if (figConsumed.has(pIdx)) return null;
