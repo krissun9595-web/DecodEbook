@@ -2793,10 +2793,10 @@ const App: React.FC = () => {
       // extraction reports opaque subset names (e.g. "g_d0_f3"), but the loaded font
       // object exposes the real name ("EBGaramond-Italic") — the only reliable emphasis
       // signal. Requires getOperatorList() to have loaded the page's fonts first.
-      const fontEmphasisFor = (page: any, fontName: string, cache: Map<string, { italic: boolean; bold: boolean; family: string }>) => {
+      const fontEmphasisFor = (page: any, fontName: string, cache: Map<string, { italic: boolean; bold: boolean; semibold: boolean; family: string }>) => {
         const cached = cache.get(fontName);
         if (cached) return cached;
-        let italic = false, bold = false, family = '';
+        let italic = false, bold = false, semibold = false, family = '';
         try {
           if (page.commonObjs?.has?.(fontName)) {
             const rawName = String(page.commonObjs.get(fontName)?.name || '');
@@ -2806,6 +2806,10 @@ const App: React.FC = () => {
             // Italic). The separator prefix keeps "bd"/"it" from matching mid-word.
             italic = /italic|oblique|[-_ ](?:it|ita|obl)/.test(realName);
             bold = /bold|black|heavy|semibold|demi|[-_ ](?:bd|blk|hvy?|sb|smbd|xbd?|extrab)/.test(realName);
+            // A MEDIUM / SEMIBOLD display weight ("GillSansNova-Medium" — Kurzweil's chart titles) is heavier
+            // than the body regular but not matched as bold. Flag it so a HEADING-SIZED display block can be
+            // rendered bold (scoped by size downstream, so a small same-font caption like "Source:" stays regular).
+            semibold = bold || /[-_ ](?:medium|md|semib|semibold|book)\b/.test(realName);
             // Font FAMILY: subset prefix ("ABCDEF+") stripped, weight/style suffix dropped. This is
             // the typesetter's family choice — the principled signal for a heading: a heading is set
             // in a display family DISTINCT from the body family (identified from the contents page
@@ -2814,7 +2818,7 @@ const App: React.FC = () => {
             family = rawName.replace(/^[A-Z]{6}\+/, '').split(/[-,]/)[0].trim();
           }
         } catch { /* font flags unavailable — fall back to plain text */ }
-        const style = { italic, bold, family };
+        const style = { italic, bold, semibold, family };
         cache.set(fontName, style);
         return style;
       };
@@ -2870,7 +2874,7 @@ const App: React.FC = () => {
       // `y` is the reading-order coordinate (the two-column re-flow re-stamps it so the y-sort yields
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
-      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; capH?: number; bold: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
+      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; capH?: number; bold: boolean; semibold?: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean; hRules: { y: number; x: number; w: number; double?: boolean }[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
@@ -2982,7 +2986,7 @@ const App: React.FC = () => {
             }
           } catch { /* figure extraction is best-effort — never block text extraction */ }
         }
-        const fontCache = new Map<string, { italic: boolean; bold: boolean; family: string }>();
+        const fontCache = new Map<string, { italic: boolean; bold: boolean; semibold: boolean; family: string }>();
 
         // Link annotations on this page: external URLs (rendered as hyperlinks) and
         // internal go-to destinations (footnote/cross-reference markers). For each go-to
@@ -3210,7 +3214,7 @@ const App: React.FC = () => {
             for (const u of ruleUnits) if (ruleUnits.filter(o => Math.abs(o.y - u.y) <= 50).length < 3 && !coincidesWithLink(u)) hRules.push(u);
           } catch { /* best-effort — a parse failure just means no vector bullets are detected on this page */ }
         }
-        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean; mcRole?: string; paraOrder?: number };
+        type PdfGlyph = { x: number; y: number; h: number; w: number; str: string; italic: boolean; bold: boolean; semibold?: boolean; family: string; linkUrl?: string; noteKey?: string; dropCap?: boolean; mcRole?: string; paraOrder?: number };
         const glyphs: PdfGlyph[] = [];
         // Marked-content role stack (only populated for tagged PDFs). The structural role of a
         // glyph is the innermost stack entry that is a block role, not an inline one — Span and
@@ -3243,7 +3247,7 @@ const App: React.FC = () => {
           // Fast path: the item touches no link rect — emit it whole.
           const overlaps = n > 0 && links.some(l => { const [x1, y1, x2, y2] = l.rect; return x < x2 + 1 && x + w > x1 - 1 && y >= y1 - 2 && y <= y2 + 2; });
           if (!overlaps) {
-            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold, family: emphasis.family, mcRole, paraOrder });
+            glyphs.push({ x, y, h, w, str, italic: emphasis.italic, bold: emphasis.bold, semibold: emphasis.semibold, family: emphasis.family, mcRole, paraOrder });
             continue;
           }
           // Resolve each character's link. PREFER the operator list's exact link text: find each
@@ -3302,6 +3306,7 @@ const App: React.FC = () => {
                 str: str.slice(runStart, i),
                 italic: emphasis.italic,
                 bold: emphasis.bold,
+                semibold: emphasis.semibold,
                 family: emphasis.family,
                 linkUrl: runLink?.url,
                 noteKey: runLink?.key,
@@ -4016,6 +4021,7 @@ const App: React.FC = () => {
               // shrinks below its own first line. Fall back to all non-dropcap glyphs for a punctuation-only line.
               capH: (() => { const L = items.filter(it => !it.dropCap && /[\p{L}\p{N}]/u.test(it.str || '')); const src = L.length ? L : items.filter(it => !it.dropCap); return src.length ? Math.max(...src.map(it => it.h)) : group.baseH; })(),
               bold: items.filter(it => it.bold).length > items.length / 2,
+              semibold: items.filter(it => it.semibold).length > items.length / 2,
               family: modeStr(items.map(it => it.family)),
               localFont: 0, // set after the document body font is known (see the windowed pass)
               mcRole: modeStr(items.map(it => it.mcRole || '')) || undefined, // tagged-PDF structural role
@@ -5492,6 +5498,14 @@ const App: React.FC = () => {
             const raggedLeft = sourceJustified === true && !groupIsHeading && !isBlockQuote && !isRightAttribution
               && blockNbsp === 0 && rightMargin > 0 && group.length >= 2
               && group.slice(0, -1).every(l => (rightMargin - l.rightX) > bodyFont * 0.9);
+            // A heading-SIZED display block set in a MEDIUM/SEMIBOLD weight (a chart title "UK Life
+            // Expectancy…", GillSansNova-Medium at 1.25x body) reads as BOLD vs the body regular, but its
+            // weight name isn't "bold" so the glyph bold flag is false. Render it bold — GATED on an ENLARGE
+            // size tier (\uE01D-\uE01F) so a SMALL same-font caption ("Source:", body-size) stays regular —
+            // when it isn't already bold-marked and it has letters.
+            if (/[\uE01D-\uE01F]/u.test(sizeSentinel) && group.some(l => l.semibold) && !/\*\*/u.test(text) && /[A-Za-z]/u.test(text)) {
+              text = `**${text}**`;
+            }
             blocks.push({
               text: _headItalicMark + (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
