@@ -4448,7 +4448,7 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number; pbBreak?: boolean };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number; pbBreak?: boolean; dataColumn?: boolean };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number; paraLeftMargin: number }[] = [];
 
       // ── Unify TOC indent tiers across the whole run ──
@@ -5032,7 +5032,7 @@ const App: React.FC = () => {
         const emitDataColumn = (group: PdfLine[]): void => {
           const VLB = String.fromCharCode(0xE024);
           const last = group[group.length - 1];
-          blocks.push({ text: group.map(l => l.text.trim()).join(VLB), role: 'body', firstX: group[0].x, firstRightX: group[0].rightX, lastRightX: last.rightX, lastText: last.text, topY: Math.max(...group.map(l => l.pageY)), bodyX: group[0].x });
+          blocks.push({ text: group.map(l => l.text.trim()).join(VLB), role: 'body', firstX: group[0].x, firstRightX: group[0].rightX, lastRightX: last.rightX, lastText: last.text, topY: Math.max(...group.map(l => l.pageY)), bodyX: group[0].x, dataColumn: true });
         };
         let i = 0;
         // Tracks whether the group emitted just before this one was a right-aligned attribution/credit — so a
@@ -5916,7 +5916,17 @@ const App: React.FC = () => {
             return;
           }
           const text = enc(unit.block);
-          if (unitIndex === 0 && continues) {
+          if (unitIndex === 0 && pages.length > 0 && prevBlock?.dataColumn && unit.block.dataColumn
+            && Math.abs(first.firstX - prevBlock.firstX) <= bodyFont) {
+            // A "YYYY: value" data column that STRADDLES a PDF page seam: the short remnant at the foot of the
+            // previous page and its continuation opening this page are ONE tight column. The prose seam-merge
+            // (`continues`) can't handle it — its gate needs the prev tail to FILL the measure (a data line ends
+            // short by design) and its join glues with a SPACE (which would flatten the column into a run-on).
+            // Merge into the previous paragraph with the tight U+E024 break instead, keeping the [[PAGE]] marker
+            // inline at the seam for page-offset mapping (it's stripped for display like any mid-paragraph marker).
+            // Gated on BOTH blocks being data columns at the SAME left edge, so only a genuine split column joins.
+            pages[pages.length - 1] = `${pages[pages.length - 1]}${marker}${unit.block.text}`;
+          } else if (unitIndex === 0 && continues) {
             // Merged continuation: drop its own leading block-indent NBSP run (it inherits the opener's
             // indent) so an indented item's page-wrapped tail doesn't leak an NBSP gap mid-sentence.
             // A page-spanning FIRST-LINE-INDENT paragraph: its lone first line at the previous page's bottom
