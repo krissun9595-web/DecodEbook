@@ -4135,7 +4135,15 @@ const App: React.FC = () => {
           const trimmed = value.trim();
           const tail = trimmed.match(/\[([^\]\n]+)\]\(([^)\n]*)\)\s*$/u);
           if (tail && /#pdffn/i.test(tail[2])) return false;
-          return /[\d](?:[–—-]\d+)?\s*$/u.test(trimmed.replace(/\[([^\]\n]+)\]\([^)\n]*\)\s*$/u, '$1'));
+          const stripped = trimmed.replace(/\[([^\]\n]+)\]\([^)\n]*\)\s*$/u, '$1');
+          // A "YYYY: value" chart-data line (a 4-digit YEAR label + a currency/percent/number value —
+          // Kurzweil's income & poverty charts, "2010: $154.15" / "1950: ~30%") is a DATA column, NOT an
+          // index entry, yet its trailing digit made it count as a page ref → ≥6 of them classified the whole
+          // chart page as a LIST/index and merged the column into a run-on. Exclude that exact pattern only,
+          // so prose/notes ("129. …") and real index entries ("Topic, 316") are untouched (verified: this
+          // flips ONLY the chart-data pages, not the notes/price-history pages the broad decimal test hit).
+          if (/^\s*(?:\*\*|\*)?\d{4}:\s*[~<>≈]?\$?[\d.,]+%?\s*$/u.test(trimmed)) return false;
+          return /[\d](?:[–—-]\d+)?\s*$/u.test(stripped);
         };
         const isListPage = pageLines.filter(line => endsWithPageRef(line.text)).length >= 6;
         // A GENUINELY two-column index reflowed by band detection keeps each right-column (col 1) entry
