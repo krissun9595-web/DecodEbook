@@ -4377,7 +4377,7 @@ const App: React.FC = () => {
         // dragged down by the tiny "[111]" — but it's not a heading; without the letter test it split off as a
         // spurious small-caps head from its title line ("…and 10"). Genuine small-caps heads (PREMONITIONS) pass.
         if (!scEndsClause && bodyFont > 0 && ch >= bodyFont * 1.3 && ch >= line.h * 1.25
-          && /[A-Za-zÀ-ɏ]{2,}/u.test(scText)) return true;
+          && /[A-Za-zÀ-ɏ]{2,}/u.test(scText.replace(/\[([^\]\n]*)\]\([^)\n]*\)/gu, '$1'))) return true; // visible text only — a footnote MARKER link "[111](#pdffn…)" carries href letters; strip them
         return false;
       };
       // A line "fills the measure" if its right edge reaches the page's text right margin
