@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v221-firstindent-declared-ratio';
+const CHAPTER_TEXT_CACHE_VERSION = 'v222-inline-smallcaps';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -370,7 +370,7 @@ const LETTER_SPACINGS: Record<string, string> = {
   wider: 'tracking-wider',
 };
 
-type InlineFormat = 'plain' | 'bold' | 'italic' | 'underline' | 'strike' | 'link' | 'attribution' | 'attributionFootnote' | 'footnote' | 'referenceMarker' | 'lineBreak';
+type InlineFormat = 'plain' | 'bold' | 'italic' | 'underline' | 'strike' | 'smallcaps' | 'link' | 'attribution' | 'attributionFootnote' | 'footnote' | 'referenceMarker' | 'lineBreak';
 
 interface InlineSegment {
   text: string;
@@ -451,7 +451,9 @@ const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/\*\*([^*]+)\*\*/g, '$1')
   .replace(/__([^_]+)__/g, '$1')
   .replace(/~~([^~]+)~~/g, '$1')
-  .replace(/\*([^*]+)\*/g, '$1');
+  .replace(/([^]+)/g, '$1')
+  .replace(/\*([^*]+)\*/g, '$1')
+  .replace(//g, '');
 
 const stripOrphanDisplayMarkers = (value: string): string =>
   // Strip orphan emphasis markers — but KEEP a tilde used as an approximation sign ("~1.1", "~50"): a lone
@@ -942,7 +944,7 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
     segments.push({ text: `${cleanNoteMarkerLabel(leadingRomanReference[1])}${leadingRomanReference[2]}`, format: 'referenceMarker', noteEntry: true });
     cursor = leadingRomanReference[0].length;
   }
-  const pattern = /\[([^\]]+)\]\s*\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*/g;
+  const pattern = /\[([^\]]+)\]\s*\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|([^]+)/g;
   const suppressItalicRuns = !!options.suppressBroadItalic && broadItalicCoverageRatio(value) >= 0.72;
   let match: RegExpExecArray | null;
   pattern.lastIndex = cursor;
@@ -1026,11 +1028,16 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
       pushEmphasisContent(match[5], 'strike');
     } else if (match[6]) {
       pushEmphasisContent(match[6], suppressItalicRuns ? 'plain' : 'italic');
+    } else if (match[7]) {
+      pushEmphasisContent(match[7], 'smallcaps');
     }
     cursor = pattern.lastIndex;
   }
 
   if (cursor < value.length) segments.push({ text: value.slice(cursor), format: 'plain' });
+  // A small-caps run split across a sentence boundary leaves a LONE U+E02D (no partner in this sentence) in a
+  // plain segment — strip it so no stray glyph renders (matched smallcaps segments hold delimiter-free text).
+  for (const _s of segments) if (_s.format === 'plain' && _s.text && _s.text.includes('')) _s.text = _s.text.replace(//g, '');
   return segments
     .flatMap(segment => {
       if (segment.format === 'footnote' || segment.format === 'referenceMarker' || segment.format === 'lineBreak') return [segment];
@@ -3742,6 +3749,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         return 'underline decoration-neon-cyan/70 underline-offset-4 text-zinc-100';
       case 'strike':
         return 'line-through decoration-neon-red/70 text-zinc-500';
+      case 'smallcaps':
+        // all-small-caps (not small-caps): the source runs are stored ALL-UPPERCASE (brief_history's run-in
+        // openers "LIFE EXISTED ON") where plain small-caps is a no-op — all-small-caps renders uppercase as
+        // small capitals too. Lowercase source (Singularity SCAP) renders the same either way. No mixed-case
+        // inline small-caps in the corpus, so no large-initial is lost.
+        return '[font-variant-caps:all-small-caps]';
       case 'link':
         return LINK_STYLES[settings.highlightColor];
       case 'attribution':

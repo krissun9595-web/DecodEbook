@@ -1256,6 +1256,11 @@ const App: React.FC = () => {
         // small-caps run-in) — but never upper-case a markdown link (its href must stay verbatim).
         const _tt = ((el as HTMLElement).style?.textTransform || declProp(el, 'text-transform') || '').toLowerCase();
         const t = _tt === 'uppercase' && !/\]\(/.test(text) ? text.toUpperCase() : text;
+        // Inline small-caps run (font-variant:small-caps via a class/CSS, e.g. brief_history's run-in chapter
+        // openers `<span class="smallcaps">LIFE EXISTED ON</span>`, Singularity `span.SCAP`) → the U+E02D
+        // inline sentinel the reader renders as small caps. Corpus small-caps runs are plain (never also
+        // bold/italic), so wrap only when the inner has no emphasis markers, avoiding a nested-marker tangle.
+        if (elSmallCapsOf(el) && !/[*_]/u.test(t)) return `${t}`;
         if (/[*_]/u.test(t)) return t;
         if (elBoldOf(el)) return `**${t}**`;
         if (elItalicOf(el)) return `*${t}*`;
