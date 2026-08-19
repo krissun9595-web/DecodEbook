@@ -1241,7 +1241,14 @@ const App: React.FC = () => {
       const elSmallCapsOf = (el: Element): boolean => {
         const inline = ((el as HTMLElement).style?.fontVariant || (el as HTMLElement).style?.fontVariantCaps || '').toLowerCase();
         if (/small-caps/.test(inline)) return true; if (inline === 'normal') return false;
-        if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssSmallCaps.has(c))) return true;
+        const _cls = (el.getAttribute('class') || '').split(/\s+/);
+        if (_cls.some(c => cssSmallCaps.has(c))) return true;
+        // A class explicitly NAMED small-caps but implemented via font-size only (no `font-variant`): the text
+        // is pre-uppercased and shrunk (brief_history's run-in openers `span.smallcaps{font-size:.833em}`,
+        // Sovereign `.smallcaps{.75em;text-transform:uppercase}`). Treat it as small-caps intent — the reader
+        // renders it small-caps (inline: all-small-caps → small capitals; block: font-variant, a no-op on the
+        // already-uppercase text, harmless).
+        if (_cls.some(c => /^small-?caps\d*$/i.test(c))) return true;
         return /small-caps/.test((declProp(el, 'font-variant') || declProp(el, 'font-variant-caps') || '').toLowerCase());
       };
       // CSS-driven emphasis: an element italicised/bolded via a class/tag/attribute (not <i>/<b>) — wrap its
