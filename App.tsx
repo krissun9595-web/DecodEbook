@@ -917,7 +917,7 @@ const App: React.FC = () => {
       const cssLeft = new Set<string>();    // text-align:left — explicit override of an inherited justify
       // Doc-level layout tally (mirrors the PDF's line-fill measurement, but from the CSS the EPUB declares):
       // count body paragraphs, how many resolve to justified text, and how many carry a first-line indent.
-      let bodyParaTally = 0, justifiedParaTally = 0, firstIndentParaTally = 0;
+      let bodyParaTally = 0, justifiedParaTally = 0, firstIndentParaTally = 0, flushDeclParaTally = 0;
       const firstIndentEms: number[] = []; // declared first-line-indent magnitudes (em) across body <p> → source median
       const cssBlock = new Set<string>();  // display:block — keep line breaks inside a heading
       const cssItalic = new Set<string>(); // font-style:italic — many books italicise via a class, not <i>
@@ -1985,10 +1985,20 @@ const App: React.FC = () => {
           if (tag === 'p' && trimmed.length > 40) {
             bodyParaTally++;
             if (effectiveAlignOf(element) === 'justify') justifiedParaTally++;
+            // Resolve this paragraph's DECLARED first-line indent (inline style, else its text-indent-declaring
+            // class with the largest-magnitude value). The book's first-line-indent convention is judged ONLY
+            // over paragraphs that DECLARE a treatment — positive (indented) vs ~zero (flush body). UNDECLARED
+            // paragraphs and NEGATIVE (hanging index/bibliography) entries vote for NEITHER: else a big index /
+            // notes / undeclared front-matter section (hundreds of flush/hanging ¶) drowns a genuine first-line
+            // indent body — Kurzweil has 697 indented body ¶ (x04-Body-Text, 1.32em) yet the raw all-¶ ratio
+            // fell to 0.24, misclassifying the book as block-style and flushing every paragraph.
             const _tiIn = (element as HTMLElement).style?.textIndent;
-            let _ti = _tiIn ? (lenToEm(_tiIn) ?? 0) : 0;
-            if (_ti <= 0) for (const c of (element.getAttribute('class') || '').split(/\s+/)) { const b = cssBoxLeftEm[c]; if (b?.ti) _ti = Math.max(_ti, b.ti); }
-            if (_ti > 0.1) { firstIndentParaTally++; firstIndentEms.push(_ti); }
+            const _hasInlineTi = !!_tiIn && _tiIn.trim() !== '';
+            const _declCls = (element.getAttribute('class') || '').split(/\s+/).filter(c => cssTiDeclared.has(c));
+            let _declTi = _hasInlineTi ? (lenToEm(_tiIn) ?? 0) : 0;
+            if (!_hasInlineTi) for (const c of _declCls) { const t = cssBoxLeftEm[c].ti; if (Math.abs(t) > Math.abs(_declTi)) _declTi = t; }
+            if (_declTi > 0.1) { firstIndentParaTally++; firstIndentEms.push(_declTi); }
+            else if ((_hasInlineTi || _declCls.length > 0) && Math.abs(_declTi) <= 0.1) flushDeclParaTally++;
           }
           // Reproduce the source's per-paragraph FIRST-LINE INDENT. The reader indents every body paragraph
           // by default (1.75em); a paragraph the source sets flush (text-indent:0 — e.g. Sovereign's
@@ -2611,7 +2621,14 @@ const App: React.FC = () => {
       // (the reader's 'auto' align then mirrors it); firstLineIndent = most carry a first-line indent
       // (true) vs clearly block-style (false) — undefined when unclear, leaving the reader's default.
       const justified = bodyParaTally >= 8 ? justifiedParaTally / bodyParaTally > 0.6 : undefined;
-      const firstLineIndent = bodyParaTally >= 8 ? firstIndentParaTally / bodyParaTally >= 0.25 : undefined;
+      // Judge over DECLARED paragraphs (indented + flush-declared) with a 0.5 split — robust to a book whose
+      // non-prose (index/notes/undeclared) volume would otherwise dilute the all-¶ ratio below 0.25. Fall back
+      // to the all-¶ ratio only when too few paragraphs declare a treatment (a book that omits text-indent
+      // entirely — then the reader's default applies, unchanged from before).
+      const _declTotal = firstIndentParaTally + flushDeclParaTally;
+      const firstLineIndent = _declTotal >= 8
+        ? firstIndentParaTally / _declTotal >= 0.5
+        : (bodyParaTally >= 8 ? firstIndentParaTally / bodyParaTally >= 0.25 : undefined);
       // MEASURED first-line-indent magnitude (em): the source declares its own indent (Random House
       // `p.indented`/`extract_indented` = 1em), which the reader otherwise renders at its fixed 1.75em —
       // ~2x too deep. Take the MEDIAN declared indent (clamp 0.5–2.5em) so the reader reproduces the real
