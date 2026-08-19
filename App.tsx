@@ -960,6 +960,7 @@ const App: React.FC = () => {
       const cssBoxLeftEm: Record<string, { m: number; p: number; ti: number }> = {}; // class → left margin/padding/text-indent (em)
       const cssTiDeclared = new Set<string>(); // classes that EXPLICITLY declare text-indent (so ti:0 = a deliberate flush, not a default)
       const cssFontRaw: Record<string, string> = {}; // class → raw font-size value (for the U+E01B-E01F size tier)
+      const cssColor: Record<string, string> = {}; // class → text `color` (a saturated accent, e.g. Transurfing's teal `.zag`)
       // Decorative horizontal RULES the EPUB draws as top/bottom BORDERS (mirrors the PDF's U+E021): a
       // `border-top/bottom: … double …` brackets a chapter DECK (`.heading_break1`), a `… solid/dashed …`
       // brackets an epigraph (`.blockquote1/2a/2b`) or tops a footnote block (`.footnote`). Only top/bottom
@@ -998,6 +999,8 @@ const App: React.FC = () => {
             const mE = sideLeftEm(rule[2], 'margin'), pE = sideLeftEm(rule[2], 'padding');
             const tiM = /text-indent\s*:\s*([^;}]+)/i.exec(rule[2]); const tiE = tiM ? lenToEm(tiM[1]) : null;
             const fsM = /font-size\s*:\s*([^;}]+)/i.exec(rule[2]); const fs = fsM ? fsM[1].trim() : null;
+            // text `color` (NOT background-/border-color) — a saturated accent the reader maps to its own palette.
+            const colM = /(?:^|[;{\s])color\s*:\s*(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\))/i.exec(rule[2]); const col = colM ? colM[1].trim() : null;
             const btM = /border-top\s*:\s*[^;}]*?\b(solid|double|dashed)\b/i.exec(rule[2]);
             const bbM = /border-bottom\s*:\s*[^;}]*?\b(solid|double|dashed)\b/i.exec(rule[2]);
             // A left/right border means this class is a BOX side (e.g. a promo sign-up box's `.signup-top`
@@ -1009,7 +1012,7 @@ const App: React.FC = () => {
             // A `::before/::after` rule with `content` goes to cssBeforeRules (e.g. the attribution em-dash);
             // everything else (tag/attr/descendant/class) goes to cssRules for general matching.
             const _relevant = am || isBlock || isItalic || isBold || isNormalWeight || isNormalStyle
-              || isSmallCaps || isNormalVariant
+              || isSmallCaps || isNormalVariant || col != null
               || li || mE != null || pE != null || tiE != null || fs != null || btM || bbM || hasListStyle;
             const _beforeContent = /::?(?:before|after)\b/i.test(rule[1]) ? /content\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/i.exec(rule[2]) : null;
             // A `::first-letter` rule that FLOATS its initial is a drop cap (a chapter-opener's oversized
@@ -1032,7 +1035,7 @@ const App: React.FC = () => {
               if (!/[a-zA-Z]|\[|\./.test(sel.replace(/[>+~\s*]/g, ''))) continue;
               if (_relevant) { const _rt = (sel.split(/\s*>\s*|\s+/).pop() || '').match(/^([a-zA-Z][\w-]*)/); cssRules.push({ sel, decl: rule[2], spec: specOf(sel), tag: _rt ? _rt[1].toLowerCase() : '' }); }
             }
-            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !isSmallCaps && !isNormalVariant && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
+            if (!am && !isBlock && !isItalic && !isBold && !isNormalWeight && !isNormalStyle && !isSmallCaps && !isNormalVariant && col == null && !li && mE == null && pE == null && tiE == null && fs == null && !btM && !bbM) continue;
             // Attribute a property ONLY to the class(es) in the RIGHTMOST compound (the rule's actual
             // subject), not every class in the selector. `div.preface dt em code{font-style:italic}` styles
             // the `code`, NOT `.preface` — over-attributing to `.preface` flat-italicised whole sections.
@@ -1060,6 +1063,7 @@ const App: React.FC = () => {
               if (mE != null || pE != null || tiE != null) { const cur = cssBoxLeftEm[c] || { m: 0, p: 0, ti: 0 }; cssBoxLeftEm[c] = { m: mE ?? cur.m, p: pE ?? cur.p, ti: tiE ?? cur.ti }; }
               if (tiE != null) cssTiDeclared.add(c);
               if (fs) cssFontRaw[c] = fs;
+              if (col) cssColor[c] = col;
             }
           }
         } catch { /* skip an unreadable stylesheet */ }
@@ -1231,6 +1235,33 @@ const App: React.FC = () => {
         if (inline === 'italic') return true; if (inline === 'normal') return false;
         if ((el.getAttribute('class') || '').split(/\s+/).some(c => cssItalic.has(c))) return true; // calibre fast path
         return declProp(el, 'font-style') === 'italic'; // general matcher (professional tag/descendant/attr rules)
+      };
+      const cssColorOf = (el: Element): string | null => {
+        const inline = (el as HTMLElement).style?.color;
+        if (inline) return inline;
+        for (const c of (el.getAttribute('class') || '').split(/\s+/)) if (cssColor[c]) return cssColor[c];
+        return declProp(el, 'color');
+      };
+      // Map a source text `color` to the NEAREST reader-palette accent by HUE, returning its sentinel
+      // (U+E030 + index into cyan/red/pink/violet/amber/yellow). '' for a default/near-grey color (black body
+      // text, grey, near-white) — the reader keeps its own text colour there. The reader owns the actual hex,
+      // so a book's arbitrary accent (Transurfing's teal #36938f → cyan) stays coherent with the dark theme.
+      const READER_ACCENT_HUES = [184, 348, 312, 255, 43, 55]; // cyan, red, pink, violet, amber, yellow
+      const accentSentinelFor = (raw: string | null): string => {
+        if (!raw) return '';
+        let r: number, g: number, b: number;
+        const hm = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(raw.trim());
+        if (hm) { const h = hm[1].length === 3 ? hm[1].replace(/(.)/g, '$1$1') : hm[1]; r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); }
+        else { const rm = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(raw); if (!rm) return ''; r = +rm[1]; g = +rm[2]; b = +rm[3]; }
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+        const l = (mx + mn) / 2 / 255;
+        const s = d === 0 ? 0 : d / (255 - Math.abs(mx + mn - 255));
+        if (s < 0.22 || l < 0.15 || l > 0.9) return ''; // grey / near-black body / near-white → not an accent
+        let hue = 0;
+        if (d) { if (mx === r) hue = ((g - b) / d) % 6; else if (mx === g) hue = (b - r) / d + 2; else hue = (r - g) / d + 4; hue *= 60; if (hue < 0) hue += 360; }
+        let best = 0, bestD = 999;
+        for (let i = 0; i < READER_ACCENT_HUES.length; i++) { let dh = Math.abs(hue - READER_ACCENT_HUES[i]); if (dh > 180) dh = 360 - dh; if (dh < bestD) { bestD = dh; best = i; } }
+        return String.fromCharCode(0xE030 + best);
       };
       const elBoldOf = (el: Element): boolean => {
         const inline = ((el as HTMLElement).style?.fontWeight || '').toLowerCase();
@@ -1789,6 +1820,7 @@ const App: React.FC = () => {
           // titles, `font-variant:small-caps`) → the U+E02C whole-paragraph small-caps sentinel so the reader
           // renders it small-caps on the ORIGINAL mixed-case text (not the flat all-caps it decoded to before).
           const _hSmallCapsMark = elSmallCapsOf(element) ? String.fromCharCode(0xE02C) : '';
+          const _hColorMark = accentSentinelFor(cssColorOf(element)); // source heading color → reader accent (U+E030+)
           // A "heading" whose text is a LIST-MARKER LABEL ("IF:"/"THEN:", or a bare "1."/"a." marker) is a list
           // head, NOT a section title (Singularity's `.x07-List-Head` <h2>IF:</h2> above a numbered <ol>). Emit
           // it as an INDENTED, non-heading paragraph (leading NBSP from its source left margin, no U+E013) so
@@ -1841,7 +1873,7 @@ const App: React.FC = () => {
           const _wrapHeadingLine = (l: string, k: number, tier: string): string => {
             const kid = (_off === 0 || _off === 1) ? _kids[k - _off] : undefined;
             const br = kid ? borderRuleOf(kid) : { top: null, bottom: null };
-            return (br.top ? ruleBlock(br.top) : '') + _hAlignSent + tier + SENT_HEADING + _hItalicMark + _hSmallCapsMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
+            return (br.top ? ruleBlock(br.top) : '') + _hAlignSent + tier + SENT_HEADING + _hItalicMark + _hSmallCapsMark + _hColorMark + l + (br.bottom ? ruleBlock(br.bottom) : '');
           };
           if (_multiSized && (_lines.length === _kidEms.length || _lines.length === _kidEms.length + 1)) {
             const _ems = _lines.length === _kidEms.length ? _kidEms : [_h1em, ..._kidEms];
@@ -1888,6 +1920,7 @@ const App: React.FC = () => {
           // Drop cap — a chapter-opener <p> whose class has a floated ::first-letter → the U+E02E sentinel so
           // the reader floats an oversized initial (via a ::first-letter CSS class, reproducing the source).
           const _pDropCap = (element.getAttribute('class') || '').split(/\s+/).some(c => cssDropCap.has(c));
+          const _pColorMark = accentSentinelFor(cssColorOf(element)); // source color (Transurfing teal .zag) → reader accent
           const _before = beforeContentOf(element);
           // The "already emphasised" guard must ignore a LINK's href — a TOC/Contents entry is a single
           // link "[Chapter 1: …](09_Chapter_1_Where_Are_W.xhtml)" whose href is full of underscores; counting
@@ -2096,7 +2129,7 @@ const App: React.FC = () => {
           // paragraph that DECLARES a positive text-indent, so the reader restores its first-line indent ON TOP of
           // the block padding. Positive signal (not "absence of E018"), so a <dd>/blockquote/index never picks it up.
           const _firstIndentSentinel = (_isSetoff && _pLeftEm >= 0.5 && _tiDecl.some(v => v > 0.05)) ? String.fromCharCode(0xE029) : '';
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pDropCap ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pDropCap ? '' : ''}${_pColorMark}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         // A DEFINITION LIST (<dl> of <dt> term / <dd> description) — O'Reilly's "What You Will Learn" and
         // similar. Without a handler the whole list flattens into run-on prose. Emit each <dt> as its OWN

@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v224-smallcaps-exact-size';
+const CHAPTER_TEXT_CACHE_VERSION = 'v225-heading-accent-color';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -248,6 +248,9 @@ interface ParagraphData {
     // Chapter-opener DROP CAP (U+E02E) — the source floats an oversized ::first-letter. Reproduced by a
     // `::first-letter` CSS class on the paragraph's first line (an inline style can't target the pseudo).
     dropCap?: boolean;
+    // A heading/paragraph the source COLORS (U+E030-E035) — the reader-palette accent nearest the source
+    // color by hue (Transurfing's teal headings → cyan). Kept as a hex the render applies as `color`.
+    accentColor?: string;
     // A VERSE/poem stanza (U+E024 hard line breaks from extraction). Its lines render TIGHT (each on its own
     // line via lineBreakAfter, no per-line paragraph gap) and each stanza is a paragraph, so a stanza gap
     // (mt-4) sits between them — matching the source's `.poem` (margin:0) / `.poemb` (stanza break) layout.
@@ -1376,7 +1379,7 @@ export const buildPageSentenceData = (pageText: string): {
     // the sentinels + any NBSP indent); the closing marker at the block end stays, so the inline italic/bold
     // is preserved AND the block role/size/indent parse correctly.
     rawPText = rawPText.replace(/^([*_~]{1,3})([\uE010-\uE02C\s]+)/u, '$2$1');
-    const ctrl = rawPText.match(/^\s*[--]+/);
+    const ctrl = rawPText.match(/^\s*[---]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | 'left' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
@@ -1388,6 +1391,8 @@ export const buildPageSentenceData = (pageText: string): {
     const italic = ctrlChars.includes(''); // whole-paragraph italic (epigraph/quote)
     const smallCaps = ctrlChars.includes(''); // whole-paragraph small-caps (section head / attribution / data title)
     const dropCap = ctrlChars.includes(''); // chapter-opener drop cap
+    const _accCode = [...ctrlChars].map(c => c.charCodeAt(0)).find(cc => cc >= 0xE030 && cc <= 0xE035);
+    const accentColor = _accCode != null ? ['#00f3ff', '#ff003c', '#ff4fd8', '#a78bfa', '#fbbf24', '#FCEE0A'][_accCode - 0xE030] : undefined;
     // U+E022 — the source has a genuine SET-OFF gap above this block-quote (>=1.75x the line gap):
     // a real epigraph/callout. Absent = the quote flows from its lead-in (e.g. a colon-introduced definition).
     const setoffAbove = ctrlChars.includes('');
@@ -1417,7 +1422,7 @@ export const buildPageSentenceData = (pageText: string): {
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
     const narrowAttribution = ctrlChars.includes('\uE02B'); // U+E02B: source width-constrained right attribution (praise credit width:80%) -> reader insets it
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE029\uE02B\uE02C\uE02E]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE029\uE02B\uE02C\uE02E\uE030-\uE035]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1449,7 +1454,7 @@ export const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic, smallCaps, dropCap, narrowAttribution });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic, smallCaps, dropCap, accentColor, narrowAttribution });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -5359,7 +5364,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
                             className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} ${para.dropCap && lineIdx === 0 ? 'epub-drop-cap' : ''} break-words min-w-0`}
-                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
+                            style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(para.accentColor ? { color: para.accentColor } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
                               const isAudioActive = autoScroll && globalIndex === activeSentenceIndex;
@@ -5416,7 +5421,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
-                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(para.accentColor ? { color: para.accentColor } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
