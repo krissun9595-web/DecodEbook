@@ -1267,7 +1267,16 @@ const App: React.FC = () => {
         // openers `<span class="smallcaps">LIFE EXISTED ON</span>`, Singularity `span.SCAP`) → the U+E02D
         // inline sentinel the reader renders as small caps. Corpus small-caps runs are plain (never also
         // bold/italic), so wrap only when the inner has no emphasis markers, avoiding a nested-marker tangle.
-        if (elSmallCapsOf(el) && !/[*_]/u.test(t)) return `${t}`;
+        if (elSmallCapsOf(el) && !/[*_]/u.test(t)) {
+          // SIZE-based small-caps (a class that pre-uppercases + shrinks the text, no font-variant —
+          // brief_history .833em, Sovereign .75em) → reproduce the EXACT reduced size (keeps the uppercase
+          // text, just smaller) via the U+E02F sentinel carrying the ratio (U+E100 + round(ratio×100)).
+          // FONT-VARIANT small-caps (Singularity SCAP, ~1em, lowercase) → all-small-caps via U+E02D.
+          const _r = currentBodyEm > 0 ? resolveFontEm(el) / currentBodyEm : 1;
+          return (_r > 0.4 && _r < 0.95)
+            ? `${String.fromCharCode(0xE100 + Math.round(_r * 100))}${t}`
+            : `${t}`;
+        }
         if (/[*_]/u.test(t)) return t;
         if (elBoldOf(el)) return `**${t}**`;
         if (elItalicOf(el)) return `*${t}*`;

@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v223-smallcaps-named-class';
+const CHAPTER_TEXT_CACHE_VERSION = 'v224-smallcaps-exact-size';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -384,6 +384,9 @@ interface InlineSegment {
   // source it sits INLINE at the note's own size, not as a raised superscript — so it renders inline even
   // outside a Notes chapter (where it would otherwise fall to the superscript reference-marker branch).
   noteEntry?: boolean;
+  // Size-based small-caps (a class that pre-uppercases + shrinks the text, no font-variant) — the exact
+  // source font-size ratio (em). Rendered as a reduced inline font-size instead of all-small-caps.
+  sizeEm?: number;
 }
 
 interface FootnoteRef {
@@ -453,7 +456,8 @@ const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/~~([^~]+)~~/g, '$1')
   .replace(/([^]+)/g, '$1')
   .replace(/\*([^*]+)\*/g, '$1')
-  .replace(//g, '');
+  .replace(//g, '')
+  .replace(/[\uE02F\uE100-\uE1FF]/g, '');
 
 const stripOrphanDisplayMarkers = (value: string): string =>
   // Strip orphan emphasis markers — but KEEP a tilde used as an approximation sign ("~1.1", "~50"): a lone
@@ -944,7 +948,7 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
     segments.push({ text: `${cleanNoteMarkerLabel(leadingRomanReference[1])}${leadingRomanReference[2]}`, format: 'referenceMarker', noteEntry: true });
     cursor = leadingRomanReference[0].length;
   }
-  const pattern = /\[([^\]]+)\]\s*\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|([^]+)/g;
+  const pattern = /\[([^\]]+)\]\s*\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|([^]+)|([-])([^]+)/g;
   const suppressItalicRuns = !!options.suppressBroadItalic && broadItalicCoverageRatio(value) >= 0.72;
   let match: RegExpExecArray | null;
   pattern.lastIndex = cursor;
@@ -1030,6 +1034,9 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
       pushEmphasisContent(match[6], suppressItalicRuns ? 'plain' : 'italic');
     } else if (match[7]) {
       pushEmphasisContent(match[7], 'smallcaps');
+    } else if (match[8]) {
+      // Size-based small-caps: reproduce the source's exact reduced font-size (ratio encoded in match[8]).
+      segments.push({ text: match[9], format: 'smallcaps', sizeEm: (match[8].charCodeAt(0) - 0xE100) / 100 });
     }
     cursor = pattern.lastIndex;
   }
@@ -1037,7 +1044,7 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
   if (cursor < value.length) segments.push({ text: value.slice(cursor), format: 'plain' });
   // A small-caps run split across a sentence boundary leaves a LONE U+E02D (no partner in this sentence) in a
   // plain segment — strip it so no stray glyph renders (matched smallcaps segments hold delimiter-free text).
-  for (const _s of segments) if (_s.format === 'plain' && _s.text && _s.text.includes('')) _s.text = _s.text.replace(//g, '');
+  for (const _s of segments) if (_s.format === 'plain' && _s.text && /[\uE02D\uE02F\uE100-\uE1FF]/u.test(_s.text)) _s.text = _s.text.replace(/[\uE02D\uE02F\uE100-\uE1FF]/g, '');
   return segments
     .flatMap(segment => {
       if (segment.format === 'footnote' || segment.format === 'referenceMarker' || segment.format === 'lineBreak') return [segment];
@@ -3779,11 +3786,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     playbackActive = false,
     marker?: string,
     emphasis?: 'bold' | 'italic' | 'underline',
-    noteEntry = false
+    noteEntry = false,
+    sizeEm?: number
   ) => {
     if (format === 'lineBreak') return <br key={key} />;
     const className = [
-      inlineFormatClassFor(format),
+      // A SIZE-based small-caps run reproduces the source's exact reduced font-size (below) — not the
+      // all-small-caps letterforms — so drop the smallcaps class for it.
+      format === 'smallcaps' && sizeEm != null ? '' : inlineFormatClassFor(format),
       inked ? 'transition-colors text-zinc-300' : '',
       // Source emphasis wrapping a link/marker (a bold TOC entry) — apply the weight ON TOP of the link style.
       emphasis === 'bold' ? 'font-bold' : emphasis === 'italic' ? 'italic' : emphasis === 'underline' ? 'underline' : '',
@@ -3793,6 +3803,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       ...(playbackActive && format !== 'footnote' ? {
         color: HIGHLIGHT_TEXT_COLORS[settings.highlightColor],
       } : {}),
+      ...(sizeEm != null ? { fontSize: `${sizeEm}em` } : {}),
     } as React.CSSProperties;
     const leafStyle = Object.keys(style).length > 0 ? style : undefined;
 
@@ -4112,11 +4123,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     segments.forEach((segment, segmentIndex) => {
       if (segment.format === 'footnote' || segment.format === 'lineBreak') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
         return;
       }
       if (segment.format === 'attributionFootnote') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
         visibleCursor += segment.text.length;
         return;
       }
@@ -4127,21 +4138,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const relevantRanges = inkRanges.filter(range => range.start < segmentEnd && range.end > segmentStart);
 
       if (relevantRanges.length === 0) {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
       } else {
         relevantRanges.forEach((range, rangeIndex) => {
           const localStart = Math.max(0, range.start - segmentStart);
           const localEnd = Math.min(segment.text.length, range.end - segmentStart);
           if (localStart > localCursor) {
-            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
+            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
           }
           if (localEnd > localStart) {
-            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
+            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
           }
           localCursor = Math.max(localCursor, localEnd);
         });
         if (localCursor < segment.text.length) {
-          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry));
+          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
         }
       }
       visibleCursor = segmentEnd;
