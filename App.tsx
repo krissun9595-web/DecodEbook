@@ -1358,15 +1358,18 @@ const App: React.FC = () => {
       // small-caps, so shrinking it would render the title tiny (Sovereign's "PREMONITIONS"). Headings go
       // through their own path (_tierOf, enlarge-only) or pass allowShrink=false here, so they can't shrink.
       const sizeTierSentinel = (el: Element, allowShrink = false): string => {
+        // Also carry the source text COLOR here (→ reader accent): sizeTierSentinel is in EVERY block-emit
+        // return, so folding the accent in one place colours a paragraph regardless of which return path it
+        // takes (hanging entry, indented, plain, …) — a per-return mark kept getting missed on some paths.
+        const _color = accentSentinelFor(cssColorOf(el));
         const ratio = currentBodyEm > 0 ? resolveFontEm(el) / currentBodyEm : 1;
-        if (ratio >= 1.6) return String.fromCharCode(0xE01F);
-        if (ratio >= 1.25) return String.fromCharCode(0xE01E);
-        if (ratio > 1.08) return String.fromCharCode(0xE01D);
-        if (allowShrink) {
-          if (ratio < 0.80) return String.fromCharCode(0xE01B); // 0.72em
-          if (ratio < 0.905) return String.fromCharCode(0xE01C); // 0.86em — incl. 0.9em footnotes (p.footnote)
-        }
-        return '';
+        const tier = ratio >= 1.6 ? String.fromCharCode(0xE01F)
+          : ratio >= 1.25 ? String.fromCharCode(0xE01E)
+          : ratio > 1.08 ? String.fromCharCode(0xE01D)
+          : (allowShrink && ratio < 0.80) ? String.fromCharCode(0xE01B)
+          : (allowShrink && ratio < 0.905) ? String.fromCharCode(0xE01C)
+          : '';
+        return tier + _color;
       };
 
       // Heading anchors from the publisher's TOC: any element the nav/NCX points at via "#fragment" is a
@@ -1920,7 +1923,6 @@ const App: React.FC = () => {
           // Drop cap — a chapter-opener <p> whose class has a floated ::first-letter → the U+E02E sentinel so
           // the reader floats an oversized initial (via a ::first-letter CSS class, reproducing the source).
           const _pDropCap = (element.getAttribute('class') || '').split(/\s+/).some(c => cssDropCap.has(c));
-          const _pColorMark = accentSentinelFor(cssColorOf(element)); // source color (Transurfing teal .zag) → reader accent
           const _before = beforeContentOf(element);
           // The "already emphasised" guard must ignore a LINK's href — a TOC/Contents entry is a single
           // link "[Chapter 1: …](09_Chapter_1_Where_Are_W.xhtml)" whose href is full of underscores; counting
@@ -2129,7 +2131,7 @@ const App: React.FC = () => {
           // paragraph that DECLARES a positive text-indent, so the reader restores its first-line indent ON TOP of
           // the block padding. Positive signal (not "absence of E018"), so a <dd>/blockquote/index never picks it up.
           const _firstIndentSentinel = (_isSetoff && _pLeftEm >= 0.5 && _tiDecl.some(v => v > 0.05)) ? String.fromCharCode(0xE029) : '';
-          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pDropCap ? '' : ''}${_pColorMark}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
+          return `\n\n${_pr.top ? ruleBlock(_pr.top) : ''}${gapSentinel}${sizeTierSentinel(element, _allowShrink)}${sentinel}${flushSentinel}${leftSentinel}${_firstIndentSentinel}${_pItalic ? '' : ''}${_pSmallCaps ? '' : ''}${_pDropCap ? '' : ''}${_pIndent}${body}${_pr.bottom ? ruleBlock(_pr.bottom) : ''}\n\n`;
         }
         // A DEFINITION LIST (<dl> of <dt> term / <dd> description) — O'Reilly's "What You Will Learn" and
         // similar. Without a handler the whole list flattens into run-on prose. Emit each <dt> as its OWN
