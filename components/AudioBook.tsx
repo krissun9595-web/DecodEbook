@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v229-admonition-callout';
+const CHAPTER_TEXT_CACHE_VERSION = 'v230-callout-split-two-box';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -5593,16 +5593,30 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     </div>
                   );
                   if (para.calloutType) {
-                    // An admonition callout: wrap the (normal, translatable) body in a labelled bordered box.
-                    // Warning gets a red-tinted border+label (mapped to the reader's neon-red); note/tip neutral.
+                    // An admonition callout: a labelled bordered box. Warning gets a red-tinted border+label
+                    // (reader neon-red), note/tip neutral. In SPLIT view render TWO boxes side by side
+                    // (original left, translation right) — like code/table — so the middle orig/trans divider
+                    // doesn't cut through a single box (that was the "incorrect border"). Single view: one box.
                     const _label = para.calloutType === 'tip' ? 'Tip' : para.calloutType === 'warning' ? 'Warning' : 'Note';
                     const _warn = para.calloutType === 'warning';
-                    return (
-                      <div key={`callout-${pIdx}`} className={`w-full ${viewMode === 'split' ? '' : 'max-w-3xl mx-auto'} my-4 border rounded-md px-4 py-3 ${_warn ? 'border-neon-red/40 bg-neon-red/5' : 'border-zinc-700/50 bg-zinc-900/30'}`}>
-                        <div className={`text-xs font-bold uppercase tracking-wide mb-2 ${_warn ? 'text-neon-red' : 'text-zinc-400'}`}>{_label}</div>
-                        {_plainBody}
+                    const _boxCls = `border rounded-md px-4 py-3 ${_warn ? 'border-neon-red/40 bg-neon-red/5' : 'border-zinc-700/50 bg-zinc-900/30'}`;
+                    const _labelCls = `text-xs font-bold uppercase tracking-wide mb-2 ${_warn ? 'text-neon-red' : 'text-zinc-400'}`;
+                    const _calloutBox = (inner: React.ReactNode) => (
+                      <div className={_boxCls}>
+                        <div className={_labelCls}>{_label}</div>
+                        {inner}
                       </div>
                     );
+                    if (viewMode === 'split') {
+                      const _runs = runsForParagraph(pIdx);
+                      return (
+                        <div key={`callout-${pIdx}`} className="w-full flex items-start my-4">
+                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{_calloutBox(<div className="w-full space-y-0">{renderOriginalRuns(_runs)}</div>)}</div>
+                          <div className="w-1/2 pr-2 md:pr-6">{_calloutBox(<div className="w-full space-y-0">{renderTranslatedRuns(_runs)}</div>)}</div>
+                        </div>
+                      );
+                    }
+                    return <div key={`callout-${pIdx}`} className="w-full max-w-3xl mx-auto my-4">{_calloutBox(_plainBody)}</div>;
                   }
                   return _plainBody;
                 })}
