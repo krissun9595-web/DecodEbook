@@ -1591,6 +1591,17 @@ const App: React.FC = () => {
         // (honouring colspan, so the header's spanning cell starts at its column). Gated to ≥3 columns and
         // ≥3 rows (a real data table, mirroring the PDF's multi-gutter rule); a smaller/layout table falls
         // through to the default per-cell text flow, unchanged.
+        // A <pre> code / prompt block (agentic_mesh's Ubuntu-Mono `<pre>` prompts): keep the source line
+        // breaks + indentation instead of collapsing them to one line, and mark it a code block (U+E031) so
+        // the reader sets it off in a bordered panel with `white-space:pre-wrap` in the reader's own font
+        // (option A — no monospace). Newlines → U+E024 (survives the whitespace collapse, like verse/table);
+        // trailing space per line trimmed; leading indent kept.
+        if (tag === 'pre') {
+          const raw = (element.textContent || '').replace(/\r\n?/gu, '\n').replace(/^\n+|\n+$/gu, '');
+          if (!raw.trim()) return '';
+          const enc = raw.split('\n').map(ln => ln.replace(/\s+$/u, '')).join(String.fromCharCode(0xE024));
+          return `\n\n${String.fromCharCode(0xE031)}${enc}\n\n`;
+        }
         if (tag === 'table') {
           const trs = Array.from(element.getElementsByTagName('tr'));
           const rowCells = trs.map(tr => Array.from(tr.children).filter(c => /^t[dh]$/i.test(c.tagName || '')));

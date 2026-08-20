@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v225-heading-accent-color';
+const CHAPTER_TEXT_CACHE_VERSION = 'v226-pre-code-block';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -280,6 +280,9 @@ interface ParagraphData {
     // "spots will appear once.", "times.") translated and numbers/dittos kept verbatim; `word` marks which
     // tokens are translatable (they carry a real `gi`; numbers/dittos have gi=-1 and are never translated).
     table?: { rows: { x: number; text: string; gi: number; word: boolean }[][] };
+    // A <pre> CODE / PROMPT block (U+E031 from extraction) — rendered as a set-off bordered panel with
+    // `white-space:pre-wrap` in the reader's own font, preserving the source line breaks/indentation.
+    code?: string;
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1325,6 +1328,13 @@ export const buildPageSentenceData = (pageText: string): {
         return toks;
       }).filter(r => r.length);
       if (rows.length) { paragraphData.push({ original: [], translated: [], table: { rows } }); return; }
+    }
+    // CODE / PROMPT block (U+E031 leading flag from a <pre>): keep the raw text (line breaks encoded as
+    // U+E024) as one unit and render it in a set-off pre-wrap panel — NOT split into sentences/verse.
+    const _codeM = rawPText.match(/^[\uE010-\uE030]*\uE031([\s\S]*)$/u);
+    if (_codeM) {
+      paragraphData.push({ original: [], translated: [], code: _codeM[1].replace(/\uE024/gu, '\n') });
+      return;
     }
     // VERSE: a poem stanza carries its line breaks as U+E024 (a hard-break sentinel that survives the
     // chapter-build whitespace collapse, unlike a raw \n). Restore them to \n here so the line splitter
@@ -4298,7 +4308,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const figConsumed = new Set<number>();
   const usableFigPara = (j: number): ParagraphData | null => {
     const p = paragraphData[j];
-    return p && !p.figure && !p.table && !p.columns && !p.divider && p.original.length ? p : null;
+    return p && !p.figure && !p.table && !p.columns && !p.divider && p.code == null && p.original.length ? p : null;
   };
   const isCreditPara = (p: ParagraphData | null): boolean => {
     if (!p) return false;
@@ -4749,6 +4759,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // into one cell (the two-column-cut bug this replaces). In split view the right pane shows
                   // the same grid with WORD tokens translated and numbers/dittos kept verbatim (a data
                   // table's numbers are universal; only its descriptive words carry meaning).
+                  if (para.code != null) {
+                    // A <pre> code / prompt block: set-off bordered panel, column-aligned (max-w-3xl single,
+                    // full width in split — it isn't per-sentence translated), `white-space:pre-wrap` in the
+                    // reader's OWN font so the source line breaks/indentation survive without monospace.
+                    const codeBox = (
+                      <div className={`${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 bg-zinc-900/50 border border-zinc-700/50 rounded-md px-4 py-3 whitespace-pre-wrap break-words`}>
+                        {para.code}
+                      </div>
+                    );
+                    return <div key={`code-${pIdx}`} className={`w-full ${viewMode === 'split' ? '' : 'max-w-3xl mx-auto'} my-4`}>{codeBox}</div>;
+                  }
                   if (para.table) {
                     const tcls = `${TEXT_SIZES[settings.textSize]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 font-medium`;
                     // A table that SPANS PAGES arrives as consecutive `table` paragraphs (one per source
