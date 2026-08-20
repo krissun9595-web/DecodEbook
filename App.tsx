@@ -1595,12 +1595,13 @@ const App: React.FC = () => {
         // breaks + indentation instead of collapsing them to one line, and mark it a code block (U+E031) so
         // the reader sets it off in a bordered panel with `white-space:pre-wrap` in the reader's own font
         // (option A — no monospace). Newlines → U+E024 (survives the whitespace collapse, like verse/table);
-        // trailing space per line trimmed; leading indent kept.
+        // trailing space per line trimmed; leading indent kept. Marker U+E036 (NOT in the E030-E035 accent-
+        // color range, which a leading-sentinel scan would otherwise mistake for a code block).
         if (tag === 'pre') {
           const raw = (element.textContent || '').replace(/\r\n?/gu, '\n').replace(/^\n+|\n+$/gu, '');
           if (!raw.trim()) return '';
           const enc = raw.split('\n').map(ln => ln.replace(/\s+$/u, '')).join(String.fromCharCode(0xE024));
-          return `\n\n${String.fromCharCode(0xE031)}${enc}\n\n`;
+          return `\n\n${String.fromCharCode(0xE036)}${enc}\n\n`;
         }
         if (tag === 'table') {
           const trs = Array.from(element.getElementsByTagName('tr'));
@@ -1620,6 +1621,26 @@ const App: React.FC = () => {
           }).filter(Boolean);
           if (totalCols >= 3 && rowsEnc.length >= 3) {
             return '\n\n' + String.fromCharCode(0xE025) + rowsEnc.join(String.fromCharCode(0xE024)) + '\n\n';
+          }
+          // A 2-COLUMN LABEL|CONTENT table (agentic_mesh's Table 11-1: `<th>User input</th><td>…</td>`, each
+          // content cell a stack of `<p><code>…</code></p>` lines). The numeric-grid path above needs ≥3 cols;
+          // this falls through to a flattened prose dump that also mangles code underscores (`user_name`→
+          // italic). Reconstruct it as a real 2-col table (U+E037): each row = label U+E038 content, the
+          // content's lines joined by U+E024. Content is emitted VERBATIM (no markdown) so identifiers survive.
+          const isLabelContent = rowCells.length >= 2
+            && rowCells.every(cells => cells.length === 2 && /^th$/i.test(cells[0].tagName || ''));
+          if (isLabelContent) {
+            const rowsLc = rowCells.map(([th, td]) => {
+              const label = (th.textContent || '').replace(/\s+/gu, ' ').trim();
+              const ps = Array.from(td.querySelectorAll('p, div, li'));
+              const lines = (ps.length ? ps.map(p => p.textContent || '')
+                : [(td.textContent || '')])
+                .map(s => s.replace(/\s+/gu, ' ').trim()).filter(Boolean);
+              return label + String.fromCharCode(0xE038) + lines.join(String.fromCharCode(0xE024));
+            }).filter(r => r.replace(/[]/gu, '').trim());
+            if (rowsLc.length >= 2) {
+              return '\n\n' + String.fromCharCode(0xE037) + rowsLc.join(String.fromCharCode(0xE039)) + '\n\n';
+            }
           }
         }
 

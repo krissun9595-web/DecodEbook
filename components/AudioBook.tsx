@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v227-code-block-split-translate';
+const CHAPTER_TEXT_CACHE_VERSION = 'v228-label-content-table';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -285,6 +285,10 @@ interface ParagraphData {
     code?: string;
     // The block's translatable-sentence global index — its translation fills the RIGHT panel in split view.
     codeGi?: number;
+    // A 2-column LABEL|CONTENT table (U+E037 from a <th>label</th><td>content</td> table, e.g. agentic's
+    // Table 11-1). Each row: a bold label + a verbatim multi-line content cell; both translatable (gi) so
+    // the split-view right panel shows the translated table.
+    codeTable?: { rows: { label: string; content: string; labelGi: number; contentGi: number }[] };
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1333,7 +1337,7 @@ export const buildPageSentenceData = (pageText: string): {
     }
     // CODE / PROMPT block (U+E031 leading flag from a <pre>): keep the raw text (line breaks encoded as
     // U+E024) as one unit and render it in a set-off pre-wrap panel — NOT split into sentences/verse.
-    const _codeM = rawPText.match(/^[\uE010-\uE030]*\uE031([\s\S]*)$/u);
+    const _codeM = rawPText.match(/^[\uE010-\uE035]*\uE036([\s\S]*)$/u);
     if (_codeM) {
       const codeText = _codeM[1].replace(/\uE024/gu, '\n');
       // Register the whole block as ONE translatable sentence \u2014 its translation fills the split-view right panel.
@@ -1341,6 +1345,23 @@ export const buildPageSentenceData = (pageText: string): {
       flatSentenceMap.push({ pIndex, sIndex: 0, globalIndex: _gi, text: stripInlineFormatSyntax(codeText).replace(/\s+/gu, ' ').trim() });
       paragraphData.push({ original: [codeText], translated: [], code: codeText, codeGi: _gi });
       return;
+    }
+    // LABEL|CONTENT TABLE (U+E037): rows joined by U+E039, each row = label U+E038 content, content lines
+    // joined by U+E024. Both label and content are registered as translatable sentences so the split-view
+    // right panel shows the translated table; content is kept verbatim (rendered plain, no markdown).
+    const _lcM = rawPText.match(/^[\uE010-\uE036]*\uE037([\s\S]*)$/u);
+    if (_lcM) {
+      const rows = _lcM[1].split('\uE039').map(r => {
+        const si = r.indexOf('\uE038');
+        const label = (si >= 0 ? r.slice(0, si) : r).trim();
+        const content = (si >= 0 ? r.slice(si + 1) : '').replace(/\uE024/gu, '\n');
+        const labelGi = globalIdx++;
+        flatSentenceMap.push({ pIndex, sIndex: 0, globalIndex: labelGi, text: stripInlineFormatSyntax(label).replace(/\s+/gu, ' ').trim() });
+        const contentGi = globalIdx++;
+        flatSentenceMap.push({ pIndex, sIndex: 0, globalIndex: contentGi, text: stripInlineFormatSyntax(content).replace(/\s+/gu, ' ').trim() });
+        return { label, content, labelGi, contentGi };
+      }).filter(r => r.label || r.content);
+      if (rows.length) { paragraphData.push({ original: [], translated: [], codeTable: { rows } }); return; }
     }
     // VERSE: a poem stanza carries its line breaks as U+E024 (a hard-break sentinel that survives the
     // chapter-build whitespace collapse, unlike a raw \n). Restore them to \n here so the line splitter
@@ -4314,7 +4335,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const figConsumed = new Set<number>();
   const usableFigPara = (j: number): ParagraphData | null => {
     const p = paragraphData[j];
-    return p && !p.figure && !p.table && !p.columns && !p.divider && p.code == null && p.original.length ? p : null;
+    return p && !p.figure && !p.table && !p.columns && !p.divider && p.code == null && p.codeTable == null && p.original.length ? p : null;
   };
   const isCreditPara = (p: ParagraphData | null): boolean => {
     if (!p) return false;
@@ -4765,6 +4786,33 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // into one cell (the two-column-cut bug this replaces). In split view the right pane shows
                   // the same grid with WORD tokens translated and numbers/dittos kept verbatim (a data
                   // table's numbers are universal; only its descriptive words carry meaning).
+                  if (para.codeTable) {
+                    // A 2-column label|content table: bold label column + verbatim pre-wrap content column,
+                    // striped rows, bordered panel. Split view: original grid (left) | translated grid (right).
+                    const lcGrid = (translated: boolean) => (
+                      <div className={`${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} border border-zinc-700/50 rounded-md overflow-hidden`}>
+                        {para.codeTable!.rows.map((row, r) => {
+                          const labelTxt = (translated && translationByIndex.get(row.labelGi)) || row.label;
+                          const contentTxt = (translated && translationByIndex.get(row.contentGi)) || row.content;
+                          return (
+                            <div key={r} className={`flex gap-3 md:gap-4 px-3 md:px-4 py-3 ${r % 2 ? 'bg-zinc-900/40' : ''} ${r > 0 ? 'border-t border-zinc-800/40' : ''}`}>
+                              <div className="w-24 md:w-32 shrink-0 font-bold text-zinc-100">{labelTxt}</div>
+                              <div className="flex-1 whitespace-pre-wrap break-words text-zinc-300 min-w-0">{contentTxt}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                    if (viewMode === 'split') {
+                      return (
+                        <div key={`lct-${pIdx}`} className="w-full flex items-start my-4">
+                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{lcGrid(false)}</div>
+                          <div className="w-1/2 pr-2 md:pr-6">{lcGrid(true)}</div>
+                        </div>
+                      );
+                    }
+                    return <div key={`lct-${pIdx}`} className="w-full max-w-3xl mx-auto my-4">{lcGrid(false)}</div>;
+                  }
                   if (para.code != null) {
                     // A <pre> code / prompt block: set-off bordered panel, `white-space:pre-wrap` in the
                     // reader's OWN font so the source line breaks/indentation survive without monospace.
