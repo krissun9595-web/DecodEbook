@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v226-pre-code-block';
+const CHAPTER_TEXT_CACHE_VERSION = 'v227-code-block-split-translate';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -283,6 +283,8 @@ interface ParagraphData {
     // A <pre> CODE / PROMPT block (U+E031 from extraction) — rendered as a set-off bordered panel with
     // `white-space:pre-wrap` in the reader's own font, preserving the source line breaks/indentation.
     code?: string;
+    // The block's translatable-sentence global index — its translation fills the RIGHT panel in split view.
+    codeGi?: number;
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1333,7 +1335,11 @@ export const buildPageSentenceData = (pageText: string): {
     // U+E024) as one unit and render it in a set-off pre-wrap panel — NOT split into sentences/verse.
     const _codeM = rawPText.match(/^[\uE010-\uE030]*\uE031([\s\S]*)$/u);
     if (_codeM) {
-      paragraphData.push({ original: [], translated: [], code: _codeM[1].replace(/\uE024/gu, '\n') });
+      const codeText = _codeM[1].replace(/\uE024/gu, '\n');
+      // Register the whole block as ONE translatable sentence \u2014 its translation fills the split-view right panel.
+      const _gi = globalIdx++;
+      flatSentenceMap.push({ pIndex, sIndex: 0, globalIndex: _gi, text: stripInlineFormatSyntax(codeText).replace(/\s+/gu, ' ').trim() });
+      paragraphData.push({ original: [codeText], translated: [], code: codeText, codeGi: _gi });
       return;
     }
     // VERSE: a poem stanza carries its line breaks as U+E024 (a hard-break sentinel that survives the
@@ -4760,15 +4766,24 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // the same grid with WORD tokens translated and numbers/dittos kept verbatim (a data
                   // table's numbers are universal; only its descriptive words carry meaning).
                   if (para.code != null) {
-                    // A <pre> code / prompt block: set-off bordered panel, column-aligned (max-w-3xl single,
-                    // full width in split — it isn't per-sentence translated), `white-space:pre-wrap` in the
+                    // A <pre> code / prompt block: set-off bordered panel, `white-space:pre-wrap` in the
                     // reader's OWN font so the source line breaks/indentation survive without monospace.
-                    const codeBox = (
+                    // Split view: ORIGINAL panel on the left, its TRANSLATION panel on the right (same box).
+                    const codeBox = (content: string) => (
                       <div className={`${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 bg-zinc-900/50 border border-zinc-700/50 rounded-md px-4 py-3 whitespace-pre-wrap break-words`}>
-                        {para.code}
+                        {content}
                       </div>
                     );
-                    return <div key={`code-${pIdx}`} className={`w-full ${viewMode === 'split' ? '' : 'max-w-3xl mx-auto'} my-4`}>{codeBox}</div>;
+                    if (viewMode === 'split') {
+                      const codeTrans = (para.codeGi != null ? translationByIndex.get(para.codeGi) : '') || '';
+                      return (
+                        <div key={`code-${pIdx}`} className="w-full flex items-start my-4">
+                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{codeBox(para.code!)}</div>
+                          <div className="w-1/2 pr-2 md:pr-6">{codeBox(codeTrans || para.code!)}</div>
+                        </div>
+                      );
+                    }
+                    return <div key={`code-${pIdx}`} className="w-full max-w-3xl mx-auto my-4">{codeBox(para.code)}</div>;
                   }
                   if (para.table) {
                     const tcls = `${TEXT_SIZES[settings.textSize]} ${LETTER_SPACINGS[settings.letterSpacing]} text-zinc-300 font-medium`;
