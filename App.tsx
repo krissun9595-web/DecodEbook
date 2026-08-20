@@ -1591,6 +1591,27 @@ const App: React.FC = () => {
         // (honouring colspan, so the header's spanning cell starts at its column). Gated to ≥3 columns and
         // ≥3 rows (a real data table, mirroring the PDF's multi-gutter rule); a smaller/layout table falls
         // through to the default per-cell text flow, unchanged.
+        // An ADMONITION callout (O'Reilly note/tip/warning/caution — agentic_mesh `<div data-type="tip">
+        // <h6>Tip</h6><p>…</p></div>`): the source draws a labelled bordered box. Emit the body as ONE
+        // paragraph (per-sentence translatable) with a leading callout marker (U+E03B note / U+E03C tip /
+        // U+E03D warning) so the reader wraps it in a bordered box + type label; the <h6> label is dropped
+        // (the reader regenerates it from the type). Body paragraphs are joined inline into the one unit.
+        {
+          const _cType = ((element.getAttribute('data-type') || '') + ' ' + (element.getAttribute('class') || '')).toLowerCase();
+          const _adm = (tag === 'div' || tag === 'aside' || tag === 'section')
+            ? (/\b(note|tip|warning|caution|important)\b/.test(_cType) ? _cType.match(/\b(note|tip|warning|caution|important)\b/)![1] : '')
+            : '';
+          if (_adm) {
+            const _mk = _adm === 'tip' ? String.fromCharCode(0xE03C)
+              : (_adm === 'warning' || _adm === 'caution' || _adm === 'important') ? String.fromCharCode(0xE03D)
+              : String.fromCharCode(0xE03B); // note (default)
+            const _body = Array.from(element.children)
+              .filter(c => !/^h[1-6]$/i.test(c.tagName || ''))
+              .map(c => Array.from(c.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('').replace(/\s+/gu, ' ').trim())
+              .filter(Boolean).join(' ');
+            if (_body) return `\n\n${_mk}${_body}\n\n`;
+          }
+        }
         // A <pre> code / prompt block (agentic_mesh's Ubuntu-Mono `<pre>` prompts): keep the source line
         // breaks + indentation instead of collapsing them to one line, and mark it a code block (U+E031) so
         // the reader sets it off in a bordered panel with `white-space:pre-wrap` in the reader's own font

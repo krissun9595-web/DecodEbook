@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v228-label-content-table';
+const CHAPTER_TEXT_CACHE_VERSION = 'v229-admonition-callout';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -289,6 +289,9 @@ interface ParagraphData {
     // Table 11-1). Each row: a bold label + a verbatim multi-line content cell; both translatable (gi) so
     // the split-view right panel shows the translated table.
     codeTable?: { rows: { label: string; content: string; labelGi: number; contentGi: number }[] };
+    // An ADMONITION callout (note/tip/warning, U+E03B-E03D) — the paragraph renders inside a labelled
+    // bordered box (type label on top; warning gets a red-tinted border). Body stays normal translatable prose.
+    calloutType?: 'note' | 'tip' | 'warning';
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1416,7 +1419,7 @@ export const buildPageSentenceData = (pageText: string): {
     // the sentinels + any NBSP indent); the closing marker at the block end stays, so the inline italic/bold
     // is preserved AND the block role/size/indent parse correctly.
     rawPText = rawPText.replace(/^([*_~]{1,3})([\uE010-\uE02C\s]+)/u, '$2$1');
-    const ctrl = rawPText.match(/^\s*[---]+/);
+    const ctrl = rawPText.match(/^\s*[----]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
     const align: 'right' | 'center' | 'left' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
@@ -1428,6 +1431,7 @@ export const buildPageSentenceData = (pageText: string): {
     const italic = ctrlChars.includes(''); // whole-paragraph italic (epigraph/quote)
     const smallCaps = ctrlChars.includes(''); // whole-paragraph small-caps (section head / attribution / data title)
     const dropCap = ctrlChars.includes(''); // chapter-opener drop cap
+    const calloutType = ctrlChars.includes('') ? 'tip' as const : ctrlChars.includes('') ? 'warning' as const : ctrlChars.includes('') ? 'note' as const : undefined;
     const _accCode = [...ctrlChars].map(c => c.charCodeAt(0)).find(cc => cc >= 0xE030 && cc <= 0xE035);
     const accentColor = _accCode != null ? ['#00f3ff', '#ff003c', '#ff4fd8', '#a78bfa', '#fbbf24', '#FCEE0A'][_accCode - 0xE030] : undefined;
     // U+E022 — the source has a genuine SET-OFF gap above this block-quote (>=1.75x the line gap):
@@ -1459,7 +1463,7 @@ export const buildPageSentenceData = (pageText: string): {
     const effectiveSizeEm = sizeEm && sizeEm > 1 && sizeStripped.length > 90 && /[.!?\u3002\uff01\uff1f]["\u2019\u201d\u0027)\]]?$/u.test(sizeStripped) ? undefined : sizeEm;
     const rightMarker = ctrlChars.includes('\uE020');
     const narrowAttribution = ctrlChars.includes('\uE02B'); // U+E02B: source width-constrained right attribution (praise credit width:80%) -> reader insets it
-    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE029\uE02B\uE02C\uE02E\uE030-\uE035]/g, '');
+    const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE029\uE02B\uE02C\uE02E\uE030-\uE035\uE03B-\uE03D]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
     const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
@@ -1491,7 +1495,7 @@ export const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic, smallCaps, dropCap, accentColor, narrowAttribution });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic, smallCaps, dropCap, accentColor, calloutType, narrowAttribution });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -5364,7 +5368,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     ? ({ textAlign: 'justify', hyphens: 'auto', WebkitHyphens: 'auto', overflowWrap: 'break-word' } as React.CSSProperties)
                     : (alignPref === 'left' && !effectiveAlign ? { textAlign: 'left' } : {});
 
-                  return (
+                  const _plainBody = (
                     <div key={`${currentTranslationIdentity}-plain-p-${pIdx}`} className="w-full space-y-0" style={{ ...bulletBlockStyle, ...indexIndentStyle, ...(isIndexChapter ? { breakInside: 'avoid' } : {}) }}>
                       {lineRuns.map((line, lineIdx) => {
                         const lineText = line.map(run => run.sentence).join(' ');
@@ -5588,6 +5592,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       );})}
                     </div>
                   );
+                  if (para.calloutType) {
+                    // An admonition callout: wrap the (normal, translatable) body in a labelled bordered box.
+                    // Warning gets a red-tinted border+label (mapped to the reader's neon-red); note/tip neutral.
+                    const _label = para.calloutType === 'tip' ? 'Tip' : para.calloutType === 'warning' ? 'Warning' : 'Note';
+                    const _warn = para.calloutType === 'warning';
+                    return (
+                      <div key={`callout-${pIdx}`} className={`w-full ${viewMode === 'split' ? '' : 'max-w-3xl mx-auto'} my-4 border rounded-md px-4 py-3 ${_warn ? 'border-neon-red/40 bg-neon-red/5' : 'border-zinc-700/50 bg-zinc-900/30'}`}>
+                        <div className={`text-xs font-bold uppercase tracking-wide mb-2 ${_warn ? 'text-neon-red' : 'text-zinc-400'}`}>{_label}</div>
+                        {_plainBody}
+                      </div>
+                    );
+                  }
+                  return _plainBody;
                 })}
                 </div>
                 )}
