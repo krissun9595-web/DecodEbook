@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v231-callout-equal-height';
+const CHAPTER_TEXT_CACHE_VERSION = 'v232-callout-label-searchable';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1466,7 +1466,10 @@ export const buildPageSentenceData = (pageText: string): {
     const alignStripped = rawPText.replace(/[\uE010-\uE013\uE018-\uE020\uE022\uE023\uE026-\uE029\uE02B\uE02C\uE02E\uE030-\uE035\uE03B-\uE03D]/g, '');
     const indentMatch = alignStripped.match(/^ +/);
     const indent = indentMatch ? indentMatch[0].length : 0;
-    const pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
+    let pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
+    // A callout's body content carries a leading type-LABEL word (Tip/Note/Warning) kept for SEARCH; the
+    // reader regenerates the styled label from calloutType, so strip that one leading word from the display.
+    if (calloutType) pText = pText.replace(new RegExp(`^\\s*${calloutType === 'tip' ? 'Tip' : calloutType === 'warning' ? 'Warning' : 'Note'}\\s+`, 'iu'), '');
     const lines = pText.split('\n').map(line => line.trim()).filter(Boolean);
     const sentences: string[] = [];
 

@@ -1602,14 +1602,18 @@ const App: React.FC = () => {
             ? (/\b(note|tip|warning|caution|important)\b/.test(_cType) ? _cType.match(/\b(note|tip|warning|caution|important)\b/)![1] : '')
             : '';
           if (_adm) {
-            const _mk = _adm === 'tip' ? String.fromCharCode(0xE03C)
-              : (_adm === 'warning' || _adm === 'caution' || _adm === 'important') ? String.fromCharCode(0xE03D)
-              : String.fromCharCode(0xE03B); // note (default)
+            const _isTip = _adm === 'tip';
+            const _isWarn = _adm === 'warning' || _adm === 'caution' || _adm === 'important';
+            const _mk = _isTip ? String.fromCharCode(0xE03C) : _isWarn ? String.fromCharCode(0xE03D) : String.fromCharCode(0xE03B);
+            const _label = _isTip ? 'Tip' : _isWarn ? 'Warning' : 'Note';
             const _body = Array.from(element.children)
               .filter(c => !/^h[1-6]$/i.test(c.tagName || ''))
               .map(c => Array.from(c.childNodes).map(n => nodeToMarkedText(n, baseDir)).join('').replace(/\s+/gu, ' ').trim())
               .filter(Boolean).join(' ');
-            if (_body) return `\n\n${_mk}${_body}\n\n`;
+            // Prepend the type LABEL word (Tip/Note/Warning) after the marker so it stays in the searchable
+            // content (the source had it in the dropped <h6>); the reader strips this leading word from the
+            // DISPLAYED body since it regenerates the styled label from the marker.
+            if (_body) return `\n\n${_mk}${_label} ${_body}\n\n`;
           }
         }
         // A <pre> code / prompt block (agentic_mesh's Ubuntu-Mono `<pre>` prompts): keep the source line
