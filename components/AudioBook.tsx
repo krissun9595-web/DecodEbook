@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v235-callout-icon-size';
+const CHAPTER_TEXT_CACHE_VERSION = 'v236-callout-body-size-fix';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -5645,9 +5645,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // no icon → the text label on top.
                     // PDF admonition body is ~0.91x the regular body font in the source (9.6pt vs 10.5pt) — apply
                     // it to the TEXT only (not the icon, which is sized off the full body font above).
+                    // Icon (PDF) box: set the em base to the reader body px so the icon (5.3em) and body
+                    // (0.91em) scale off the reader's text size. The body renders via renderOriginalRuns so its
+                    // size cascades (unlike _plainBody, which hard-sets TEXT_SIZES and ignored the reduction).
                     const _calloutBox = (inner: React.ReactNode) => (
                       _iconId
-                        ? <div className={`${_boxCls} flex gap-3 items-start`}><CalloutIcon iconId={_iconId} bookId={bookId} alt={_label} /><div className="min-w-0 flex-1" style={{ fontSize: '0.91em' }}>{inner}</div></div>
+                        ? <div className={`${_boxCls} flex gap-3 items-start`} style={{ fontSize: `${bodyPx}px` }}><CalloutIcon iconId={_iconId} bookId={bookId} alt={_label} /><div className="min-w-0 flex-1" style={{ fontSize: '0.91em' }}>{inner}</div></div>
                         : <div className={_boxCls}><div className={_labelCls}>{_label}</div>{inner}</div>
                     );
                     if (viewMode === 'split') {
@@ -5659,7 +5662,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         </div>
                       );
                     }
-                    return <div key={`callout-${pIdx}`} className="w-full max-w-3xl mx-auto my-4">{_calloutBox(_plainBody)}</div>;
+                    const _singleBody = _iconId ? <div className="w-full space-y-0">{renderOriginalRuns(runsForParagraph(pIdx))}</div> : _plainBody;
+                    return <div key={`callout-${pIdx}`} className="w-full max-w-3xl mx-auto my-4">{_calloutBox(_singleBody)}</div>;
                   }
                   return _plainBody;
                 })}
