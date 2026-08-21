@@ -1545,7 +1545,15 @@ const App: React.FC = () => {
 
         const element = node as HTMLElement;
         const tag = element.tagName.toLowerCase();
-        if (['script', 'style', 'nav', 'math'].includes(tag)) return '';
+        if (['script', 'style', 'math'].includes(tag)) return '';
+        // A <nav> is normally navigation to skip (the TOC, page-list, landmarks). But an INDEX is wrapped in
+        // <nav epub:type="index" role="doc-index"> — that's CONTENT (the whole index), so dropping every <nav>
+        // discarded the entire index chapter (it collapsed to ~0 chars → dropped as an empty range). Keep an
+        // index nav (fall through to recurse its children); drop the rest.
+        if (tag === 'nav') {
+          const _navType = ((element.getAttribute('epub:type') || element.getAttribute('type') || '') + ' ' + (element.getAttribute('role') || '')).toLowerCase();
+          if (!/\bindex\b|doc-index/.test(_navType)) return '';
+        }
         if (tag === 'br') return '\n';
         // Raster image: <img src> or an SVG <image xlink:href> (covers). Emit a figure marker.
         if (tag === 'img' || tag === 'image') {

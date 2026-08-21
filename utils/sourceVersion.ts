@@ -734,7 +734,7 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v254-heading-offset-snap';
 //      carries its own resolved source font-size tier, so O'Reilly's inherited `font-size:95%` applies to
 //      both quote and credit. The wrapper also captures the newer E028/E029 controls before inserting its
 //      NBSP indent; otherwise the indent hid a later E026 italic flag and rendered the authored quote Roman.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v84-callout-label-searchable';
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v85-keep-index-nav';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).
