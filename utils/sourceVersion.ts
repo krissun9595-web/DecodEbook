@@ -609,7 +609,7 @@
 //       right-tabbed roman list (Singularity, markers jitter within ONE tier) still fires. MYCIN (firstX≈133
 //       uniform, spread 3) never fired. Validated on the REAL block geometry from the live audit, not the
 //       offline harness (whose block grouping differed). See project_decodebook_pdf_merge_page_seam_only.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v251-admonition-icons';
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v252-drop-caps';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,

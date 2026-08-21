@@ -3085,7 +3085,7 @@ const App: React.FC = () => {
       // `y` is the reading-order coordinate (the two-column re-flow re-stamps it so the y-sort yields
       // left-column-then-right-column); `pageY` is the line's REAL vertical position on the page, used
       // by anything that reasons about physical geometry (the header/footer margin band).
-      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; capH?: number; bold: boolean; semibold?: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string };
+      type PdfLine = { y: number; pageY: number; col?: 0 | 1; x: number; rightX: number; text: string; h: number; capH?: number; bold: boolean; semibold?: boolean; family: string; localFont: number; outlineHeading?: boolean; mcRole?: string; dropCapStart?: boolean };
       const pageBuffers: { pageNum: number; lines: PdfLine[]; bodyLeft: number; paraLeftMargin: number; listMarginLeft: number | undefined; lineGap: number; isListPage: boolean; indentTiers: number[]; pageHeight: number; pageTwoColumn: boolean; hRules: { y: number; x: number; w: number; double?: boolean }[] }[] = [];
       const allLineHeights: number[] = [];
       const allRightEdges: number[] = []; // body line right edges, for the document text right margin
@@ -4269,6 +4269,10 @@ const App: React.FC = () => {
               // sizeChanged so the attribution splits at its wrap AND its continuation ("AND LEGISLATION")
               // shrinks below its own first line. Fall back to all non-dropcap glyphs for a punctuation-only line.
               capH: (() => { const L = items.filter(it => !it.dropCap && /[\p{L}\p{N}]/u.test(it.str || '')); const src = L.length ? L : items.filter(it => !it.dropCap); return src.length ? Math.max(...src.map(it => it.h)) : group.baseH; })(),
+              // The line OPENS with a drop-cap glyph (items are x-sorted, so the leftmost is items[0]): a
+              // chapter opener's oversized initial. The block emit tags the paragraph U+E02E so the reader
+              // floats the first letter (::first-letter), reproducing the drop cap instead of a normal letter.
+              dropCapStart: !!items[0]?.dropCap,
               bold: items.filter(it => it.bold).length > items.length / 2,
               semibold: items.filter(it => it.semibold).length > items.length / 2,
               family: modeStr(items.map(it => it.family)),
@@ -5821,8 +5825,12 @@ const App: React.FC = () => {
                 }
               }
             }
+            // The paragraph OPENS with a drop-cap glyph (a chapter opener's oversized initial) -> U+E02E so
+            // the reader floats its first letter (::first-letter). Body only, never a block-quote/right-
+            // attribution (a set-off block's leading big letter is not a chapter drop cap).
+            const _dropCapMark = (group[0].dropCapStart && !groupIsHeading && !isBlockQuote && !isRightAttribution) ? '' : '';
             blocks.push({
-              text: _calloutPrefix + _headItalicMark + (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
+              text: _calloutPrefix + _dropCapMark + _headItalicMark + (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,

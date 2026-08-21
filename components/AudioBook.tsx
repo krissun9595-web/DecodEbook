@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v236-callout-body-size-fix';
+const CHAPTER_TEXT_CACHE_VERSION = 'v237-pdf-drop-caps';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1438,11 +1438,13 @@ export const buildPageSentenceData = (pageText: string): {
     const role: 'list' | 'heading' | undefined =
       ctrlChars.includes('\uE013') ? 'heading' : ctrlChars.includes('\uE012') ? 'list' : undefined;
     // U+E018 \u2014 the source paragraph's first line is flush (no first-line indent).
-    const flushFirstLine = ctrlChars.includes('\uE018');
     const blockQuote = ctrlChars.includes('\uE019');
     const italic = ctrlChars.includes(''); // whole-paragraph italic (epigraph/quote)
     const smallCaps = ctrlChars.includes(''); // whole-paragraph small-caps (section head / attribution / data title)
     const dropCap = ctrlChars.includes(''); // chapter-opener drop cap
+    // A drop-cap paragraph is always flush (no first-line indent) — the floated ::first-letter starts at
+    // the margin; an indent would push it right. (E018 flush sentinel OR the drop cap itself.)
+    const flushFirstLine = ctrlChars.includes('') || dropCap;
     const calloutType = ctrlChars.includes('') ? 'tip' as const : ctrlChars.includes('') ? 'warning' as const : ctrlChars.includes('') ? 'note' as const : undefined;
     const _accCode = [...ctrlChars].map(c => c.charCodeAt(0)).find(cc => cc >= 0xE030 && cc <= 0xE035);
     const accentColor = _accCode != null ? ['#00f3ff', '#ff003c', '#ff4fd8', '#a78bfa', '#fbbf24', '#FCEE0A'][_accCode - 0xE030] : undefined;
