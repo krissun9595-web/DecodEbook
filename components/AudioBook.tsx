@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v233-pdf-admonition-icons';
+const CHAPTER_TEXT_CACHE_VERSION = 'v234-callout-icon-preserve';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1379,6 +1379,15 @@ export const buildPageSentenceData = (pageText: string): {
     // split into its own paragraph upstream (splitFigureMarkerParagraphs), preserving the 1
     // rawParagraph : 1 paragraph mapping the sentence/translation indexing relies on; this only catches
     // a stray mid-paragraph one. (Don't touch a paragraph that IS just the marker — handled next.)
+    // A PDF admonition callout carries its O'Reilly icon as a LEADING callout-marker + [[FIG id]] - pull the
+    // icon id out and remove that [[FIG]] token HERE, before the internal-figure-marker safety net below
+    // strips it (that was blanking the icon ref -> the callout fell back to the text-label render). Keep the
+    // callout marker so calloutType still parses.
+    let _calloutIconId;
+    {
+      const _cm = rawPText.match(/^[\uE03B-\uE03D]\s*\[\[FIG\s+([^\]]+)\]\]/u);
+      if (_cm) { _calloutIconId = _cm[1].trim(); rawPText = rawPText.replace(/\[\[FIG\s+[^\]]+\]\]/i, ''); }
+    }
     if (!/^\s*[- ]*\s*\[\[FIG\s+[^\]]+\]\]\s*$/i.test(rawPText) && /\[\[FIG\s+[^\]]+\]\]/i.test(rawPText)) {
       rawPText = rawPText.replace(/\[\[FIG\s+[^\]]+\]\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
       if (!rawPText) return;
@@ -1474,10 +1483,9 @@ export const buildPageSentenceData = (pageText: string): {
     // reader regenerates the styled label from calloutType, so strip that one leading word from the display.
     // A PDF admonition also carries a leading "[[FIG id]]" for its O'Reilly icon — extract it (rendered
     // inside the box) then strip the label word. (EPUB callouts have no icon → calloutIconId undefined.)
-    let calloutIconId: string | undefined;
+    // The icon id was pulled out above (before the figure-marker safety net); strip only the label word here.
+    const calloutIconId = _calloutIconId;
     if (calloutType) {
-      const _fm = pText.match(/^\s*\[\[FIG\s+([^\]]+)\]\]\s*/u);
-      if (_fm) { calloutIconId = _fm[1].trim(); pText = pText.slice(_fm[0].length); }
       pText = pText.replace(new RegExp(`^\\s*${calloutType === 'tip' ? 'Tip' : calloutType === 'warning' ? 'Warning' : 'Note'}\\s+`, 'iu'), '');
     }
     const lines = pText.split('\n').map(line => line.trim()).filter(Boolean);
