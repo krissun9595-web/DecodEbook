@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v234-callout-icon-preserve';
+const CHAPTER_TEXT_CACHE_VERSION = 'v235-callout-icon-size';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -1628,7 +1628,9 @@ const CalloutIcon: React.FC<{ iconId: string; bookId: string; alt: string }> = (
     return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
   }, [iconId, bookId]);
   if (!url) return null;
-  return <img src={url} alt={alt} className="shrink-0 w-8 h-8 object-contain mt-0.5" />;
+  // Source ratio: the O'Reilly icon is ~5.3x the body font tall (55.8pt icon / 10.5pt font). Height in em
+  // (of the reader body font) keeps that proportion at any text size; auto width preserves each icon's aspect.
+  return <img src={url} alt={alt} className="shrink-0 object-contain mt-0.5" style={{ height: '5.3em', width: 'auto' }} />;
 };
 
 // An extracted PDF figure rendered inline. Loads the cached blob ('figure-image'), reserves its
@@ -5641,9 +5643,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     const _labelCls = `text-xs font-bold uppercase tracking-wide mb-2 ${_warn ? 'text-neon-red' : 'text-zinc-400'}`;
                     // PDF admonition: show the O'Reilly ICON on the left (in place of the text label); EPUB has
                     // no icon → the text label on top.
+                    // PDF admonition body is ~0.91x the regular body font in the source (9.6pt vs 10.5pt) — apply
+                    // it to the TEXT only (not the icon, which is sized off the full body font above).
                     const _calloutBox = (inner: React.ReactNode) => (
                       _iconId
-                        ? <div className={`${_boxCls} flex gap-3 items-start`}><CalloutIcon iconId={_iconId} bookId={bookId} alt={_label} /><div className="min-w-0 flex-1">{inner}</div></div>
+                        ? <div className={`${_boxCls} flex gap-3 items-start`}><CalloutIcon iconId={_iconId} bookId={bookId} alt={_label} /><div className="min-w-0 flex-1" style={{ fontSize: '0.91em' }}>{inner}</div></div>
                         : <div className={_boxCls}><div className={_labelCls}>{_label}</div>{inner}</div>
                     );
                     if (viewMode === 'split') {
