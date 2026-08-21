@@ -4929,7 +4929,20 @@ const App: React.FC = () => {
             // line-list — a title page, a centred epigraph/poem, an "also by" list — has SHORT lines
             // (distinct phrases, not wrapped), so median width < 55% of the measure keeps it one-per-line.
             const measure = Math.max(...alignSrc.map(l => l.rightX)) - Math.min(...alignSrc.map(l => l.x));
-            const proseLike = (align === 'right' || align === 'center') && measure > 0 && (median(alignSrc.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
+            // Wrapped prose is TIGHTLY spaced (line gap ≈ 1.2x the line height — the natural leading); a
+            // line-LIST (an "Also by" title list, a poem) is spaced WIDER (each entry on its own line, ~1.85x
+            // here). Long lines alone mislabelled the "Also by" list as prose (its book titles fill ~71% of
+            // the measure > the 55% bar) and JOINED them into run-on paragraphs. Require tight spacing too, so
+            // a wide-spaced list stays one-item-per-line even when its lines are long.
+            // Measure spacing per CONSECUTIVE PAIR (gap ÷ the pair's taller line height), then take the
+            // MEDIAN of those ratios — robust to a mixed-height page (Sovereign p3: a big-font centred head
+            // over small-font promo prose) where median-gap ÷ median-height is skewed. Prose pairs sit ~1.2-
+            // 1.35x; the "Also by" list is ~1.85x. Default to tight (prose) when unmeasurable, so a page whose
+            // spacing can't be read keeps the prior join behaviour.
+            const _dispRatios: number[] = [];
+            for (let _i = 1; _i < alignSrc.length; _i++) { const _g = alignSrc[_i - 1].y - alignSrc[_i].y; const _hh = Math.max(alignSrc[_i].h, alignSrc[_i - 1].h) || bodyFont; if (_g > 0 && _g < _hh * 5) _dispRatios.push(_g / _hh); }
+            const _tightlySpaced = (median(_dispRatios) || 1.2) < 1.5;
+            const proseLike = (align === 'right' || align === 'center') && measure > 0 && _tightlySpaced && (median(alignSrc.map(l => l.rightX - l.x)) || 0) > measure * 0.55;
             // Turn a contiguous run of display lines into blocks: JOIN wrapped prose into paragraphs
             // (breaking on a larger vertical gap or a leading credit dash) when proseLike, else one
             // item per line (a genuine line-list).
