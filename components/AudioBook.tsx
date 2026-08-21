@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v239-heading-offset-snap';
+const CHAPTER_TEXT_CACHE_VERSION = 'v240-notes-index-title-heading';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -2271,6 +2271,23 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         cleanText = normalizeNotesReaderText(cleanText, fileContext.sourceKind === 'epub');
       }
 
+      // Notes/index cleaning strips (notes) or mis-tags as a list (‹E012› index) the chapter TITLE's heading,
+      // so "NOTES"/"INDEX" rendered as small body/list text — out of step with other chapter titles. When the
+      // first content line IS this chapter's title, re-tag it a heading (‹E013› + 1.5em ‹E01F›) so all
+      // top-level titles render uniformly. Gated to notes/index (Introduction etc. already keep their heading).
+      {
+        const _isNotesCh = isNotesChapterTitle(chapter.title) || isNotesChapterTitle(chapter.sourceHeading || '') || ['endnotes', 'footnotes', 'notes'].includes(chapter.semanticType || '');
+        const _isIndexCh = isIndexChapterTitle(chapter.title) || isIndexChapterTitle(chapter.sourceHeading || '');
+        if (_isNotesCh || _isIndexCh) {
+          const _nlEnd = cleanText.indexOf('\n');
+          const _first = _nlEnd < 0 ? cleanText : cleanText.slice(0, _nlEnd);
+          const _rest = _nlEnd < 0 ? '' : cleanText.slice(_nlEnd);
+          const _norm = (s) => s.replace(/\[([^\]\n]*)\]\([^)\n]*\)/gu, '$1').replace(/[\uE000-\uF8FF*_~`\[\]]/gu, '').replace(/\s+/gu, ' ').trim().toUpperCase();
+          if (_norm(_first) && _norm(_first) === _norm(chapter.title)) {
+            cleanText = '\uE013\uE01F' + _first.replace(/[\uE010-\uE020]/gu, '') + _rest;
+          }
+        }
+      }
       cleanTextRef.current = cleanText;
       const paginatedPages = paginateChapterText(cleanText);
       setPages(paginatedPages);
