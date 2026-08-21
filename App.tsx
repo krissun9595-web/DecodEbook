@@ -6371,8 +6371,9 @@ const App: React.FC = () => {
               // any link `[`. Anchoring there makes the chapter START mid-heading: the reader loses the
               // heading/size sentinels and the opening `**`, so the title renders as small un-bold body
               // ("INTRODUCTION**"). Snap the offset back over that leading markup to the true block start.
+              const _lineFloor = Math.max(blockStart, fullText.lastIndexOf('\n', within - 1) + 1);
               let snap = within;
-              while (snap > blockStart && /[*_~`\u00A0\uE000-\uF8FF[]/u.test(fullText[snap - 1])) snap--;
+              while (snap > _lineFloor && /[*_~`\u00A0\uE000-\uF8FF[]/u.test(fullText[snap - 1])) snap--;
               destOffset = snap; destHeadingText = needle;
             }
           }
