@@ -6365,7 +6365,16 @@ const App: React.FC = () => {
           if (needle.length >= 3) {
             const nextBlock = fullText.indexOf('[[PAGE ', blockStart + 1);
             const within = fullText.indexOf(needle, blockStart);
-            if (within >= 0 && (nextBlock < 0 || within < nextBlock)) { destOffset = within; destHeadingText = needle; }
+            if (within >= 0 && (nextBlock < 0 || within < nextBlock)) {
+              // `needle` is the MARKER-STRIPPED heading, so indexOf lands on the first title letter — AFTER
+              // the block's leading run of role/size PUA sentinels + opening emphasis (`‹E013›‹E01F›**`) and
+              // any link `[`. Anchoring there makes the chapter START mid-heading: the reader loses the
+              // heading/size sentinels and the opening `**`, so the title renders as small un-bold body
+              // ("INTRODUCTION**"). Snap the offset back over that leading markup to the true block start.
+              let snap = within;
+              while (snap > blockStart && /[*_~`\u00A0\uE000-\uF8FF[]/u.test(fullText[snap - 1])) snap--;
+              destOffset = snap; destHeadingText = needle;
+            }
           }
         }
         // (2) Title re-anchoring: trust the destination ONLY when the heading it points at actually
