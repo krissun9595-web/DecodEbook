@@ -2789,6 +2789,10 @@ const App: React.FC = () => {
       // = pixel dims + encoded byte length → drop a repeat within a few pages, keeping the first.
       const _figFp = new Map<string, number>();
       const figuresByPage = new Map<number, { id: string; yTop: number }[]>();
+      // O'Reilly admonition ICONS (note/tip/warning coloured animal silhouettes) per page: captured like a
+      // figure but NOT placed as a standalone [[FIG]] — the block emission tags the adjacent indented body
+      // block as a callout carrying this icon id + type (reader renders the same labelled box + the icon).
+      const admonIconsByPage = new Map<number, { id: string; type: 'note' | 'tip' | 'warning'; yTop: number; yBot: number; x: number; w: number }[]>();
       // A row-major DATA TABLE detected on a page (a ditto/numeric table like the Sovereign dice
       // frequencies): the whole table encoded as a single positioned-token payload (U+E025 …) so the
       // reader can reproduce its column alignment exactly. Dropped into the block stream by yTop, like
@@ -2841,6 +2845,46 @@ const App: React.FC = () => {
           octx.drawImage(source, 0, 0, dw, dh);
           const blob = await out.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
           return { blob, wPx: dw, hPx: dh };
+        } catch { return null; }
+      };
+      // Classify an O'Reilly admonition ICON (a small solid-colour animal silhouette) by its dominant hue:
+      // green → tip, blue → note, red/orange → warning. Returns null for a non-admonition image (grey/black
+      // logo, photo, low saturation) so only the three coloured callout icons are picked up.
+      const admonitionTypeOf = async (img: any): Promise<'note' | 'tip' | 'warning' | null> => {
+        try {
+          // Sample the icon's pixels via a tiny canvas so BOTH decode shapes work: an ImageBitmap (img.bitmap,
+          // the common browser case) and a raw {data,width,height,kind} buffer. Downscale to ~24px for speed.
+          let source: CanvasImageSource | null = null, sw = 0, sh = 0;
+          if (img?.bitmap) { source = img.bitmap; sw = img.bitmap.width || img.width; sh = img.bitmap.height || img.height; }
+          else if (img?.data && img.width && img.height) {
+            sw = img.width; sh = img.height; const d: Uint8Array | Uint8ClampedArray = img.data;
+            let kind = img.kind as number | undefined;
+            if (!kind) kind = d.length === sw * sh * 4 ? 3 : d.length === sw * sh * 3 ? 2 : d.length === sw * sh ? 1 : 0;
+            if (kind !== 2 && kind !== 3) return null; // grey / 1bpp can't be a coloured icon
+            const rgba = new Uint8ClampedArray(sw * sh * 4);
+            if (kind === 3) rgba.set(d);
+            else for (let i = 0, j = 0; i < d.length; i += 3, j += 4) { rgba[j] = d[i]; rgba[j + 1] = d[i + 1]; rgba[j + 2] = d[i + 2]; rgba[j + 3] = 255; }
+            const c0 = new OffscreenCanvas(sw, sh); const x0 = c0.getContext('2d'); if (!x0) return null;
+            x0.putImageData(new ImageData(rgba, sw, sh), 0, 0); source = c0 as unknown as CanvasImageSource;
+          } else return null;
+          if (!sw || !sh) return null;
+          const s = Math.min(1, 24 / Math.max(sw, sh)); const dw = Math.max(1, Math.round(sw * s)), dh = Math.max(1, Math.round(sh * s));
+          const cv = new OffscreenCanvas(dw, dh); const cx = cv.getContext('2d'); if (!cx) return null;
+          cx.drawImage(source, 0, 0, dw, dh);
+          const px = cx.getImageData(0, 0, dw, dh).data;
+          let r = 0, g = 0, b = 0, cnt = 0; const n = dw * dh;
+          for (let i = 0; i < n; i++) { const R = px[i * 4], G = px[i * 4 + 1], B = px[i * 4 + 2], A = px[i * 4 + 3]; if (A < 128 || (R > 230 && G > 230 && B > 230)) continue; r += R; g += G; b += B; cnt++; }
+          if (cnt < n * 0.02) return null; // essentially blank
+          r /= cnt; g /= cnt; b /= cnt;
+          const mx = Math.max(r, g, b), mn = Math.min(r, g, b), delta = mx - mn;
+          if (mx <= 0 || delta / mx < 0.25) return null; // low saturation (grey/black) — not a coloured icon
+          let hue = 0;
+          if (mx === r) hue = ((g - b) / delta) % 6; else if (mx === g) hue = (b - r) / delta + 2; else hue = (r - g) / delta + 4;
+          hue = (hue * 60 + 360) % 360;
+          if (hue < 45 || hue > 325) return 'warning';       // red / orange (scorpion)
+          if (hue >= 120 && hue < 190) return 'tip';         // green (monkey)
+          if (hue >= 190 && hue < 280) return 'note';        // blue (crow)
+          return null;
         } catch { return null; }
       };
 
@@ -3127,6 +3171,7 @@ const App: React.FC = () => {
             // Figure-heavy page (little/no body text): no reliable text column — fall back to a
             // typical measure (~72% of the page width) so the figure still gets a sane proportion.
             if (colW < 150) colW = page.getViewport({ scale: 1 }).width * 0.72;
+            const _pageLeft = txt.length >= 6 ? Math.min(...txt.map((it: any) => it.transform[4])) : 72;
             let ctm = [1, 0, 0, 1, 0, 0]; const gstack: number[][] = []; let n = 0;
             for (let i = 0; i < opList.fnArray.length; i++) {
               const fn = opList.fnArray[i]; const a = opList.argsArray[i];
@@ -3135,6 +3180,22 @@ const App: React.FC = () => {
               else if (fn === OPS.transform) ctm = mulMat(ctm, a);
               else if (fn === OPS.paintImageXObject || fn === OPS.paintImageXObjectRepeat) {
                 const wPts = Math.abs(ctm[0]), hPts = Math.abs(ctm[3]);
+                // O'Reilly admonition ICON — a SMALL coloured animal silhouette at the LEFT margin, below the
+                // figure-size bar (so it'd otherwise be dropped as "tiny icon"). Classify by dominant hue;
+                // capture it + record its type/position so the adjacent indented body becomes a callout.
+                if (wPts >= 18 && wPts <= 72 && hPts >= 18 && hPts <= 84 && ctm[4] <= _pageLeft + 30 && ctm[4] >= _pageLeft - 40) {
+                  const _im = await getImageObj(page, a[0]);
+                  const _adm = _im ? await admonitionTypeOf(_im) : null;
+                  if (_adm) {
+                    const _enc = await encodeFigure(_im);
+                    if (_enc) {
+                      const _id = `adm_p${pageNum}n${++n}`;
+                      allFigures.push({ id: _id, page: pageNum, wPts, hPts, wPx: _enc.wPx, hPx: _enc.hPx, mimeType: 'image/jpeg', blob: _enc.blob });
+                      const _lst = admonIconsByPage.get(pageNum) || []; _lst.push({ id: _id, type: _adm, yTop: Math.max(ctm[5], ctm[5] + ctm[3]), yBot: Math.min(ctm[5], ctm[5] + ctm[3]), x: ctm[4], w: wPts }); admonIconsByPage.set(pageNum, _lst);
+                    }
+                    continue; // handled — never a standalone figure
+                  }
+                }
                 if (wPts * hPts < FIG_MIN_AREA || Math.min(wPts, hPts) < FIG_MIN_SIDE) continue; // rule / underline / tiny icon
                 const yTop = Math.max(ctm[5], ctm[5] + ctm[3]);
                 const img = await getImageObj(page, a[0]);
@@ -5742,8 +5803,26 @@ const App: React.FC = () => {
             if (/[\uE01D-\uE01F]/u.test(sizeSentinel) && group.some(l => l.semibold) && !/\*\*/u.test(text) && /[A-Za-z]/u.test(text)) {
               text = `**${text}**`;
             }
+            // O'Reilly ADMONITION: a body block indented to the RIGHT of a coloured note/tip/warning icon on
+            // this page, its top near the icon's top -> tag it a callout carrying the icon id + type. The
+            // reader renders the labelled box (warning red-tinted) with the icon; the label word stays in the
+            // content for search. Consume the icon so it fires once. Gated on the icon -> can't misfire.
+            let _calloutPrefix = '';
+            if (!groupIsHeading) {
+              const _icons = admonIconsByPage.get(pageNum);
+              if (_icons && _icons.length) {
+                const _top = Math.max(...group.map(l => l.pageY));
+                const _idx = _icons.findIndex(ic => group[0].x > ic.x + ic.w - 6 && _top <= ic.yTop + 12 && _top >= ic.yBot - 12);
+                if (_idx >= 0) {
+                  const _ic = _icons[_idx]; _icons.splice(_idx, 1);
+                  const _mk = _ic.type === 'tip' ? '' : _ic.type === 'warning' ? '' : '';
+                  const _lbl = _ic.type === 'tip' ? 'Tip' : _ic.type === 'warning' ? 'Warning' : 'Note';
+                  _calloutPrefix = `${_mk}[[FIG ${_ic.id}]]${_lbl} `;
+                }
+              }
+            }
             blocks.push({
-              text: _headItalicMark + (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
+              text: _calloutPrefix + _headItalicMark + (raggedLeft ? '\uE023' : '') + (isBlockQuote && setoffAbove ? '\uE022' : '') + (measuredGapAbove ? '\uE028' : '') + sizeSentinel + (isRightAttribution ? '\uE011' + text : (firstLineFlush ? '' : '') + (isBlockQuote ? '' : '') + '\u00A0'.repeat(blockNbsp) + text),
               role: groupIsHeading ? 'heading' : 'body',
               firstX: group[0].x,
               firstRightX: group[0].rightX,

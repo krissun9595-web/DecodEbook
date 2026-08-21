@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v232-callout-label-searchable';
+const CHAPTER_TEXT_CACHE_VERSION = 'v233-pdf-admonition-icons';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -292,6 +292,9 @@ interface ParagraphData {
     // An ADMONITION callout (note/tip/warning, U+E03B-E03D) — the paragraph renders inside a labelled
     // bordered box (type label on top; warning gets a red-tinted border). Body stays normal translatable prose.
     calloutType?: 'note' | 'tip' | 'warning';
+    // A PDF admonition's O'Reilly icon (green monkey=tip / blue crow=note / red scorpion=warning), captured
+    // as a figure-image and rendered inside the callout box. Undefined for EPUB callouts (text label only).
+    calloutIconId?: string;
 }
 
 interface ColumnPara { sentences: { text: string; gi: number }[] }
@@ -1469,7 +1472,14 @@ export const buildPageSentenceData = (pageText: string): {
     let pText = indent ? alignStripped.slice(indentMatch![0].length) : alignStripped;
     // A callout's body content carries a leading type-LABEL word (Tip/Note/Warning) kept for SEARCH; the
     // reader regenerates the styled label from calloutType, so strip that one leading word from the display.
-    if (calloutType) pText = pText.replace(new RegExp(`^\\s*${calloutType === 'tip' ? 'Tip' : calloutType === 'warning' ? 'Warning' : 'Note'}\\s+`, 'iu'), '');
+    // A PDF admonition also carries a leading "[[FIG id]]" for its O'Reilly icon — extract it (rendered
+    // inside the box) then strip the label word. (EPUB callouts have no icon → calloutIconId undefined.)
+    let calloutIconId: string | undefined;
+    if (calloutType) {
+      const _fm = pText.match(/^\s*\[\[FIG\s+([^\]]+)\]\]\s*/u);
+      if (_fm) { calloutIconId = _fm[1].trim(); pText = pText.slice(_fm[0].length); }
+      pText = pText.replace(new RegExp(`^\\s*${calloutType === 'tip' ? 'Tip' : calloutType === 'warning' ? 'Warning' : 'Note'}\\s+`, 'iu'), '');
+    }
     const lines = pText.split('\n').map(line => line.trim()).filter(Boolean);
     const sentences: string[] = [];
 
@@ -1498,7 +1508,7 @@ export const buildPageSentenceData = (pageText: string): {
       });
     }
 
-    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic, smallCaps, dropCap, accentColor, calloutType, narrowAttribution });
+    paragraphData.push({ original: sentences, translated: [], indent, align, role, flushFirstLine, blockQuote, hangingEntry, sizeEm: effectiveSizeEm, rightMarker, setoffAbove, setoffBelow, paraGap, firstLineIndented, verse: isVerse, italic, smallCaps, dropCap, accentColor, calloutType, calloutIconId, narrowAttribution });
   });
 
   return { paragraphData, flatSentenceMap };
@@ -1595,6 +1605,22 @@ const buildFigureTranslationBase = (caption: string, figId: string, chapterLabel
   const parts = ['Translation', titleCase(lang, 20), chapterLabel, label || figId];
   if (name) parts.push(titleCase(name, 40));
   return parts.filter(Boolean).join('-');
+};
+
+// A small O'Reilly admonition ICON (note/tip/warning silhouette) rendered inside a PDF callout box. Loads
+// the cached blob ('figure-image', same store as figures) by id; renders nothing until ready (the box +
+// type-tinted border already convey the callout, so a missing icon degrades gracefully).
+const CalloutIcon: React.FC<{ iconId: string; bookId: string; alt: string }> = ({ iconId, bookId, alt }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true; let obj: string | null = null;
+    (async () => {
+      try { const rec = await getFile(buildCacheKey(bookId, 0, 'figure-image', iconId)); if (alive && rec?.blob) { obj = URL.createObjectURL(rec.blob); setUrl(obj); } } catch { /* icon is decorative */ }
+    })();
+    return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
+  }, [iconId, bookId]);
+  if (!url) return null;
+  return <img src={url} alt={alt} className="shrink-0 w-8 h-8 object-contain mt-0.5" />;
 };
 
 // An extracted PDF figure rendered inline. Loads the cached blob ('figure-image'), reserves its
@@ -5602,13 +5628,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // doesn't cut through a single box (that was the "incorrect border"). Single view: one box.
                     const _label = para.calloutType === 'tip' ? 'Tip' : para.calloutType === 'warning' ? 'Warning' : 'Note';
                     const _warn = para.calloutType === 'warning';
+                    const _iconId = para.calloutIconId;
                     const _boxCls = `h-full border rounded-md px-4 py-3 ${_warn ? 'border-neon-red/40 bg-neon-red/5' : 'border-zinc-700/50 bg-zinc-900/30'}`;
                     const _labelCls = `text-xs font-bold uppercase tracking-wide mb-2 ${_warn ? 'text-neon-red' : 'text-zinc-400'}`;
+                    // PDF admonition: show the O'Reilly ICON on the left (in place of the text label); EPUB has
+                    // no icon → the text label on top.
                     const _calloutBox = (inner: React.ReactNode) => (
-                      <div className={_boxCls}>
-                        <div className={_labelCls}>{_label}</div>
-                        {inner}
-                      </div>
+                      _iconId
+                        ? <div className={`${_boxCls} flex gap-3 items-start`}><CalloutIcon iconId={_iconId} bookId={bookId} alt={_label} /><div className="min-w-0 flex-1">{inner}</div></div>
+                        : <div className={_boxCls}><div className={_labelCls}>{_label}</div>{inner}</div>
                     );
                     if (viewMode === 'split') {
                       const _runs = runsForParagraph(pIdx);
