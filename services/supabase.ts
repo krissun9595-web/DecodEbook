@@ -49,11 +49,20 @@ export async function bootstrapSupabase(): Promise<boolean> {
     if (data.stripePackSPriceId) localStorage.setItem('stripe_pack_s_price_id', data.stripePackSPriceId);
     if (data.stripePackMPriceId) localStorage.setItem('stripe_pack_m_price_id', data.stripePackMPriceId);
     if (data.stripePackLPriceId) localStorage.setItem('stripe_pack_l_price_id', data.stripePackLPriceId);
-    if (alreadyConfigured) return true;
     if (data.supabaseUrl && data.supabaseAnonKey) {
-      configureSupabase(data.supabaseUrl, data.supabaseAnonKey);
+      // /api/config is authoritative per environment. If it differs from what this
+      // browser cached (e.g. it previously used a different env), re-point — otherwise
+      // a browser that visited prod keeps using prod's config on staging (and vice
+      // versa), so logins hit the wrong database.
+      if (data.supabaseUrl !== localStorage.getItem('supabase_url') ||
+          data.supabaseAnonKey !== localStorage.getItem('supabase_anon_key')) {
+        configureSupabase(data.supabaseUrl, data.supabaseAnonKey);
+      }
       return true;
     }
+    // No server-provided config (e.g. self-hosted with user-set localStorage) — keep
+    // whatever was already configured.
+    if (alreadyConfigured) return true;
   } catch {}
   return alreadyConfigured;
 }

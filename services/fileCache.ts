@@ -21,6 +21,60 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
+// ---- Size-cap + LRU eviction ---------------------------------------------
+// IndexedDB has no built-in quota management; without this the 'files' store grows
+// unbounded (audio/video/images/translations) until the browser quota is hit and
+// writes start failing silently. enforceCacheBudget() is called fire-and-forget
+// after each saveFile, mirroring how pronunciationAudio.ts self-trims.
+const MAX_CACHE_BYTES = 1_000_000_000; // 1 GB soft cap
+const EVICT_TO_BYTES  =   800_000_000; // low-water mark after an eviction pass
+// NEVER evict these — losing them forces a full re-extraction / re-upload:
+const PROTECTED_TYPES: CachedFileType[] = ['source-file', 'original-file'];
+
+export async function enforceCacheBudget(): Promise<void> {
+  const db = await openDB();
+  const entries: { key: string; size: number; timestamp: number; fileType: CachedFileType }[] = [];
+  let total = 0;
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const cursorRequest = tx.objectStore(STORE_NAME).openCursor();
+    cursorRequest.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+      if (cursor) {
+        const v = cursor.value;
+        const size = v.size || 0;
+        total += size;
+        entries.push({ key: v.key, size, timestamp: v.timestamp || 0, fileType: v.fileType });
+        cursor.continue();
+      } else resolve();
+    };
+    cursorRequest.onerror = () => reject(cursorRequest.error);
+  });
+
+  if (total <= MAX_CACHE_BYTES) { db.close(); return; }
+
+  // Evict oldest-created first among non-protected entries until under the low-water mark.
+  const toDelete: string[] = [];
+  for (const e of entries
+    .filter(e => !PROTECTED_TYPES.includes(e.fileType))
+    .sort((a, b) => a.timestamp - b.timestamp)) {
+    if (total <= EVICT_TO_BYTES) break;
+    toDelete.push(e.key);
+    total -= e.size;
+  }
+  if (!toDelete.length) { db.close(); return; }
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    for (const k of toDelete) store.delete(k);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
 export function buildCacheKey(bookId: string, chapterId: number, ...segments: string[]): string {
   return [bookId, String(chapterId), ...segments].join(':');
 }
@@ -39,7 +93,7 @@ export async function saveFile(
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     store.put({ ...metadata, key, size: blob.size, blob });
-    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.oncomplete = () => { db.close(); enforceCacheBudget().catch(() => {}); resolve(); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
 }
