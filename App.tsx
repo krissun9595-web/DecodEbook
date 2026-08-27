@@ -1296,9 +1296,11 @@ const App: React.FC = () => {
         const t = _tt === 'uppercase' && !/\]\(/.test(text) ? text.toUpperCase() : text;
         // Inline small-caps run (font-variant:small-caps via a class/CSS, e.g. brief_history's run-in chapter
         // openers `<span class="smallcaps">LIFE EXISTED ON</span>`, Singularity `span.SCAP`) → the U+E02D
-        // inline sentinel the reader renders as small caps. Corpus small-caps runs are plain (never also
-        // bold/italic), so wrap only when the inner has no emphasis markers, avoiding a nested-marker tangle.
-        if (elSmallCapsOf(el) && !/[*_]/u.test(t)) {
+        // inline sentinel the reader renders as small caps. A small-caps run CAN also be italic/bold — a
+        // small-caps book-TITLE citation `<span class="smallcaps"><i>AN INTRODUCTION…</i></span>` (BHI ch2
+        // epigraph credit) — so keep any inner `*`/`**` markers INSIDE the sentinel; the reader strips them
+        // and re-applies the emphasis on the sized small-caps segment (else the title rendered full-size).
+        if (elSmallCapsOf(el)) {
           // SIZE-based small-caps (a class that pre-uppercases + shrinks the text, no font-variant —
           // brief_history .833em, Sovereign .75em) → reproduce the EXACT reduced size (keeps the uppercase
           // text, just smaller) via the U+E02F sentinel carrying the ratio (U+E100 + round(ratio×100)).
@@ -1641,20 +1643,6 @@ const App: React.FC = () => {
           const rowCells = trs.map(tr => Array.from(tr.children).filter(c => /^t[dh]$/i.test(c.tagName || '')));
           const colsOf = (cells: Element[]) => cells.reduce((n, c) => n + (parseInt(c.getAttribute('colspan') || '1', 10) || 1), 0);
           const totalCols = Math.max(1, ...rowCells.map(colsOf));
-          const posChar = (xf: number) => String.fromCharCode(0xE200 + Math.max(0, Math.min(1000, Math.round(xf * 1000))));
-          const rowsEnc = rowCells.map(cells => {
-            let col = 0, out = '';
-            for (const c of cells) {
-              const span = parseInt(c.getAttribute('colspan') || '1', 10) || 1;
-              const txt = (c.textContent || '').replace(/\s+/g, ' ').trim();
-              if (txt) out += posChar(col / totalCols) + txt;
-              col += span;
-            }
-            return out;
-          }).filter(Boolean);
-          if (totalCols >= 3 && rowsEnc.length >= 3) {
-            return '\n\n' + String.fromCharCode(0xE025) + rowsEnc.join(String.fromCharCode(0xE024)) + '\n\n';
-          }
           // A 2-COLUMN LABEL|CONTENT table (agentic_mesh's Table 11-1: `<th>User input</th><td>…</td>`, each
           // content cell a stack of `<p><code>…</code></p>` lines). The numeric-grid path above needs ≥3 cols;
           // this falls through to a flattened prose dump that also mangles code underscores (`user_name`→
@@ -1673,6 +1661,106 @@ const App: React.FC = () => {
             }).filter(r => r.replace(/[]/gu, '').trim());
             if (rowsLc.length >= 2) {
               return '\n\n' + String.fromCharCode(0xE037) + rowsLc.join(String.fromCharCode(0xE039)) + '\n\n';
+            }
+          }
+          // Every OTHER table → a GENERAL N-column bordered grid (U+E03E). Each cell = [U+E250+colspan]text,
+          // cells joined U+E038; a header row (all <th>) opens with U+E24F; rows joined U+E039. Cell text is
+          // verbatim (no markdown) so identifiers/numbers survive; the reader renders a bordered grid with
+          // per-cell translation. Replaces the old positioned-token dump (which clipped multi-line cells) and
+          // reproduces the source table faithfully for any rows × columns.
+          if (totalCols >= 2 && rowCells.filter(c => c.length).length >= 2) {
+            const CS = String.fromCharCode(0xE038), RS = String.fromCharCode(0xE039), HDR = String.fromCharCode(0xE24F);
+            // Is the source table actually BORDERED? A borderless `display:table` is a pure ALIGNMENT layout
+            // (Sovereign's dice frequency list — ditto marks, no rules), NOT a data grid: rendering grid lines
+            // around it is unfaithful. Check the table AND its cells for a real border (BHI `.tdb{border:1px}`,
+            // Singularity `table.Table1{border:1px}` = bordered; the dice `.table`/`.line` = none).
+            const hasBorder = (el: Element): boolean => {
+              for (const p of ['border', 'border-top', 'border-bottom', 'border-left', 'border-right', 'border-style', 'border-width']) {
+                const v = declProp(el, p);
+                if (v && !/^(none|0|0px|hidden)\b/i.test(v.trim())) return true;
+              }
+              return false;
+            };
+            const bordered = hasBorder(element) || rowCells.some(cs => cs.some(c => hasBorder(c)));
+            // Emit each source <tr> as a payload row; each cell carries colspan (E250+n) + rowspan (E260+n, only
+            // if >1) + align. The READER reconstructs the grid placement (skipping rowspan/colspan-covered slots),
+            // so a rowspan cell (Epoch "Third"/"Cerebellum") renders as ONE merged cell spanning rows — NOT a
+            // blank continuation row. (Do NOT flatten here: the covered slots must be absent so the reader spans.)
+            // A cell's content, PRESERVING italic/bold (→ *…* / **…**) and per-<p> PARAGRAPH breaks (→ U+E024) —
+            // Singularity's Timescale cell is `<p>Billions of years</p><p><i>(nonbiological…)</i></p>`. textContent
+            // flattened both (lost the italic + the break); the reader parses the markdown and splits on U+E024.
+            const IT = '*', BD = '**';
+            const inlineMk = (node: Element): string => {
+              let s = '';
+              for (const ch of Array.from(node.childNodes)) {
+                const tn = ((ch as Element).tagName || '').toLowerCase();
+                if (tn === 'i' || tn === 'em') s += IT + ((ch.textContent || '').trim()) + IT;
+                else if (tn === 'b' || tn === 'strong') s += BD + ((ch.textContent || '').trim()) + BD;
+                else s += ch.textContent || '';
+              }
+              return s.replace(/\s+/gu, ' ').trim();
+            };
+            const cellContent = (el: Element): string => {
+              const blocks = Array.from(el.querySelectorAll('p, div, li'));
+              return (blocks.length ? blocks : [el]).map(inlineMk).filter(Boolean).join(String.fromCharCode(0xE024));
+            };
+            const gridRows = trs.map((tr, ri) => {
+              const cells = Array.from(tr.children).filter(el => /^t[dh]$/i.test(el.tagName || ''));
+              if (!cells.length) return '';
+              const allTh = cells.every(el => /^th$/i.test(el.tagName || ''));
+              const isHeader = allTh || (bordered && ri === 0);
+              const enc = cells.map(el => {
+                const cs = Math.max(1, Math.min(15, parseInt(el.getAttribute('colspan') || '1', 10) || 1));
+                const rs = Math.max(1, Math.min(15, parseInt(el.getAttribute('rowspan') || '1', 10) || 1));
+                // Alignment (and font-size below) often sits on the cell's inner <p>/<div>, not the <td> — BHI
+                // `<td><p class="tabr">…</p>` = right. Read from the inner text element, falling back to the cell.
+                const _inner = el.querySelector('p, div, li, span') || el;
+                const attrAl = (el.getAttribute('align') || _inner.getAttribute('align') || '').toLowerCase();
+                const alv = attrAl === 'center' || attrAl === 'right' ? attrAl : (alignFor(_inner) || alignFor(el));
+                const alChar = alv === 'center' ? String.fromCharCode(0xE271) : alv === 'right' ? String.fromCharCode(0xE272) : '';
+                const rsChar = rs > 1 ? String.fromCharCode(0xE260 + rs) : '';
+                // A suppressed top border (`border-top:none`, O'Reilly/calibre TB-NL continuation) → flag E24C so
+                // the reader drops the rule above this cell, making two stacked <td> read as one multi-paragraph cell.
+                const bt = (declProp(el, 'border-top') || declProp(el, 'border-top-style') || '').trim();
+                const ntChar = /^(none|0|hidden)\b/i.test(bt) ? String.fromCharCode(0xE24C) : '';
+                return ntChar + String.fromCharCode(0xE250 + cs) + rsChar + alChar + cellContent(el);
+              }).join(CS);
+              return (isHeader ? HDR : '') + enc;
+            }).filter(Boolean);
+            if (gridRows.length >= 2) {
+              // Source table WIDTH (relative to the body text column) — Singularity `table{width:100%}`,
+              // BHI `.table1{width:90%}`. Emit it as width meta (U+E24E + permille + U+E039) so the reader
+              // sizes the table like the source (most are body-line width or narrower, never wider).
+              const wRaw = (declProp(element, 'width') || declProp(element, 'max-width') || '').trim();
+              const wPct = /^([\d.]+)%$/.test(wRaw) ? parseFloat(wRaw) / 100 : 1;
+              // Font ratio: the source sets it on the cell's inner <p> (BHI `.tab{font-size:0.85em}`), NOT the
+              // <table>. Read from each cell's inner element (em/rem/% direct; px÷16) and take the median.
+              const _parseFs = (v: string | null): number | null => { const m = (v || '').trim().match(/^([\d.]+)(em|rem|%|px)$/); return m ? (m[2] === '%' ? parseFloat(m[1]) / 100 : m[2] === 'px' ? parseFloat(m[1]) / 16 : parseFloat(m[1])) : null; };
+              const _fsizes: number[] = [];
+              for (const tr of trs) for (const c of Array.from(tr.children).filter(el => /^t[dh]$/i.test(el.tagName || ''))) { const inn = c.querySelector('p, div, li, span') || c; const v = _parseFs(declProp(inn, 'font-size')) ?? _parseFs(declProp(c, 'font-size')); if (v) _fsizes.push(v); }
+              const fRatio = _fsizes.length ? [..._fsizes].sort((a, b) => a - b)[Math.floor(_fsizes.length / 2)] : (_parseFs(declProp(element, 'font-size')) ?? 1);
+              // Per-column width fractions — from <colgroup><col style="width:30%"> (BHI), else estimated from the
+              // longest cell per column. Applied to BOTH the original and translated table so their columns MATCH
+              // and reproduce the source's column design.
+              const ncolsE = Math.max(1, ...trs.map(tr => Array.from(tr.children).filter(el => /^t[dh]$/i.test(el.tagName || '')).reduce((n, c) => n + (parseInt(c.getAttribute('colspan') || '1', 10) || 1), 0)));
+              const colEls = Array.from(element.querySelectorAll('col'));
+              let colFr: number[] = [];
+              if (colEls.length === ncolsE) {
+                const ws = colEls.map(col => { const m = ((col.getAttribute('style') || '') + ' ' + (col.getAttribute('width') || '')).match(/([\d.]+)%/); return m ? parseFloat(m[1]) : 0; });
+                const tot = ws.reduce((a, b) => a + b, 0);
+                if (tot > 0 && ws.every(w => w > 0)) colFr = ws.map(w => w / tot);
+              }
+              if (colFr.length !== ncolsE) {
+                const maxLen = new Array(ncolsE).fill(1);
+                for (const tr of trs) { let ci = 0; for (const c of Array.from(tr.children).filter(el => /^t[dh]$/i.test(el.tagName || ''))) { const span = Math.max(1, parseInt(c.getAttribute('colspan') || '1', 10) || 1); const len = (c.textContent || '').trim().length; for (let k = 0; k < span; k++) if (ci + k < ncolsE) maxLen[ci + k] = Math.max(maxLen[ci + k], len / span); ci += span; } }
+                const tot = maxLen.reduce((a, b) => a + b, 0) || 1; colFr = maxLen.map(l => l / tot);
+              }
+              const colFrChars = colFr.length >= 2 ? colFr.map(f => String.fromCharCode(0xE200 + Math.max(0, Math.min(999, Math.round(f * 1000))))).join('') : '';
+              const wMeta = String.fromCharCode(0xE24E) + String.fromCharCode(0xE200 + Math.max(0, Math.min(999, Math.round(wPct * 1000)))) + String.fromCharCode(0xE200 + Math.max(100, Math.min(1400, Math.round(fRatio * 1000)))) + colFrChars + RS;
+              // CENTRED table? margin:auto (both sides) — reproduce so the reader centres it like the source.
+              const mAuto = (m: string | null) => !!m && /\bauto\b/.test(m);
+              const centered = (mAuto(declProp(element, 'margin-left')) && mAuto(declProp(element, 'margin-right'))) || /\bauto\b/.test((declProp(element, 'margin') || '').replace(/^\S+\s*/, ''));
+              return '\n\n' + String.fromCharCode(0xE03E) + (centered ? String.fromCharCode(0xE24B) : '') + (bordered ? '' : String.fromCharCode(0xE24D)) + wMeta + gridRows.join(RS) + '\n\n';
             }
           }
         }
@@ -3391,6 +3479,11 @@ const App: React.FC = () => {
         const vectorBullets: { cx: number; cy: number; size: number }[] = [];
         // Decorative horizontal RULES (epigraph/section dividers) drawn as thin filled rects.
         const hRules: { y: number; x: number; w: number; double?: boolean }[] = [];
+        // NARROW horizontal rules — TABLE cell/row borders, below the 0.55×page decorative-rule bar. Kept
+        // separate so the label|content table detector can segment bordered tables (Agentic Mesh Table 11-1).
+        const tableRuleCands: { y: number; x0: number; x1: number }[] = [];
+        // VERTICAL table borders — column dividers of a bordered GRID table (BHI comparison/data tables).
+        const tableVRuleCands: { x: number; y0: number; y1: number }[] = [];
         if (opList) {
           try {
             const OPS = pdfjsLib.OPS;
@@ -3406,9 +3499,15 @@ const App: React.FC = () => {
               else if (fn === OPS.transform) ctm = mulMat(ctm, a);
               else if (fn === OPS.constructPath) {
                 const op = a[0], mm = a[2]; // args = [paintOp, drawOps, [xMin,yMin,xMax,yMax]] in user space
-                if (!FILL_OP.has(op) || !mm) continue; // only FILLED paths; a bullet is a filled dot, not a stroke/clip
+                if (!mm) continue;
                 const [x0, y0] = apply(ctm, mm[0], mm[1]); const [x1, y1] = apply(ctm, mm[2], mm[3]);
                 const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+                // A TABLE border (a narrow horizontal rule) — captured before the FILL_OP gate because a
+                // border may be STROKED, not filled. Excludes the near-full-width page/section rule (≥0.92).
+                if (h <= 2 && w >= 30 && w < pageWidth * 0.92) tableRuleCands.push({ y: (y0 + y1) / 2, x0: Math.min(x0, x1), x1: Math.max(x0, x1) });
+                // A vertical table border (a column divider). Also captured before the FILL_OP gate.
+                if (w <= 2.5 && h >= 20) tableVRuleCands.push({ x: (x0 + x1) / 2, y0: Math.min(y0, y1), y1: Math.max(y0, y1) });
+                if (!FILL_OP.has(op)) continue; // below here: only FILLED paths; a bullet is a filled dot, not a stroke/clip
                 // A decorative horizontal RULE (epigraph/section divider): thin and spans most of the text
                 // column. Narrow table/chart cell rules (< 0.55 page width) are excluded here; grid-like
                 // clusters are dropped below, so only genuine content dividers survive.
@@ -3763,7 +3862,172 @@ const App: React.FC = () => {
         const dropCaps = glyphs.filter(isDropCap);
         dropCaps.forEach(cap => { cap.dropCap = true; });
         type LineGroup = { baseY: number; baseH: number; items: PdfGlyph[]; col?: 0 | 1 };
-        const bodyGlyphs = glyphs.filter(g => !isDropCap(g)); // kept in pdf.js content-stream order
+        // ── GENERAL BORDERED GRID TABLES (BHI comparison/data tables; Singularity epoch/computing tables).
+        // A full grid of filled borders gives EXACT cell boundaries — reconstruct any rows × columns reliably
+        // (text geometry alone can't: multi-line cells + wrapped headers). Driven by VERTICAL rules (a column
+        // spans the full table height), NOT H-rule gaps (which split a tall-cell table). Emits the cross-format
+        // U+E03E grid payload (same reader render as an EPUB <table>); the table's glyphs are removed from the
+        // flow so the column analysis never mis-handles them (no partial 2-col / E025). colspan = a missing
+        // internal vertical border over a row band. The caption ("Table N…"/title) sits above the top border,
+        // outside the bbox, so it survives as its own paragraph.
+        const gridBoxes: { x0: number; x1: number; y0: number; y1: number }[] = [];
+        // The page's body text width — a table's total width is emitted RELATIVE to this so the reader sizes
+        // the table like the source (most tables are body-line width or narrower, not full-bleed).
+        // NOTE: loop, NOT Math.max(...glyphs) — spreading thousands of glyphs overflows the call stack
+        // (RangeError), which the extractor catches as "could not extract text" (broke Singularity upload).
+        let bodyW = 0, bodyMinX = 0, bodyMaxX = 0;
+        { let mn = Infinity, mx = -Infinity; for (const g of glyphs) { if (g.x < mn) mn = g.x; const rr = g.x + (g.w || 0); if (rr > mx) mx = rr; } if (glyphs.length) { bodyW = mx - mn; bodyMinX = mn; bodyMaxX = mx; } }
+        try {
+        if (tableVRuleCands.length >= 2 && tableRuleCands.length >= 2) {
+          const clus = (vals: number[], tol: number): { m: number; v: number[] }[] => {
+            const s = [...vals].sort((a, b) => a - b); const o: { m: number; v: number[] }[] = [];
+            for (const v of s) { const last = o[o.length - 1]; if (!last || v - last.m > tol) o.push({ m: v, v: [v] }); else { last.v.push(v); last.m = last.v.reduce((p, x) => p + x, 0) / last.v.length; } }
+            return o;
+          };
+          const cols = clus(tableVRuleCands.map(v => v.x), 4).map(c => { const seg = tableVRuleCands.filter(v => Math.abs(v.x - c.m) <= 4); return { x: c.m, y0: Math.min(...seg.map(s => s.y0)), y1: Math.max(...seg.map(s => s.y1)) }; }).sort((a, b) => a.x - b.x);
+          const used: boolean[] = new Array(cols.length).fill(false);
+          for (let s = 0; s < cols.length; s++) {
+            if (used[s]) continue;
+            const grp = [cols[s]]; used[s] = true; let ext = true;
+            while (ext) { ext = false; for (let k = 0; k < cols.length; k++) { if (used[k]) continue; if (grp.some(g => Math.min(g.y1, cols[k].y1) - Math.max(g.y0, cols[k].y0) > 10)) { grp.push(cols[k]); used[k] = true; ext = true; } } }
+            if (grp.length < 3) continue; // need ≥2 columns (≥3 boundaries)
+            grp.sort((a, b) => a.x - b.x);
+            const colXs = grp.map(g => g.x);
+            const tY0 = Math.max(...grp.map(g => g.y0)), tY1 = Math.min(...grp.map(g => g.y1));
+            const rowYs = clus(tableRuleCands.filter(hh => hh.y >= tY0 - 2 && hh.y <= tY1 + 2 && hh.x1 >= colXs[0] - 4 && hh.x0 <= colXs[colXs.length - 1] + 4).map(hh => hh.y), 4).map(c => c.m).sort((a, b) => b - a);
+            if (rowYs.length < 3) continue; // need ≥2 rows
+            const ncols = colXs.length - 1;
+            const vSegAt = (x: number, yb: number, yt: number): boolean => tableVRuleCands.some(v => Math.abs(v.x - x) <= 4 && Math.min(v.y1, yt) - Math.max(v.y0, yb) > 3);
+            // A cell's glyphs, CLIPPED to its x-range: a text run that pdf.js merged across a column boundary
+            // ("EPOCH MEDIUM" spanning col0|col1 on the Singularity Epoch header) is split at the boundary
+            // (proportionally, snapping to a nearby space) so each column gets its own header — not one column
+            // grabbing the whole run and leaving its neighbour empty.
+            const cellGlyphs = (cx0: number, cx1: number, yb: number, yt: number): { x: number; w: number; h: number; y: number; str: string; ital: boolean }[] => {
+              const out: { x: number; w: number; h: number; y: number; str: string; ital: boolean }[] = [];
+              for (const g of glyphs) {
+                if (!(g.y > yb - 1 && g.y < yt + 1)) continue;
+                const gx0 = g.x, gx1 = g.x + (g.w || 0);
+                if (gx1 <= cx0 + 0.5 || gx0 >= cx1 - 0.5) continue;
+                if (gx0 >= cx0 - 1 && gx1 <= cx1 + 1) { out.push({ x: gx0, w: g.w || 0, h: g.h, y: g.y, str: g.str, ital: !!g.italic }); continue; }
+                const total = gx1 - gx0, s = g.str;
+                if (total <= 0 || !s.length) continue;
+                const oL = Math.max(cx0, gx0), oR = Math.min(cx1, gx1);
+                let i0 = Math.max(0, Math.min(s.length, Math.round(((oL - gx0) / total) * s.length)));
+                let i1 = Math.max(0, Math.min(s.length, Math.round(((oR - gx0) / total) * s.length)));
+                const snap = (i: number): number => { for (let d = 1; d <= 3; d++) { if (s[i - 1 + d] === ' ') return i + d; if (s[i - 1 - d] === ' ') return i - d; } return i; };
+                if (i0 > 0) i0 = snap(i0);
+                if (i1 < s.length) i1 = snap(i1);
+                const sub = s.slice(i0, i1).trim();
+                if (sub) out.push({ x: oL, w: oR - oL, h: g.h, y: g.y, str: sub, ital: !!g.italic });
+              }
+              return out;
+            };
+            // A cell's text, preserving ITALIC runs (→ *…*, DejaVuSerif-Italic on Singularity's parentheticals)
+            // and paragraph breaks: an italic run that OPENS with "(" starts its own paragraph (U+E024) — the
+            // source's italic bracketed note ("(nonbiological atomic and chemical synthesis)") on its own line.
+            const cellText = (cx0: number, cx1: number, yb: number, yt: number): string => {
+              const gg = cellGlyphs(cx0, cx1, yb, yt);
+              if (!gg.length) return '';
+              gg.sort((a, b) => b.y - a.y || a.x - b.x);
+              const lines: (typeof gg)[] = [];
+              for (const g of gg) { const L = lines.find(l => Math.abs(l[0].y - g.y) <= bodyHeight * 0.5); if (L) L.push(g); else lines.push([g]); }
+              const lineObjs = lines.map(l => {
+                const srt = [...l].sort((a, b) => a.x - b.x);
+                let t = '', inI = false;
+                for (let i = 0; i < srt.length; i++) {
+                  const g = srt[i], p = srt[i - 1];
+                  const sp = i > 0 && (srt[i].x - (p.x + (p.w || 0))) > Math.max(1, (g.h || bodyHeight) * 0.12) ? ' ' : '';
+                  if (g.ital && !inI) { t += sp + '*' + g.str; inI = true; }
+                  else if (!g.ital && inI) { t += '*' + sp + g.str; inI = false; }
+                  else t += sp + g.str;
+                }
+                if (inI) t += '*';
+                t = t.trim();
+                return { t, paren: /^\*?\(/.test(t) && (l[0]?.ital || false) };
+              });
+              let out = lineObjs[0]?.t || '';
+              for (let i = 1; i < lineObjs.length; i++) out += (lineObjs[i].paren ? String.fromCharCode(0xE024) : ' ') + lineObjs[i].t;
+              return out.replace(/[ \t]+/gu, ' ').replace(/\*\s*\*/g, ' ').trim();
+            };
+            // Cell alignment: measure from the SHORTEST line (largest total L+R gap) — it discriminates centre
+            // vs left/right, whereas a full-width line (fills the column) can't. Reproduces the source.
+            const alignInRect = (cx0: number, cx1: number, yb: number, yt: number): 0 | 1 | 2 => {
+              const gg = cellGlyphs(cx0, cx1, yb, yt);
+              if (!gg.length) return 0;
+              const rws: { y: number; min: number; max: number }[] = [];
+              for (const g of [...gg].sort((a, b) => b.y - a.y)) { const L = rws.find(l => Math.abs(l.y - g.y) <= bodyHeight * 0.5); if (L) { L.min = Math.min(L.min, g.x); L.max = Math.max(L.max, g.x + g.w); } else rws.push({ y: g.y, min: g.x, max: g.x + g.w }); }
+              const cw = cx1 - cx0;
+              let best: { min: number; max: number } | null = null, bestGap = -1;
+              for (const ln of rws) { const tot = (ln.min - cx0) + (cx1 - ln.max); if (tot > bestGap) { bestGap = tot; best = ln; } }
+              if (!best) return 0;
+              const lg = best.min - cx0, rg = cx1 - best.max;
+              if (rg < lg * 0.5 && rg < cw * 0.14) return 2;
+              if (Math.abs(lg - rg) < cw * 0.18 && lg > cw * 0.07) return 1;
+              return 0;
+            };
+            // A horizontal border segment at row boundary y spanning a column's x-range. Its ABSENCE below a
+            // cell means the cell spans down into the next band (rowspan) — the Epoch table's merged cells.
+            const hSegAt = (y: number, cx0: number, cx1: number): boolean => tableRuleCands.some(h => Math.abs(h.y - y) <= 4 && Math.min(h.x1, cx1) - Math.max(h.x0, cx0) > (cx1 - cx0) * 0.5);
+            const RS = String.fromCharCode(0xE039), CS = String.fromCharCode(0xE038), HDR = String.fromCharCode(0xE24F);
+            const covered = new Set<string>();
+            // Pass 1: collect cells (position, span, per-cell alignment, text).
+            const tcells: { r: number; c: number; span: number; rspan: number; al: 0 | 1 | 2; txt: string }[] = [];
+            for (let r = 0; r < rowYs.length - 1; r++) {
+              let c = 0;
+              while (c < ncols) {
+                if (covered.has(`${r},${c}`)) { c++; continue; } // covered by a rowspan/colspan from above/left
+                let span = 1;
+                while (c + span < ncols && !vSegAt(colXs[c + span], rowYs[r + 1], rowYs[r])) span++;
+                let rspan = 1;
+                while (r + rspan < rowYs.length - 1 && !hSegAt(rowYs[r + rspan], colXs[c], colXs[c + span])) rspan++;
+                const yt = rowYs[r], yb = rowYs[r + rspan];
+                tcells.push({ r, c, span, rspan, al: alignInRect(colXs[c], colXs[c + span], yb, yt), txt: cellText(colXs[c], colXs[c + span], yb, yt) });
+                for (let dr = 0; dr < rspan; dr++) for (let dc = 0; dc < span; dc++) covered.add(`${r + dr},${c + dc}`);
+                c += span;
+              }
+            }
+            // Pass 2: per-COLUMN majority alignment (span-1 non-empty cells vote) so a column is consistent —
+            // a wide cell that fills its column can't be read as centred and would spuriously default to left;
+            // a positive centre signal from the column's other cells wins the tie.
+            const colAl: (0 | 1 | 2)[] = [];
+            for (let col = 0; col < ncols; col++) {
+              let cC = 0, cL = 0, cR = 0;
+              for (const t of tcells) if (t.c === col && t.span === 1 && t.txt) { if (t.al === 1) cC++; else if (t.al === 2) cR++; else cL++; }
+              colAl[col] = cR > cC && cR > cL ? 2 : cC >= cL && cC > 0 ? 1 : 0;
+            }
+            const rowStrs: string[] = [];
+            for (let r = 0; r < rowYs.length - 1; r++) {
+              const cellStrs = tcells.filter(t => t.r === r).sort((a, b) => a.c - b.c).map(t => {
+                const al = colAl[t.c];
+                return String.fromCharCode(0xE250 + Math.min(15, t.span)) + (t.rspan > 1 ? String.fromCharCode(0xE260 + Math.min(15, t.rspan)) : '') + (al ? String.fromCharCode(0xE270 + al) : '') + t.txt;
+              });
+              rowStrs.push(cellStrs.length ? ((r === 0 ? HDR : '') + cellStrs.join(CS)) : ''); // keep empty bands so row indices align
+            }
+            if (rowStrs.filter(Boolean).length < 2) continue;
+            // Meta: U+E24E + [table-width ÷ body-text permille] + [table-font ÷ body-font permille] + U+E039.
+            const tW = colXs[colXs.length - 1] - colXs[0];
+            const wf = bodyW > 0 ? Math.max(0, Math.min(999, Math.round((tW / bodyW) * 1000))) : 999;
+            // Font ratio: the table's median glyph height vs the body PROSE height. Measure the body reference
+            // from glyphs OUTSIDE the table — the page-wide mode is skewed to the table's own size when the table
+            // dominates the page (BHI p251), which wrongly reported ratio≈1 instead of 0.75.
+            const _tGH: number[] = [], _bGH: number[] = [];
+            for (const g of glyphs) { const mx = g.x + (g.w || 0) / 2; const inT = mx > colXs[0] - 1 && mx < colXs[colXs.length - 1] + 1 && g.y > rowYs[rowYs.length - 1] - 1 && g.y < rowYs[0] + 1; (inT ? _tGH : _bGH).push(g.h); }
+            const _bodyRef = _bGH.length >= 20 ? median(_bGH) : bodyHeight;
+            const fr = _bodyRef > 0 && _tGH.length ? Math.max(100, Math.min(1400, Math.round((median(_tGH) / _bodyRef) * 1000))) : 1000;
+            // Per-column width fractions (of the table) — applied to BOTH the original AND translated table so
+            // their columns match and reproduce the source's column design (E24E + widthFrac + fontEm + colFr… + E039).
+            const colFrChars = colXs.slice(0, -1).map((x, i) => String.fromCharCode(0xE200 + Math.max(0, Math.min(999, Math.round(((colXs[i + 1] - x) / tW) * 1000))))).join('');
+            const metaSeg = tW > 0 ? String.fromCharCode(0xE24E) + String.fromCharCode(0xE200 + wf) + String.fromCharCode(0xE200 + fr) + colFrChars + RS : '';
+            // CENTRED in the body column? (equal, non-trivial left & right margins to the body text extent).
+            const leftM = colXs[0] - bodyMinX, rightM = bodyMaxX - colXs[colXs.length - 1];
+            const centered = bodyW > 0 && leftM > bodyW * 0.04 && Math.abs(leftM - rightM) < bodyW * 0.08;
+            const list = tablesByPage.get(pageNum) || []; list.push({ text: String.fromCharCode(0xE03E) + (centered ? String.fromCharCode(0xE24B) : '') + metaSeg + rowStrs.join(RS), yTop: rowYs[0] }); tablesByPage.set(pageNum, list);
+            gridBoxes.push({ x0: colXs[0], x1: colXs[colXs.length - 1], y0: rowYs[rowYs.length - 1], y1: rowYs[0] });
+          }
+        }
+        } catch (e) { console.warn(`grid-table detection skipped on page ${pageNum}:`, e); gridBoxes.length = 0; } // NEVER let a table-detection edge case break whole-PDF extraction
+        const inGrid = (g: PdfGlyph): boolean => { const mx = g.x + (g.w || 0) / 2; return gridBoxes.some(b => mx > b.x0 - 2 && mx < b.x1 + 2 && g.y > b.y0 - 2 && g.y < b.y1 + 2); };
+        const bodyGlyphs = glyphs.filter(g => !isDropCap(g) && !inGrid(g)); // kept in pdf.js content-stream order; grid-table glyphs removed
         // Cluster a set of glyphs into baseline "lines": sort top→bottom, then join each glyph to the
         // nearest existing line within tolerance (anchoring the line on its tallest glyph so a raised
         // superscript doesn't pull the baseline up).
@@ -3784,6 +4048,56 @@ const App: React.FC = () => {
         };
 
         const groups: LineGroup[] = [];
+        // ── LABEL|CONTENT TABLES ("Table N-N" bordered tables: a narrow label column + a wide multi-line
+        // content column — Agentic Mesh Table 11-1/11-2). The row dividers are drawn as narrow horizontal
+        // rules in the content column; they segment the wrapped rows RELIABLY where text geometry can't (a
+        // label like "LLM internal thoughts" wraps line-for-line beside its content, so per-line gaps don't
+        // mark rows). Anchored on a "Table N." caption AND ≥2 aligned content-column rules → can't fire on
+        // prose (verified: fires only on Agentic p300/p301 across all test PDFs). Emits the SAME U+E037
+        // payload the reader already renders for EPUB (codeTable); the caption stays its own paragraph and
+        // the consumed body lines are removed from the flow after the column pass below.
+        const lcTables: { payload: string; yTop: number; yLo: number; yHi: number }[] = (() => {
+         try {
+          if (tableRuleCands.length < 2) return [];
+          const CAP_RE = /^\s*Table\s+\d+(?:[-.–]\d+)?\.?\s/i;
+          const tLines = clusterLines(bodyGlyphs).sort((a, b) => b.baseY - a.baseY);
+          for (const g of tLines) g.items.sort((a, b) => a.x - b.x);
+          const lineText = (g: LineGroup): string => g.items.map(it => it.str).join(' ').replace(/\s+/gu, ' ').trim();
+          const bLeft = mode(tLines.map(g => Math.round(g.items[0]?.x ?? 0))) || 0;
+          const out: { payload: string; yTop: number; yLo: number; yHi: number }[] = [];
+          for (let ci = 0; ci < tLines.length; ci++) {
+            const cap = tLines[ci];
+            if (!cap.items.length || !CAP_RE.test(lineText(cap))) continue;
+            // content-column row dividers below the caption, within a plausible table height, right of margin
+            const near = tableRuleCands.filter(r => r.y < cap.baseY - 2 && r.y > cap.baseY - 460 && r.x0 > bLeft + 8);
+            if (near.length < 2) continue;
+            const bnd = median(near.map(r => r.x0)); // the content column's left edge = the label|content boundary
+            const colRules = near.filter(r => Math.abs(r.x0 - bnd) <= 12).sort((a, b) => b.y - a.y); // top → bottom
+            if (colRules.length < 2) continue;
+            const bottomY = colRules[colRules.length - 1].y;
+            const body = tLines.filter(g => g.baseY < cap.baseY - 2 && g.baseY > bottomY + 1);
+            if (body.length < 2) continue;
+            const bounds = [cap.baseY, ...colRules.map(r => r.y)]; // descending y row boundaries
+            const rows: string[] = [];
+            for (let b = 0; b < bounds.length - 1; b++) {
+              const hi = bounds[b], lo = bounds[b + 1];
+              const band = body.filter(g => g.baseY < hi - 1 && g.baseY > lo - 1).sort((p, q) => q.baseY - p.baseY);
+              if (!band.length) continue;
+              const labelParts: string[] = [], contentLines: string[] = [];
+              for (const ln of band) {
+                const lab = ln.items.filter(it => it.x + (it.w || 0) / 2 < bnd).map(it => it.str).join(' ').replace(/\s+/gu, ' ').trim();
+                const con = ln.items.filter(it => it.x + (it.w || 0) / 2 >= bnd).map(it => it.str).join(' ').replace(/\s+/gu, ' ').trim();
+                if (lab) labelParts.push(lab);
+                if (con) contentLines.push(con);
+              }
+              if (labelParts.length || contentLines.length) rows.push(labelParts.join(' ') + String.fromCharCode(0xE038) + contentLines.join(String.fromCharCode(0xE024)));
+            }
+            if (rows.length < 2) continue;
+            out.push({ payload: String.fromCharCode(0xE037) + rows.join(String.fromCharCode(0xE039)), yTop: Math.max(...body.map(g => g.baseY)), yLo: bottomY, yHi: Math.max(...body.map(g => g.baseY)) });
+          }
+          return out;
+         } catch (e) { console.warn(`label-content table detection skipped on page ${pageNum}:`, e); return []; }
+        })();
         // ── PRINCIPLED: reading order & columns from the tagged struct tree ────────────────
         // Each glyph carries its struct paragraph index (reading order). When the struct tree reveals a
         // genuine two-column region (a paragraph sitting wholly right of a gutter, overlapping a
@@ -3838,8 +4152,12 @@ const App: React.FC = () => {
         // same-baseline row-major colophon out — that stays on its own path below.) Reflow ONLY that
         // band (left column top-to-bottom, then right); every line above/below it keeps its natural
         // full-width reading position. No qualifying band ⇒ single flow, exactly as before.
-        const contentMinX = Math.min(...bodyGlyphs.map(g => g.x));
-        const contentMaxX = Math.max(...bodyGlyphs.map(g => g.x + (g.w || 0)));
+        // Guard the empty case: a full-page GRID TABLE can consume EVERY glyph (Singularity's 23-row Year
+        // table), leaving bodyGlyphs empty → Math.min/max(…[]) = ±Infinity → new Float32Array(-Infinity) throws
+        // ("could not extract text"). Default to 0/pageWidth so the band pass finds nothing and the page's
+        // content comes entirely from its emitted table.
+        const contentMinX = bodyGlyphs.length ? Math.min(...bodyGlyphs.map(g => g.x)) : 0;
+        const contentMaxX = bodyGlyphs.length ? Math.max(...bodyGlyphs.map(g => g.x + (g.w || 0))) : pageWidth;
         const pageMid = (contentMinX + contentMaxX) / 2;
         const span = contentMaxX - contentMinX;
         const gMaxX = (g: LineGroup): number => Math.max(...g.items.map(it => it.x + (it.w || 0)));
@@ -3870,7 +4188,7 @@ const App: React.FC = () => {
         // gut0; require a real strip (≥ ~0.6× line height) so a page with no clean central gutter (a title
         // page, offset art) falls back to the right-start percentile, unchanged.
         const gutterFromStrip = (): number | null => {
-          const width = Math.ceil(contentMaxX - contentMinX) + 1;
+          const width = Math.max(1, Math.ceil(contentMaxX - contentMinX) + 1); // never 0/-Infinity → Float32Array is safe
           const cover = new Float32Array(width);
           for (const g of bodyGlyphs) {
             const a = Math.floor(g.x - contentMinX), b = Math.ceil(g.x + (g.w || 0) - contentMinX);
@@ -4057,6 +4375,18 @@ const App: React.FC = () => {
         }
         }
 
+        // Emit detected label|content tables and remove their consumed body lines from the flow (they'd
+        // otherwise ALSO render as run-on prose). Skip on a two-column page — the band/struct paths re-stamp
+        // baseY, so a real-y range filter wouldn't match; a captioned bordered table inside a two-column
+        // region doesn't occur in the corpus. The caption line sits above yHi, so it survives as its own block.
+        if (lcTables.length && !pageTwoColumn) {
+          for (let i = groups.length - 1; i >= 0; i--) {
+            const y = groups[i].baseY;
+            if (lcTables.some(t => y >= t.yLo - 1 && y <= t.yHi + 1)) groups.splice(i, 1);
+          }
+          for (const t of lcTables) { const list = tablesByPage.get(pageNum) || []; list.push({ text: t.payload, yTop: t.yTop }); tablesByPage.set(pageNum, list); }
+        }
+
         const MARK = { italic: '*', bold: '**' } as const;
         // ── DIAGNOSTIC dump: record every page's column-detection outcome to a global the user can
         // read in the browser console (window.__dbgTwoCol). Also console.log a compact line for pages
@@ -4169,6 +4499,35 @@ const App: React.FC = () => {
               i = j;
             }
 
+            // ── PDF SMALL-CAPS case reconstruction ──────────────────────────────────────────────
+            // A small-caps run encodes the ORIGINAL case in glyph HEIGHT: originally-UPPERCASE letters are set
+            // at full cap height, originally-lowercase letters at a reduced small-cap height (~0.7×). pdf.js
+            // splits the two sizes into separate items, so a line whose UPPERCASE-letter items span TWO height
+            // tiers in ONE font is small caps — e.g. Sovereign's epigraph attributions ("—D"@12.8 "ANNY"@9.0)
+            // and section heads ("P"@12.8 "REMONITIONS"@9.0), Singularity's chart-data titles. Lowercase the
+            // short-tier items (the encoded original lowercase) and flag the line so the reader renders it
+            // `font-variant:small-caps` — true small capitals over the correct mixed case, not a flat all-caps
+            // dump. Matching (normalizeForMatch lowercases) and search (case-insensitive) are unaffected.
+            let lineSmallCaps = false;
+            {
+              const upItems = items.filter(it => /[A-Z]/.test(it.str) && !/[a-z]/.test(it.str) && it.h > 0);
+              if (upItems.length >= 2) {
+                let capMax = 0; for (const it of upItems) if (it.h > capMax) capMax = it.h;
+                const fam0 = modeStr(upItems.map(it => it.family));
+                const inFam = upItems.filter(it => it.family === fam0);
+                const shorts = inFam.filter(it => it.h <= capMax * 0.88 && it.h >= capMax * 0.55);
+                const talls = inFam.filter(it => it.h >= capMax * 0.92);
+                // Genuine small caps needs BOTH a full-cap tier AND a distinctly shorter uppercase tier in one
+                // font. A uniform all-caps heading/attribution (single tier) is left untouched.
+                if (shorts.length && talls.length) {
+                  lineSmallCaps = true;
+                  for (const it of items) {
+                    if (it.h <= capMax * 0.88 && it.h >= capMax * 0.55 && it.family === fam0 && /[A-Z]/.test(it.str) && !/[a-z]/.test(it.str)) it.str = it.str.toLowerCase();
+                  }
+                }
+              }
+            }
+
             let out = '';
             let open: 'italic' | 'bold' | null = null;
             let openLink: string | null = null; // open external-URL link span, if any
@@ -4266,7 +4625,10 @@ const App: React.FC = () => {
               col: group.col, // 0 = left column, 1 = right column, undefined = full-width (for side-by-side render)
               x: Math.min(...items.map(it => it.x)),
               rightX: Math.max(...items.map(it => it.x + (it.w || 0))),
-              text: out.replace(/\s+/g, ' ').trim(),
+              // A small-caps line carries the whole-paragraph U+E02C flag INSIDE its text (not as a separate
+              // block-emit prefix) so it survives every block-emit return path — the reader captures the
+              // leading control run (E011/E013 + E02C) and renders `font-variant:small-caps`.
+              text: (lineSmallCaps ? '' : '') + out.replace(/\s+/g, ' ').trim(),
               h: lineBodyHeight,
               // The TALLEST glyph's font size (cap height), EXCLUDING drop caps — for a small-caps line this
               // exceeds the char-weighted `h` (the small caps sit at a reduced em); heading detection + a
@@ -4709,7 +5071,7 @@ const App: React.FC = () => {
       // Each page's blocks are buffered with the geometry the cross-page seam join needs,
       // then assembled into one stream so a paragraph that runs off the bottom of one page
       // and continues at the top of the next is rejoined from the layout, not guessed.
-      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number; pbBreak?: boolean; dataColumn?: boolean };
+      type EmitBlock = { text: string; role: 'heading' | 'body' | 'list'; firstX: number; firstRightX: number; lastRightX: number; lastText: string; carryover?: boolean; col?: 0 | 1; topY?: number; bodyX?: number; pbBreak?: boolean; dataColumn?: boolean; leftShared?: boolean };
       const pageEmit: { pageNum: number; blocks: EmitBlock[]; rightMargin: number; bodyLeft: number; paraLeftMargin: number }[] = [];
 
       // ── Unify TOC indent tiers across the whole run ──
@@ -4839,8 +5201,13 @@ const App: React.FC = () => {
           const entryLines = firstEntryIdx > 0 ? lines.slice(firstEntryIdx) : lines;
 
           // Reflow the header/intro: keep a heading on its own line, join the note's wrapped
-          // lines into one paragraph. These sit at the body margin, so they carry no indent.
-          const introGap = median(introLines.slice(1).map((line, index) => introLines[index].y - line.y).filter(gap => gap > 0));
+          // lines into one paragraph, but SPLIT separate intro paragraphs (a book has multiple index
+          // notes — "…on your e-reader." then "Page numbers in italics refer to illustrations." — and a
+          // TOC's roman-numeral front-matter entries "Foreword…xv" / "Preface…xix"). The paragraph break
+          // is judged against the LINE HEIGHT (× 1.75), NOT a median-of-all-gaps: the intro region mixes
+          // huge heading→note / note→jump-bar / bar→section gaps that inflated the median so the real
+          // paragraph gap (~2.1–2.3× the line height) never cleared 1.35× the median → notes merged. A
+          // loosely-led alphabet jump bar (~1.5× the line height) stays joined below the 1.75× bar.
           let ii = 0;
           while (ii < introLines.length) {
             const groupIsHeading = isHeadingLine(introLines[ii]);
@@ -4851,7 +5218,7 @@ const App: React.FC = () => {
               const verticalGap = prev.y - cur.y;
               const endsBlock = groupIsHeading
                 ? verticalGap > Math.max(prev.h, cur.h) * 1.35
-                : (introGap > 0 && verticalGap > introGap * 1.35) || (endsWithTerminalPunctuation(prev.text) && cur.x > bodyLeft + 8);
+                : verticalGap > Math.max(prev.h, cur.h) * 1.75 || (endsWithTerminalPunctuation(prev.text) && cur.x > bodyLeft + 8);
               if (endsBlock) break;
               group.push(cur);
               jj++;
@@ -5746,7 +6113,14 @@ const App: React.FC = () => {
             // cap height so a small-caps section head ("PREMONITIONS") / chapter label lands on its heading
             // tier instead of a shrink tier below body — matching the EPUB, which reads the <h#> CSS size.
             // Body blocks keep the char-weighted height (a body line's cap height is body-sized anyway).
-            const heightOf = (l: PdfLine) => groupIsHeading ? Math.min(l.capH ?? l.h, bodyFont * 2.2) : l.h;
+            // A SMALL-CAPS block (an epigraph attribution "—Marshall McLuhan", a chart-data title) measures
+            // SMALL by char-weighted height too — its small caps sit at a reduced em while the true font size
+            // is the cap height. Without this the attribution's tier shrank BELOW its sibling epigraph quote
+            // (same source size): its char-weighted h≈9 → E01B 0.72em, while the (non-small-caps) quote at
+            // h≈12.8 → E01C 0.86em. Detect it geometrically (some line's cap height ≥1.25× its char-weighted
+            // height = the small-caps signature) and size it off cap height too, so it matches the quote.
+            const _isSmallCapsBlock = (nonDropLines.length ? nonDropLines : group).some(l => (l.capH ?? l.h) >= (l.h || 1) * 1.25);
+            const heightOf = (l: PdfLine) => (groupIsHeading || _isSmallCapsBlock) ? Math.min(l.capH ?? l.h, bodyFont * 2.2) : l.h;
             const blockH = mode((nonDropLines.length ? nonDropLines : group).map(l => Math.round(heightOf(l)))) || bodyFont;
             const sizeRatio = bodyFont > 0 ? blockH / bodyFont : 1;
             // CAP height of the block (tallest non-drop glyph anywhere in it). A small-caps LEAD-IN
@@ -5863,6 +6237,13 @@ const App: React.FC = () => {
               // merge. Use the CONTINUATION lines, not line 1 — a bullet/hanging item's first line sits at
               // the outdent (the "•" at x=90) which would skew the tier off the real text column (x=102).
               bodyX: mode((group.length > 1 ? group.slice(1) : group).map(l => Math.round(l.x))),
+              // A multi-line block whose TEXT lines share one LEFT edge is LEFT-aligned / justified (an
+              // indented block-quote), NOT centred — even when its first line's inset happens to be symmetric
+              // (a justified line lands ~evenly short of the body right margin). ROBUST CENTRING below measures
+              // only the first line, so flag this so it never centre-tags a left/justified block (Sovereign's
+              // "—Marshall McLuhan" epigraph was centred though every quote line starts at x=90). Ignore short
+              // marker-only fragments (a floating footnote "6") when measuring the left spread.
+              leftShared: (() => { const _t = group.filter(l => (l.rightX - l.x) > bodyFont); return _t.length >= 2 && (Math.max(..._t.map(l => l.x)) - Math.min(..._t.map(l => l.x))) <= bodyFont; })(),
             });
             // Advance the section body column from a normal, multi-line, non-indented body paragraph (the
             // flowing text column of the current section), so a following single-line block is judged
@@ -6043,10 +6424,13 @@ const App: React.FC = () => {
             // shows caption + credit on two lines (matching EPUB). Gated on a credit KEYWORD so a caption that
             // merely ends in an italic term (a species/book name, e.g. "…nematode *C. elegans*") is untouched.
             {
-              const m = b.text.match(/^(.+?\S)\s+(\*[^*\n]+\*|_[^_\n]+_)\s*$/u);
-              const creditInner = m ? m[2].replace(/^[*_]|[*_]$/gu, '').trim() : '';
+              // Capture the WHOLE trailing run of italic segments — a credit that WRAPS ("*Figure by Max
+              // Bennett* *(inspired by…)*") comes through as several adjacent `*…*` runs; testing only the
+              // LAST one saw "(inspired…)" (no keyword) and never split. Match one-or-more trailing italic runs.
+              const m = b.text.match(/^(.+?\S)\s+((?:(?:\*[^*\n]+\*|_[^_\n]+_)\s*)+)$/u);
+              const creditInner = m ? m[2].replace(/[*_]/gu, '').replace(/\s+/gu, ' ').trim() : '';
               if (m && !capOpener.test(creditInner) &&
-                  /^(?:original art|photograph|photo|illustration|image|drawing|painting|courtesy|source|credit|reprinted|adapted|art by|map by|diagram by|©|copyright|by\s+[A-Z])/i.test(creditInner)) {
+                  /^(?:original art|photograph|photo|illustration|image|drawing|painting|courtesy|source|credit|reprinted|adapted|(?:art|map|diagram|figure|photo|photograph|illustration|drawing|painting|image)\s+by|©|copyright|by\s+[A-Z])/i.test(creditInner)) {
                 b.text = m[1];
                 blocks.splice(bi + 1, 0, { ...b, text: m[2] });
               }
@@ -6066,7 +6450,7 @@ const App: React.FC = () => {
         {
           const docCentre = (docBodyLeft + bodyRightEdge) / 2;
           if (bodyRightEdge > docBodyLeft) for (const b of blocks) {
-            if (b.role === 'list' || b.firstRightX <= b.firstX || b.text.includes('')) continue; // list has its own structure; already right-aligned
+            if (b.role === 'list' || b.firstRightX <= b.firstX || b.text.includes('') || b.leftShared) continue; // list/right-aligned; leftShared = justified block-quote, never centre
             const bare = b.text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[-\uE02A*_~`]/gu, '').trim();
             if (!bare || bare.length > 300) continue; // paranoia cap only; the symmetric-inset test below is the real filter
             // Measure the FIRST LINE's insets (firstX..firstRightX) — valid for a MULTI-LINE block too (a centred
@@ -6524,7 +6908,7 @@ const App: React.FC = () => {
       const sourceHangs = (_hangs.bullet ?? _hangs.list ?? _hangs.index) !== undefined ? _hangs : undefined;
       return { content: fullText, outline: resolvedOutline, title: metaTitle, figures: allFigures, justified: sourceJustified, firstLineIndent: sourceFirstLineIndent, firstLineIndentEm: sourceFirstLineIndentEm, hangs: sourceHangs };
     } catch (e) {
-      console.error('PDF processing error', e);
+      console.error('PDF processing error', e, (e as Error)?.stack);
       throw new Error('Could not extract text from this PDF. Scanned/image-only PDFs need OCR before upload.');
     }
   };
@@ -7006,8 +7390,14 @@ const App: React.FC = () => {
 
         <div className="z-10 max-w-lg w-full text-center space-y-8 md:space-y-12">
           <div className="space-y-2 animate-fade-in-up text-center">
-             <div className="flex items-center justify-center gap-2 mb-4">
-                <Terminal size={28} className="text-neon-cyan md:w-8 md:h-8" />
+             <div className="flex items-center justify-center mb-4">
+                {/* Brand terminal glyph — same square/miter `>_` as the header (public/icon.svg), enlarged to the
+                    logo's prominent proportion, with the underscore blinking like a terminal caret so users learn
+                    the `>_` mark (which toggles the DATA_BANKS in the reader header) reads as a live terminal. */}
+                <svg width="72" height="46" viewBox="2 7 21 14" fill="none" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true" className="drop-shadow-[0_0_12px_rgba(0,243,255,0.45)]">
+                    <polyline points="4,9 9,14 4,19" stroke="#00f3ff" />
+                    <line x1="12" y1="19" x2="21" y2="19" stroke="#00f3ff" className="animate-blink" />
+                </svg>
              </div>
             <h1 className="text-4xl md:text-7xl font-bold tracking-tighter text-white drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">
               Decod<span className="text-neon-cyan">Ebook</span>
@@ -7151,14 +7541,20 @@ const App: React.FC = () => {
                         onClick={() => setShowLibraryList(!showLibraryList)}
                         aria-label={showLibraryList ? "Close data banks" : "Open data banks"}
                         title={showLibraryList ? "SESSION_DATA — back to catalogue" : "DATA_BANKS — browse library"}
-                        className="font-tech font-bold text-lg leading-none tracking-tight transition active:scale-90 cursor-pointer"
+                        className="leading-none transition active:scale-90 cursor-pointer"
                     >
-                        <span className={library.length > 0 ? 'text-neon-cyan' : 'text-white'}>{'>'}</span>
-                        <span className={`relative -top-[0.14em] ${library.length === 0 ? 'text-white' : (showLibraryList ? 'text-white animate-blink' : 'text-neon-cyan')}`}>{'_'}</span>
+                        {/* The brand logo's terminal glyph (public/icon.svg) WITHOUT its box — SQUARE caps + a sharp
+                            MITER vertex to match DecodEbook.png (not rounded). Chevron + underscore are SEPARATE so
+                            the underscore can blink WHITE like a terminal caret when the data-bank list is open.
+                            Colours: no book → both white; reading → both neon-cyan; bank open → `>` cyan + `_` white blink. */}
+                        <svg width="25" height="16" viewBox="2 7 21 14" fill="none" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                            <polyline points="4,9 9,14 4,19" stroke={library.length > 0 ? '#00f3ff' : '#ffffff'} />
+                            <line x1="12" y1="19" x2="21" y2="19" stroke={library.length > 0 ? '#00f3ff' : '#ffffff'} className={showLibraryList ? 'animate-blink' : ''} />
+                        </svg>
                     </button>
-                    <span className="text-lg font-tech font-bold tracking-[0.06em] leading-none">
-                        <span className="text-white">Decod</span><span className="text-neon-cyan">Ebook</span>
-                    </span>
+                    {/* The wordmark reuses the EXACT glyphs from the brand logo (cropped from public/icon-512.png →
+                        public/wordmark.png, background made transparent) — not a font approximation. */}
+                    <img src="/wordmark.png" alt="DecodEbook" draggable={false} className="w-auto select-none" style={{ height: '18px' }} />
                 </div>
                 <button
                     onClick={() => setView(AppView.UPLOAD)}
@@ -7171,8 +7567,8 @@ const App: React.FC = () => {
             </div>
             {/* Active-book info block — plain, function-less (the >_ owns the toggle now). */}
             {!showLibraryList && activeBook && (
-                <div className="px-4 py-3">
-                    <div className="h-[53px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border cursor-default">
+                <div className="px-4 py-2">
+                    <div className="h-[52px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border cursor-default">
                         <h1 className="font-bold text-xs text-white truncate leading-tight mb-0.5 font-tech uppercase tracking-wide">{activeBook.title}</h1>
                         <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
                     </div>
@@ -7228,7 +7624,7 @@ const App: React.FC = () => {
           ) : (
              <div className="flex-1 min-h-0 flex flex-col">
                 {/* Full-text search */}
-                <div className="shrink-0 px-4 min-h-[61px] flex flex-col justify-center border-b border-zinc-900 bg-black/40">
+                <div className="shrink-0 px-4 mt-[15px]">
                   <div className="relative flex items-center">
                     <Search size={12} className="absolute left-2 text-zinc-600 pointer-events-none" />
                     <input
@@ -7236,7 +7632,7 @@ const App: React.FC = () => {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="SEARCH_FULLTEXT"
-                      className="w-full bg-zinc-900/60 border border-zinc-800 focus:border-neon-cyan/50 rounded-sm pl-7 pr-7 py-1.5 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none tracking-wide"
+                      className={`w-full bg-zinc-900/60 border ${searchActive ? 'border-neon-cyan' : 'border-zinc-800'} focus:border-neon-cyan rounded-sm pl-7 pr-7 py-1 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus-visible:shadow-none tracking-wide`}
                     />
                     {searchQuery && (
                       <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-neon-red transition-colors" title="Clear search">
@@ -7244,15 +7640,16 @@ const App: React.FC = () => {
                       </button>
                     )}
                   </div>
-                  {searchActive && (
-                    <div className="mt-1.5 flex items-center text-[8px] font-mono uppercase tracking-widest text-zinc-600">
+                </div>
+                {/* Results — the match COUNT header (moved out of the fixed search box so the input never
+                    shifts) + a list CAPPED to ~3 items (max-h ≈ 3×64px), still scrollable for the rest, so it
+                    never eats the catalogue's space. */}
+                {searchActive && (
+                  <div className="shrink-0 border-b border-zinc-900/70 bg-black/20">
+                    <div className="px-4 h-[21px] flex items-center text-[8px] font-mono uppercase tracking-widest text-zinc-600">
                       <span>{isIndexing ? 'INDEXING…' : `${searchResults.length} MATCH${searchResults.length === 1 ? '' : 'ES'}`}</span>
                     </div>
-                  )}
-                </div>
-                {/* Results — bounded + independently scrollable, persist until cleared */}
-                {searchActive && (
-                  <div className="shrink-0 max-h-[45%] overflow-y-auto custom-scrollbar border-b border-zinc-900/70 bg-black/20">
+                    <div className="max-h-[192px] overflow-y-auto custom-scrollbar">
                     {!isIndexing && searchResults.length === 0 ? (
                       <div className="px-4 py-4 text-[9px] font-mono uppercase tracking-widest text-zinc-500">No matches found</div>
                     ) : (
@@ -7280,10 +7677,11 @@ const App: React.FC = () => {
                         </button>
                       ))
                     )}
+                    </div>
                   </div>
                 )}
                 {/* Chapter list (TOC) */}
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2 mt-[21px] border-t border-zinc-900">
                 {(() => {
                   const chaptersArr = activeBook?.chapters ?? [];
                   // A Part is any chapter that other chapters point at as parent; a hierarchical book

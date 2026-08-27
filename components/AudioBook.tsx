@@ -79,7 +79,7 @@ const LANGUAGES = [
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const CONCURRENCY_LIMIT = 3;
 const TTS_BATCH_SIZE = 4;
-const CHAPTER_TEXT_CACHE_VERSION = 'v241-keep-index-nav';
+const CHAPTER_TEXT_CACHE_VERSION = 'v252-grid-colfr-fix';
 const AUDIO_CACHE_VERSION = 'v9-bibliographic-abbreviation-timings';
 const TRANSLATION_CACHE_VERSION = 'v21-keep-index-pageref-numbers';
 
@@ -289,6 +289,10 @@ interface ParagraphData {
     // Table 11-1). Each row: a bold label + a verbatim multi-line content cell; both translatable (gi) so
     // the split-view right panel shows the translated table.
     codeTable?: { rows: { label: string; content: string; labelGi: number; contentGi: number }[] };
+    // A GENERAL N-column bordered TABLE (U+E03E) — from a PDF border-grid or an EPUB <table>. Each row is a
+    // list of cells (text + translatable gi + colspan); `header` marks a header row (bold). Rendered as a
+    // bordered grid; split view shows the translated grid alongside. ncols = the table's column count.
+    gridTable?: { cells: { paras: { text: string; gi: number }[]; row: number; col: number; rowspan: number; colspan: number; align: 'left' | 'center' | 'right'; header: boolean; noTopBorder: boolean }[]; ncols: number; nrows: number; colFr?: number[] | null; widthFrac?: number; fontEm?: number; bordered: boolean; centered: boolean };
     // An ADMONITION callout (note/tip/warning, U+E03B-E03D) — the paragraph renders inside a labelled
     // bordered box (type label on top; warning gets a red-tinted border). Body stays normal translatable prose.
     calloutType?: 'note' | 'tip' | 'warning';
@@ -348,6 +352,9 @@ const TEXT_SIZES: Record<string, string> = {
   lg: 'text-[18px]',
   xl: 'text-[22px]',
 };
+// The px behind each TEXT_SIZES class — used to scale a table's font to its SOURCE ratio (tables are often set
+// smaller than body, e.g. BHI 0.75×) while still tracking the reader's chosen size.
+const TEXT_SIZE_PX: Record<string, number> = { sm: 14, base: 16, lg: 18, xl: 22 };
 
 const LINE_HEIGHTS: Record<string, string> = {
   tight: 'leading-tight',
@@ -405,7 +412,25 @@ interface InlineSegment {
   // Size-based small-caps (a class that pre-uppercases + shrinks the text, no font-variant) — the exact
   // source font-size ratio (em). Rendered as a reduced inline font-size instead of all-small-caps.
   sizeEm?: number;
+  // The source rendered this segment in SMALL CAPS (an attribution "—Arthur C. Clarke" built from
+  // `<span class="smallcaps">` runs). The attribution path flattens inline markup, so this flag carries the
+  // small-caps intent to the render (font-variant:small-caps over the reconstructed mixed case).
+  smallCaps?: boolean;
 }
+
+// An attribution built from small-caps SPANS ("—A<span class=smallcaps>RTHUR</span> C. C<span…>LARKE</span>")
+// carries the reader's inline small-caps sentinels (E02F<ratio>…E02F size-based / E02D…E02D all-small-caps),
+// with the span text UPPER-CASED by extraction. The attribution path strips those sentinels → a flat all-caps
+// credit. Reconstruct: lower-case each wrapped run (its true case) and strip the sentinels, so the credit
+// reads mixed-case ("Arthur C. Clarke"); the caller renders it font-variant:small-caps (caps stay full, the
+// lower-cased runs become small capitals) — matching the PDF small-caps reconstruction.
+const reconstructAttributionSmallCaps = (value) => {
+  let smallCaps = false;
+  const text = value
+    .replace(/\uE02F[\uE100-\uE1FF]?([^\uE02F]*)\uE02F/gu, (_m, c) => { smallCaps = true; return c.toLowerCase(); })
+    .replace(/\uE02D([^\uE02D]*)\uE02D/gu, (_m, c) => { smallCaps = true; return c.toLowerCase(); });
+  return { text, smallCaps };
+};
 
 interface FootnoteRef {
   marker: string;
@@ -446,6 +471,10 @@ interface InlineParseOptions {
   // Render a right-aligned source credit exactly as paragraph text: no attribution block styling and no
   // synthetic double dash. Used for PDF bylines/credits whose geometry already carries the alignment.
   sourceFaithfulAttributionLine?: boolean;
+  // The CONTAINING paragraph is small-caps (a PDF small-caps attribution carries the flag at the PARAGRAPH
+  // level via E02C, not in the segment like the EPUB span sentinels). Mark attribution segments small-caps
+  // so the render obeys the source: small-caps + drop the synthetic house italic and the extra 0.82em shrink.
+  attributionSmallCaps?: boolean;
   // Drop broad, likely fabricated/source-global italic markup on praise/endorsement pages while preserving
   // short inline emphasis such as book titles.
   suppressBroadItalic?: boolean;
@@ -478,9 +507,12 @@ const stripInlineMarkupSyntax = (value: string): string => value
   .replace(/[\uE02F\uE100-\uE1FF]/g, '');
 
 const stripOrphanDisplayMarkers = (value: string): string =>
-  // Strip orphan emphasis markers — but KEEP a tilde used as an approximation sign ("~1.1", "~50"): a lone
-  // `~` directly before a digit is math (this book's footnote "2⁵⁰ = ~1.1 x 10¹⁵"), not a stray strikethrough.
-  value.replace(/[*_]/g, '').replace(/~(?!\d)/g, '');
+  // Strip orphan emphasis markers — but KEEP: (a) a tilde used as an approximation sign ("~1.1", "~50") — a
+  // lone `~` directly before a digit is math ("2⁵⁰ = ~1.1 x 10¹⁵"), not a stray strikethrough; (b) a RUN of
+  // ≥3 underscores, which is a FILL-IN-THE-BLANK from the source (a worksheet blank, e.g. "then x equals ___"),
+  // NOT stray markup — a balanced "__underline__" is already consumed upstream, so a bare underscore run here
+  // is content. Deleting it dropped the blank and tampered with the meaning. Both PDF and EPUB.
+  value.replace(/(_{3,})|[*_]|~(?!\s*\d)/g, (_m, blank) => blank || '');
 
 const normalizeInternalLinkMarkup = (value: string): string =>
   value.replace(/\[\s*([^\]\n]{1,120}?)\s*\]\s*\(([^)\n]+)\)/g, (match, rawLabel: string, rawHref: string) => {
@@ -845,7 +877,10 @@ const attributionLineSegmentsFor = (
     });
   }
 
-  const clean = value.replace(/\s+/g, ' ').trim();
+  // Reconstruct any small-caps SPAN runs to mixed case (an EPUB credit "—A<smallcaps>RTHUR</smallcaps>…")
+  // before flattening, and carry the small-caps intent onto the segment so the render sets font-variant.
+  const { text: _reconValue, smallCaps: _attrSmallCaps } = reconstructAttributionSmallCaps(value);
+  const clean = _reconValue.replace(/\s+/g, ' ').trim();
   const body = clean.replace(/^(?:——|--|—|–|-)\s*/u, '');
   const linkedMarker = body.match(/^(.*?)\s*\[([0-9ivxlcdm]{1,8}[.)]?)\]\(([^)]+)\)\s*$/iu);
   if (
@@ -860,6 +895,7 @@ const attributionLineSegmentsFor = (
         format: 'attributionFootnote',
         marker: cleanNoteMarkerLabel(linkedMarker[2]),
         href: linkedMarker[3],
+        smallCaps: _attrSmallCaps,
       }];
     }
   }
@@ -881,13 +917,15 @@ const attributionLineSegmentsFor = (
         text: `—— ${author}`,
         format: 'attributionFootnote',
         marker: cleanNoteMarkerLabel(bareMarker[2]),
+        smallCaps: _attrSmallCaps,
       }];
     }
   }
 
   return [{
-    text: `—— ${normalizeAttributionAuthor(value)}`,
+    text: `—— ${normalizeAttributionAuthor(_reconValue)}`,
     format: 'attribution',
+    smallCaps: _attrSmallCaps,
   }];
 };
 
@@ -1054,7 +1092,14 @@ export const parseInlineFormatting = (value: string, options: InlineParseOptions
       pushEmphasisContent(match[7], 'smallcaps');
     } else if (match[8]) {
       // Size-based small-caps: reproduce the source's exact reduced font-size (ratio encoded in match[8]).
-      segments.push({ text: match[9], format: 'smallcaps', sizeEm: (match[8].charCodeAt(0) - 0xE100) / 100 });
+      // The run may ALSO be italic/bold (a small-caps book-TITLE citation) — its `*`/`**` markers ride
+      // INSIDE the sentinel; strip them and re-apply the emphasis so the title stays small-caps-sized AND
+      // italic (not flattened, and not blown up to full size).
+      let _scText = match[9];
+      let _scEmph: 'bold' | 'italic' | undefined;
+      if (/^\*\*[\s\S]+\*\*$/u.test(_scText)) { _scEmph = 'bold'; _scText = _scText.slice(2, -2); }
+      else if (/^\*[^*][\s\S]*\*$/u.test(_scText) || /^_[\s\S]+_$/u.test(_scText)) { _scEmph = 'italic'; _scText = _scText.slice(1, -1); }
+      segments.push({ text: _scText, format: 'smallcaps', sizeEm: (match[8].charCodeAt(0) - 0xE100) / 100, ...(_scEmph ? { emphasis: _scEmph } : {}) });
     }
     cursor = pattern.lastIndex;
   }
@@ -1369,6 +1414,78 @@ export const buildPageSentenceData = (pageText: string): {
       }).filter(r => r.label || r.content);
       if (rows.length) { paragraphData.push({ original: [], translated: [], codeTable: { rows } }); return; }
     }
+    // GENERAL GRID TABLE (U+E03E): a bordered N-column table (PDF border-grid OR EPUB <table>). Optional
+    // column-width meta opens with U+E24E (one permille char per column, ended by the first U+E039). Rows
+    // joined U+E039; a row may open with U+E24F (header row → bold). Each cell = [U+E250+colspan]?[U+E270+align]?
+    // text (align 1=center 2=right, absent=left), cells joined U+E038; an internal U+E024 is a soft break.
+    // Every non-empty cell is a translatable sentence (gi drives split-view translation + highlight).
+    const _gtM = rawPText.match(/^[\uE010-\uE036]*\uE03E([\s\S]*)$/u);
+    if (_gtM) {
+      let body = _gtM[1];
+      // Leading flags: U+E24B = source table CENTRED in its column; U+E24D = BORDERLESS alignment layout.
+      let centered = false, bordered = true;
+      if (body.charCodeAt(0) === 0xE24B) { centered = true; body = body.slice(1); }
+      if (body.charCodeAt(0) === 0xE24D) { bordered = false; body = body.slice(1); }
+      let colFr: number[] | null = null;
+      let widthFrac: number | undefined, fontEm: number | undefined;
+      // Width meta: U+E24E + widthFrac permille + fontEm permille + U+E039 (fontEm = source table font \u00F7 body font).
+      if (body.charCodeAt(0) === 0xE24E) {
+        const end = body.indexOf('\uE039');
+        if (end > 0) { const spec = [...body.slice(1, end)].map(ch => (ch.charCodeAt(0) - 0xE200) / 1000); widthFrac = spec[0]; fontEm = spec[1]; if (spec.length > 2) colFr = spec.slice(2); body = body.slice(end + 1); }
+      }
+      // Build explicit cell PLACEMENT from the source rows: a cell = [E250+colspan][E260+rowspan]?[E270+align]?text.
+      // Place each at its (row,col) skipping slots covered by a rowspan/colspan from above/left, so a rowspan cell
+      // (Singularity Epoch "Third"/"Cerebellum") renders as a real MERGED cell spanning rows, not a blank row.
+      const srcRows = body.split('\uE039');
+      const gcells: { paras: { text: string; gi: number }[]; row: number; col: number; rowspan: number; colspan: number; align: 'left' | 'center' | 'right'; header: boolean; noTopBorder: boolean }[] = [];
+      const occ = new Set<string>();
+      let ncols = 0;
+      srcRows.forEach((row, r) => {
+        let rr = row, header = false;
+        if (rr.charCodeAt(0) === 0xE24F) { header = true; rr = rr.slice(1); }
+        let c = 0;
+        for (const raw of rr.split('\uE038')) {
+          if (!raw) continue; // all-covered (rowspan) band → empty payload row: no cell, row index still advances
+          let cc = raw, colspan = 1, rowspan = 1, noTopBorder = false; let align: 'left' | 'center' | 'right' = 'left';
+          if (cc.charCodeAt(0) === 0xE24C) { noTopBorder = true; cc = cc.slice(1); } // source suppressed this cell's top border (merges into the cell above \u2192 multi-paragraph look)
+          let k = cc.charCodeAt(0);
+          if (k >= 0xE250 && k < 0xE260) { colspan = k - 0xE250; cc = cc.slice(1); k = cc.charCodeAt(0); }
+          if (k >= 0xE260 && k < 0xE270) { rowspan = k - 0xE260; cc = cc.slice(1); k = cc.charCodeAt(0); }
+          if (k >= 0xE270 && k < 0xE273) { align = k === 0xE271 ? 'center' : k === 0xE272 ? 'right' : 'left'; cc = cc.slice(1); }
+          colspan = Math.max(1, colspan); rowspan = Math.max(1, rowspan);
+          const text = cc.replace(/[ \t]+/gu, ' ').replace(/^\s+|\s+$/gu, ''); // keep U+E024 breaks + markdown; trim edges
+          while (occ.has(`${r},${c}`)) c++;
+          // Each U+E024-separated PARAGRAPH gets its OWN translatable gi so the translation panel can
+          // reproduce the source's per-paragraph breaks + whole-paragraph italic/bold (like prose does).
+          const paras = text.split('\uE024').map(seg => {
+            const t = seg.replace(/[ \t]+/gu, ' ').trim();
+            if (!t) return null;
+            const flat = stripInlineFormatSyntax(t).replace(/\s+/gu, ' ').trim();
+            let gi = -1;
+            if (flat) { gi = globalIdx++; flatSentenceMap.push({ pIndex, sIndex: 0, globalIndex: gi, text: flat }); }
+            return { text: t, gi };
+          }).filter((p): p is { text: string; gi: number } => !!p);
+          for (let dr = 0; dr < rowspan; dr++) for (let dc = 0; dc < colspan; dc++) occ.add(`${r + dr},${c + dc}`);
+          gcells.push({ paras, row: r, col: c, rowspan, colspan, align, header, noTopBorder });
+          c += colspan;
+          ncols = Math.max(ncols, c);
+        }
+      });
+      if (gcells.some(cl => cl.paras.length)) {
+        // Cross-page PDF fragments of one table arrive as CONSECUTIVE gridTable paragraphs, each content-sized
+        // → their columns don't line up and the header repeats. Merge a fragment into the previous gridTable
+        // (same column count) so it's ONE continuous, column-aligned table; drop the fragment's repeated header.
+        const _prev = paragraphData[paragraphData.length - 1]?.gridTable;
+        if (_prev && _prev.ncols === ncols && _prev.bordered === bordered) {
+          const _off = _prev.nrows;
+          const _dropHdr = _prev.cells.some(c => c.header) && gcells.some(c => c.row === 0 && c.header) ? 1 : 0;
+          for (const c of gcells) { if (c.row < _dropHdr) continue; _prev.cells.push({ ...c, row: c.row - _dropHdr + _off }); }
+          _prev.nrows += srcRows.length - _dropHdr;
+          return;
+        }
+        paragraphData.push({ original: [], translated: [], gridTable: { cells: gcells, ncols, nrows: srcRows.length, colFr, widthFrac, fontEm, bordered, centered } }); return;
+      }
+    }
     // VERSE: a poem stanza carries its line breaks as U+E024 (a hard-break sentinel that survives the
     // chapter-build whitespace collapse, unlike a raw \n). Restore them to \n here so the line splitter
     // below yields one line per verse line (lineBreakAfter → tight <br> lines), and flag the paragraph.
@@ -1433,6 +1550,7 @@ export const buildPageSentenceData = (pageText: string): {
     rawPText = rawPText.replace(/^([*_~]{1,3})([\uE010-\uE02C\s]+)/u, '$2$1');
     const ctrl = rawPText.match(/^\s*[----]+/);
     const ctrlChars = ctrl ? ctrl[0] : '';
+    
     const align: 'right' | 'center' | 'left' | undefined =
       ctrlChars.includes('\uE011') ? 'right' : ctrlChars.includes('\uE010') ? 'center' : ctrlChars.includes('\uE023') ? 'left' : undefined;
     const role: 'list' | 'heading' | undefined =
@@ -1440,7 +1558,10 @@ export const buildPageSentenceData = (pageText: string): {
     // U+E018 \u2014 the source paragraph's first line is flush (no first-line indent).
     const blockQuote = ctrlChars.includes('\uE019');
     const italic = ctrlChars.includes(''); // whole-paragraph italic (epigraph/quote)
-    const smallCaps = ctrlChars.includes(''); // whole-paragraph small-caps (section head / attribution / data title)
+    // A small-caps flag (U+E02C) may sit AFTER a leading NBSP indent or bold markers (block-emit inserts
+    // the size tier + indent, and the text can open with **) — so it is NOT contiguous with the leading control
+    // run. Detect it anywhere in the leading METADATA region (controls + whitespace + emphasis markers).
+    const smallCaps = /^[\uE000-\uF8FF\s*_~]*\uE02C/u.test(rawPText); // whole-paragraph small-caps
     const dropCap = ctrlChars.includes(''); // chapter-opener drop cap
     // A drop-cap paragraph is always flush (no first-line indent) — the floated ::first-letter starts at
     // the margin; an indent would push it right. (E018 flush sentinel OR the drop cap itself.)
@@ -3891,13 +4012,20 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     marker?: string,
     emphasis?: 'bold' | 'italic' | 'underline',
     noteEntry = false,
-    sizeEm?: number
+    sizeEm?: number,
+    smallCaps?: boolean
   ) => {
     if (format === 'lineBreak') return <br key={key} />;
     const className = [
       // A SIZE-based small-caps run reproduces the source's exact reduced font-size (below) — not the
       // all-small-caps letterforms — so drop the smallcaps class for it.
-      format === 'smallcaps' && sizeEm != null ? '' : inlineFormatClassFor(format),
+      // A source-formatted SMALL-CAPS attribution (e.g. Sovereign's roman `.att` "—Arthur C. Clarke", NOT
+      // italic, at the SAME 0.833em as its epigraph quote) must obey the source: drop the synthetic house
+      // italic + the extra 0.82em shrink, so it stays roman and renders at its OWN paragraph size tier (the
+      // same tier the quote gets) instead of compounding below it.
+      (format === 'attribution' || format === 'attributionFootnote') && smallCaps
+        ? inlineFormatClassFor(format).replace(' italic', '').replace(' text-[0.82em]', '')
+        : format === 'smallcaps' && sizeEm != null ? '' : inlineFormatClassFor(format),
       inked ? 'transition-colors text-zinc-300' : '',
       // Source emphasis wrapping a link/marker (a bold TOC entry) — apply the weight ON TOP of the link style.
       emphasis === 'bold' ? 'font-bold' : emphasis === 'italic' ? 'italic' : emphasis === 'underline' ? 'underline' : '',
@@ -3908,6 +4036,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         color: HIGHLIGHT_TEXT_COLORS[settings.highlightColor],
       } : {}),
       ...(sizeEm != null ? { fontSize: `${sizeEm}em` } : {}),
+      ...(smallCaps ? { fontVariant: 'small-caps' as const } : {}),
     } as React.CSSProperties;
     const leafStyle = Object.keys(style).length > 0 ? style : undefined;
 
@@ -4185,6 +4314,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       sourceFaithfulAttributionLine: parseOptions.sourceFaithfulAttributionLine,
       suppressBroadItalic: parseOptions.suppressBroadItalic,
     });
+    // A small-caps CONTAINING paragraph (a PDF attribution flagged at the paragraph level) → mark its
+    // attribution segment small-caps so the render drops the house italic/0.82em and stays roman + sized to
+    // its own tier (the EPUB path already sets this on the segment via reconstructAttributionSmallCaps).
+    if (parseOptions.attributionSmallCaps) for (const _s of segments) if (_s.format === 'attribution' || _s.format === 'attributionFootnote') _s.smallCaps = true;
     // If this line is an attribution (e.g. translated author/source) and its footnote
     // was stripped from the translation, attach the inherited footnote inside the
     // attribution block so it sits at the end of the right-aligned author line — not
@@ -4227,11 +4360,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     segments.forEach((segment, segmentIndex) => {
       if (segment.format === 'footnote' || segment.format === 'lineBreak') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm, segment.smallCaps));
         return;
       }
       if (segment.format === 'attributionFootnote') {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm, segment.smallCaps));
         visibleCursor += segment.text.length;
         return;
       }
@@ -4242,21 +4375,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const relevantRanges = inkRanges.filter(range => range.start < segmentEnd && range.end > segmentStart);
 
       if (relevantRanges.length === 0) {
-        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
+        nodes.push(renderTextLeaf(segment.text, `${segmentIndex}-plain`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm, segment.smallCaps));
       } else {
         relevantRanges.forEach((range, rangeIndex) => {
           const localStart = Math.max(0, range.start - segmentStart);
           const localEnd = Math.min(segment.text.length, range.end - segmentStart);
           if (localStart > localCursor) {
-            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
+            nodes.push(renderTextLeaf(segment.text.slice(localCursor, localStart), `${segmentIndex}-${rangeIndex}-pre`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm, segment.smallCaps));
           }
           if (localEnd > localStart) {
-            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
+            nodes.push(renderTextLeaf(segment.text.slice(localStart, localEnd), `${segmentIndex}-${rangeIndex}-ink`, segment.format, true, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm, segment.smallCaps));
           }
           localCursor = Math.max(localCursor, localEnd);
         });
         if (localCursor < segment.text.length) {
-          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm));
+          nodes.push(renderTextLeaf(segment.text.slice(localCursor), `${segmentIndex}-post`, segment.format, false, segment.href, footnoteClickHandler, playbackActive, segment.marker, segment.emphasis, segment.noteEntry, segment.sizeEm, segment.smallCaps));
         }
       }
       visibleCursor = segmentEnd;
@@ -4392,12 +4525,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // paragraph (whole-italic, or a "Photograph/Courtesy/Source…" line). `figConsumed` are then skipped by the
   // body loop so they don't ALSO render full-width below. Only FORWARD pairing (matches the source order;
   // never reorders a caption that sits above its figure — that just renders normally as before).
-  const FIG_UNIT_CAP_RE = /^\s*(figure|fig\.?|table|chart|diagram|plate|exhibit)\b/i;
+  // A figure CAPTION opens with the label + a NUMBER ("Figure 1", "Fig. 4.3", "Table 2"). Requiring the
+  // number is load-bearing: a CREDIT can also open with the label ("Figure by Max Bennett…", "Photo by…")
+  // — without the digit it matched here and got EXCLUDED from isCreditPara, so the credit was never attached
+  // to the figure and fell into the body flow outdented (BHI "Figure by Max Bennett" under the triune-brain fig).
+  const FIG_UNIT_CAP_RE = /^\s*(figure|fig\.?|table|chart|diagram|plate|exhibit)\s*\d/i;
   const figUnitByFig = new Map<number, { cap: number; attr: number }>();
   const figConsumed = new Set<number>();
   const usableFigPara = (j: number): ParagraphData | null => {
     const p = paragraphData[j];
-    return p && !p.figure && !p.table && !p.columns && !p.divider && p.code == null && p.codeTable == null && p.original.length ? p : null;
+    return p && !p.figure && !p.table && !p.columns && !p.divider && p.code == null && p.codeTable == null && p.gridTable == null && p.original.length ? p : null;
   };
   const isCreditPara = (p: ParagraphData | null): boolean => {
     if (!p) return false;
@@ -4422,7 +4559,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     // Else CREDIT-ANCHORED: figure -> short descriptive caption -> credit (Part-divider figures, and any
     // book whose figures use descriptive captions). The credit is the reliable anchor.
     if (cap < 0 && isDescriptiveCaption(usableFigPara(i + 1)) && isCreditPara(usableFigPara(i + 2))) cap = i + 1;
-    if (cap < 0) continue;
+    if (cap < 0) {
+      // CREDIT-ONLY figure (no caption) — a full illustration whose only text is its credit ("Original art by
+      // Mesa Schumacher"). Attach the credit right after the figure so it renders INSIDE the figure box (left-
+      // aligned to the figure), not outdented in the body flow.
+      const credOnly = isCreditPara(usableFigPara(i + 1)) ? i + 1 : -1;
+      if (credOnly >= 0) { figUnitByFig.set(i, { cap: -1, attr: credOnly }); figConsumed.add(credOnly); }
+      continue;
+    }
     const attr = isCreditPara(usableFigPara(cap + 1)) ? cap + 1 : -1;
     figUnitByFig.set(i, { cap, attr });
     figConsumed.add(cap); if (attr >= 0) figConsumed.add(attr);
@@ -4875,6 +5019,79 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     }
                     return <div key={`lct-${pIdx}`} className="w-full max-w-3xl mx-auto my-4">{lcGrid(false)}</div>;
                   }
+                  if (para.gridTable) {
+                    // Rendered as a real HTML <table> (table-layout:auto): columns size to CONTENT and the table
+                    // SHRINKS to fit (occupying less width like the source design), wrapping long cells — which a
+                    // CSS grid's even `fr` columns can't do. rowspan/colspan are native (Epoch merged cells). A
+                    // cell whose source top border was suppressed (border-top:none continuation) drops its top rule
+                    // so two paragraphs read as ONE cell. SPLIT view is ONE table with a spacer column between the
+                    // original and translated halves, so their rows stay height-aligned.
+                    const gt = para.gridTable!;
+                    const prevIsGrid = !!paragraphData[pIdx - 1]?.gridTable;
+                    const nextIsGrid = !!paragraphData[pIdx + 1]?.gridTable;
+                    const marginCls = `${prevIsGrid ? 'mt-0' : 'mt-4'} ${nextIsGrid ? 'mb-0' : 'mb-4'}`;
+                    const bd = gt.bordered;
+                    const BORDER = '1px solid rgb(82 82 91 / 0.5)';
+                    const byRow: (typeof gt.cells)[] = Array.from({ length: gt.nrows }, () => [] as typeof gt.cells);
+                    for (const c of gt.cells) byRow[c.row]?.push(c);
+                    byRow.forEach(rowCells => rowCells.sort((a, b) => a.col - b.col));
+                    const cellNode = (cell: typeof gt.cells[0], translated: boolean, key: string) => {
+                      // Each source paragraph on its own line. ORIGINAL: renderInkableText parses *italic*/**bold**.
+                      // TRANSLATED: each paragraph's OWN translation, wrapped in its whole-emphasis so it inherits
+                      // the italic/bold + the paragraph break — matching how prose translations inherit formatting.
+                      return (
+                        <td key={key} rowSpan={cell.rowspan} colSpan={cell.colspan}
+                          className={`${bd ? 'px-2.5 md:px-3 py-2' : 'px-1.5 py-0.5'} align-top break-words ${cell.header ? 'font-bold text-zinc-100' + (bd ? ' bg-zinc-900/40' : '') : 'text-zinc-300'}`}
+                          style={{ textAlign: cell.align, ...(bd ? { borderLeft: BORDER, borderRight: BORDER, ...(cell.noTopBorder ? {} : { borderTop: BORDER }) } : {}) }}
+                        >{cell.paras.map((p, pi) => {
+                          const active = autoScroll && p.gi >= 0 && p.gi === activeSentenceIndex;
+                          const inner = translated
+                            ? (() => { const emph = wholeSentenceEmphasisWrapper(p.text); const tr = (p.gi >= 0 ? translationByIndex.get(p.gi) : '') || stripInlineFormatSyntax(p.text); return renderInkableText(emph && tr.trim() ? `${emph}${tr}${emph}` : tr, p.gi, active, [], null, { suppressCitationItalic: _suppressCitationItalic }); })()
+                            : renderInkableText(p.text, p.gi, active, [], null, { suppressCitationItalic: _suppressCitationItalic });
+                          return (
+                            <div key={pi} className={`${pi ? 'mt-1.5' : ''} ${active ? HIGHLIGHT_STYLES[settings.highlightColor] : (p.gi >= 0 && !translated ? sentenceHoverClass : '')}`}
+                              {...(p.gi >= 0 && !translated ? { 'data-sentence-index': p.gi, onClick: (e: React.MouseEvent) => handleSentenceClick(p.gi, e) } : {})}
+                            >{inner}</div>
+                          );
+                        })}</td>
+                      );
+                    };
+                    // Cells draw top/left/right only; the <table> supplies the bottom edge — so a border-top:none
+                    // continuation cell has no rule above it (its neighbour above has no bottom rule either).
+                    // Font size = the SOURCE table's ratio to body (BHI tables ≈ 0.75×, Singularity 1.0×), applied
+                    // over the reader's chosen size — so the table reads at its designed (usually smaller) size.
+                    const _fontRatio = gt.fontEm && gt.fontEm > 0.3 && gt.fontEm < 1.4 ? gt.fontEm : 1;
+                    // Source column proportions applied to BOTH tables (original & translated) via <colgroup> +
+                    // fixed layout → their columns MATCH and reproduce the book's column design (not per-panel auto-fit).
+                    const _colFr = gt.colFr && gt.colFr.length === gt.ncols ? gt.colFr : null;
+                    const tableStyle: React.CSSProperties = { borderCollapse: 'collapse', tableLayout: _colFr ? 'fixed' : 'auto', ...(_colFr ? { width: '100%' } : {}), fontSize: `${(_fontRatio * (TEXT_SIZE_PX[settings.textSize] || 16)).toFixed(1)}px`, ...(bd ? { borderBottom: BORDER } : {}) };
+                    const tblCls = `${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`;
+                    const maxW = gt.widthFrac && gt.widthFrac < 0.98 ? `${(gt.widthFrac * 100).toFixed(1)}%` : '100%';
+                    const tableEl = (translated: boolean) => (
+                      <table className={tblCls} style={{ ...tableStyle, maxWidth: maxW }}>
+                        {_colFr && <colgroup>{_colFr.map((f, i) => <col key={i} style={{ width: `${(f * 100).toFixed(2)}%` }} />)}</colgroup>}
+                        <tbody>
+                          {byRow.map((rowCells, r) => (
+                            <tr key={r}>{rowCells.map(c => cellNode(c, translated, `${translated ? 't' : 'o'}-${r}-${c.col}`))}</tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    );
+                    // Split view: TWO separate tables, one per half (w-1/2) — a UNIVERSAL split-window design:
+                    // ORIGINAL stays in the LEFT window, TRANSLATION in the RIGHT, neither overflowing. Columns are
+                    // matched to the source proportions (colFr) on each side; row heights are NOT synced across the
+                    // two tables (that would need fragile per-row JS measurement — deliberately avoided).
+                    if (viewMode === 'split') {
+                      const _ctr = gt.centered ? 'flex justify-center' : '';
+                      return (
+                        <div key={`gt-${pIdx}`} className={`w-full flex items-start ${marginCls}`}>
+                          <div className={`w-1/2 min-w-0 pr-2 md:pr-6 border-r border-zinc-800/20 overflow-x-auto ${_ctr}`}>{tableEl(false)}</div>
+                          <div className={`w-1/2 min-w-0 pr-2 md:pr-6 overflow-x-auto ${_ctr}`}>{tableEl(true)}</div>
+                        </div>
+                      );
+                    }
+                    return <div key={`gt-${pIdx}`} className={`w-full max-w-3xl mx-auto ${marginCls} overflow-x-auto ${gt.centered ? 'flex justify-center' : ''}`}>{tableEl(false)}</div>;
+                  }
                   if (para.code != null) {
                     // A <pre> code / prompt block: set-off bordered panel, `white-space:pre-wrap` in the
                     // reader's OWN font so the source line breaks/indentation survive without monospace.
@@ -5195,8 +5412,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   // on index entries. Applied to the text element (which wraps): pull the first line back
                   // by `hang` and pad the block by `hang`, so the entry's opening stays at its computed
                   // indent while continuation lines hang under it. Skip the "INDEX" heading.
+                  // The index INTRO NOTE ("The page numbers in this index refer…", "Page numbers in italics…")
+                  // is PROSE, not an entry: an index entry ends in a page reference (a number/range/locator
+                  // link → its stripped tail ends in a digit), the note ends in a WORD. Don't give the note the
+                  // entry hanging indent (first line flush, continuations indented) — render it flush.
+                  const _idxRaw = stripInlineFormatSyntax(para.original.join(' ')).replace(/\s+/gu, ' ').trim();
+                  const _idxTail = _idxRaw.replace(/["'”’)\]\s.!?]+$/u, '');
+                  const isIndexIntroNote = isIndexChapter && !isContentsChapter && _idxTail.length > 30 && /\p{L}$/u.test(_idxTail) && /[.!?]["'”’]?$/u.test(_idxRaw);
                   const indexHangStyle: React.CSSProperties | undefined =
-                    isIndexChapter && !isContentsChapter && !isHeadingRole && !tocNumMarker ? { textIndent: `-${indexHangEm}em`, paddingLeft: `${indexHangEm}em` } : undefined;
+                    isIndexChapter && !isContentsChapter && !isHeadingRole && !tocNumMarker && !isIndexIntroNote ? { textIndent: `-${indexHangEm}em`, paddingLeft: `${indexHangEm}em` } : undefined;
                   // A bullet-list item ("• Simon Torrance …") arrives as a plain body paragraph whose
                   // text opens with a bullet glyph — role='list' is reserved for whole list PAGES
                   // (index/TOC), not for individual bullets embedded in prose. The source indents such
@@ -5373,9 +5597,28 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   const rawAlign = para.align || (neighborAlign === 'center' && isStrayDisplayLine ? neighborAlign : undefined);
                   // The CONTENTS heading is centred in both sources (EPUB `h2.chapter_number{text-align:center}`,
                   // PDF centred at the page middle). Force-centre it so the shared design's heading matches.
-                  const effectiveAlign = (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : rawAlign;
-                  const alignStyle = effectiveAlign ? { textAlign: effectiveAlign } : undefined;
+                  // A short TITLE line directly above a CENTRED table is that table's caption — centre it AND
+                  // constrain it to the table's width so it sits OVER the (narrower, centred) table, not full-bleed.
+                  const _capTbl = paragraphData[pIdx + 1]?.gridTable;
+                  const _capText = (para.original || []).join(' ').replace(/[*_~]/gu, '').trim();
+                  const _isTableCaption = !isHeadingRole && !isRuleItem && !!_capTbl && _capTbl.centered
+                    && _capText.length > 0 && _capText.length < 130 && !/[.!?][)"'”’]?\s*$/u.test(_capText);
                   const cleanParagraphText = stripInlineFormatSyntax((para.original || []).join(' ')).replace(/\s+/g, ' ').trim();
+                  // A praise-page CREDIT whose right-align sentinel is missing (Brief History's "—Joseph LeDoux …"
+                  // with italic book titles lost its right-align — EPUB emitted E018-flush not E011-right; a PDF
+                  // credit can likewise miss the geometry right-attribution tag — while a plain sibling credit
+                  // keeps it): it still reads as an attribution line, so recover the right alignment. This routes
+                  // it through the SAME source-faithful path as the intact credits (roman + default colour, source
+                  // italic on the book titles) instead of the grey-italic house style. Format-agnostic: isPraisePage
+                  // already requires a structured (PDF or EPUB) source; gated to a dash-led attribution line with
+                  // NO align of its own, so a blurb body (no leading dash) and intact right credits never match.
+                  const _isRecoveredPraiseCredit = isPraisePage
+                    && !isHeadingRole && !isListRole && !isIndexChapter && !isRuleItem && !rawAlign
+                    && looksLikeAttributionLine(cleanParagraphText);
+                  const effectiveAlign = _isTableCaption ? 'center' : (isContentsChapter && isHeadingRole) ? 'center' : (isRuleItem && rawAlign === 'center') ? undefined : (_isRecoveredPraiseCredit ? 'right' : rawAlign);
+                  const alignStyle: React.CSSProperties | undefined = _isTableCaption
+                    ? { textAlign: 'center', maxWidth: `${Math.round((_capTbl!.widthFrac && _capTbl!.widthFrac < 0.98 ? _capTbl!.widthFrac : 0.9) * 100)}%`, marginLeft: 'auto', marginRight: 'auto' }
+                    : effectiveAlign ? { textAlign: effectiveAlign } : undefined;
                   const prevParagraph = paragraphData[pIdx - 1];
                   const nextParagraph = paragraphData[pIdx + 1];
                   const cleanPrevParagraphText = stripInlineFormatSyntax((prevParagraph?.original || []).join(' ')).replace(/\s+/g, ' ').trim();
@@ -5556,7 +5799,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                       own sentence ("i." | "Set…", capital) already gets a space from the {' '} join.
                                       Add one space after the gutter in the former case so both read "i. body". */}
                                   {renderMarker && bodySentence ? ' ' : null}
-                                  {renderInkableText(bodySentence, globalIndex, isAudioActive, [], null, { suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution || effectiveAlign === 'center', suppressBroadItalic: suppressPraiseBodyItalic, noteEntryMarkersAsReferences: isNotesChapter || isFnEntry })}{isAttrLine && nextIsDivider ? null : ' '}
+                                  {renderInkableText(bodySentence, globalIndex, isAudioActive, [], null, { suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution || effectiveAlign === 'center', suppressBroadItalic: suppressPraiseBodyItalic, attributionSmallCaps: para.smallCaps, noteEntryMarkersAsReferences: isNotesChapter || isFnEntry })}{isAttrLine && nextIsDivider ? null : ' '}
                                 </span>
                               );
                             })}
@@ -5634,7 +5877,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                             isActive,
                                             refsForTranslatedPart(partIndex),
                                             partIndex === 0 ? leadingNoteRef : null,
-                                            { internalNoteLinksAsFootnotes: false, inferBareFootnotes: false, romanMarkersAsReferences: false, suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution || effectiveAlign === 'center', suppressBroadItalic: suppressPraiseBodyItalic }
+                                            { internalNoteLinksAsFootnotes: false, inferBareFootnotes: false, romanMarkersAsReferences: false, suppressCitationItalic: _suppressCitationItalic || suppressPraiseBodyItalic, sourceFaithfulAttributionLine: isSourceFaithfulRightAttribution || effectiveAlign === 'center', suppressBroadItalic: suppressPraiseBodyItalic, attributionSmallCaps: para.smallCaps }
                                           )}
                                           {partIndex < translatedParts.length - 1 ? ' ' : ''}
                                         </React.Fragment>

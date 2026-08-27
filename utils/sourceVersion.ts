@@ -609,7 +609,7 @@
 //       right-tabbed roman list (Singularity, markers jitter within ONE tier) still fires. MYCIN (firstX≈133
 //       uniform, spread 3) never fired. Validated on the REAL block geometry from the live audit, not the
 //       offline harness (whose block grouping differed). See project_decodebook_pdf_merge_page_seam_only.
-export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v254-heading-offset-snap';
+export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v269-fig-credit-wrap';
 
 // EPUB extraction engine version. Bump whenever a change alters an EPUB's extracted text/structure.
 // v1: first stamped EPUB engine — native structure (nav/NCX chapters, h1–h6 headings, img figures,
@@ -734,7 +734,7 @@ export const PDF_TEXT_EXTRACTION_VERSION = 'pdf-text-v254-heading-offset-snap';
 //      carries its own resolved source font-size tier, so O'Reilly's inherited `font-size:95%` applies to
 //      both quote and credit. The wrapper also captures the newer E028/E029 controls before inserting its
 //      NBSP indent; otherwise the indent hid a later E026 italic flag and rendered the authored quote Roman.
-export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v85-keep-index-nav';
+export const EPUB_TEXT_EXTRACTION_VERSION = 'epub-text-v97-smallcaps-italic';
 
 // The extractor version this build EXPECTS for a given source kind (undefined for TXT/HTML/etc.,
 // which have no structured extractor and are never stale).

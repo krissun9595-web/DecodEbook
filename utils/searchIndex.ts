@@ -62,6 +62,7 @@ const stripForSearch = (text: string): string =>
     // chars, etc. — all in U+E000–F8FF). They're invisible in the reader but leak into a search snippet as
     // tofu boxes (e.g. the extract block's size-tier + first-line-indent sentinels after "Musk said,"). NBSP
     // is whitespace, so the \s+ collapse below already folds a leading block indent into a trimmed space.
+    .replace(/[--]/gu, ' ') // table cell/row/break/token separators -> SPACE (keep cells word-separated in search)
     .replace(/[-]/gu, '')
     // Drop the extractor's structural markers "[[FIG id]]" (a figure — the reader swaps it for the image) and
     // "[[PAGE n]]" (a page boundary). They're invisible in the reader but leaked into a search snippet as
