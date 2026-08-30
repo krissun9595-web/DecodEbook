@@ -2,6 +2,7 @@ interface Env {
   GEMINI_API_KEY: string;
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
+  DEEPSEEK_API_KEY: string;
   BYTEPLUS_API_KEY: string;
   FAL_API_KEY: string;
   STRIPE_SECRET_KEY: string;
@@ -62,6 +63,7 @@ export default {
         stripePackSPriceId: env.STRIPE_PACK_S_PRICE_ID || '',
         stripePackMPriceId: env.STRIPE_PACK_M_PRICE_ID || '',
         stripePackLPriceId: env.STRIPE_PACK_L_PRICE_ID || '',
+        country: (request as any).cf?.country || null, // Cloudflare geo-IP, for model routing
       }), { headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -180,9 +182,10 @@ async function verifyAuth(request: Request, env: Env): Promise<Response | null> 
   }
 }
 
-function getProvider(model: string): 'gemini' | 'openai' | 'anthropic' {
+function getProvider(model: string): 'gemini' | 'openai' | 'anthropic' | 'deepseek' {
   if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3')) return 'openai';
   if (model.startsWith('claude-')) return 'anthropic';
+  if (model.startsWith('deepseek')) return 'deepseek';
   return 'gemini';
 }
 
@@ -193,6 +196,7 @@ async function handleUnifiedLLM(request: Request, env: Env): Promise<Response> {
 
   if (provider === 'openai') return callOpenAI(body, env);
   if (provider === 'anthropic') return callAnthropic(body, env);
+  if (provider === 'deepseek') return callDeepSeek(body, env);
   return callGemini(body, env);
 }
 
@@ -221,7 +225,17 @@ async function callGemini(body: any, env: Env): Promise<Response> {
 }
 
 async function callOpenAI(body: any, env: Env): Promise<Response> {
-  if (!env.OPENAI_API_KEY) return jsonError('OpenAI API key not configured', 500);
+  return callOpenAICompatible(body, env.OPENAI_API_KEY, 'https://api.openai.com/v1/chat/completions', 'OpenAI');
+}
+
+// DeepSeek uses the OpenAI-compatible Chat Completions API (models: deepseek-v4-flash,
+// deepseek-v4-pro). Same request/response shape as OpenAI, different base URL + key.
+async function callDeepSeek(body: any, env: Env): Promise<Response> {
+  return callOpenAICompatible(body, env.DEEPSEEK_API_KEY, 'https://api.deepseek.com/v1/chat/completions', 'DeepSeek');
+}
+
+async function callOpenAICompatible(body: any, apiKey: string, endpoint: string, providerName: string): Promise<Response> {
+  if (!apiKey) return jsonError(`${providerName} API key not configured`, 500);
 
   const messages: any[] = [];
   if (body.systemInstruction) {
@@ -239,25 +253,25 @@ async function callOpenAI(body: any, env: Env): Promise<Response> {
     if (text) messages.push({ role, content: text });
   }
 
-  const openaiBody: any = {
+  const reqBody: any = {
     model: body.model,
     messages,
   };
   if (body.generationConfig?.responseMimeType === 'application/json') {
-    openaiBody.response_format = { type: 'json_object' };
+    reqBody.response_format = { type: 'json_object' };
   }
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(openaiBody),
+    body: JSON.stringify(reqBody),
   });
 
   const data = await res.json() as any;
-  if (data.error) return jsonError(data.error.message || 'OpenAI error', res.status);
+  if (data.error) return jsonError(data.error.message || `${providerName} error`, res.status);
   const text = data.choices?.[0]?.message?.content || '';
   const usage = data.usage ? {
     total_tokens: data.usage.total_tokens || (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0),
@@ -415,10 +429,8 @@ async function handleGetTier(userId: string, env: Env): Promise<Response> {
   if (!res.ok) return jsonResponse({ tier: 'free', credits_used: 0, pack_credits: 0, bonus_credits: 0, period_start: '', period_end: null, cancel_at_period_end: false });
   const data = await res.json() as any;
 
-  // Check referral activation (non-blocking)
-  if (data.credits_used >= 10) {
-    checkReferralActivation(userId, env).catch(() => {});
-  }
+  // Referral activation now fires on free-trial / subscription start (Stripe webhook),
+  // not on credit usage.
 
   return jsonResponse(data);
 }
@@ -786,6 +798,10 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
           updated_at: new Date().toISOString(),
         }),
       });
+
+      // Referral reward: award the referrer 100 credits when a referred user starts a
+      // subscription / free trial (moved here from the old "used 10 credits" trigger).
+      checkReferralActivation(userId, env).catch(() => {});
       break;
     }
 

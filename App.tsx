@@ -4,7 +4,7 @@ import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X,
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
-import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setLLMModel, setTTSModel, setImageModel, setVideoModel } from './services/gemini';
+import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setTTSModel, setImageModel, setVideoModel, setCurrentBook } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
@@ -372,6 +372,7 @@ const App: React.FC = () => {
 
   // Reset search when the open book changes.
   useEffect(() => { clearSearch(); }, [activeBookId, clearSearch]);
+  useEffect(() => { setCurrentBook(activeBook?.title || ''); }, [activeBook]);
 
   // Debounced search: build (and cache) the book index lazily, then match.
   useEffect(() => {
@@ -514,10 +515,8 @@ const App: React.FC = () => {
           if (parsed.ttsModel === 'gemini-2.5-flash-preview-tts') parsed.ttsModel = 'gemini-3.1-flash-tts-preview';
           setSettings(prev => ({ ...prev, ...parsed }));
           if (parsed.geminiKey) setGeminiApiKey(parsed.geminiKey);
-          if (parsed.llmModel) setLLMModel(parsed.llmModel);
-          if (parsed.ttsModel) setTTSModel(parsed.ttsModel);
-          if (parsed.imageModel) setImageModel(parsed.imageModel);
-          if (parsed.videoModel) setVideoModel(parsed.videoModel);
+          // Models are admin-set per function (services/gemini.ts FUNCTION_MODELS); user
+          // model settings are no longer applied.
         } catch (e) {}
       }
 
@@ -529,6 +528,8 @@ const App: React.FC = () => {
       }
 
       bootstrapSupabase().then(async () => {
+        // LLM allocation is admin-set per function (services/gemini.ts FUNCTION_MODELS).
+        // Geo-routing removed — model allocation will be decided later alongside media rates.
         if (localStorage.getItem('auth_gate_skipped')) setAuthGatePassed(true);
         // Explicitly exchange OAuth code if present in URL (PKCE flow)
         const oauthSession = await handleOAuthCallback();
@@ -646,10 +647,7 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('app_settings', JSON.stringify(settings));
       if (settings.geminiKey) setGeminiApiKey(settings.geminiKey);
-      if (settings.llmModel) setLLMModel(settings.llmModel);
-      if (settings.ttsModel) setTTSModel(settings.ttsModel);
-      if (settings.imageModel) setImageModel(settings.imageModel);
-      if (settings.videoModel) setVideoModel(settings.videoModel);
+      // Models are admin-set per function (services/gemini.ts FUNCTION_MODELS).
       if (currentUser) {
         saveUserSettings(currentUser.id, {
           target_language: settings.targetLanguage,

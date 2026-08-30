@@ -124,80 +124,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
         </div>
 
         <div className="p-6 space-y-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
-          {/* LLM Engines */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-neon-cyan mb-2">
-              <Engine size={18} />
-              <label className="text-xs font-bold uppercase tracking-widest font-mono">LLM_Engines</label>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-zinc-500">
-                  <MessageSquare size={12} />
-                  <span className="text-[9px] font-mono uppercase">Text_Generation</span>
-                </div>
-                <select
-                  value={settings.llmModel || 'gemini-3-flash-preview'}
-                  onChange={(e) => onUpdate({ ...settings, llmModel: e.target.value })}
-                  className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
-                >
-                  {TEXT_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-zinc-500">
-                  <AudioLines size={12} />
-                  <span className="text-[9px] font-mono uppercase">Voice_Synth (TTS)</span>
-                </div>
-                <select
-                  value={settings.ttsModel || 'gemini-3.1-flash-tts-preview'}
-                  onChange={(e) => onUpdate({ ...settings, ttsModel: e.target.value })}
-                  className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
-                >
-                  {TTS_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-zinc-500">
-                  <ImageIcon size={12} />
-                  <span className="text-[9px] font-mono uppercase">Image_Gen</span>
-                </div>
-                <select
-                  value={settings.imageModel || 'gemini-3-pro-image-preview'}
-                  onChange={(e) => onUpdate({ ...settings, imageModel: e.target.value })}
-                  className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
-                >
-                  {IMAGE_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-zinc-500">
-                  <Film size={12} />
-                  <span className="text-[9px] font-mono uppercase">Video_Gen</span>
-                </div>
-                <select
-                  value={settings.videoModel || 'veo-3.1-fast-generate-preview'}
-                  onChange={(e) => onUpdate({ ...settings, videoModel: e.target.value })}
-                  className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
-                >
-                  {VIDEO_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.provider} // {m.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <p className="text-[9px] text-zinc-600 font-mono">More providers for TTS, image, and video coming soon.</p>
-          </div>
+          {/* LLM engines are admin-set per function in services/gemini.ts (FUNCTION_MODELS)
+              + the media model defaults; users don't choose them. */}
 
           {/* Language */}
           <div className="space-y-3">

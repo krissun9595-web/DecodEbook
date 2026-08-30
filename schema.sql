@@ -56,12 +56,14 @@ create table public.subscriptions (
 comment on table public.subscriptions is 'Stripe subscription state, writable only via service role / webhooks';
 
 -- ------------------------------------------------------------
--- 3. usage_logs  (sql/001 + migrations 008/009)
+-- 3. usage_logs  (sql/001 + migrations 008/009/014)
 -- ------------------------------------------------------------
 create table public.usage_logs (
   id            bigint generated always as identity primary key,
   user_id       uuid references auth.users,
   action        text,
+  model         text,
+  book_title    text,
   tokens_used   int default 0,
   input_tokens  int default 0,
   output_tokens int default 0,
@@ -548,7 +550,14 @@ BEGIN
   ORDER BY created_at DESC LIMIT 1;
 
   IF v_tier IS NULL THEN v_tier := 'free'; END IF;
-  IF v_period_start IS NULL THEN v_period_start := date_trunc('month', now()); END IF;
+  IF v_tier = 'free' THEN
+    -- Free credits are a one-time lifetime grant (not monthly): count usage since signup.
+    SELECT first_seen_at INTO v_period_start FROM profiles WHERE id = p_user_id;
+    v_period_start := COALESCE(v_period_start, '1970-01-01'::timestamptz);
+    v_period_end := NULL;
+  ELSIF v_period_start IS NULL THEN
+    v_period_start := date_trunc('month', now());
+  END IF;
 
   SELECT COALESCE(balance, 0) INTO v_bonus FROM bonus_credits WHERE user_id = p_user_id;
 

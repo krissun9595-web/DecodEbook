@@ -72,18 +72,30 @@ export function getShareUrl(code: string): string {
   return `${window.location.origin}?ref=${code}`;
 }
 
-export function shareOnTwitter(code: string) {
-  const url = getShareUrl(code);
-  const text = 'I\'ve been using DecodEbook to read books with AI — translation, TTS, mind maps, and more. Try it free:';
-  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+export const SHARE_TEXT = 'Reading books with DecodEbook — any EPUB/PDF becomes a bilingual AI reader with translation, read-aloud, podcasts, mind maps & video summaries. Try it free:';
+
+export function shareCaption(code: string): string {
+  return `${SHARE_TEXT} ${getShareUrl(code)}`;
 }
 
+export function shareOnTwitter(code: string) {
+  // X supports pre-filling the post body via the `text` param.
+  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_TEXT)}&url=${encodeURIComponent(getShareUrl(code))}`, '_blank');
+}
+
+// Facebook / LinkedIn / Instagram cannot pre-fill post text (platform limitation), so
+// copy the full caption to the clipboard for the user to paste, then open the platform.
 export function shareOnFacebook(code: string) {
-  const url = getShareUrl(code);
-  window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
+  try { navigator.clipboard.writeText(shareCaption(code)); } catch {}
+  window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrl(code))}`, '_blank');
 }
 
 export function shareOnLinkedIn(code: string) {
-  const url = getShareUrl(code);
-  window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`, '_blank');
+  try { navigator.clipboard.writeText(shareCaption(code)); } catch {}
+  window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(getShareUrl(code))}`, '_blank');
+}
+
+export function shareOnInstagram(code: string) {
+  try { navigator.clipboard.writeText(shareCaption(code)); } catch {}
+  window.open('https://www.instagram.com/', '_blank');
 }

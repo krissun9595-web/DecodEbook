@@ -8,6 +8,10 @@ const SUPABASE_ANON_KEY = (typeof process !== 'undefined' && process.env?.SUPABA
 
 let supabase: SupabaseClient | null = null;
 
+// Visitor country (ISO code) from Cloudflare geo-IP via /api/config, for model routing.
+let _detectedCountry: string | null = null;
+export const getDetectedCountry = () => _detectedCountry;
+
 export function getSupabase(): SupabaseClient | null {
   if (supabase) return supabase;
 
@@ -42,6 +46,7 @@ export async function bootstrapSupabase(): Promise<boolean> {
     const res = await fetch('/api/config');
     if (!res.ok) return alreadyConfigured;
     const data = await res.json();
+    if (data.country) _detectedCountry = data.country;
     if (data.stripeProPriceId) localStorage.setItem('stripe_pro_price_id', data.stripeProPriceId);
     if (data.stripeProAnnualPriceId) localStorage.setItem('stripe_pro_annual_price_id', data.stripeProAnnualPriceId);
     if (data.stripeByokPriceId) localStorage.setItem('stripe_byok_price_id', data.stripeByokPriceId);
@@ -146,6 +151,30 @@ export async function signOut() {
   await client.auth.signOut();
 }
 
+// ---- Identity (account) linking ----
+// Requires "Manual linking" enabled in Supabase Auth settings.
+export async function linkProvider(provider: string) {
+  const client = getSupabase();
+  if (!client) throw new Error('Supabase not configured');
+  const { data, error } = await (client.auth as any).linkIdentity({ provider, options: { redirectTo: window.location.origin } });
+  if (error) throw error;
+  return data;
+}
+
+export async function unlinkProvider(identity: any) {
+  const client = getSupabase();
+  if (!client) throw new Error('Supabase not configured');
+  const { error } = await (client.auth as any).unlinkIdentity(identity);
+  if (error) throw error;
+}
+
+export async function getIdentities(): Promise<any[]> {
+  const client = getSupabase();
+  if (!client) return [];
+  const { data } = await (client.auth as any).getUserIdentities();
+  return data?.identities || [];
+}
+
 export async function resetPassword(email: string) {
   const client = getSupabase();
   if (!client) throw new Error('Supabase not configured');
@@ -216,10 +245,39 @@ export async function saveUserSettings(userId: string, settings: UserSettings) {
 
 // ---- Usage logging ----
 
-export async function logUsage(userId: string, action: string, tokensUsed: number = 0, costCents: number = 0, inputTokens: number = 0, outputTokens: number = 0, creditsCost: number = 0) {
+export async function logUsage(userId: string, action: string, tokensUsed: number = 0, costCents: number = 0, inputTokens: number = 0, outputTokens: number = 0, creditsCost: number = 0, model: string | null = null, book: string | null = null) {
   const client = getSupabase();
   if (!client) return;
   await client
     .from('usage_logs')
-    .insert({ user_id: userId, action, tokens_used: tokensUsed, cost_cents: costCents, input_tokens: inputTokens, output_tokens: outputTokens, credits_cost: creditsCost });
+    .insert({ user_id: userId, action, tokens_used: tokensUsed, cost_cents: costCents, input_tokens: inputTokens, output_tokens: outputTokens, credits_cost: creditsCost, model, book_title: book });
+}
+
+export interface CreditHistoryEntry {
+  delta: number;      // negative = consumed, positive = added
+  type: string;       // 'consume' | 'earn' | 'purchase' | 'bonus' | 'renewal'
+  reason: string;     // action name or description
+  book?: string;      // source book title (consumption only)
+  created_at: string;
+}
+
+// Unified credit history: consumption from usage_logs + additions from credit_ledger.
+// Degrades gracefully if credit_ledger doesn't exist yet (returns just consumption).
+export async function fetchCreditHistory(userId: string, limit = 50): Promise<CreditHistoryEntry[]> {
+  const client = getSupabase();
+  if (!client) return [];
+  const [usage, ledger] = await Promise.all([
+    client.from('usage_logs').select('action, credits_cost, created_at, book_title')
+      .eq('user_id', userId).order('created_at', { ascending: false }).limit(limit),
+    client.from('credit_ledger').select('delta, type, reason, created_at')
+      .eq('user_id', userId).order('created_at', { ascending: false }).limit(limit),
+  ]);
+  const consume: CreditHistoryEntry[] = (usage.data || [])
+    .filter((r: any) => (r.credits_cost || 0) !== 0)
+    .map((r: any) => ({ delta: -(r.credits_cost || 0), type: 'consume', reason: r.action, book: r.book_title || undefined, created_at: r.created_at }));
+  const adds: CreditHistoryEntry[] = (ledger.data || [])
+    .map((r: any) => ({ delta: r.delta || 0, type: r.type, reason: r.reason || r.type, created_at: r.created_at }));
+  return [...consume, ...adds]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .slice(0, limit);
 }

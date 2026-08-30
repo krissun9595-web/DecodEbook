@@ -2,17 +2,19 @@
 import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
-import { CREDIT_COSTS } from "./stripe";
+import { creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from "./pricing";
 import { extractChapterFromSource } from "../utils/sourceIndex";
 import { buildLocalTextStructure, buildStructureAnalysisText, isReadableChapterTitle } from "../utils/structureAnalysis";
 import { PDF_TEXT_EXTRACTION_VERSION } from "../utils/sourceVersion";
 
 let _userApiKey: string | null = null;
-const DEFAULT_TEXT_MODEL = 'gemini-3-flash-preview';
+const DEFAULT_TEXT_MODEL = 'gemini-3-flash-preview'; // translate default; geo-routed to deepseek-v4-pro for CN via setLLMModel
 let _selectedModel: string = 'gemini-3-flash-preview';
 let _ttsModel: string = 'gemini-3.1-flash-tts-preview';
 let _imageModel: string = 'gemini-3-pro-image-preview';
 let _videoModel: string = 'veo-3.1-fast-generate-preview';
+let _currentBook = ''; // active book title, for usage attribution in credit history
+export const setCurrentBook = (title: string) => { _currentBook = title || ''; };
 export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
 export const setLLMModel = (model: string) => { _selectedModel = model; };
 export const setTTSModel = (model: string) => { _ttsModel = model; };
@@ -20,28 +22,30 @@ export const setImageModel = (model: string) => { _imageModel = model; };
 export const setVideoModel = (model: string) => { _videoModel = model; };
 export const getLLMModel = () => _selectedModel;
 export const getVideoModel = () => _videoModel;
+
+// Admin-set model per function — users do NOT choose (the settings picker was removed).
+// Edit these to route a function to a different model; pricing (services/pricing.ts)
+// charges credits from the chosen model automatically. Translate uses DeepSeek
+// (Chinese-optimized). The others stay on gemini-flash until you assign + add keys.
+export const FUNCTION_MODELS: Record<string, string> = {
+  translate:            'gemini-3-flash-preview', // geo-routed: CN → deepseek-v4-pro (set on bootstrap)
+  translateFigureText:  'gemini-3-flash-preview',
+  chat:                 'gemini-3-flash-preview',
+  analyzeBookStructure: 'gemini-3-flash-preview',
+  extractChapterText:   'gemini-3-flash-preview',
+  extractConcepts:      'gemini-3-flash-preview',
+  extractDictionary:    'gemini-3-flash-preview',
+  generateMindMap:      'gemini-3-flash-preview',
+  podcastScript:        'gemini-3-flash-preview',
+  videoPrompt:          'gemini-3-flash-preview',
+  quickDefinition:      'gemini-3-flash-preview',
+};
+export const modelFor = (fn: string): string => FUNCTION_MODELS[fn] || DEFAULT_TEXT_MODEL;
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
-const isGeminiModel = (model?: string) => !(model || _selectedModel).startsWith('gpt-') && !(model || _selectedModel).startsWith('claude-');
+const isGeminiModel = (model?: string) => { const m = model || _selectedModel; return !m.startsWith('gpt-') && !m.startsWith('claude-') && !m.startsWith('deepseek'); };
 const isMissingProviderKeyError = (message: string): boolean =>
   /(?:openai|anthropic)\s+api\s+key\s+not\s+configured/i.test(message);
-
-// Cost per million tokens (USD cents) by model family
-const COST_PER_M: Record<string, { input: number; output: number }> = {
-  'gemini-3-flash':   { input: 10, output: 40 },
-  'gemini-3-pro':     { input: 125, output: 500 },
-  'gemini-3.1-flash': { input: 10, output: 40 },
-  'gpt-4o':           { input: 250, output: 1000 },
-  'gpt-4o-mini':      { input: 15, output: 60 },
-  'claude-sonnet':    { input: 300, output: 1500 },
-  'claude-haiku':     { input: 80, output: 400 },
-};
-
-function estimateCostCents(inputTokens: number, outputTokens: number, model: string): number {
-  const key = Object.keys(COST_PER_M).find(k => model.startsWith(k)) || 'gemini-3-flash';
-  const rate = COST_PER_M[key];
-  return Math.round((inputTokens * rate.input + outputTokens * rate.output) / 1_000_000);
-}
 
 interface TokenInfo {
   total: number;
@@ -49,15 +53,21 @@ interface TokenInfo {
   output: number;
 }
 
+// Credits charged + real cost are BOTH derived from the model's unit price
+// (services/pricing.ts) — so an expensive model costs more credits, and adding a
+// model prices itself. The model is logged so per-model margin can be audited.
+// For media actions the caller passes the modality model (_ttsModel/_imageModel/
+// _videoModel); pricing routes by action and reads chars/seconds/images as needed.
 const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string) => {
   const t: TokenInfo = typeof tokens === 'number'
     ? { total: tokens, input: 0, output: 0 }
     : tokens;
-  const costCents = (t.input || t.output) ? estimateCostCents(t.input, t.output, model || _selectedModel) : 0;
-  const creditKey = action.startsWith('text:') ? 'translate' : action;
-  const creditsCost = CREDIT_COSTS[creditKey] || 1;
+  const m = model || _selectedModel;
+  const units = { inTok: t.input, outTok: t.output, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT };
+  const creditsCost = creditsForAction(action, m, units);
+  const costCents = costCentsForAction(action, m, units);
   getUser().then(user => {
-    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost);
+    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost, m, _currentBook || null);
   }).catch(() => {});
 };
 

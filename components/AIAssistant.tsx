@@ -425,7 +425,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
 
                     <div className="flex-1 relative">
                         {quotaError && <div className="absolute -top-7 left-0 right-0 text-[9px] text-rose-400 font-mono truncate">{quotaError}</div>}
-                        {!quotaError && lowCredits && <div className="absolute -top-7 left-0 right-0 text-[9px] text-amber-400/70 font-mono truncate">Running low? Invite a friend for +100 credits.</div>}
+                        {!quotaError && lowCredits && <div className="absolute -top-7 left-0 right-0 text-[9px] text-amber-400/70 font-mono truncate">Running low? Share your link — +5 per click, +100 on trial.</div>}
                         <input
                             type="text"
                             value={input}
