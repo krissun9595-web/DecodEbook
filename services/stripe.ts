@@ -2,7 +2,7 @@ import { getSession } from './supabase';
 import { creditsForAction } from './pricing';
 
 export interface UserTier {
-  tier: 'free' | 'pro' | 'byok' | 'unlimited';
+  tier: 'free' | 'pro';
   period_start: string;
   period_end: string | null;
   cancel_at_period_end: boolean;
@@ -13,7 +13,7 @@ export interface UserTier {
 }
 
 export const TIER_CREDITS: Record<string, number> = {
-  free: 100, pro: 1000, byok: Infinity, unlimited: Infinity,
+  free: 100, pro: 1000,
 };
 
 // Displayed/pre-check credit cost per action for the DEFAULT models. The ACTUAL

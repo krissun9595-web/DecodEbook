@@ -23,7 +23,6 @@ interface Props {
 const TIER_DISPLAY: Record<string, { label: string; color: string; border: string; bg: string }> = {
   free: { label: 'FREE', color: 'text-zinc-400', border: 'border-zinc-700', bg: 'bg-zinc-800/50' },
   pro: { label: 'PRO', color: 'text-neon-cyan', border: 'border-neon-cyan/30', bg: 'bg-neon-cyan/5' },
-  unlimited: { label: 'UNLIMITED', color: 'text-neon-cyan', border: 'border-neon-cyan/30', bg: 'bg-neon-cyan/5' },
 };
 
 const PLANS = [
@@ -340,12 +339,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   </div>
                 ) : tierInfo ? (
                   <div className="content-panel rounded-sm p-4 flex flex-col gap-2 h-[227.5px]">
-                    {monthlyCredits === Infinity ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-neon-cyan font-mono font-bold">Unlimited Credits</span>
-                        <span className="text-[9px] text-zinc-600 font-mono">Unlimited tier</span>
-                      </div>
-                    ) : (
+                    {(
                       <>
                         <div className="flex items-center justify-between text-xs">
                           <span className="flex items-center gap-1.5">
@@ -402,7 +396,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     {/* Share link */}
                     <div className="space-y-2">
                       <p className="text-xs text-neon-cyan font-mono font-bold">Limited Time Offer</p>
-                      <p className="text-[10px] text-zinc-400 font-mono">Earn <span className="text-neon-cyan">5 credits</span> per unique click on your sharing link (up to 50); earn extra <span className="text-neon-cyan">100 credits</span> per new user signup via your sharing link.</p>
+                      <p className="text-[10px] text-zinc-400 font-mono">Earn <span className="text-neon-cyan">5 credits</span> per unique click on your sharing link (up to 50 credits); earn extra <span className="text-neon-cyan">100 credits</span> when a new user you referred signs up and starts using their free credits (up to 1,000 credits).</p>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-void-1 border border-zinc-800 rounded-sm px-3 py-1.5 text-[10px] font-mono text-zinc-400 truncate">
                           {getShareUrl(refCode)}
@@ -459,7 +453,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono leading-relaxed list-disc list-inside">
                           <li>Bonus credits are promotional store credit for use within DecodEbook only — they have no cash value and are not redeemable, transferable, or refundable.</li>
                           <li>Credits earned never expire. They are applied after your monthly credits and before any purchased packs.</li>
-                          <li>Rewards: 5 credits per unique visitor click (up to 50 total); 100 credits when someone you referred starts a paid plan.</li>
+                          <li>Rewards: 5 credits per unique visitor click (up to 50 credits total); 100 credits when a new user you referred signs up, verifies their email, and starts using their free credits (up to 1,000 credits total).</li>
                           <li>Self-referrals, duplicate or automated clicks, and other abuse do not qualify and may result in credit reversal or account action.</li>
                           <li>This is a limited-time promotion. DecodEbook may change, suspend, or end it at any time; credits already earned are unaffected.</li>
                         </ul>

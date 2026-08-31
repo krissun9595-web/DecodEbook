@@ -49,8 +49,6 @@ export async function bootstrapSupabase(): Promise<boolean> {
     if (data.country) _detectedCountry = data.country;
     if (data.stripeProPriceId) localStorage.setItem('stripe_pro_price_id', data.stripeProPriceId);
     if (data.stripeProAnnualPriceId) localStorage.setItem('stripe_pro_annual_price_id', data.stripeProAnnualPriceId);
-    if (data.stripeByokPriceId) localStorage.setItem('stripe_byok_price_id', data.stripeByokPriceId);
-    if (data.stripeUnlimitedPriceId) localStorage.setItem('stripe_unlimited_price_id', data.stripeUnlimitedPriceId);
     if (data.stripePackSPriceId) localStorage.setItem('stripe_pack_s_price_id', data.stripePackSPriceId);
     if (data.stripePackMPriceId) localStorage.setItem('stripe_pack_m_price_id', data.stripePackMPriceId);
     if (data.stripePackLPriceId) localStorage.setItem('stripe_pack_l_price_id', data.stripePackLPriceId);

@@ -17,7 +17,8 @@ export const VIDEO_SECONDS_DEFAULT = 8;
 // Text LLMs — USD cents per 1M tokens {in, out}
 export const TEXT_PRICING: Record<string, { in: number; out: number }> = {
   'qwen3-flash':           { in: 3,   out: 13 },
-  'deepseek-v4-flash':     { in: 14,  out: 28 },
+  'deepseek-v4-pro':       { in: 132, out: 396 }, // DeepSeek published peak, cache-miss ($1.32 / $3.96 per 1M)
+  'deepseek-v4-flash':     { in: 44,  out: 132 }, // peak, cache-miss ($0.44 / $1.32 per 1M); off-peak is 50% less
   'gemini-2.5-flash-lite': { in: 10,  out: 40 },
   'gpt-4o-mini':           { in: 15,  out: 60 },
   'mistral-small':         { in: 15,  out: 60 },

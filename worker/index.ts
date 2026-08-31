@@ -9,8 +9,6 @@ interface Env {
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PRO_PRICE_ID: string;
   STRIPE_PRO_ANNUAL_PRICE_ID: string;
-  STRIPE_BYOK_PRICE_ID: string;
-  STRIPE_UNLIMITED_PRICE_ID: string;
   STRIPE_PACK_S_PRICE_ID: string;
   STRIPE_PACK_M_PRICE_ID: string;
   STRIPE_PACK_L_PRICE_ID: string;
@@ -24,7 +22,7 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
 const BYTEPLUS_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';
 
 const TIER_CREDITS: Record<string, number> = {
-  free: 100, pro: 1000, byok: Infinity, unlimited: Infinity,
+  free: 100, pro: 1000,
 };
 
 const CREDIT_COSTS: Record<string, number> = {
@@ -58,8 +56,6 @@ export default {
         supabaseAnonKey: env.SUPABASE_ANON_KEY || '',
         stripeProPriceId: env.STRIPE_PRO_PRICE_ID || '',
         stripeProAnnualPriceId: env.STRIPE_PRO_ANNUAL_PRICE_ID || '',
-        stripeByokPriceId: env.STRIPE_BYOK_PRICE_ID || '',
-        stripeUnlimitedPriceId: env.STRIPE_UNLIMITED_PRICE_ID || '',
         stripePackSPriceId: env.STRIPE_PACK_S_PRICE_ID || '',
         stripePackMPriceId: env.STRIPE_PACK_M_PRICE_ID || '',
         stripePackLPriceId: env.STRIPE_PACK_L_PRICE_ID || '',
@@ -472,32 +468,9 @@ async function checkCreditBalance(userId: string, action: string, env: Env): Pro
 }
 
 // --- Referral handlers ---
-
-async function checkReferralActivation(userId: string, env: Env) {
-  // Check if this user was referred and not yet activated
-  const res = await supabaseAdmin(env, `/referral_signups?referred_user_id=eq.${userId}&activated=eq.false&select=id,referrer_id`, {
-    method: 'GET', headers: { 'Prefer': '' },
-  });
-  const signups = await res.json() as any[];
-  if (!signups?.length) return;
-
-  const signup = signups[0];
-  // Mark as activated
-  await supabaseAdmin(env, `/referral_signups?id=eq.${signup.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ activated: true, referrer_credited: true }),
-  });
-  // Award referrer 100 bonus credits
-  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/add_bonus_credits`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
-      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify({ p_user_id: signup.referrer_id, p_credits: 100 }),
-  });
-}
+// NOTE: the referrer's 100-credit reward is granted server-side by a DB trigger
+// (sql/019) when the referred user verifies their email AND spends enough free credits
+// to prove a genuine trial — not on paid activation. See award_referral_on_engagement().
 
 async function handleGetReferralCode(userId: string, env: Env): Promise<Response> {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_or_create_referral_code`, {
@@ -600,9 +573,15 @@ async function handleReferralSignup(request: Request, env: Env): Promise<Respons
   const existing = await existRes.json() as any[];
   if (existing?.length > 0) return jsonResponse({ ok: true, already: true });
 
+  // Capture the referred user's signup IP (hashed) for abuse review — same-IP clusters
+  // across a referrer's referrals flag likely self-farming.
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
+  const ipHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+
   await supabaseAdmin(env, '/referral_signups', {
     method: 'POST',
-    body: JSON.stringify({ referrer_id: referrer_id, referred_user_id: auth.userId }),
+    body: JSON.stringify({ referrer_id: referrer_id, referred_user_id: auth.userId, referred_ip_hash: ipHash }),
   });
 
   return jsonResponse({ ok: true });
@@ -799,9 +778,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         }),
       });
 
-      // Referral reward: award the referrer 100 credits when a referred user starts a
-      // subscription / free trial (moved here from the old "used 10 credits" trigger).
-      checkReferralActivation(userId, env).catch(() => {});
+      // Referral reward is handled by a DB trigger on engagement (sql/019), not here.
       break;
     }
 
@@ -869,8 +846,6 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 function mapPriceToTier(priceId: string, env: Env): string {
   if (env.STRIPE_PRO_PRICE_ID && priceId === env.STRIPE_PRO_PRICE_ID) return 'pro';
   if (env.STRIPE_PRO_ANNUAL_PRICE_ID && priceId === env.STRIPE_PRO_ANNUAL_PRICE_ID) return 'pro';
-  if (env.STRIPE_BYOK_PRICE_ID && priceId === env.STRIPE_BYOK_PRICE_ID) return 'byok';
-  if (env.STRIPE_UNLIMITED_PRICE_ID && priceId === env.STRIPE_UNLIMITED_PRICE_ID) return 'unlimited';
   return 'pro';
 }
 
