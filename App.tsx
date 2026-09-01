@@ -4,7 +4,7 @@ import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X,
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
-import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setTTSModel, setImageModel, setVideoModel, setCurrentBook } from './services/gemini';
+import { analyzeBookStructure, getQuickDefinition, batchGetDefinitions, setGeminiApiKey, setTTSModel, setImageModel, setVideoModel, setCurrentBook, getGenerationMode, GenMode } from './services/gemini';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
@@ -424,6 +424,7 @@ const App: React.FC = () => {
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [genMode, setGenMode] = useState<GenMode>(getGenerationMode());
   const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -7375,6 +7376,7 @@ const App: React.FC = () => {
           onAuthChange={setCurrentUser}
           proPriceId={localStorage.getItem('stripe_pro_price_id') || ''}
           proAnnualPriceId={localStorage.getItem('stripe_pro_annual_price_id') || ''}
+          onModeChange={setGenMode}
         />
       </>
     );
@@ -7499,6 +7501,7 @@ const App: React.FC = () => {
         onAuthChange={setCurrentUser}
         proPriceId={localStorage.getItem('stripe_pro_price_id') || ''}
         proAnnualPriceId={localStorage.getItem('stripe_pro_annual_price_id') || ''}
+        onModeChange={setGenMode}
         key={isAccountOpen ? 'open' : 'closed'}
       />
       {isFilesOpen && (
@@ -7764,14 +7767,18 @@ const App: React.FC = () => {
           >
             <UserIcon size={14} />
             <span>MY_ACCOUNT</span>
-            {userTier && userTier.tier !== 'free' && (
-              <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded ${
-                userTier.tier === 'pro' ? 'bg-neon-cyan/10 text-neon-cyan' :
-                'bg-neon-cyan/10 text-neon-cyan'
+            <span className="ml-auto flex items-center gap-1">
+              <span className={`text-[8px] px-1.5 py-0.5 rounded border ${
+                genMode === 'premium' ? 'border-neon-cyan/30 text-neon-cyan' : 'border-zinc-700 text-zinc-500'
               }`}>
-                {userTier.tier.toUpperCase()}
+                {genMode === 'premium' ? 'PREMIUM' : 'BALANCED'}
               </span>
-            )}
+              {userTier && userTier.tier !== 'free' && (
+                <span className="text-[8px] px-1.5 py-0.5 rounded bg-neon-cyan/10 text-neon-cyan">
+                  {userTier.tier.toUpperCase()}
+                </span>
+              )}
+            </span>
           </button>
         </div>
       </aside>

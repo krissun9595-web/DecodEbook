@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { X, Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, ChevronDown, ChevronUp, Package, Gift, Share2, Copy, Check } from 'lucide-react';
 import { Privacy, Pro } from './ui/glyphs';
 import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
+import { creditsForAction } from '../services/pricing';
+import { GenMode, getGenerationMode, setGenerationMode, resolveModel } from '../services/gemini';
 import { CreditHistory } from './CreditHistory';
 import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
@@ -18,6 +20,7 @@ interface Props {
   onAuthChange: (user: User | null) => void;
   proPriceId: string;
   proAnnualPriceId: string;
+  onModeChange?: (mode: GenMode) => void;
 }
 
 const TIER_DISPLAY: Record<string, { label: string; color: string; border: string; bg: string }> = {
@@ -65,7 +68,7 @@ const PROVIDERS: { key: string; matches: string[]; label: string; icon: React.Re
   { key: 'discord', matches: ['discord'], label: 'Discord', icon: DiscordIcon },
 ];
 
-export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, proAnnualPriceId }: Props) {
+export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, proAnnualPriceId, onModeChange }: Props) {
   const [tierInfo, setTierInfo] = useState<UserTier | null>(null);
   const [loading, setLoading] = useState(false);
   const [upgrading, setUpgrading] = useState<string | null>(null);
@@ -77,6 +80,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const [refStats, setRefStats] = useState<ReferralStats | null>(null);
   const [copied, setCopied] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [genMode, setGenMode] = useState<GenMode>(getGenerationMode());
   const [identities, setIdentities] = useState<any[]>(user?.identities || []);
   const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
   const [bindMsg, setBindMsg] = useState('');
@@ -219,6 +223,17 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const packUsed = Math.max(0, packTotal - packRemaining);
   const packPct = packTotal > 0 ? Math.min((packUsed / packTotal) * 100, 100) : 0;
 
+  const handleToggleMode = () => {
+    const next: GenMode = genMode === 'premium' ? 'balanced' : 'premium';
+    setGenMode(next);
+    setGenerationMode(next);
+    try { localStorage.setItem('generation_mode', next); } catch {}
+    onModeChange?.(next);
+  };
+  // Text is billed on the translate token-footprint x the model's rate, so cost the
+  // display the same way it's actually charged (the mode changes the model → the cost).
+  const modeCost = (fn: string) => creditsForAction('translate', resolveModel(fn, genMode));
+
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
       <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
@@ -272,6 +287,33 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <button onClick={handleSignOut} className="w-full py-2 bg-zinc-900 hover:bg-rose-950/30 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-1.5">
                       <LogOut size={10} /> Sign Out
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Active Mode (universal generation quality) ── */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-neon-cyan mb-2">
+                  <Zap size={18} />
+                  <label className="text-xs font-bold uppercase tracking-widest font-mono">Active_Mode</label>
+                </div>
+                <div className="content-panel rounded-sm p-4 min-h-[175px] flex flex-col">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neon-cyan font-mono font-bold">{genMode === 'premium' ? 'Premium' : 'Balanced'}</span>
+                    <button
+                      role="switch" aria-checked={genMode === 'premium'} aria-label="Toggle generation mode"
+                      onClick={handleToggleMode}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-5' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-1 text-[10px] text-zinc-600 font-mono">
+                    <p>{genMode === 'premium'
+                      ? 'Best models for every generation — higher quality, more credits per action.'
+                      : 'Cost-effective models — great quality, fewer credits per action.'}</p>
+                    <p className="text-zinc-500">Translate {modeCost('translate')} cr · Chat {modeCost('chat')} cr · Podcast {modeCost('podcastScript')} cr</p>
+                    <p>Applies app-wide — text, image & video. Audio (TTS) quality follows in a later update.</p>
                   </div>
                 </div>
               </div>

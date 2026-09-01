@@ -35,7 +35,7 @@ export const CREDIT_COSTS: Record<string, number> = {
   generateImage:        creditsForAction('generateImage', 'gemini-3-pro-image'),
   podcastAudio:         creditsForAction('podcastAudio', 'gemini-3.1-flash-tts', { chars: 10000 }),
   videoSeedanceFast:    creditsForAction('videoSeedanceFast', 'seedance'),
-  videoSeedance:        creditsForAction('videoSeedance', 'seedance'),
+  videoSeedance:        creditsForAction('videoSeedance', 'dreamina-seedance-2-0-mini'),
   videoVeo:             creditsForAction('videoVeo', 'veo-3.1-fast'),
 };
 

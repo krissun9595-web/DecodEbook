@@ -23,6 +23,37 @@ export const setVideoModel = (model: string) => { _videoModel = model; };
 export const getLLMModel = () => _selectedModel;
 export const getVideoModel = () => _videoModel;
 
+// ── Generation mode (universal, app-wide): Balanced (cost-effective) / Premium (best).
+// Persisted in localStorage so every generation call reads it. User-visible text
+// functions switch model by mode; internal functions stay fixed (see MODEL_POLICY).
+export type GenMode = 'balanced' | 'premium';
+let _genMode: GenMode = (typeof localStorage !== 'undefined' && localStorage.getItem('generation_mode') === 'premium') ? 'premium' : 'balanced';
+export const setGenerationMode = (m: GenMode) => { _genMode = m === 'premium' ? 'premium' : 'balanced'; applyMediaMode(_genMode); };
+export const getGenerationMode = (): GenMode => _genMode;
+// Per-function TEXT model by mode. Only user-visible functions listed here scale; anything
+// absent falls back to FUNCTION_MODELS (internal functions stay on the current model —
+// the flash-lite cost-down is a separate follow-up pending JSON-adherence validation).
+const MODEL_POLICY: Record<string, { balanced: string; premium: string }> = {
+  translate:           { balanced: 'deepseek-v4-flash',      premium: 'gemini-3.1-pro-preview' },
+  chat:                { balanced: 'gemini-3-flash-preview', premium: 'gemini-3.1-pro-preview' },
+  quickDefinition:     { balanced: 'gemini-2.5-flash-lite',  premium: 'gemini-3-flash-preview' },
+  generateMindMap:     { balanced: 'gemini-3-flash-preview', premium: 'gemini-3.1-pro-preview' },
+  podcastScript:       { balanced: 'gemini-3-flash-preview', premium: 'gemini-3.1-pro-preview' },
+};
+export const resolveModel = (fn?: string, mode: GenMode = _genMode): string =>
+  (fn && MODEL_POLICY[fn]?.[mode]) || (fn ? FUNCTION_MODELS[fn] : '') || _selectedModel;
+
+// MEDIA models by mode — image + video switch (video path is chosen from _videoModel:
+// dreamina-* → Seedance path, veo-* → Veo path). TTS stays on Gemini both modes because
+// the intended Balanced voice (BytePlus Seed Speech 2.0, cheaper) isn't API-wired yet.
+const applyMediaMode = (mode: GenMode) => {
+  _imageModel = mode === 'premium' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
+  _videoModel = mode === 'premium' ? 'veo-3.1-fast-generate-preview' : 'dreamina-seedance-2-0-mini-260615';
+  _ttsModel   = 'gemini-3.1-flash-tts-preview'; // Gemini TTS: podcast (both modes) + Premium reader.
+  // (Balanced reader TTS routes to BytePlus Seed TTS 2.0 in generateSpeech, not via _ttsModel.)
+};
+applyMediaMode(_genMode); // apply the persisted mode's media models on load
+
 // Admin-set model per function — users do NOT choose (the settings picker was removed).
 // Edit these to route a function to a different model; pricing (services/pricing.ts)
 // charges credits from the chosen model automatically. Translate uses DeepSeek
@@ -44,6 +75,10 @@ export const modelFor = (fn: string): string => FUNCTION_MODELS[fn] || DEFAULT_T
 const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
 const useProxy = () => !getDirectKey();
 const isGeminiModel = (model?: string) => { const m = model || _selectedModel; return !m.startsWith('gpt-') && !m.startsWith('claude-') && !m.startsWith('deepseek'); };
+// gemini-3.x Pro is a reasoning model that ONLY works with thinking (thinkingBudget 0 →
+// 400 INVALID_ARGUMENT). Flash/lite allow disabling thinking for speed/cost. So only
+// disable thinking for non-pro models; pro keeps its default (dynamic) thinking.
+const modelRequiresThinking = (model?: string) => /pro/i.test(model || '');
 const isMissingProviderKeyError = (message: string): boolean =>
   /(?:openai|anthropic)\s+api\s+key\s+not\s+configured/i.test(message);
 
@@ -58,12 +93,17 @@ interface TokenInfo {
 // model prices itself. The model is logged so per-model margin can be audited.
 // For media actions the caller passes the modality model (_ttsModel/_imageModel/
 // _videoModel); pricing routes by action and reads chars/seconds/images as needed.
-const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string) => {
+// Count CJK/Kana/Hangul characters — they expand into far more TTS audio tokens per
+// character than Latin text, so TTS costing is script-aware (see pricing.ttsCostCents).
+export const countCjkChars = (s: string): number =>
+  (s.match(/[㐀-鿿豈-﫿぀-ヿ가-힯]/g) || []).length;
+
+const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string, extraUnits?: { chars?: number; cjkChars?: number; seconds?: number; images?: number }) => {
   const t: TokenInfo = typeof tokens === 'number'
     ? { total: tokens, input: 0, output: 0 }
     : tokens;
   const m = model || _selectedModel;
-  const units = { inTok: t.input, outTok: t.output, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT };
+  const units = { inTok: t.input, outTok: t.output, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT, ...(extraUnits || {}) };
   const creditsCost = creditsForAction(action, m, units);
   const costCents = costCentsForAction(action, m, units);
   getUser().then(user => {
@@ -103,16 +143,16 @@ const callUnifiedLLM = async (params: {
   generationConfig?: any;
   creditAction?: string;
 }): Promise<string> => {
-  const model = params.model || _selectedModel;
+  const model = params.model || resolveModel(params.creditAction);
 
   if (isGeminiModel(model)) {
     const ai = await getAi();
     const config: any = {};
     if (params.systemInstruction) config.systemInstruction = params.systemInstruction;
     if (params.generationConfig) Object.assign(config, params.generationConfig);
-    config.thinkingConfig = { thinkingBudget: 0 };
+    if (!modelRequiresThinking(model)) config.thinkingConfig = { thinkingBudget: 0 };
     const response = await ai.models.generateContent({ model, contents: params.contents, config });
-    trackUsage(`text:${model}`, extractTokens(response), model);
+    trackUsage(params.creditAction || 'translate', extractTokens(response), model);
     return response.text || '';
   }
 
@@ -139,7 +179,7 @@ const callUnifiedLLM = async (params: {
   }
   const data = await res.json() as any;
   const usage = data.usage || {};
-  trackUsage(`text:${model}`, {
+  trackUsage(params.creditAction || 'translate', {
     total: usage.total_tokens || 0,
     input: usage.prompt_tokens || 0,
     output: usage.completion_tokens || 0,
@@ -656,8 +696,9 @@ export const generatePodcastAudio = async (
 ): Promise<{ audio: string; script: string; episodeTitle: string }> => {
   return withRetry(async () => {
     const ai = await getAi();
+    const scriptModel = resolveModel('podcastScript');
     const scriptResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", 
+      model: scriptModel,
       contents: {
         parts: [
           getFilePart(file),
@@ -666,7 +707,7 @@ export const generatePodcastAudio = async (
       },
       config: {
         responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
+        ...(modelRequiresThinking(scriptModel) ? {} : { thinkingConfig: { thinkingBudget: 0 } }),
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -678,7 +719,7 @@ export const generatePodcastAudio = async (
       }
     });
 
-    trackUsage('podcastScript', extractTokens(scriptResponse), 'gemini-3-flash-preview');
+    trackUsage('podcastScript', extractTokens(scriptResponse), scriptModel);
     const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
@@ -755,7 +796,8 @@ export const generatePodcastAudio = async (
     const finalAudio = window.btoa(binary);
 
     const totalChars = dialogueLines.reduce((sum, l) => sum + l.text.length, 0);
-    trackUsage('podcastAudio', { total: totalChars, input: totalChars, output: dialogueLines.length }, _ttsModel);
+    const totalCjk = dialogueLines.reduce((sum, l) => sum + countCjkChars(l.text), 0);
+    trackUsage('podcastAudio', { total: totalChars, input: totalChars, output: dialogueLines.length }, _ttsModel, { chars: totalChars, cjkChars: totalCjk });
     return { audio: finalAudio, script: parsedResponse.script, episodeTitle: parsedResponse.episodeTitle };
   });
 };
@@ -904,6 +946,9 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
   });
 };
 
+// TTS uses Gemini flash TTS in BOTH modes (user decision — BytePlus Seed TTS 2.0 was
+// unavailable). The dormant worker /api/tts route + seed-tts pricing are kept for a
+// future switch to a cheaper provider (e.g. Google Cloud TTS Neural2).
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
   return withRetry(async () => {
     const ai = await getAi();
@@ -919,7 +964,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
         },
       },
     });
-    trackUsage('tts', extractTokens(response), _ttsModel);
+    trackUsage('tts', extractTokens(response), _ttsModel, { chars: text.length, cjkChars: countCjkChars(text) });
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Failed to generate audio");
     return base64Audio;
@@ -1126,11 +1171,12 @@ export const generateSeedanceVideo = async (
 
 export const createChatSession = async (file: FileContext, history: Content[] = []): Promise<Chat> => {
   const ai = await getAi();
+  const chatModel = resolveModel('chat');
   return ai.chats.create({
-    model: 'gemini-3-flash-preview',
+    model: chatModel,
     config: {
       systemInstruction: "You are a reading assistant. Answer questions strictly based on the provided document.",
-      thinkingConfig: { thinkingBudget: 0 }
+      ...(modelRequiresThinking(chatModel) ? {} : { thinkingConfig: { thinkingBudget: 0 } })
     },
     history: [
       {
@@ -1157,7 +1203,7 @@ export const sendMessageToChat = async (chat: Chat, message: string | Part[], si
         response = await chat.sendMessage(messageContent as any);
     }
     
-    trackUsage('chat', extractTokens(response), 'gemini-3-flash-preview');
+    trackUsage('chat', extractTokens(response), resolveModel('chat'));
     return response.text || "";
   }, 3, 2000, signal);
 };

@@ -28,11 +28,12 @@ export const TEXT_PRICING: Record<string, { in: number; out: number }> = {
   'glm-5':                 { in: 140, out: 440 },
   'qwen3-max':             { in: 200, out: 600 },
   'qwen':                  { in: 200, out: 600 }, // generic qwen fallback
-  'gemini-3-flash':        { in: 150, out: 750 }, // ⚠️ VERIFY vs Google invoice
-  'gemini-3.1-flash':      { in: 150, out: 750 },
+  'gemini-3-flash':        { in: 70,  out: 423 },  // Google invoice Aug'26: $0.70 / $4.23 per M
+  'gemini-3.1-flash':      { in: 70,  out: 423 },  // assume same tier as 3-flash
   'claude-sonnet':         { in: 200, out: 1000 },
   'claude':                { in: 200, out: 1000 }, // generic claude fallback
-  'gemini-3-pro':          { in: 200, out: 1200 },
+  'gemini-3-pro':          { in: 285, out: 1690 }, // Google invoice Aug'26: ~$2.85 / ~$16.9 per M (small sample; refine)
+  'gemini-3.1-pro':        { in: 285, out: 1690 }, // 3.1 Pro (replaced 3-pro-preview); assume same tier until invoiced
   'gpt-4o':                { in: 250, out: 1000 },
 };
 const TEXT_FALLBACK = { in: 150, out: 750 }; // treat unknown text models as flash-tier
@@ -40,8 +41,9 @@ const TEXT_FALLBACK = { in: 150, out: 750 }; // treat unknown text models as fla
 // TTS — USD cents per 1M characters
 export const TTS_PRICING: Record<string, number> = {
   'google-standard':      400,
-  'gemini-3.1-flash-tts': 1200,
-  'gemini':               1200, // generic gemini-tts fallback
+  'seed-tts-2.0':         3000, // BytePlus Seed TTS 2.0 pay-as-you-go $30/M chars (prepaid $24-27.5/M)
+  // NOTE: Gemini TTS is NOT priced here — it's audio-token billed and computed
+  // script-aware in ttsCostCents(). These entries are the flat per-char providers only.
   'tts-1-hd':             3000,
   'tts-1':                1500,
   'elevenlabs-flash':     5000,
@@ -66,11 +68,20 @@ const IMAGE_FALLBACK = 20;
 
 // Video — USD cents per second
 export const VIDEO_PRICING: Record<string, number> = {
-  'veo-3.1-fast': 5,
+  'veo-3.1-fast': 14,  // Google invoice Aug'26: 720p + audio ~$0.14/s
   'veo-3.1-lite': 5,
   'kling':        12,
   'runway':       20,
-  'seedance':     4,  // ⚠️ ESTIMATE ~$0.04/s (480/720p) — token-metered; VERIFY in BytePlus billing console
+  // BytePlus Seedance — verified per-second @720p 16:9, input WITHOUT video. Higher
+  // resolutions cost more (2.0: 1080p ~37¢/s, 4K ~78¢/s) — resolution-aware pricing is
+  // a follow-up before pushing 1080p; these keep us safe at the 720p default.
+  'dreamina-seedance-2-5':      23,  // Seedance 2.5 720p ~$0.231/s
+  'dreamina-seedance-2-0-fast': 12,  // 2.0 Fast 720p ~$0.12/s
+  'dreamina-seedance-2-0-mini': 8,   // 2.0 Mini 720p ~$0.08/s
+  'dreamina-seedance-2-0':      15,  // 2.0 720p ~$0.15/s (current default)
+  'seedance-1-0-pro-fast':      3,   // 1.0 Pro Fast 720p ~$0.021/s
+  'seedance-1-0-pro':           6,   // 1.0 Pro 720p ~$0.051/s
+  'seedance':                   15,  // generic fallback → 2.0 720p
   'sora':         70,
   'veo-3.1':      75,
   'veo':          75,
@@ -80,10 +91,10 @@ const VIDEO_FALLBACK = 5;
 // Typical token footprint per TEXT action → gives a predictable, pre-checkable
 // per-(action, model) credit price. Tune from usage_logs avg input/output tokens.
 export const ACTION_TOKENS: Record<string, { in: number; out: number }> = {
-  translate:            { in: 600,  out: 600 },
+  translate:            { in: 1200, out: 1100 }, // calibrated from usage_logs (139-call batch avg ~1233/1096)
   chat:                 { in: 800,  out: 400 },
   quickDefinition:      { in: 200,  out: 150 },
-  analyzeBookStructure: { in: 6000, out: 1500 },
+  analyzeBookStructure: { in: 20000, out: 2900 }, // calibrated (1 sample ~29.7k in — conservative; refine w/ more data)
   extractChapterText:   { in: 4000, out: 4000 },
   extractConcepts:      { in: 4000, out: 800 },
   extractDictionary:    { in: 4000, out: 800 },
@@ -97,6 +108,11 @@ const ACTION_TOKENS_FALLBACK = { in: 500, out: 500 };
 const TTS_ACTIONS = new Set(['tts', 'podcastAudio']);
 const IMAGE_ACTIONS = new Set(['generateImage', 'redrawFigureTranslated']);
 const VIDEO_ACTIONS = new Set(['videoVeo', 'videoSeedance', 'videoSeedanceFast']);
+// Text actions whose input scales with the whole file/chapter (a fixed footprint can't
+// approximate them), so they're charged on ACTUAL measured tokens instead.
+// Measured (actual-token) billing: file-scaled actions AND reasoning-model actions whose
+// output is inflated by thinking tokens (a fixed footprint would undercharge Premium/pro).
+const MEASURED_TEXT_ACTIONS = new Set(['videoPrompt', 'podcastScript', 'analyzeBookStructure', 'chat', 'generateMindMap']);
 
 // Longest-prefix match so 'gpt-4o-mini' wins over 'gpt-4o', 'veo-3.1-fast' over 'veo'.
 function rateFor<T>(reg: Record<string, T>, model: string, fallback: T): T {
@@ -115,10 +131,29 @@ export function textCostCents(model: string, inTok: number, outTok: number): num
   return (inTok * r.in + outTok * r.out) / 1_000_000;
 }
 
-export interface Units { inTok?: number; outTok?: number; chars?: number; images?: number; seconds?: number; }
+export interface Units { inTok?: number; outTok?: number; chars?: number; cjkChars?: number; images?: number; seconds?: number; }
+
+// Gemini TTS is billed by AUDIO-OUTPUT tokens (Google invoice: ~$28.35/M audio-tok).
+// Audio tokens scale with spoken DURATION, so per source character they vary by script:
+// CJK characters ~= one token each and expand ~7x into audio tokens; Latin runs ~4
+// chars/token → ~2.65 audio-tok/char. Costing by the source text's script keeps TTS
+// both predictable (known before synthesis) and accurate across languages.
+const GEMINI_TTS_AUDIO_CENTS_PER_M = 2835; // $28.35 / M audio-output-tokens
+const AUDIO_TOK_PER_CJK_CHAR = 7.1;
+const AUDIO_TOK_PER_LATIN_CHAR = 2.65;
+
+function ttsCostCents(model: string, u: Units): number {
+  const chars = u.chars ?? 0;
+  if (model.startsWith('gemini')) { // audio-token billed → script-aware estimate
+    const cjk = Math.min(chars, u.cjkChars ?? 0);
+    const audioTokens = cjk * AUDIO_TOK_PER_CJK_CHAR + (chars - cjk) * AUDIO_TOK_PER_LATIN_CHAR;
+    return (audioTokens / 1_000_000) * GEMINI_TTS_AUDIO_CENTS_PER_M;
+  }
+  return (chars / 1_000_000) * rateFor(TTS_PRICING, model, TTS_FALLBACK); // flat per-char (BytePlus/Google-std/ElevenLabs)
+}
 
 function modalityCostCents(action: string, model: string, u: Units): number {
-  if (TTS_ACTIONS.has(action))   return ((u.chars ?? 0) / 1_000_000) * rateFor(TTS_PRICING, model, TTS_FALLBACK);
+  if (TTS_ACTIONS.has(action))   return ttsCostCents(model, u);
   if (IMAGE_ACTIONS.has(action)) return (u.images ?? 1) * rateFor(IMAGE_PRICING, model, IMAGE_FALLBACK);
   if (VIDEO_ACTIONS.has(action)) return (u.seconds ?? VIDEO_SECONDS_DEFAULT) * rateFor(VIDEO_PRICING, model, VIDEO_FALLBACK);
   return textCostCents(model, u.inTok ?? 0, u.outTok ?? 0);
@@ -131,6 +166,9 @@ export function creditsForAction(action: string, model: string, u: Units = {}): 
     return creditsFromCents(modalityCostCents(action, model, u));
   }
   const key = action.startsWith('text:') ? 'translate' : action;
+  if (MEASURED_TEXT_ACTIONS.has(key) && ((u.inTok ?? 0) + (u.outTok ?? 0) > 0)) {
+    return creditsFromCents(textCostCents(model, u.inTok ?? 0, u.outTok ?? 0)); // real tokens (file-scaled)
+  }
   const t = ACTION_TOKENS[key] ?? ACTION_TOKENS_FALLBACK;
   return creditsFromCents(textCostCents(model, t.in, t.out));
 }
