@@ -58,6 +58,10 @@ export async function saveBookToCloud(userId: string, item: LibraryItem): Promis
     content: canSyncContent ? item.fileContext.content : null,
     mime_type: encodeMimeType(item.fileContext),
     is_text: item.fileContext.isText,
+    // The outline drives correct chapter re-derivation on reload/other devices; without it hydrate
+    // falls back to a lossy heuristic (fewer, mis-split chapters). Sync it so every device rebuilds
+    // the same chapters the upload produced.
+    pdf_outline: item.fileContext.pdfOutline ?? null,
     upload_date: item.uploadDate,
   }, { onConflict: 'id,user_id' });
   if (error) console.warn('[sync] saveBook failed:', error.message);
@@ -91,6 +95,7 @@ export async function loadLibraryFromCloud(userId: string): Promise<LibraryItem[
       content: row.content || '',
       ...decodeMimeType(row.mime_type),
       isText: row.is_text,
+      pdfOutline: row.pdf_outline ?? undefined,
     },
     uploadDate: row.upload_date,
   }));
@@ -175,43 +180,72 @@ export async function loadReadingPositions(userId: string): Promise<Record<strin
 
 // --- Merge logic (called once on login) ---
 
-export function mergeLibrary(local: LibraryItem[], cloud: LibraryItem[]): { merged: LibraryItem[]; toUpload: LibraryItem[] } {
-  const cloudMap = new Map(cloud.map(item => [item.book.id, item]));
-  const localMap = new Map(local.map(item => [item.book.id, item]));
-  const merged: LibraryItem[] = [];
-  const toUpload: LibraryItem[] = [];
+// Stable book identity for dedup. book.id is a random UUID minted per upload/extraction,
+// so it CANNOT identify a book across devices or extractor versions — merging by it let the
+// same book pile up as duplicate copies. Two items are the SAME book if they share
+// (title+format) OR (filename+format) — mirrors the upload-path `sameBook` dedup.
+function bookIdKeys(item: LibraryItem): { title: string; file: string } {
+  const kind = item.fileContext?.sourceKind || '';
+  const title = (item.book?.title || '').trim().toLowerCase();
+  const file = (item.fileContext?.sourceFileName || '').trim().toLowerCase();
+  return { title: title ? `${title}|${kind}` : '', file: file ? `${file}|${kind}` : '' };
+}
+function sameBookIdentity(a: LibraryItem, b: LibraryItem): boolean {
+  const ka = bookIdKeys(a), kb = bookIdKeys(b);
+  return (!!ka.title && ka.title === kb.title) || (!!ka.file && ka.file === kb.file);
+}
+// Winner among duplicate copies: highest extractor version → has inline content → newest upload.
+function extractorVersionNum(item: LibraryItem): number {
+  const m = /v(\d+)/.exec(item.fileContext?.sourceExtractorVersion || '');
+  return m ? parseInt(m[1], 10) : 0;
+}
+function rankGreater(a: LibraryItem, b: LibraryItem): boolean {
+  const va = extractorVersionNum(a), vb = extractorVersionNum(b);
+  if (va !== vb) return va > vb;
+  const ca = a.fileContext?.content ? 1 : 0, cb = b.fileContext?.content ? 1 : 0;
+  if (ca !== cb) return ca > cb;
+  return (a.uploadDate || 0) > (b.uploadDate || 0);
+}
 
-  for (const [id, cloudItem] of cloudMap) {
-    const localItem = localMap.get(id);
-    if (!localItem) {
-      merged.push(cloudItem);
-    } else {
-      // Cloud has full content; local may have content stripped to ''
-      if (cloudItem.fileContext.content && !localItem.fileContext.content) {
-        // Prefer cloud for content, but keep local bookmarks if newer
-        const item: LibraryItem = {
-          ...cloudItem,
-          fileContext: mergeFileContextMetadata(cloudItem.fileContext, localItem.fileContext),
-        };
-        if (localItem.book.bookmarks?.length > (cloudItem.book.bookmarks?.length || 0)) {
-          item.book = { ...item.book, bookmarks: localItem.book.bookmarks };
-        }
-        merged.push(item);
-      } else {
-        merged.push(localItem);
-      }
-    }
-    localMap.delete(id);
+export function mergeLibrary(local: LibraryItem[], cloud: LibraryItem[]): { merged: LibraryItem[]; toUpload: LibraryItem[]; toDelete: LibraryItem[] } {
+  const cloudIds = new Set(cloud.map(i => i.book.id));
+  const entries = [
+    ...cloud.map(item => ({ item, origin: 'cloud' as const })),
+    ...local.map(item => ({ item, origin: 'local' as const })),
+  ];
+  // Group every copy (local + cloud) by stable identity.
+  const groups: (typeof entries)[] = [];
+  for (const e of entries) {
+    const g = groups.find(grp => grp.some(x => sameBookIdentity(x.item, e.item)));
+    if (g) g.push(e); else groups.push([e]);
   }
 
-  // Items only in local — need to upload to cloud
-  for (const [, localItem] of localMap) {
-    merged.push(localItem);
-    toUpload.push(localItem);
+  const merged: LibraryItem[] = [];
+  const toUpload: LibraryItem[] = [];
+  const toDelete: LibraryItem[] = [];
+
+  for (const g of groups) {
+    // Pick the winner (best extraction copy).
+    let winner = g[0].item;
+    for (const e of g) if (rankGreater(e.item, winner)) winner = e.item;
+    // Preserve the most bookmarks across all copies of this book.
+    const bestBookmarks = g.reduce<any[]>((best, e) => {
+      const bm = e.item.book?.bookmarks || [];
+      return bm.length > best.length ? bm : best;
+    }, winner.book?.bookmarks || []);
+    const win: LibraryItem = { ...winner, book: { ...winner.book, bookmarks: bestBookmarks } };
+    merged.push(win);
+
+    // Every other copy in the group is a duplicate to purge (cloud row + cache).
+    for (const e of g) {
+      if (e.item.book.id !== winner.book.id) toDelete.push(e.item);
+    }
+    // Upload the winner if the cloud doesn't already hold this exact copy.
+    if (!cloudIds.has(win.book.id)) toUpload.push(win);
   }
 
   merged.sort((a, b) => b.uploadDate - a.uploadDate);
-  return { merged, toUpload };
+  return { merged, toUpload, toDelete };
 }
 
 export function mergeNotebook(local: NotebookItem[], cloud: NotebookItem[]): NotebookItem[] {

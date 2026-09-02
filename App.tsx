@@ -200,8 +200,16 @@ const hydrateLibraryItem = (item: LibraryItem): LibraryItem => {
   const useOutline =
     (fileContext.sourceKind === 'pdf' && isUsablePdfOutline(fileContext.content, fileContext.pdfOutline)) ||
     (fileContext.sourceKind === 'epub' && isUsableEpubOutline(fileContext.pdfOutline));
+  const storedChapters = item.book.chapters;
+  const hasStoredChapters = Array.isArray(storedChapters) && storedChapters.length > 0;
   const chapters = useOutline
     ? buildChaptersFromOutline(fileContext.content, fileContext.pdfOutline!)
+    // Outline unavailable for a pdf/epub (e.g. a copy loaded from the cloud, which historically
+    // didn't carry pdfOutline) — TRUST the stored upload-time chapters rather than re-deriving with
+    // the lossy heuristic, which produced fewer, mis-split chapters (the "41 blocks / lost titles"
+    // bug). Offsets align with the stored sanitised content (offset/content invariant).
+    : (hasStoredChapters && (fileContext.sourceKind === 'pdf' || fileContext.sourceKind === 'epub'))
+    ? storedChapters
     : fileContext.isText
     ? splitDetectedBackMatter(
         fileContext.content,
@@ -565,10 +573,16 @@ const App: React.FC = () => {
           const uid = session.user.id;
           Promise.all([loadLibraryFromCloud(uid), loadNotebookFromCloud(uid), loadReadingPositions(uid)]).then(([cloudLib, cloudNotes, positions]) => {
             setLibrary(prev => {
-              const { merged, toUpload } = mergeLibrary(prev, cloudLib);
+              const { merged, toUpload, toDelete } = mergeLibrary(prev, cloudLib);
               const hydrated = merged.map(hydrateLibraryItem);
               toUpload.map(hydrateLibraryItem).forEach(item => saveBookToCloud(uid, item).catch(() => {}));
               hydrated.forEach(item => saveSourceToCache(item).catch(() => {}));
+              // Collapse duplicate copies of one book (accumulated cross-device / cross-extractor-
+              // version because book.id is a random UUID): purge each loser's cloud row + cache.
+              toDelete.forEach(loser => {
+                deleteBookFromCloud(uid, loser.book.id).catch(() => {});
+                clearBook(loser.book.id).catch(() => {});
+              });
               if (hydrated.length > 0 && !activeBookId) {
                 const firstBook = hydrated[0];
                 setActiveBookId(firstBook.book.id);
