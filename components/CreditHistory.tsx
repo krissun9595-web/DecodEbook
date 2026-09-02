@@ -10,8 +10,6 @@ const ACTION_LABELS: Record<string, string> = {
   analyzeBookStructure: 'Book analysis',
   extractChapterText: 'Content extraction',
   extractConcepts: 'Concept extraction',
-  extractDictionary: 'Dictionary',
-  generateMindMap: 'Mind map',
   podcastScript: 'Podcast script',
   podcastAudio: 'Audio generation',
   tts: 'Audio generation',

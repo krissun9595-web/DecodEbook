@@ -41,7 +41,6 @@ const TEXT_FALLBACK = { in: 150, out: 750 }; // treat unknown text models as fla
 // TTS — USD cents per 1M characters
 export const TTS_PRICING: Record<string, number> = {
   'google-standard':      400,
-  'seed-tts-2.0':         3000, // BytePlus Seed TTS 2.0 pay-as-you-go $30/M chars (prepaid $24-27.5/M)
   // NOTE: Gemini TTS is NOT priced here — it's audio-token billed and computed
   // script-aware in ttsCostCents(). These entries are the flat per-char providers only.
   'tts-1-hd':             3000,
@@ -97,8 +96,6 @@ export const ACTION_TOKENS: Record<string, { in: number; out: number }> = {
   analyzeBookStructure: { in: 20000, out: 2900 }, // calibrated (1 sample ~29.7k in — conservative; refine w/ more data)
   extractChapterText:   { in: 4000, out: 4000 },
   extractConcepts:      { in: 4000, out: 800 },
-  extractDictionary:    { in: 4000, out: 800 },
-  generateMindMap:      { in: 3000, out: 800 },
   podcastScript:        { in: 3000, out: 3000 },
   videoPrompt:          { in: 400,  out: 200 },
   translateFigureText:  { in: 200,  out: 200 },
@@ -112,7 +109,10 @@ const VIDEO_ACTIONS = new Set(['videoVeo', 'videoSeedance', 'videoSeedanceFast']
 // approximate them), so they're charged on ACTUAL measured tokens instead.
 // Measured (actual-token) billing: file-scaled actions AND reasoning-model actions whose
 // output is inflated by thinking tokens (a fixed footprint would undercharge Premium/pro).
-const MEASURED_TEXT_ACTIONS = new Set(['videoPrompt', 'podcastScript', 'analyzeBookStructure', 'chat', 'generateMindMap']);
+const MEASURED_TEXT_ACTIONS = new Set([
+  'videoPrompt', 'podcastScript', 'analyzeBookStructure', 'chat',
+  'extractConcepts', 'extractChapterText', // send the whole chapter → footprint was ~22x too low (real leak)
+]);
 
 // Longest-prefix match so 'gpt-4o-mini' wins over 'gpt-4o', 'veo-3.1-fast' over 'veo'.
 function rateFor<T>(reg: Record<string, T>, model: string, fallback: T): T {
@@ -159,18 +159,31 @@ function modalityCostCents(action: string, model: string, u: Units): number {
   return textCostCents(model, u.inTok ?? 0, u.outTok ?? 0);
 }
 
+// Discrete "generate X" media/creative actions are rounded UP to a clean multiple of 5
+// (small % on these already-expensive actions, nicer UX). The high-frequency reading-loop
+// text (translate, definitions, chat, extraction, read-aloud TTS) stays cost-derived so a
+// per-sentence action isn't inflated 5x.
+const ROUND5_ACTIONS = new Set([
+  'generateImage', 'redrawFigureTranslated',
+  'videoVeo', 'videoSeedance', 'videoSeedanceFast',
+  'podcastScript', 'podcastAudio',
+]);
+
 // Credits to CHARGE for an action on a model. Predictable per (action, model):
 // text uses the typical-token footprint; media uses the measured/estimated unit.
 export function creditsForAction(action: string, model: string, u: Units = {}): number {
-  if (TTS_ACTIONS.has(action) || IMAGE_ACTIONS.has(action) || VIDEO_ACTIONS.has(action)) {
-    return creditsFromCents(modalityCostCents(action, model, u));
-  }
   const key = action.startsWith('text:') ? 'translate' : action;
-  if (MEASURED_TEXT_ACTIONS.has(key) && ((u.inTok ?? 0) + (u.outTok ?? 0) > 0)) {
-    return creditsFromCents(textCostCents(model, u.inTok ?? 0, u.outTok ?? 0)); // real tokens (file-scaled)
+  let credits: number;
+  if (TTS_ACTIONS.has(action) || IMAGE_ACTIONS.has(action) || VIDEO_ACTIONS.has(action)) {
+    credits = creditsFromCents(modalityCostCents(action, model, u));
+  } else if (MEASURED_TEXT_ACTIONS.has(key) && ((u.inTok ?? 0) + (u.outTok ?? 0) > 0)) {
+    credits = creditsFromCents(textCostCents(model, u.inTok ?? 0, u.outTok ?? 0)); // real tokens (file-scaled)
+  } else {
+    const t = ACTION_TOKENS[key] ?? ACTION_TOKENS_FALLBACK;
+    credits = creditsFromCents(textCostCents(model, t.in, t.out));
   }
-  const t = ACTION_TOKENS[key] ?? ACTION_TOKENS_FALLBACK;
-  return creditsFromCents(textCostCents(model, t.in, t.out));
+  if (ROUND5_ACTIONS.has(key)) credits = Math.ceil(credits / 5) * 5;
+  return credits;
 }
 
 // Real cost in cents for LOGGING (uses measured units where the caller has them).

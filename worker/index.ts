@@ -4,11 +4,6 @@ interface Env {
   ANTHROPIC_API_KEY: string;
   DEEPSEEK_API_KEY: string;
   BYTEPLUS_API_KEY: string;
-  BYTEPLUS_TTS_API_KEY: string;      // new-console single API Key (X-Api-Key)
-  BYTEPLUS_TTS_APP_ID: string;       // legacy auth: App ID (X-Api-App-Id)
-  BYTEPLUS_TTS_ACCESS_KEY: string;   // legacy auth: Access Token (X-Api-Access-Key)
-  BYTEPLUS_TTS_RESOURCE_ID: string;  // override X-Api-Resource-Id (default seed-tts-2.0)
-  BYTEPLUS_TTS_ENDPOINT: string;     // override the TTS endpoint URL
   FAL_API_KEY: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
@@ -32,7 +27,7 @@ const TIER_CREDITS: Record<string, number> = {
 
 const CREDIT_COSTS: Record<string, number> = {
   translate: 1, quickDefinition: 1, chat: 1,
-  analyzeBookStructure: 6, extractConcepts: 2, extractDictionary: 2, generateMindMap: 2,
+  analyzeBookStructure: 6, extractConcepts: 2, 
   extractChapterText: 3, podcastScript: 3,
   tts: 5, generateImage: 10, podcastAudio: 40,
   videoSeedanceFast: 30, videoSeedance: 50, videoVeo: 150,
@@ -132,14 +127,6 @@ export default {
       const check = await checkCreditBalance(auth.userId, isFast ? 'videoSeedanceFast' : 'videoSeedance', env);
       if (check) return check;
       return handleSeedanceGenerate(request, env);
-    }
-
-    if (url.pathname === '/api/tts' && request.method === 'POST') {
-      const auth = await getUserIdFromAuth(request, env);
-      if (auth instanceof Response) return auth;
-      const check = await checkCreditBalance(auth.userId, 'tts', env);
-      if (check) return check;
-      return handleByteplusTts(request, env);
     }
 
     if (url.pathname === '/api/seedance/poll') {
@@ -965,58 +952,6 @@ async function handleSeedanceDownload(request: Request): Promise<Response> {
       'Access-Control-Allow-Origin': '*',
     },
   });
-}
-
-// BytePlus Seed TTS 2.0 (unidirectional HTTP streaming). Returns { audio: base64, format }.
-// The upstream streams JSON objects { code, message, data:<base64> }; we extract every
-// audio chunk, decode + concat the bytes, and re-encode one base64 blob for the client.
-async function handleByteplusTts(request: Request, env: Env): Promise<Response> {
-  // Auth: legacy App-Id + Access-Key if provided, else the new-console single X-Api-Key.
-  const useLegacy = !!(env.BYTEPLUS_TTS_APP_ID && env.BYTEPLUS_TTS_ACCESS_KEY);
-  if (!useLegacy && !env.BYTEPLUS_TTS_API_KEY) return jsonError('BytePlus TTS not configured', 500);
-  const authHeaders: Record<string, string> = useLegacy
-    ? { 'X-Api-App-Id': env.BYTEPLUS_TTS_APP_ID, 'X-Api-Access-Key': env.BYTEPLUS_TTS_ACCESS_KEY }
-    : { 'X-Api-Key': env.BYTEPLUS_TTS_API_KEY };
-  const resourceId = env.BYTEPLUS_TTS_RESOURCE_ID || 'seed-tts-2.0';
-  const endpoint = env.BYTEPLUS_TTS_ENDPOINT || 'https://voice.ap-southeast-1.bytepluses.com/api/v3/tts/unidirectional';
-  const { text, speaker, format, sampleRate } = await request.json() as any;
-  if (!text) return jsonError('Missing text', 400);
-  const fmt = format || 'mp3';
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      ...authHeaders,
-      'X-Api-Resource-Id': resourceId,
-      'X-Api-App-Key': 'aGjiRDfUWi',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      req_params: {
-        text,
-        speaker: speaker || 'zh_female_cancan_mars_bigtts',
-        audio_params: { format: fmt, sample_rate: sampleRate || 24000 },
-        additions: JSON.stringify({ enable_language_detector: true, disable_markdown_filter: true }),
-      },
-    }),
-  });
-  if (!res.ok) return jsonError(`BytePlus TTS failed: ${res.status} ${(await res.text()).slice(0, 300)}`, res.status);
-  const bodyText = await res.text();
-  const parts = [...bodyText.matchAll(/"data"\s*:\s*"([^"]+)"/g)].map(m => m[1]);
-  if (!parts.length) return jsonError(`BytePlus TTS returned no audio: ${bodyText.slice(0, 300)}`, 502);
-  let total = 0;
-  const bufs = parts.map(b64 => {
-    const bin = atob(b64);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    total += arr.length;
-    return arr;
-  });
-  const merged = new Uint8Array(total);
-  let off = 0;
-  for (const b of bufs) { merged.set(b, off); off += b.length; }
-  let bin = '';
-  for (let i = 0; i < merged.length; i++) bin += String.fromCharCode(merged[i]);
-  return jsonResponse({ audio: btoa(bin), format: fmt });
 }
 
 function jsonError(message: string, status: number): Response {

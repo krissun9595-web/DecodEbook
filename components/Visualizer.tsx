@@ -34,25 +34,46 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [hasInitiated, setHasInitiated] = useState(false);
 
-  const [selectedStyle, setSelectedStyle] = useState('Cyberpunk');
-  const [selectedRatio, setSelectedRatio] = useState('1:1');
+  // Restore the last-used style/ratio so re-opening lands where you left off (and cache keys match).
+  const [selectedStyle, setSelectedStyle] = useState(() => { try { return localStorage.getItem('visualizer_style') || 'Cyberpunk'; } catch { return 'Cyberpunk'; } });
+  const [selectedRatio, setSelectedRatio] = useState(() => { try { return localStorage.getItem('visualizer_ratio') || '1:1'; } catch { return '1:1'; } });
   const [currentIndex, setCurrentIndex] = useState(0);
+  useEffect(() => { try { localStorage.setItem('visualizer_style', selectedStyle); } catch {} }, [selectedStyle]);
+  useEffect(() => { try { localStorage.setItem('visualizer_ratio', selectedRatio); } catch {} }, [selectedRatio]);
 
   const abortRef = useRef<boolean>(false);
+  const generatingRef = useRef<boolean>(false); // true during an INITIATE/generate cycle — pauses the cache-load effect so it can't clobber in-progress results
 
   const mountedRef = useRef(true);
+  const conceptsKey = () => buildCacheKey(bookId, chapter.id, 'concepts', 'v1');
+
   useEffect(() => {
     mountedRef.current = true;
     setConcepts([]);
     setImages({});
     setHasInitiated(false);
     setCurrentIndex(0);
-    return () => { mountedRef.current = false; };
-  }, [chapter, fileContext]);
+    let cancelled = false;
+    // Load previously-extracted concepts for this chapter so extractConcepts is never re-charged.
+    (async () => {
+      try {
+        const file = await getFile(conceptsKey());
+        if (!file || cancelled) return;
+        const parsed = JSON.parse(await file.blob.text());
+        if (Array.isArray(parsed) && parsed.length) setConcepts(parsed); // hasInitiated is set by the image cache-load effect (per current style)
+      } catch { /* no cached concepts — will extract on Initiate */ }
+    })();
+    return () => { mountedRef.current = false; cancelled = true; };
+  }, [chapter, fileContext, bookId]);
 
   useEffect(() => {
-    if (concepts.length === 0) return;
+    if (generatingRef.current) return; // don't clear/reload while a generate cycle is populating images
+    if (concepts.length === 0) { setImages({}); setHasInitiated(false); return; }
     let cancelled = false;
+    // Changing style/ratio must CLEAR the viewer (don't keep showing the old style's images),
+    // then load only THIS style+ratio's cached images. If none exist, images stay empty and
+    // hasInitiated=false → the idle "Click INITIATE" tip shows for the newly-selected look.
+    setImages({});
     const loadCachedImages = async () => {
       const cached: Record<string, string> = {};
       for (const concept of concepts) {
@@ -64,9 +85,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
           }
         } catch (e) { /* skip */ }
       }
-      if (!cancelled && Object.keys(cached).length > 0) {
-        setImages(prev => ({ ...cached, ...prev }));
-        setHasInitiated(true);
+      if (!cancelled) {
+        setImages(cached);
+        setHasInitiated(Object.keys(cached).length > 0);
       }
     };
     loadCachedImages();
@@ -75,6 +96,14 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
   const handleGenerateImage = async (concept: Concept, forceRegenerate = false) => {
     if (loadingImages[concept.term] && !forceRegenerate) return;
+    const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
+    // Never re-charge for an image already generated at this style+ratio — load the cached one.
+    if (!forceRegenerate) {
+      try {
+        const file = await getFile(key);
+        if (file) { setImages(prev => ({ ...prev, [concept.term]: URL.createObjectURL(file.blob) })); return; }
+      } catch { /* not cached — fall through to generate */ }
+    }
     setLoadingImages(prev => ({ ...prev, [concept.term]: true }));
     try {
       const imgUrl = await generateConceptImage(concept.visualPrompt, selectedStyle, selectedRatio);
@@ -83,7 +112,6 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
       try {
         const imgResp = await fetch(imgUrl);
         const imgBlob = await imgResp.blob();
-        const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
         saveFile(key, imgBlob, {
           filename: `concept-${chapterFileLabel(chapter, allChapters)}-${titleCase(concept.term)}.png`,
           mimeType: 'image/png',
@@ -106,17 +134,31 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
   const handleToggleInitiate = async () => {
     if (isGeneratingAll) {
       abortRef.current = true;
+      generatingRef.current = false;
       setIsGeneratingAll(false);
       return;
     }
 
     abortRef.current = false;
+    generatingRef.current = true;
     let activeConcepts = concepts;
 
     if (activeConcepts.length === 0) {
       setIsInitializing(true);
       try {
-        const extracted = await extractConcepts(fileContext, chapter);
+        // Reuse cached concepts if present (a click before the mount-load finished) — never re-charge.
+        let extracted: Concept[] | null = null;
+        try {
+          const file = await getFile(conceptsKey());
+          if (file) { const p = JSON.parse(await file.blob.text()); if (Array.isArray(p) && p.length) extracted = p; }
+        } catch {}
+        if (!extracted) {
+          extracted = await extractConcepts(fileContext, chapter);
+          saveFile(conceptsKey(), new Blob([JSON.stringify(extracted)], { type: 'application/json' }), {
+            filename: `concepts-${chapter.id}.json`, mimeType: 'application/json', timestamp: Date.now(),
+            bookId, bookTitle, chapterId: chapter.id, componentSource: 'visualizer', fileType: 'concepts',
+          }).catch(() => {});
+        }
         if (!mountedRef.current) return;
         setConcepts(extracted);
         setCurrentIndex(0);
@@ -124,13 +166,14 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
       } catch (err) {
         console.error(err);
         setIsInitializing(false);
+        generatingRef.current = false;
         return;
       } finally {
         if (mountedRef.current) setIsInitializing(false);
       }
     }
 
-    if (activeConcepts.length === 0) return;
+    if (activeConcepts.length === 0) { generatingRef.current = false; return; }
 
     setIsGeneratingAll(true);
     setHasInitiated(true);
@@ -148,6 +191,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
         }));
     }
     setIsGeneratingAll(false);
+    generatingRef.current = false;
+    // Reflect the just-generated images for the current style/ratio (the effect was paused).
+    setHasInitiated(true);
   };
 
   const handleNext = () => {
@@ -203,7 +249,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Loader text="Extracting neural concepts..." />
                 </div>
-            ) : concepts.length === 0 ? (
+            ) : (concepts.length === 0 || !hasInitiated) ? (
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
                     <EmptyState icon={ImageIcon} label="Visual_Core_Idle" sublabel="Click INITIATE to extract and visualize concepts" className="flex-1 min-h-0 bg-void-2" />
                 </div>

@@ -37,20 +37,17 @@ const MODEL_POLICY: Record<string, { balanced: string; premium: string }> = {
   translate:           { balanced: 'deepseek-v4-flash',      premium: 'gemini-3.1-pro-preview' },
   chat:                { balanced: 'gemini-3-flash-preview', premium: 'gemini-3.1-pro-preview' },
   quickDefinition:     { balanced: 'gemini-2.5-flash-lite',  premium: 'gemini-3-flash-preview' },
-  generateMindMap:     { balanced: 'gemini-3-flash-preview', premium: 'gemini-3.1-pro-preview' },
   podcastScript:       { balanced: 'gemini-3-flash-preview', premium: 'gemini-3.1-pro-preview' },
 };
 export const resolveModel = (fn?: string, mode: GenMode = _genMode): string =>
   (fn && MODEL_POLICY[fn]?.[mode]) || (fn ? FUNCTION_MODELS[fn] : '') || _selectedModel;
 
 // MEDIA models by mode — image + video switch (video path is chosen from _videoModel:
-// dreamina-* → Seedance path, veo-* → Veo path). TTS stays on Gemini both modes because
-// the intended Balanced voice (BytePlus Seed Speech 2.0, cheaper) isn't API-wired yet.
+// dreamina-* → Seedance path, veo-* → Veo path). TTS stays on Gemini flash both modes.
 const applyMediaMode = (mode: GenMode) => {
   _imageModel = mode === 'premium' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
   _videoModel = mode === 'premium' ? 'veo-3.1-fast-generate-preview' : 'dreamina-seedance-2-0-mini-260615';
-  _ttsModel   = 'gemini-3.1-flash-tts-preview'; // Gemini TTS: podcast (both modes) + Premium reader.
-  // (Balanced reader TTS routes to BytePlus Seed TTS 2.0 in generateSpeech, not via _ttsModel.)
+  _ttsModel   = 'gemini-3.1-flash-tts-preview';
 };
 applyMediaMode(_genMode); // apply the persisted mode's media models on load
 
@@ -65,8 +62,6 @@ export const FUNCTION_MODELS: Record<string, string> = {
   analyzeBookStructure: 'gemini-3-flash-preview',
   extractChapterText:   'gemini-3-flash-preview',
   extractConcepts:      'gemini-3-flash-preview',
-  extractDictionary:    'gemini-3-flash-preview',
-  generateMindMap:      'gemini-3-flash-preview',
   podcastScript:        'gemini-3-flash-preview',
   videoPrompt:          'gemini-3-flash-preview',
   quickDefinition:      'gemini-3-flash-preview',
@@ -886,38 +881,6 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
   });
 };
 
-export const extractDictionary = async (file: FileContext, chapter: Chapter): Promise<DictionaryEntry[]> => {
-  return withRetry(async () => {
-    const ai = await getAi();
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: {
-        parts: [
-          getFilePart(file),
-          { text: `List 5 specialized terms from "${chapter.title}". Return JSON array of objects with 'word', 'context', and 'definition'.` }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              word: { type: Type.STRING },
-              context: { type: Type.STRING },
-              definition: { type: Type.STRING }
-            },
-            required: ["word", "context", "definition"]
-          }
-        }
-      }
-    });
-    trackUsage('extractDictionary', extractTokens(response), 'gemini-3-flash-preview');
-    return safeJsonParse<DictionaryEntry[]>(response.text || "[]");
-  });
-};
 
 export const translateDictionary = async (entries: DictionaryEntry[], targetLanguage: string): Promise<DictionaryEntry[]> => {
   if (entries.length === 0) return [];
@@ -946,9 +909,7 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
   });
 };
 
-// TTS uses Gemini flash TTS in BOTH modes (user decision — BytePlus Seed TTS 2.0 was
-// unavailable). The dormant worker /api/tts route + seed-tts pricing are kept for a
-// future switch to a cheaper provider (e.g. Google Cloud TTS Neural2).
+// TTS uses Gemini flash TTS in BOTH modes.
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
   return withRetry(async () => {
     const ai = await getAi();
@@ -1208,68 +1169,3 @@ export const sendMessageToChat = async (chat: Chat, message: string | Part[], si
   }, 3, 2000, signal);
 };
 
-export const generateMindMapStructure = async (items: NotebookItem[], bookTitle: string, context?: string): Promise<MindMapNode> => {
-  return withRetry(async () => {
-    const contextStr = context ? `\nContext: ${context}` : '';
-    const itemsStr = JSON.stringify(items.map(i => ({ text: i.text, type: i.type, definition: i.definition })));
-
-    const text = await callUnifiedLLM({
-      contents: {
-        parts: [
-          { text: `Organize the following study notes from the book "${bookTitle}" into a structured mind map hierarchy. \n${contextStr}\n\nNotes:\n${itemsStr}\n\nOutput a strictly valid JSON object where the root node is the main topic (e.g. Chapter Title), and children are categories or themes. \n\nRULES:\n1. For vocabulary/words: The word itself is a node. Its definition must be a CHILD node of that word.\n2. For themes/sentences: The sentence text is a node. Its interpretation/definition must be a CHILD node of that sentence.\n\nStructure: { id, label, type: 'root'|'category'|'item', children: [...] }. Ensure 'id' is unique for every node.` }
-        ]
-      },
-      creditAction: 'generateMindMap',
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            label: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ['root', 'category', 'item'] },
-            children: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  label: { type: Type.STRING },
-                  type: { type: Type.STRING },
-                  children: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                         id: { type: Type.STRING },
-                         label: { type: Type.STRING },
-                         type: { type: Type.STRING },
-                         children: {
-                             type: Type.ARRAY,
-                             items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    id: { type: Type.STRING },
-                                    label: { type: Type.STRING },
-                                    type: { type: Type.STRING }
-                                },
-                                required: ["id", "label", "type"]
-                             }
-                         }
-                      },
-                      required: ["id", "label", "type"]
-                    }
-                  }
-                },
-                required: ["id", "label", "type"]
-              }
-            }
-          },
-          required: ["id", "label", "type", "children"]
-        }
-      }
-    });
-
-    return safeJsonParse<MindMapNode>(text || "{}");
-  });
-};

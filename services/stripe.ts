@@ -27,8 +27,6 @@ export const CREDIT_COSTS: Record<string, number> = {
   chat:                 creditsForAction('chat', REF_TEXT),
   analyzeBookStructure: creditsForAction('analyzeBookStructure', REF_TEXT),
   extractConcepts:      creditsForAction('extractConcepts', REF_TEXT),
-  extractDictionary:    creditsForAction('extractDictionary', REF_TEXT),
-  generateMindMap:      creditsForAction('generateMindMap', REF_TEXT),
   extractChapterText:   creditsForAction('extractChapterText', REF_TEXT),
   podcastScript:        creditsForAction('podcastScript', REF_TEXT),
   tts:                  creditsForAction('tts', 'gemini-3.1-flash-tts', { chars: 1500 }),
