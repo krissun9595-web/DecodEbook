@@ -1,3 +1,5 @@
+import { gateCost } from '../services/pricing';
+
 interface Env {
   GEMINI_API_KEY: string;
   OPENAI_API_KEY: string;
@@ -25,13 +27,10 @@ const TIER_CREDITS: Record<string, number> = {
   free: 100, pro: 1000,
 };
 
-const CREDIT_COSTS: Record<string, number> = {
-  translate: 1, quickDefinition: 1, chat: 1,
-  analyzeBookStructure: 6, extractConcepts: 2, 
-  extractChapterText: 3, podcastScript: 3,
-  tts: 5, generateImage: 10, podcastAudio: 40,
-  videoSeedanceFast: 30, videoSeedance: 50, videoVeo: 150,
-};
+// Credit gate costs come from the shared GATE_COSTS in services/pricing.ts (via
+// gateCost) — one calibrated source for the worker gate AND the client pre-check,
+// so they can't drift. (The old hardcoded table here under-gated media/measured
+// actions by 3–12x, letting low-balance users start unaffordable generations.)
 
 const PACK_CREDITS: Record<string, number> = { S: 1000, M: 2500, L: 4000 };
 
@@ -142,11 +141,22 @@ export default {
     }
 
     if (url.pathname.startsWith('/api/gemini/')) {
-      const authError = await verifyAuth(request, env);
-      if (authError) return authError;
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
 
       if (url.pathname.startsWith('/api/gemini/video-download')) {
         return handleVideoDownload(request, env);
+      }
+      // The @google/genai SDK routes TTS + Veo through this proxy (unlike text,
+      // which uses /api/llm/generate). Credit-gate those two generation calls so
+      // a 0-balance user can't synthesise audio or video. Polls/operations pass.
+      const p = url.pathname;
+      if (/:predictLongRunning/.test(p)) {
+        const check = await checkCreditBalance(auth.userId, 'videoVeo', env);
+        if (check) return check;
+      } else if (/tts/i.test(p) && /:generateContent/.test(p)) {
+        const check = await checkCreditBalance(auth.userId, 'tts', env);
+        if (check) return check;
       }
       return handleGeminiProxy(request, url, env);
     }
@@ -451,7 +461,7 @@ async function checkCreditBalance(userId: string, action: string, env: Env): Pro
     const creditsUsed = data.credits_used || 0;
     const packCredits = data.pack_credits || 0;
     const bonusCredits = data.bonus_credits || 0;
-    const cost = CREDIT_COSTS[action] || 1;
+    const cost = gateCost(action);
     const available = Math.max(0, monthlyCredits - creditsUsed) + packCredits + bonusCredits;
     if (available < cost) {
       return new Response(JSON.stringify({

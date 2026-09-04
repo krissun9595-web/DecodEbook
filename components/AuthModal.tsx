@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { X, LogIn, UserPlus, Github, Mail, Key, Loader2, Eye, EyeOff, Shield, Terminal, ExternalLink } from 'lucide-react';
 import { Privacy } from './ui/glyphs';
+import { StatusMessage } from './ui/StatusMessage';
 import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
   isSupabaseConfigured
@@ -114,8 +115,8 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, user, onAuthChange
           </h2>
         </div>
 
-        {error && <div className="mb-4 p-2 bg-rose-950/30 border border-rose-900/50 rounded text-xs text-rose-400 font-mono">{error}</div>}
-        {success && <div className="mb-4 p-2 bg-emerald-950/30 border border-emerald-900/50 rounded text-xs text-emerald-400 font-mono">{success}</div>}
+        {error && <div className="mb-4"><StatusMessage variant="error" title={error} inline /></div>}
+        {success && <div className="mb-4"><StatusMessage variant="success" title={success} inline /></div>}
 
         {user ? (
           <div className="space-y-4">
@@ -316,8 +317,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, onSkip }) => {
           <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">V.4.2 // Neural Text Decoding Interface</p>
         </div>
 
-        {error && <div className="mb-4 p-2 bg-rose-950/30 border border-rose-900/50 rounded text-xs text-rose-400 font-mono">{error}</div>}
-        {success && <div className="mb-4 p-2 bg-emerald-950/30 border border-emerald-900/50 rounded text-xs text-emerald-400 font-mono">{success}</div>}
+        {error && <div className="mb-4"><StatusMessage variant="error" title={error} inline /></div>}
+        {success && <div className="mb-4"><StatusMessage variant="success" title={success} inline /></div>}
 
         {inAppBrowser && (
           <div className="mb-4 p-3 bg-amber-950/20 border border-amber-900/40 rounded-lg space-y-2">

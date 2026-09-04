@@ -5,6 +5,9 @@ import { generatePodcastAudio } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
+import { StatusMessage } from './ui/StatusMessage';
+import { CreditNotice } from './ui/CreditNotice';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
@@ -123,6 +126,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
   const [hasInitiated, setHasInitiated] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
   const [selectedTone, setSelectedTone] = useState(lastPodcastTone || 'Engaging');
   const [selectedLanguage, setSelectedLanguage] = useState(initialPodcastLanguage);
   const [playbackRate, setPlaybackRate] = useState(1.0);
@@ -294,7 +298,10 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
             setActiveIndex(-1);
           }
         } catch (e: any) {
-          if (!cancelled) setError(e.message || "Failed to generate podcast.");
+          if (!cancelled) {
+            if (isInsufficientCreditsError(e)) setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+            else setError("Failed to generate podcast, try again later.");
+          }
         } finally {
           if (!cancelled) setIsLoading(false);
         }
@@ -323,9 +330,14 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     // If already in-flight, don't start another
     if (inflightPodcastMap.has(genKey)) return;
 
+    // Podcast = script + audio, both metered. Gate before charging.
+    const gate = await ensureCredits('podcastAudio');
+    if (!gate.ok) { setCreditTier(gate.tier); return; }
+
     setIsLoading(true);
     setHasInitiated(true);
     setError(null);
+    setCreditTier(null);
     abortRef.current = false;
 
     // Capture values for the closure (survives unmount)
@@ -393,7 +405,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
       }
     } catch (e: any) {
       if (!abortRef.current) {
-        setError(e.message || "Failed to generate podcast.");
+        if (isInsufficientCreditsError(e)) setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+        else setError(e.message || "Failed to generate podcast. Please try again.");
       }
     } finally {
       if (!abortRef.current && podcastGenKeyRef.current === genKey) {
@@ -787,15 +800,17 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
                     })}
                   </div>
                </div>
-           ) : !isLoading && !error && (
+           ) : !isLoading && !error && !creditTier && (
                <EmptyState icon={Radio} label="Ready_to_Stream" sublabel="Select tone and language above to begin decoding" iconClassName="animate-pulse" className="flex-1 content-panel rounded-lg shadow-lg min-h-[200px]" />
            )}
-           {error && (
-               <div className="flex-1 bg-rose-950/10 border border-rose-900/30 rounded-lg flex flex-col items-center justify-center text-rose-500 p-8 text-center font-mono min-h-[200px]">
-                   <AlertCircle size={32} className="mb-4" />
-                   <p className="text-xs font-bold uppercase mb-2">Signal_Lost</p>
-                   <p className="text-[10px] max-w-sm mb-6">{error}</p>
-                   <button onClick={handleToggleGeneration} className="px-6 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-sm text-xs font-bold transition-all uppercase tracking-widest">Retry_Connection</button>
+           {creditTier && (
+               <div className="flex-1 content-panel rounded-lg flex items-center justify-center min-h-[200px]">
+                   <CreditNotice tier={creditTier} />
+               </div>
+           )}
+           {error && !creditTier && (
+               <div className="flex-1 content-panel rounded-lg flex items-center justify-center min-h-[200px]">
+                   <StatusMessage variant="error" title={error} action={{ label: 'Retry', onClick: handleToggleGeneration }} />
                </div>
            )}
        </div>

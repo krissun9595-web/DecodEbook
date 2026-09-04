@@ -1,5 +1,5 @@
 import { getSession } from './supabase';
-import { creditsForAction } from './pricing';
+import { creditsForAction, gateCost } from './pricing';
 
 export interface UserTier {
   tier: 'free' | 'pro';
@@ -45,11 +45,11 @@ export function getAvailableCredits(tier: UserTier): number {
   return Math.max(0, monthly - tier.credits_used) + (tier.pack_credits || 0) + (tier.bonus_credits || 0);
 }
 
-// Pre-check gate. Pass the chosen model where known for a model-accurate estimate;
-// otherwise falls back to the default-model reference cost above.
-export function canAfford(tier: UserTier, action: string, model?: string): boolean {
-  const cost = model ? creditsForAction(action, model) : (CREDIT_COSTS[action] ?? 1);
-  return getAvailableCredits(tier) >= cost;
+// Pre-check gate. Uses the calibrated GATE_COSTS (single source shared with the
+// worker gate) so the client and server agree on "can you start this". The actual
+// charge is metered separately at call time (creditsForAction on real units).
+export function canAfford(tier: UserTier, action: string, _model?: string): boolean {
+  return getAvailableCredits(tier) >= gateCost(action);
 }
 
 async function authHeaders(): Promise<Record<string, string>> {

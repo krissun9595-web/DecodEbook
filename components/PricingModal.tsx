@@ -5,6 +5,7 @@ import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTie
 import { creditsForAction } from '../services/pricing';
 import { GenMode, getGenerationMode, setGenerationMode, resolveModel } from '../services/gemini';
 import { CreditHistory } from './CreditHistory';
+import { StatusMessage } from './ui/StatusMessage';
 import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
   isSupabaseConfigured, linkProvider, unlinkProvider, getIdentities
@@ -232,7 +233,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   };
   // Text is billed on the translate token-footprint x the model's rate, so cost the
   // display the same way it's actually charged (the mode changes the model → the cost).
-  const modeCost = (fn: string) => creditsForAction('translate', resolveModel(fn, genMode));
+  const modeCost = (fn: string) => creditsForAction(fn, resolveModel(fn, genMode));
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
@@ -310,10 +311,10 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   </div>
                   <div className="mt-3 space-y-1 text-[10px] text-zinc-600 font-mono">
                     <p>{genMode === 'premium'
-                      ? 'Best models for every generation — higher quality, more credits per action.'
-                      : 'Cost-effective models — great quality, fewer credits per action.'}</p>
+                      ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
+                      : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
                     <p className="text-zinc-500">Translate {modeCost('translate')} cr · Chat {modeCost('chat')} cr · Podcast {modeCost('podcastScript')} cr</p>
-                    <p>Applies app-wide — text, image & video. Audio (TTS) quality follows in a later update.</p>
+                    <p>Credits scale with the model you pick, and you're only charged when you generate — re-opening a saved result is free. Applies to text, image &amp; video; audio (TTS) quality follows later.</p>
                   </div>
                 </div>
               </div>
@@ -372,7 +373,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-neon-cyan mb-2">
                   <BarChart3 size={18} />
-                  <label className="text-xs font-bold uppercase tracking-widest font-mono">Credits</label>
+                  <label className="text-xs font-bold uppercase tracking-widest font-mono">Credit_Balance</label>
                 </div>
 
                 {loading ? (
@@ -510,8 +511,8 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
           ) : (
             /* ── Auth View ── */
             <div className="p-6 space-y-6">
-              {error && <div className="p-2 bg-rose-950/30 border border-rose-900/50 rounded-sm text-xs text-rose-400 font-mono">{error}</div>}
-              {success && <div className="p-2 bg-neon-cyan/30 border border-neon-cyan/50 rounded-sm text-xs text-neon-cyan font-mono">{success}</div>}
+              {error && <div className="py-1"><StatusMessage variant="error" title={error} inline /></div>}
+              {success && <div className="py-1"><StatusMessage variant="success" title={success} inline /></div>}
 
               {authMode === 'forgot' ? (
                 <div className="space-y-4">

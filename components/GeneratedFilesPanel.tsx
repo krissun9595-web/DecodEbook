@@ -37,7 +37,7 @@ const DEFAULT_FILE_CONFIG = { icon: <FileIcon size={14} />, label: 'FILE', color
 
 // Internal caches/extractions, not user-generated outputs — hidden from the panel (the reader's
 // per-chapter extracted text, the uploaded source blob, and auto-extracted source figure images).
-const HIDDEN_TYPES = ['chapter-text', 'source-file', 'original-file', 'figure-image'];
+const HIDDEN_TYPES = ['chapter-text', 'source-file', 'original-file', 'figure-image', 'translation-mem'];
 
 // The badge on each item names the MODULE that produced the file (its componentSource), not the file
 // type — e.g. a translation JSON made inside the reader shows VOICE_SYNTH, not TRANSLATION. The file
@@ -91,7 +91,13 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       // instead of a SECOND full-store cursor (getTotalSize) — together these were reading every record
       // (blobs and all) twice per load, which made the panel sit empty for seconds.
       const allFiles = await listFiles();
-      const visible = allFiles.filter(f => !HIDDEN_TYPES.includes(f.fileType));
+      // Hide internal caches: HIDDEN_TYPES, plus the per-page translation JSON (fileType 'translation'
+      // + application/json) — those are reader cache fragments, not user deliverables. Figure
+      // translations share the 'translation' type but are images, so they stay visible.
+      const visible = allFiles.filter(f =>
+        !HIDDEN_TYPES.includes(f.fileType) &&
+        !(f.fileType === 'translation' && f.mimeType === 'application/json')
+      );
       setFiles(visible.sort((a, b) => b.timestamp - a.timestamp));
       setTotalSize(visible.reduce((s, f) => s + (f.size || 0), 0));
       setSelected(new Set()); // fileset changed → drop any stale selection

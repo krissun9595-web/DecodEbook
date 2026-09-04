@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle } from 'lucide-react';
+import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle, AlertTriangle } from 'lucide-react';
 import { createChatSession, sendMessageToChat } from '../services/gemini';
 import { FileContext } from '../types';
 import { Chat, Content } from "@google/genai";
-import { fetchUserTier, getAvailableCredits, CREDIT_COSTS, TIER_CREDITS } from '../services/stripe';
+import { TIER_CREDITS } from '../services/stripe';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
 
 interface Props {
   fileContext: FileContext | null;
@@ -29,21 +30,16 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [quotaError, setQuotaError] = useState('');
   const [lowCredits, setLowCredits] = useState(false);
+  const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
 
   const checkChatQuota = async (): Promise<boolean> => {
     try {
-      const tier = await fetchUserTier();
-      const available = getAvailableCredits(tier);
-      const monthly = TIER_CREDITS[tier.tier] || 100;
-      if (monthly !== Infinity) setLowCredits(available < monthly * 0.2);
-      const cost = CREDIT_COSTS['chat'] || 1;
-      if (available !== Infinity && available < cost) {
-        setQuotaError(`Insufficient credits (${available} available, ${cost} needed). Upgrade or buy a credit pack.`);
-        return false;
-      }
-      setQuotaError('');
+      const check = await ensureCredits('chat');
+      const monthly = TIER_CREDITS[check.tier] || 100;
+      if (check.available !== Infinity && monthly !== Infinity) setLowCredits(check.available < monthly * 0.2);
+      if (!check.ok) { setCreditTier(check.tier); return false; }
+      setCreditTier(null);
       return true;
     } catch {
       return true;
@@ -240,7 +236,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         const response = await sendMessageToChat(chatSession, messagePayload as any, controller.signal);
                         setMessages(prev => [...prev, { role: 'model', text: response }]);
                     } catch(e: any) {
-                         if (e.name !== 'AbortError') {
+                         if (isInsufficientCreditsError(e)) {
+                            setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+                         } else if (e.name !== 'AbortError') {
                             setMessages(prev => [...prev, { role: 'model', text: "ERR: Audio transmission failed." }]);
                          }
                     } finally {
@@ -279,7 +277,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
         const response = await sendMessageToChat(chatSession, userMsg, controller.signal);
         setMessages(prev => [...prev, { role: 'model', text: response }]);
     } catch (e: any) {
-        if (e.name !== 'AbortError') {
+        if (isInsufficientCreditsError(e)) {
+            setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+        } else if (e.name !== 'AbortError') {
             setMessages(prev => [...prev, { role: 'model', text: "ERR: Neural connection severed." }]);
         }
     } finally {
@@ -424,12 +424,19 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     </button>
 
                     <div className="flex-1 relative">
-                        {quotaError && <div className="absolute -top-7 left-0 right-0 text-[9px] text-rose-400 font-mono truncate">{quotaError}</div>}
-                        {!quotaError && lowCredits && <div className="absolute -top-7 left-0 right-0 text-[9px] text-amber-400/70 font-mono truncate">Running low? Share your link — +5 per click, +100 on trial.</div>}
+                        {creditTier && (
+                          <div className="absolute -top-7 left-0 right-0 text-[10px] font-mono text-neon-yellow truncate flex items-center gap-1">
+                            <AlertTriangle size={11} className="shrink-0" /> Not enough credits —
+                            <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="underline hover:text-white">
+                              {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}
+                            </button>
+                          </div>
+                        )}
+                        {!creditTier && lowCredits && <div className="absolute -top-7 left-0 right-0 text-[9px] text-amber-400/70 font-mono truncate">Running low? Share your link — +5 per click, +100 on trial.</div>}
                         <input
                             type="text"
                             value={input}
-                            onChange={(e) => { setInput(e.target.value); if (quotaError) setQuotaError(''); }}
+                            onChange={(e) => { setInput(e.target.value); if (creditTier) setCreditTier(null); }}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             onMouseDown={(e) => e.stopPropagation()}
                             placeholder={isRecording ? "Listening..." : "Input command..."}

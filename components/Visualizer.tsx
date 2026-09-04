@@ -5,6 +5,9 @@ import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
+import { CreditNotice } from './ui/CreditNotice';
+import { StatusMessage } from './ui/StatusMessage';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -43,6 +46,11 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
   const abortRef = useRef<boolean>(false);
   const generatingRef = useRef<boolean>(false); // true during an INITIATE/generate cycle — pauses the cache-load effect so it can't clobber in-progress results
+  // Non-null → the user ran out of credits; render the HAZARD notice instead of charging.
+  const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
+  // Non-null → a non-credit image failure (transient); shown in the viewer.
+  const [imgError, setImgError] = useState<string | null>(null);
+  const outOfCredits = () => setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
 
   const mountedRef = useRef(true);
   const conceptsKey = () => buildCacheKey(bookId, chapter.id, 'concepts', 'v1');
@@ -68,6 +76,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
   useEffect(() => {
     if (generatingRef.current) return; // don't clear/reload while a generate cycle is populating images
+    setCreditTier(null); // switching look is a fresh state — drop any out-of-credits notice
     if (concepts.length === 0) { setImages({}); setHasInitiated(false); return; }
     let cancelled = false;
     // Changing style/ratio must CLEAR the viewer (don't keep showing the old style's images),
@@ -94,7 +103,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     return () => { cancelled = true; };
   }, [concepts, bookId, chapter.id, selectedStyle, selectedRatio]);
 
-  const handleGenerateImage = async (concept: Concept, forceRegenerate = false) => {
+  const handleGenerateImage = async (concept: Concept, forceRegenerate = false, preChecked = false) => {
     if (loadingImages[concept.term] && !forceRegenerate) return;
     const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
     // Never re-charge for an image already generated at this style+ratio — load the cached one.
@@ -104,7 +113,14 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
         if (file) { setImages(prev => ({ ...prev, [concept.term]: URL.createObjectURL(file.blob) })); return; }
       } catch { /* not cached — fall through to generate */ }
     }
+    // Cache miss → this will cost credits. Pre-check so a 0-balance user sees the
+    // HAZARD notice instead of a failed call (batch path pre-checks once → preChecked).
+    if (!preChecked) {
+      const gate = await ensureCredits('generateImage');
+      if (!gate.ok) { setCreditTier(gate.tier); return; }
+    }
     setLoadingImages(prev => ({ ...prev, [concept.term]: true }));
+    setImgError(null);
     try {
       const imgUrl = await generateConceptImage(concept.visualPrompt, selectedStyle, selectedRatio);
       setImages(prev => ({ ...prev, [concept.term]: imgUrl }));
@@ -125,6 +141,8 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
       } catch (e) { /* caching is best-effort */ }
     } catch (e: any) {
       console.error("Image gen failed", e);
+      if (isInsufficientCreditsError(e)) { outOfCredits(); abortRef.current = true; }
+      else setImgError("Failed to generate image, try again later.");
       trackGeneration({ bookId, chapterIndex: chapter.id, module: 'visualizer', status: 'failed', errorMessage: e?.message });
     } finally {
       setLoadingImages(prev => ({ ...prev, [concept.term]: false }));
@@ -141,6 +159,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
     abortRef.current = false;
     generatingRef.current = true;
+    setCreditTier(null); // fresh attempt — clear any prior out-of-credits notice
     let activeConcepts = concepts;
 
     if (activeConcepts.length === 0) {
@@ -153,6 +172,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
           if (file) { const p = JSON.parse(await file.blob.text()); if (Array.isArray(p) && p.length) extracted = p; }
         } catch {}
         if (!extracted) {
+          // Concept extraction costs credits — gate before the call.
+          const gate = await ensureCredits('extractConcepts');
+          if (!gate.ok) { setCreditTier(gate.tier); setIsInitializing(false); generatingRef.current = false; return; }
           extracted = await extractConcepts(fileContext, chapter);
           saveFile(conceptsKey(), new Blob([JSON.stringify(extracted)], { type: 'application/json' }), {
             filename: `concepts-${chapter.id}.json`, mimeType: 'application/json', timestamp: Date.now(),
@@ -181,13 +203,18 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     const targets = pendingConcepts.length > 0 ? pendingConcepts : activeConcepts;
     const forceRegen = pendingConcepts.length === 0;
 
+    // Gate once for the batch (each image is cache-first; a 0-balance user is
+    // stopped here rather than firing N failing calls).
+    const gate = await ensureCredits('generateImage');
+    if (!gate.ok) { setCreditTier(gate.tier); setIsGeneratingAll(false); generatingRef.current = false; return; }
+
     const BATCH_SIZE = 3;
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
         if (abortRef.current) break;
         const batch = targets.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(concept => {
             if (abortRef.current) return Promise.resolve();
-            return handleGenerateImage(concept, forceRegen);
+            return handleGenerateImage(concept, forceRegen, true);
         }));
     }
     setIsGeneratingAll(false);
@@ -248,6 +275,10 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
             {isInitializing ? (
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Loader text="Extracting neural concepts..." />
+                </div>
+            ) : creditTier ? (
+                <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex items-center justify-center bg-void-2">
+                    <CreditNotice tier={creditTier} />
                 </div>
             ) : (concepts.length === 0 || !hasInitiated) ? (
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
@@ -310,6 +341,8 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:16px_16px] opacity-10 pointer-events-none"></div>
                                 {loadingImages[currentConcept.term] ? (
                                     <div className="flex flex-col items-center gap-2 text-zinc-500 animate-fade-in z-10"><Loader text="Rendering..." /></div>
+                                ) : imgError ? (
+                                    <div className="z-10 animate-fade-in"><StatusMessage variant="error" title={imgError} action={{ label: 'Retry', onClick: () => handleGenerateImage(currentConcept, true) }} /></div>
                                 ) : (
                                     <button onClick={() => handleGenerateImage(currentConcept)} className="flex flex-col items-center gap-3 text-zinc-600 hover:text-neon-cyan transition-colors group-hover:scale-105 transform duration-300 w-full h-full justify-center z-10"><ImageIcon size={32} /><span className="text-xs font-bold font-mono uppercase tracking-widest">Generate_Visual</span></button>
                                 )}

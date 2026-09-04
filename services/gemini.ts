@@ -3,6 +3,7 @@ import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai"
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
 import { creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from "./pricing";
+import { INSUFFICIENT_CREDITS } from "./credits";
 import { extractChapterFromSource } from "../utils/sourceIndex";
 import { buildLocalTextStructure, buildStructureAnalysisText, isReadableChapterTitle } from "../utils/structureAnalysis";
 import { PDF_TEXT_EXTRACTION_VERSION } from "../utils/sourceVersion";
@@ -166,6 +167,7 @@ const callUnifiedLLM = async (params: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }));
     const message = (err as any).error || 'LLM request failed';
+    if (res.status === 429 || /insufficient credits/i.test(message)) throw new Error(INSUFFICIENT_CREDITS);
     if (model !== DEFAULT_TEXT_MODEL && isMissingProviderKeyError(message)) {
       console.warn(`${message}; falling back to ${DEFAULT_TEXT_MODEL}.`);
       return callUnifiedLLM({ ...params, model: DEFAULT_TEXT_MODEL });
@@ -848,6 +850,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Image generation failed' }));
+        if (res.status === 429) throw new Error(INSUFFICIENT_CREDITS);
         throw new Error((err as any).error || 'fal.ai image generation failed');
       }
       const data = await res.json() as any;
@@ -953,6 +956,41 @@ export const getQuickDefinition = async (text: string, language: string): Promis
     });
     if (!result?.trim()) throw new Error("Empty definition generated");
     return result.trim();
+  });
+};
+
+// One Define click = ONE model call (1 credit). Returns the definition in the
+// text's own language and, when a target language is set, its translation too —
+// asked for together in a single request instead of two parallel calls (which
+// billed 2 credits + logged two rows for a single lookup).
+export const getBilingualDefinition = async (
+  text: string,
+  targetLanguage: string | null,
+): Promise<{ original: string; translated: string | null }> => {
+  return withRetry(async () => {
+    if (!targetLanguage) {
+      const result = await callUnifiedLLM({
+        contents: { parts: [{ text: `Act as a reading assistant. Analyze and define this text in its own language: "${text}". Output strictly a concise, insightful definition or explanation. No introductory phrases.` }] },
+        creditAction: 'quickDefinition',
+      });
+      if (!result?.trim()) throw new Error("Empty definition generated");
+      return { original: result.trim(), translated: null };
+    }
+    const result = await callUnifiedLLM({
+      contents: { parts: [{ text: `Act as a reading assistant. For the text "${text}", give two concise, insightful definitions: "original" in the text's own language, and "translated" in ${targetLanguage}. No introductory phrases.` }] },
+      creditAction: 'quickDefinition',
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: { original: { type: Type.STRING }, translated: { type: Type.STRING } },
+          required: ['original', 'translated'],
+        },
+      },
+    });
+    const parsed = JSON.parse(result);
+    if (!parsed?.original) throw new Error("Empty definition generated");
+    return { original: String(parsed.original).trim(), translated: parsed.translated ? String(parsed.translated).trim() : null };
   });
 };
 
@@ -1098,6 +1136,7 @@ export const generateSeedanceVideo = async (
     }),
   });
   const { taskId, error } = await createRes.json() as any;
+  if (createRes.status === 429) throw new Error(INSUFFICIENT_CREDITS);
   if (!createRes.ok || !taskId) throw new Error(error || 'Failed to create Seedance task');
 
   let status = 'queued';

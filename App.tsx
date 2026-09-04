@@ -14,6 +14,9 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { AccountPanel } from './components/PricingModal';
 import { LandingPage } from './components/LandingPage';
 import { fetchUserTier, UserTier } from './services/stripe';
+import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
+import { CreditNotice } from './components/ui/CreditNotice';
+import { StatusMessage } from './components/ui/StatusMessage';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
 import { trackReferralClick, registerReferralSignup } from './services/referral';
@@ -427,6 +430,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadCreditTier, setUploadCreditTier] = useState<'free' | 'pro' | null>(null);
   const [showLibraryList, setShowLibraryList] = useState(false);
   const [pendingLanguagePromptBookId, setPendingLanguagePromptBookId] = useState<string | null>(null);
   
@@ -435,22 +439,42 @@ const App: React.FC = () => {
   const [genMode, setGenMode] = useState<GenMode>(getGenerationMode());
   const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
+  // Keep the credits helper's cache in sync so any module's pre-check sees the
+  // current balance without threading the tier through every component.
+  const applyUserTier = (t: UserTier) => { setUserTier(t); setCachedTier(t); };
+  // A blocked action's "Upgrade / Buy Credits" CTA fires this; open MY_ACCOUNT
+  // (which already shows Upgrade for free tiers and Credit_Packs for pro).
+  React.useEffect(() => {
+    const open = () => setIsAccountOpen(true);
+    window.addEventListener(OPEN_ACCOUNT_EVENT, open);
+    return () => window.removeEventListener(OPEN_ACCOUNT_EVENT, open);
+  }, []);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
   const [configReady, setConfigReady] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>({
-    targetLanguage: 'Spanish',
-    highlightColor: 'indigo',
-    inkLine: 'full',
-    textSize: 'base',
-    lineHeight: 'normal',
-    letterSpacing: 'normal',
-    textAlign: 'auto',
-    font: 'Inter',
-    llmModel: 'gemini-3-flash-preview',
-    ttsModel: 'gemini-3.1-flash-tts-preview',
-    imageModel: 'gemini-3-pro-image-preview',
-    videoModel: 'veo-3.1-fast-generate-preview'
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const defaults: AppSettings = {
+      targetLanguage: 'Spanish',
+      highlightColor: 'indigo',
+      inkLine: 'full',
+      textSize: 'base',
+      lineHeight: 'normal',
+      letterSpacing: 'normal',
+      textAlign: 'auto',
+      font: 'Inter',
+      llmModel: 'gemini-3-flash-preview',
+      ttsModel: 'gemini-3.1-flash-tts-preview',
+      imageModel: 'gemini-3-pro-image-preview',
+      videoModel: 'veo-3.1-fast-generate-preview'
+    };
+    // Load the saved language SYNCHRONOUSLY so `settings.targetLanguage` starts at the user's value
+    // (not the default). This is the only reliable way to stop the language-change effect from seeing
+    // a default→saved "change" on load and firing batchGetDefinitions (the phantom Definition charge).
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('app_settings') : null;
+      if (saved) return { ...defaults, ...JSON.parse(saved) };
+    } catch { /* fall through to defaults */ }
+    return defaults;
   });
 
   useEffect(() => {
@@ -522,6 +546,9 @@ const App: React.FC = () => {
         try {
           const parsed = JSON.parse(savedSettings);
           if (parsed.ttsModel === 'gemini-2.5-flash-preview-tts') parsed.ttsModel = 'gemini-3.1-flash-tts-preview';
+          // Language is already loaded synchronously in the useState initializer above (so no
+          // default→saved transition fires the language-change effect); this just applies any
+          // remaining fields + migrations.
           setSettings(prev => ({ ...prev, ...parsed }));
           if (parsed.geminiKey) setGeminiApiKey(parsed.geminiKey);
           // Models are admin-set per function (services/gemini.ts FUNCTION_MODELS); user
@@ -533,7 +560,7 @@ const App: React.FC = () => {
       const checkoutParam = new URLSearchParams(window.location.search).get('checkout');
       if (checkoutParam === 'success') {
         window.history.replaceState({}, '', window.location.pathname);
-        setTimeout(() => { fetchUserTier().then(setUserTier).catch(() => {}); }, 2000);
+        setTimeout(() => { fetchUserTier().then(applyUserTier).catch(() => {}); }, 2000);
       }
 
       bootstrapSupabase().then(async () => {
@@ -551,6 +578,10 @@ const App: React.FC = () => {
           startSession();
           loadUserSettings(session.user.id).then(remote => {
             if (remote) {
+              // Loading the saved language is HYDRATION, not a user language change — sync the
+              // ref so the language-change effect below doesn't fire batchGetDefinitions (a
+              // phantom "Definition" charge) when the remote language differs from the default.
+              if (remote.target_language) prevLanguageRef.current = remote.target_language;
               setSettings(prev => ({
                 ...prev,
                 targetLanguage: remote.target_language || prev.targetLanguage,
@@ -568,7 +599,7 @@ const App: React.FC = () => {
               }));
             }
           }).catch(e => console.warn('[Supabase] Failed to load settings:', e));
-          fetchUserTier().then(setUserTier).catch(() => {});
+          fetchUserTier().then(applyUserTier).catch(() => {});
           // Cloud library sync
           const uid = session.user.id;
           Promise.all([loadLibraryFromCloud(uid), loadNotebookFromCloud(uid), loadReadingPositions(uid)]).then(([cloudLib, cloudNotes, positions]) => {
@@ -692,7 +723,10 @@ const App: React.FC = () => {
                   ? item.contextSource.replace(/:INKED/ig, '')
               : item.contextSource;
 
-      const existing = notebook.find(n => n.text === cleanText);
+      // Dedupe case-insensitively so inking then defining the SAME word (e.g. "Blood-boiling"
+      // vs "BLOOD-BOILING") updates one entry instead of creating a duplicate.
+      const dedupeKey = cleanText.toLowerCase();
+      const existing = notebook.find(n => n.text.replace(/\*\*/g, '').trim().toLowerCase() === dedupeKey);
       if (existing) {
           setNotebook(prev => prev.map(n => {
               if (n.text !== cleanText) return n;
@@ -737,8 +771,10 @@ const App: React.FC = () => {
       
       setNotebook(prev => [newItem, ...prev]);
 
-      // If no definition is provided (e.g., quick add), fetch one in background
-      if (!item.definition) {
+      // Ink = a free highlight and a comment = an annotation; neither should silently spend a
+      // credit fetching a definition. Only a plain add (no ink, no comment) auto-defines — and the
+      // Define action already supplies its own definition, so in practice this no longer auto-charges.
+      if (!item.definition && !item.inked && item.comment === undefined) {
           getQuickDefinition(cleanText, settings.targetLanguage)
               .then(def => {
                   handleBatchUpdateDefinitions({ [newItem.id]: def });
@@ -7033,6 +7069,7 @@ const App: React.FC = () => {
 
     setIsProcessing(true);
     setError(null);
+    setUploadCreditTier(null);
 
     const isEpub = file.name.toLowerCase().endsWith('.epub');
     const isTextBased = file.type.startsWith('text/') ||
@@ -7047,6 +7084,9 @@ const App: React.FC = () => {
             // title later shifts (a metadata/inference tweak) — the same file always replaces its own entry.
             context = { ...context, sourceFileName: context.sourceFileName || file.name };
             const preparedContext = hydrateFileContext(context);
+            // Analysing the book (chapter structure) costs credits — gate before charging.
+            const gate = await ensureCredits('analyzeBookStructure');
+            if (!gate.ok) { setUploadCreditTier(gate.tier); return; }
             const structure = await analyzeBookStructure(preparedContext);
             // Prefer the PDF's own metadata Title over the one inferred from the first content
             // line. Set on `structure` so the display title AND the re-upload dedup (which matches
@@ -7161,7 +7201,8 @@ const App: React.FC = () => {
             if (currentUser) saveBookToCloud(currentUser.id, newItem).catch(() => {});
         } catch (err: any) {
             console.error("Analysis Error:", err);
-            setError("Decoding failed. " + (err.message || "The file might be too complex or the model is busy."));
+            if (isInsufficientCreditsError(err)) setUploadCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+            else setError("Decoding failed. " + (err.message || "The file might be too complex or the model is busy."));
         } finally {
             setIsProcessing(false);
         }
@@ -7457,7 +7498,11 @@ const App: React.FC = () => {
                 Access_Data_Bank [{library.length}]
              </button>
           )}
-          {error && <p className="text-neon-red text-xs font-mono border border-neon-red/30 p-2 bg-neon-red/5">{error}</p>}
+          {uploadCreditTier ? (
+            <div className="py-2"><CreditNotice tier={uploadCreditTier} /></div>
+          ) : error ? (
+            <div className="py-2"><StatusMessage variant="error" title={error} /></div>
+          ) : null}
         </div>
         {pendingLanguagePromptBookId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
@@ -7788,7 +7833,7 @@ const App: React.FC = () => {
                 {genMode === 'premium' ? 'PREMIUM' : 'BALANCED'}
               </span>
               {userTier && userTier.tier !== 'free' && (
-                <span className="text-[8px] px-1.5 py-0.5 rounded bg-neon-cyan/10 text-neon-cyan">
+                <span className="text-[8px] font-bold tracking-widest text-neon-cyan">
                   {userTier.tier.toUpperCase()}
                 </span>
               )}

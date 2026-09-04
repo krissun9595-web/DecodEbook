@@ -186,6 +186,48 @@ export function creditsForAction(action: string, model: string, u: Units = {}): 
   return credits;
 }
 
+// ============================================================================
+// PRE-CHECK GATE COST per action. This is what the balance is checked against
+// BEFORE a call runs (worker checkCreditBalance + client ensureCredits), so it
+// must approximate the ACTUAL charge — which is metered on real tokens/seconds
+// and only known AFTER the call. Single source of truth: both the worker gate
+// and the client pre-check import this, so gate == gate.
+//
+// Calibrated from real usage_logs (avg/max credits actually charged), NOT from
+// the small footprint reference — because measured actions send the whole
+// chapter (podcastScript really averaged ~116, max 185; the footprint ref said
+// 5). Cheap high-frequency actions carry minimal headroom so we don't block a
+// user who can genuinely afford them; expensive one-shots are set conservatively
+// (≈ observed max + headroom) so a low-balance user can't start an unaffordable
+// generation and leave us eating the difference. The ACTUAL charge is unchanged
+// (creditsForAction on real units) — this only governs "can you start it".
+// ============================================================================
+export const GATE_COSTS: Record<string, number> = {
+  // cheap / high-frequency text — gate ≈ actual (obs max in comments)
+  translate: 7,                //  max 7
+  quickDefinition: 1,          //  single call, flat 1 credit (was 2 when Define double-called)
+  tts: 15,                     //  max 13 (per read-aloud batch)
+  // measured text (whole-chapter input) — calibrated conservative from usage
+  chat: 50,                    //  max 45 (premium pro + thinking)
+  analyzeBookStructure: 15,    //  max 10
+  extractConcepts: 50,         //  max 45
+  extractChapterText: 50,      //  measured, ~extractConcepts
+  podcastScript: 200,          //  max 185
+  videoPrompt: 50,             //  max 46
+  // media / creative one-shots — conservative ≈ observed max
+  generateImage: 40,           //  fixed per-image (obs max 40)
+  redrawFigureTranslated: 40,
+  podcastAudio: 100,           //  max 81
+  videoSeedanceFast: 200,      //  cheaper seedance path
+  videoSeedance: 360,          //  max 360
+  videoVeo: 350,               //  max 340
+};
+const GATE_FALLBACK = 5;
+export function gateCost(action: string): number {
+  const key = action.startsWith('text:') ? 'translate' : action;
+  return GATE_COSTS[key] ?? GATE_FALLBACK;
+}
+
 // Real cost in cents for LOGGING (uses measured units where the caller has them).
 export function costCentsForAction(action: string, model: string, u: Units = {}): number {
   return Math.round(modalityCostCents(action, model, u));

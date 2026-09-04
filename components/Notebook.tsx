@@ -8,6 +8,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
 
 import { Loader } from './ui/Loader';
+import { StatusMessage } from './ui/StatusMessage';
 import { EmptyState } from './ui/EmptyState';
 import { saveFile, buildCacheKey } from '../services/fileCache';
 import { playPronunciationAudio, prefetchPronunciation, stopPronunciationAudio } from '../services/pronunciationAudio';
@@ -87,6 +88,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   const [isMindMapMode, setIsMindMapMode] = useState(false);
   const [mindMapData, setMindMapData] = useState<MindMapNode | null>(null);
   const [isGeneratingMap, setIsGeneratingMap] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [hasInitiatedMap, setHasInitiatedMap] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [mapZoom, setMapZoom] = useState(1);
@@ -333,6 +335,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     }
     setIsGeneratingMap(true);
     setHasInitiatedMap(true);
+    setMapError(null);
     setMapZoom(1);
     setPan({ x: 0, y: 0 });
     setCollapsedNodeIds(new Set());
@@ -399,7 +402,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         setMindMapData(structure);
         setIsMindMapMode(true);
     } catch (e) {
-        if (!abortMapRef.current) console.error("Failed to generate mind map:", e);
+        if (!abortMapRef.current) { console.error("Failed to generate mind map:", e); setMapError("Failed to generate mind map, try again later."); }
     } finally {
         if (!abortMapRef.current) setIsGeneratingMap(false);
     }
@@ -947,6 +950,8 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                        <Loader2 size={48} className="text-neon-cyan animate-spin" />
                        <p className="text-sm font-mono text-neon-cyan uppercase tracking-widest animate-pulse">Analyzing Neural Structures...</p>
                    </div>
+               ) : mapError ? (
+                   <div className="z-10 animate-fade-in"><StatusMessage variant="error" title={mapError} action={{ label: 'Retry', onClick: handleInitiateMindMap }} /></div>
                ) : mindMapData ? (
                    <div className="w-full h-full overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing">
                        <svg 

@@ -3,6 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2 } from 'lucide-react';
 import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFigure } from '../types';
 import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated } from '../services/gemini';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
+import { creditsForAction } from '../services/pricing';
+import { CreditNotice } from './ui/CreditNotice';
+import { StatusMessage } from './ui/StatusMessage';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, deleteFile, deleteMatchingKeys, buildCacheKey } from '../services/fileCache';
@@ -1951,6 +1955,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasInitiated, setHasInitiated] = useState(false);
   const [generationProgress, setGenerationProgress] = useState("");
+  // Non-null → out of credits; the audio module + translation panel show the HAZARD notice.
+  const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
+  const outOfCredits = () => setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+  // Non-null → a non-credit read-aloud failure (transient); shown in the audio module.
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -2617,31 +2626,106 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // page text / sentence-signature) — so re-flowing the chapter overwrites the same page file instead
   // of minting a new one (which stacked duplicate rows). Credits are saved separately by an in-memory
   // per-chapter sentence map, so re-pagination / revisits translate only sentences not seen before.
-  const translationSentenceMapKey = (): string =>
-    buildCacheKey(bookId, chapter.id, 'translation-mem', TRANSLATION_CACHE_VERSION, sourceFingerprint, settings.targetLanguage);
+  // All keyed by LANGUAGE (defaults to the reader's target language). The read-aloud path passes the
+  // audio language so it reuses the SAME per-language cache/memory/doc as the split-view path — same
+  // language ⇒ same keys ⇒ zero re-translation of anything already paid for.
+  const translationSentenceMapKey = (language: string = settings.targetLanguage): string =>
+    buildCacheKey(bookId, chapter.id, 'translation-mem', TRANSLATION_CACHE_VERSION, sourceFingerprint, language);
 
-  const translationPageFileKey = (pageIndex: number): string =>
-    buildCacheKey(bookId, chapter.id, 'translation', TRANSLATION_CACHE_VERSION, sourceFingerprint, `pg${pageIndex}`, settings.targetLanguage);
+  const translationPageFileKey = (pageIndex: number, language: string = settings.targetLanguage): string =>
+    buildCacheKey(bookId, chapter.id, 'translation', TRANSLATION_CACHE_VERSION, sourceFingerprint, `pg${pageIndex}`, language);
+
+  // The user PAID for these translations, so keep a readable, downloadable bilingual copy.
+  const translationDocKey = (language: string = settings.targetLanguage): string =>
+    buildCacheKey(bookId, chapter.id, 'translation-doc', TRANSLATION_CACHE_VERSION, sourceFingerprint, language);
+
+  // Strip reader sentinels (PUA) + markdown so the exported text is clean prose.
+  const cleanForDoc = (s: string): string =>
+    (s || '').replace(/[-]/g, '').replace(/\*\*|\*|__|_/g, '').replace(/\s+/g, ' ').trim();
+
+  // Rebuild the bilingual .txt from ALL of this chapter's per-page files, in page order, deduped by
+  // source sentence. Rebuild-and-OVERWRITE (never append) + the dedup set guarantee that refreshing
+  // and revisiting pages any number of times can't produce duplicate lines. Contains ONLY the pages
+  // the user actually translated (partial if the chapter isn't fully read) — never any unpaid content.
+  const rebuildTranslationDoc = async (language: string = settings.targetLanguage) => {
+    if (language === 'Original') return;
+    try {
+      const seen = new Set<string>();
+      const norm = (s: string) => normalizeSentenceForCache(s);
+      const blocks: string[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        const f = await getFile(translationPageFileKey(i, language)).catch(() => null);
+        if (!f) continue;
+        let parsed: any;
+        try { parsed = JSON.parse(await f.blob.text()); } catch { continue; }
+        const src = parsed?.sourceSentences, tr = parsed?.translations;
+        if (!Array.isArray(src) || !Array.isArray(tr)) continue;
+        for (let j = 0; j < src.length; j++) {
+          const o = cleanForDoc(typeof src[j] === 'string' ? src[j] : '');
+          const t = cleanForDoc(typeof tr[j] === 'string' ? tr[j] : '');
+          if (!o && !t) continue;
+          const key = norm(typeof src[j] === 'string' ? src[j] : o);
+          if (key && seen.has(key)) continue;      // already exported (page overlap after re-pagination)
+          if (key) seen.add(key);
+          blocks.push(t ? `${o}\n${t}` : o);
+        }
+      }
+      if (blocks.length === 0) return;
+      const header = `${chapter.title}\n${language}\n${'─'.repeat(32)}\n\n`;
+      const content = header + blocks.join('\n\n') + '\n';
+      await saveFile(translationDocKey(language), new Blob([content], { type: 'text/plain' }), {
+        filename: `translation-${chapterFileLabel(chapter, allChapters)}-${titleCase(language, 20)}.txt`,
+        mimeType: 'text/plain',
+        timestamp: Date.now(),
+        bookId,
+        bookTitle,
+        chapterId: chapter.id,
+        componentSource: 'audiobook',
+        fileType: 'translation',
+      }).catch(e => console.warn('[tdoc] translation doc save failed:', e));
+    } catch (e) { console.warn('[tdoc] translation doc rebuild failed:', e); }
+  };
 
   const loadOrGeneratePageTranslation = async (
     pageIndex: number,
     _pageText: string,
-    sentenceMap: SentenceMap[]
+    sentenceMap: SentenceMap[],
+    language: string = settings.targetLanguage
   ): Promise<string[] | null> => {
-    if (settings.targetLanguage === 'Original' || sentenceMap.length === 0) return null;
+    if (language === 'Original' || sentenceMap.length === 0) return null;
 
     const pageSentences = sentenceMap.map(m => m.text);
     if (pageSentences.length === 0) return null;
 
-    const mapKey = translationSentenceMapKey();
-    const pageKey = translationPageFileKey(pageIndex);
+    const mapKey = translationSentenceMapKey(language);
+    const memKey = translationSentenceMapKey(language); // chapter-level memory FILE (pagination-independent)
+    const pageKey = translationPageFileKey(pageIndex, language);
     const norm = (s: string) => normalizeSentenceForCache(s);
 
     // Serialize on the chapter+language key so concurrent page + prefetch requests share one growing
     // sentence map (each translating only what's new) rather than racing.
     const run = (translationJobMap.get(mapKey) || Promise.resolve()).then(async () => {
       let map = translationMemoryCache.get(mapKey);
+      const coldMap = !map; // fresh mount / reload → nothing in memory yet
       if (!map) { map = new Map<string, string>(); translationMemoryCache.set(mapKey, map); }
+
+      // COLD map (reload / new session): seed from the persisted CHAPTER memory FIRST. It's keyed by
+      // chapter+lang+fingerprint+version but NOT by page, so a sentence that shifted across a page
+      // boundary since the per-page files were written is still covered → no re-translation. Guarded:
+      // a missing/invalid mem file silently falls back to the per-page seed below (today's behavior).
+      if (coldMap) {
+        try {
+          const memFile = await getFile(memKey).catch(() => null);
+          if (memFile) {
+            const memObj = JSON.parse(await memFile.blob.text());
+            if (memObj && typeof memObj === 'object') {
+              for (const [k, v] of Object.entries(memObj)) {
+                if (typeof v === 'string' && v) map!.set(k, stripLeakedTokens(v));
+              }
+            }
+          }
+        } catch (memErr) { console.warn('[tcache] chapter-memory seed ignored:', memErr); }
+      }
 
       const stillMissing = () => pageSentences.filter(s => { const n = norm(s); return n && !map!.get(n); });
 
@@ -2666,16 +2750,34 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
 
       const missing = stillMissing();
+      // AUDIT: sentences on this page, how many weren't already cached, and whether that forces a
+      // (billed) model call. On a revisit of a translated page this should read missing=0 / model=false.
+      console.debug(`[tcache] pg${pageIndex + 1} sentences=${pageSentences.length} missing=${missing.length} modelCall=${missing.length > 0} cold=${coldMap}`);
       if (missing.length > 0) {
         const originalByNorm = new Map<string, string>(); // dedupe identical sentences within the page
         missing.forEach(s => { const n = norm(s); if (!originalByNorm.has(n)) originalByNorm.set(n, s); });
         const originals = [...originalByNorm.values()];
         const translated = normalizeTranslationArray(
-          (await translateSentences(originals, settings.targetLanguage)).map(stripLeakedTokens),
+          (await translateSentences(originals, language)).map(stripLeakedTokens),
           originals.length,
           false
         );
         if (translated) originals.forEach((orig, i) => { const t = translated[i]; if (t) map!.set(norm(orig), t); });
+        // New sentences were translated → persist the whole (merged) chapter memory so a future reload
+        // reuses them regardless of pagination. Only written when the map actually grew (guarded above),
+        // so pure cache-hit revisits never touch disk.
+        try {
+          await saveFile(memKey, new Blob([JSON.stringify(Object.fromEntries(map!))], { type: 'application/json' }), {
+            filename: `translation-memory-${chapterFileLabel(chapter, allChapters)}-${titleCase(language, 20)}.json`,
+            mimeType: 'application/json',
+            timestamp: Date.now(),
+            bookId,
+            bookTitle,
+            chapterId: chapter.id,
+            componentSource: 'audiobook',
+            fileType: 'translation-mem',
+          }).catch(e => console.warn('[tcache] chapter-memory save failed:', e));
+        } catch (memSaveErr) { console.warn('[tcache] chapter-memory save error:', memSaveErr); }
       }
 
       const pageTranslations = pageSentences.map(s => map!.get(norm(s)) || '');
@@ -2687,7 +2789,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       const payload = JSON.stringify({ sourceSentences: pageSentences, translations: pageTranslations });
       if (payload !== existingText && pageTranslations.some(Boolean)) {
         await saveFile(pageKey, new Blob([payload], { type: 'application/json' }), {
-          filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(settings.targetLanguage, 20)}.json`,
+          filename: `translation-${chapterFileLabel(chapter, allChapters)}-pg${pageIndex + 1}-${titleCase(language, 20)}.json`,
           mimeType: 'application/json',
           timestamp: Date.now(),
           bookId,
@@ -2696,6 +2798,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           componentSource: 'audiobook',
           fileType: 'translation',
         }).catch(e => console.warn('Translation cache save failed:', e));
+        // A page's translation just changed → refresh the readable bilingual .txt (rebuild-and-
+        // overwrite from all page files, so revisits/refreshes never duplicate). Fire-and-forget.
+        rebuildTranslationDoc(language);
       }
 
       return pageTranslations;
@@ -2722,6 +2827,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
       setIsTranslating(true);
       setTranslationError(null);
+      setCreditTier(null);
       try {
         const requestSentenceMap = [...flatSentenceMap];
         const requestIdentity = translationIdentityFor(
@@ -2748,7 +2854,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         });
       } catch(e) {
         console.error("Translation error", e);
-        if (!ignore) setTranslationError(e instanceof Error ? e.message : 'Translation failed.');
+        if (!ignore) {
+          if (isInsufficientCreditsError(e)) outOfCredits();
+          else setTranslationError(e instanceof Error ? e.message : 'Translation failed. Please try again.');
+        }
       } finally {
         if (!ignore) setIsTranslating(false);
       }
@@ -3071,8 +3180,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           setAudioSrc(url);
           attachedAudioKeyRef.current = key;
         }
-      }).catch(() => {
-        setGenerationProgress("ERR_LINK_FAILED");
+      }).catch((e) => {
+        if (isInsufficientCreditsError(e)) outOfCredits();
+        else setAudioError("Failed to generate audio, try again later.");
+        setGenerationProgress("");
       }).finally(() => {
         if (audioGenKeyRef.current === key) setIsGenerating(false);
       });
@@ -3107,6 +3218,17 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     // If already in-flight (e.g. double-click), just attach
     if (inflightAudioMap.has(genKey)) return;
+
+    // Read-aloud synthesizes the WHOLE page in several TTS batches, so gate on the page's estimated
+    // total cost (from its characters), not one flat batch. Conservative 1.3x headroom covers the
+    // per-char cost difference of translated (esp. CJK) output vs the source text.
+    const spokenText = flatSentenceMap.map(m => m.text).join('');
+    const estCjk = (spokenText.match(/[㐀-鿿豈-﫿぀-ヿ가-힯]/g) || []).length;
+    const estTts = Math.ceil(creditsForAction('tts', 'gemini-3.1-flash-tts', { chars: spokenText.length, cjkChars: estCjk }) * 1.3);
+    const gate = await ensureCredits('tts', estTts);
+    if (!gate.ok) { setCreditTier(gate.tier); return; }
+    setCreditTier(null);
+    setAudioError(null);
 
     abortGenerationRef.current = false;
     setIsGenerating(true);
@@ -3160,10 +3282,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
     // Capture values needed by the generation closure (survives unmount)
     const capturedSentenceMap = [...flatSentenceMap];
-    const capturedParagraphData = [...paragraphData];
     const capturedAudioLanguage = audioLanguage;
     const capturedVoice = selectedVoice;
-    const capturedTargetLanguage = settings.targetLanguage;
     const capturedBookId = bookId;
     const capturedBookTitle = bookTitle;
     const capturedChapterId = chapter.id;
@@ -3177,12 +3297,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         if (capturedAudioLanguage === 'Original') {
           sentencesToSpeak = capturedSentenceMap.map(m => m.text);
         } else {
-          if (capturedAudioLanguage === capturedTargetLanguage && capturedParagraphData.every(p => p.translated.length > 0)) {
-            sentencesToSpeak = capturedParagraphData.flatMap(p => p.translated);
-          } else {
-            setGenerationProgress("AUDIO_TRANS...");
-            sentencesToSpeak = await translateSentences(capturedSentenceMap.map(m => m.text), capturedAudioLanguage);
-          }
+          setGenerationProgress("AUDIO_TRANS...");
+          // Route through the SAME per-language translation cache the split-view path uses (translate
+          // only genuinely-missing sentences, serialized on the shared job map). When the voice language
+          // matches the reader language, any page already viewed in split view costs ZERO here — no more
+          // re-translating what was already paid for. It also feeds that language's memory + .txt.
+          const translated = await loadOrGeneratePageTranslation(capturedPage, '', capturedSentenceMap, capturedAudioLanguage);
+          sentencesToSpeak = (translated && translated.length === capturedSentenceMap.length)
+            ? translated.map((t, i) => t || capturedSentenceMap[i].text) // fall back to original if a sentence didn't translate (no silent gaps)
+            : capturedSentenceMap.map(m => m.text);
         }
 
         const batchedSentences: string[] = [];
@@ -3248,8 +3371,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       } catch (e: any) {
         console.error('TTS generation failed:', e);
         trackGeneration({ bookId: capturedBookId, chapterIndex: capturedChapterId, module: 'voice', status: 'failed', errorMessage: e.message });
-        setGenerationProgress(`ERR: ${e.message || 'Unknown error'}`);
-        await new Promise(r => setTimeout(r, 4000));
+        if (isInsufficientCreditsError(e)) { outOfCredits(); setGenerationProgress(""); return null; }
+        setAudioError("Failed to generate audio, try again later.");
+        setGenerationProgress("");
         return null;
       } finally {
         inflightAudioMap.delete(genKey);
@@ -3267,7 +3391,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         attachedAudioKeyRef.current = genKey;
       }
     } catch (e: any) {
-      setGenerationProgress(`ERR: ${e.message || 'Unknown error'}`);
+      if (isInsufficientCreditsError(e)) { outOfCredits(); setGenerationProgress(""); }
+      else { setAudioError("Failed to generate audio, try again later."); setGenerationProgress(""); }
     } finally {
       if (audioGenKeyRef.current === genKey) setIsGenerating(false);
     }
@@ -4464,6 +4589,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     if (isTranslating && !hasTranslation) {
       return <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>;
     }
+    if (creditTier && !hasTranslation) {
+      return <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="text-[10px] font-mono text-neon-yellow uppercase hover:text-white">⚠ Not enough credits — {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}</button>;
+    }
     if (translationError && !hasTranslation) {
       return <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>;
     }
@@ -4730,6 +4858,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                  <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
                  {isGenerating ? (
                     <div className="z-20 scale-75 animate-fade-in"><Loader text={generationProgress} /></div>
+                 ) : creditTier ? (
+                    <div className="z-20 animate-fade-in"><CreditNotice tier={creditTier} /></div>
+                 ) : audioError ? (
+                    <div className="z-20 animate-fade-in"><StatusMessage variant="error" title={audioError} action={{ label: 'Retry', onClick: handleInitiateToggle }} /></div>
                  ) : audioSrc ? (
                     <>
                         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none animate-fade-in">
@@ -4791,14 +4923,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
            <Loader text="DECODING_TEXT_BLOCK..." />
         </div>
       ) : sourceError ? (
-        <div className="flex-1 flex items-center justify-center min-h-[220px] rounded-sm border border-neon-red/30 bg-void-1 text-center px-6">
-          <div className="max-w-md space-y-3">
-            <div className="text-neon-red text-xs font-mono uppercase tracking-[0.25em]">SOURCE_REQUIRED</div>
-            <p className="text-zinc-400 text-sm leading-relaxed content-font">{sourceError}</p>
-            <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">
-              Cached metadata cannot reproduce original chapters.
-            </p>
-          </div>
+        <div className="flex-1 flex items-center justify-center min-h-[220px] rounded-sm border border-neon-red/30 bg-void-1 px-6">
+          <StatusMessage variant="error" title="Source required" sub={sourceError} />
         </div>
       ) : (
         <>
@@ -5328,7 +5454,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     return mapping ? translationByIndex.has(mapping.globalIndex) : false;
                   });
                   const showTranslationPlaceholder = isTranslating && !hasParagraphTranslation;
-                  const showTranslationError = Boolean(translationError) && !hasParagraphTranslation;
+                  const showTranslationError = (Boolean(translationError) || Boolean(creditTier)) && !hasParagraphTranslation;
                   // Index and table-of-contents entries carry an indent depth (4 non-breaking
                   // spaces per level, captured upstream from the PDF x-position); render it as
                   // left padding.
@@ -5815,7 +5941,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
                               ) : showTranslationError && lineIdx === 0 ? (
-                                <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>
+                                creditTier
+                                  ? <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="text-[10px] font-mono text-neon-yellow uppercase hover:text-white">⚠ Not enough credits — {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}</button>
+                                  : <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>
                               ) : !showTranslationPlaceholder && !showTranslationError ? (
                                 line.map(({ sentence, sIdx, globalIndex }) => {
                                   const isActive = autoScroll && globalIndex === activeSentenceIndex;

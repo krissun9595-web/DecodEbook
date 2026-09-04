@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, BookOpen, Volume2, PenLine, MessageSquare, Square } from 'lucide-react';
-import { getQuickDefinition } from '../services/gemini';
+import { getBilingualDefinition } from '../services/gemini';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
+import { CreditNotice } from './ui/CreditNotice';
 import { NotebookItem } from '../types';
 import { playPronunciationAudio, prefetchPronunciation, stopPronunciationAudio } from '../services/pronunciationAudio';
 import { trackEvent, trackNotebook } from '../utils/analytics';
@@ -222,6 +224,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
       position: { x: 0, y: 0 }
   });
   const [isPlaying, setIsPlaying] = useState(false);
+  // Non-null → the Define lookup was blocked for lack of credits; show the HAZARD notice in the popup.
+  const [defineCreditTier, setDefineCreditTier] = useState<'free' | 'pro' | null>(null);
   const [mobileBar, setMobileBar] = useState<{ visible: boolean; x: number; y: number; text: string; source: string; sentenceIndex?: number; startOffset?: number; isInked?: boolean; selectionFragments?: SelectionFragment[] }>({ visible: false, x: 0, y: 0, text: '', source: 'Input_Stream' });
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -449,18 +453,17 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
     });
     setMenu(prev => ({ ...prev, visible: false }));
     setMobileBar(prev => ({ ...prev, visible: false }));
+    setDefineCreditTier(null);
     window.getSelection()?.removeAllRanges();
+
+    // Definitions cost credits — gate before the lookup so a 0-balance user sees the notice.
+    const gate = await ensureCredits('quickDefinition');
+    if (!gate.ok) { setDefineCreditTier(gate.tier); setDefinition(prev => ({ ...prev, loading: false })); return; }
 
     try {
         const targetLanguage = activeLanguage === 'Original' ? null : activeLanguage;
-        const [sourceResult, targetResult] = await Promise.allSettled([
-            getQuickDefinition(text, "the same language as the provided text"),
-            targetLanguage ? getQuickDefinition(text, targetLanguage) : Promise.resolve(null),
-        ]);
-        if (sourceResult.status === 'rejected') throw sourceResult.reason;
-
-        const sourceDef = sourceResult.value;
-        const targetDef = targetResult.status === 'fulfilled' ? targetResult.value : null;
+        // Single call → 1 credit / 1 log row (was two parallel getQuickDefinition calls).
+        const { original: sourceDef, translated: targetDef } = await getBilingualDefinition(text, targetLanguage);
         const combinedDef = [
             `Original:\n${sourceDef}`,
             targetLanguage && targetDef ? `${targetLanguage}:\n${targetDef}` : null,
@@ -483,7 +486,12 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         trackNotebook('auto_save_definition', { source: fromMobile ? 'mobile_toolbar' : 'context_menu', word_count: text.split(/\s+/).length });
         trackEvent('ai', 'define_word', { word: text, source: fromMobile ? 'mobile_toolbar' : 'context_menu' });
     } catch (e) {
-        setDefinition(prev => ({ ...prev, loading: false, text: "Could not retrieve definition." }));
+        if (isInsufficientCreditsError(e)) {
+            setDefineCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+            setDefinition(prev => ({ ...prev, loading: false }));
+        } else {
+            setDefinition(prev => ({ ...prev, loading: false, text: "Could not retrieve definition. Please try again." }));
+        }
     }
   };
 
@@ -634,7 +642,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                </div>
 	                <div className="p-1">
 	                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Define</button>
-	                    <button onClick={() => handlePronounce(false)} onPointerEnter={() => prefetchActivePronunciation(false)} onFocus={() => prefetchActivePronunciation(false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}>{isPlaying ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}{isPlaying ? 'Stop' : 'Pronounce'}</button>
+	                    <button onClick={() => handlePronounce(false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}>{isPlaying ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}{isPlaying ? 'Stop' : 'Pronounce'}</button>
 	                    <button onClick={() => handleInk()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><PenLine size={14} />{menu.isInked ? 'Remove Ink' : 'Ink'}</button>
 	                    <button onClick={() => openCommentComposer()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><MessageSquare size={14} />Comment</button>
 	                </div>
@@ -688,6 +696,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                              <Loader2 size={14} className="animate-spin" />
                              Decrypting Neural Data...
                          </div>
+                     ) : defineCreditTier ? (
+                         <div className="py-3"><CreditNotice tier={defineCreditTier} /></div>
                      ) : (
                          <div className="leading-relaxed content-font border-l-2 border-zinc-800 pl-3 animate-fade-in">
                              {formatDefinition(definition.text || "")}
@@ -712,7 +722,6 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                </button>
 	                <div className="w-[1px] h-5 bg-zinc-700" />
 	                <button
-	                    onTouchStart={() => prefetchActivePronunciation(true)}
 	                    onTouchEnd={(e) => { e.preventDefault(); handlePronounce(true); }}
 	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
 	                >

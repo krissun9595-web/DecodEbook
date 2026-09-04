@@ -5,6 +5,9 @@ import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, Refre
 import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
 import { Loader } from './ui/Loader';
+import { StatusMessage } from './ui/StatusMessage';
+import { CreditNotice } from './ui/CreditNotice';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -31,6 +34,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
   const [status, setStatus] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
   const [selectedStyle, setSelectedStyle] = useState('Cinematic');
   const [selectedLanguage, setSelectedLanguage] = useState('Original');
   const [selectedResolution, setSelectedResolution] = useState<'720p' | '1080p' | '4K'>('720p');
@@ -57,17 +61,24 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
 
   useEffect(() => {
     let cancelled = false;
+    // Switching style/resolution/chapter changes WHICH video this is → drop the current
+    // clip + reset the player, then load only THIS look's cached video (or leave empty →
+    // "Awaiting Render Signal"). Was gated on `!videoUrl`, so the old clip lingered and a
+    // style switch never re-synced (Cinematic selector still played the Vaporwave clip).
+    setVideoUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setPlaybackProgress(0);
+    if (isGenerating) return () => { cancelled = true; }; // an in-flight generation sets videoUrl itself
     const loadCached = async () => {
       const key = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
       try {
         const cached = await getFile(key);
-        if (cached && !cancelled) {
-          const url = URL.createObjectURL(cached.blob);
-          setVideoUrl(url);
-        }
-      } catch (e) { /* cache miss */ }
+        if (cached && !cancelled) setVideoUrl(URL.createObjectURL(cached.blob));
+      } catch (e) { /* cache miss → idle */ }
     };
-    if (!isGenerating && !videoUrl) loadCached();
+    loadCached();
     return () => { cancelled = true; };
   }, [bookId, chapter.id, selectedStyle, selectedResolution]);
 
@@ -79,12 +90,16 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
         return;
     }
     setError(null);
+    setCreditTier(null);
+    // Gate before charging: Veo (predictLongRunning) vs Seedance have different costs.
+    const useSeedance = getVideoModel().startsWith('dreamina-') || getVideoModel().startsWith('doubao-seedance');
+    const gate = await ensureCredits(useSeedance ? 'videoSeedance' : 'videoVeo');
+    if (!gate.ok) { setCreditTier(gate.tier); return; }
     setIsGenerating(true);
     abortRef.current = false;
     setStatus("Authenticating & Generating...");
     try {
       const videoModel = getVideoModel();
-      const useSeedance = videoModel.startsWith('dreamina-') || videoModel.startsWith('doubao-seedance');
 
       if (!useSeedance) {
         const hasKey = await hasValidKeyForVeo();
@@ -122,12 +137,14 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
       if (!abortRef.current) {
         console.error(e);
         trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', status: 'failed', errorMessage: e.message });
-        let msg = "Generation failed.";
-        if (e.message?.includes("Requested entity was not found")) {
-            msg = "Key Invalid. Paid project key required.";
-            await requestVeoKey();
-        } else if (e.message) msg = e.message;
-        setError(msg);
+        if (isInsufficientCreditsError(e)) {
+          setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+        } else {
+          // Everyone goes through our API (proxy mode), so no user-supplied key exists —
+          // any Veo failure (incl. "Requested entity was not found", which is a server-side
+          // project/model issue on our end) surfaces as the uniform transient message.
+          setError("Failed to generate video, try again later.");
+        }
       }
     } finally {
       if (!abortRef.current) {
@@ -268,13 +285,17 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
           className="relative w-full h-full flex flex-col bg-void-2 shadow-2xl transition-all duration-500 group overflow-hidden shrink-0"
         >
             <div className="flex-1 relative flex items-center justify-center overflow-hidden border-b border-zinc-900" onClick={() => videoUrl && togglePlay()}>
-                {!videoUrl && !isGenerating && (
+                {!videoUrl && !isGenerating && creditTier && (
+                    <div className="z-10"><CreditNotice tier={creditTier} /></div>
+                )}
+
+                {!videoUrl && !isGenerating && !creditTier && (
                     <div className="z-10 text-center space-y-4 p-8">
                         <div className="w-16 h-16 bg-zinc-900/50 rounded-full flex items-center justify-center mx-auto border border-zinc-800">
                              <Film className="text-zinc-500 w-6 h-6" />
                         </div>
                         <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-widest">Awaiting Render Signal</p>
-                        {error && <p className="text-neon-red text-[9px] font-mono mt-2 border border-neon-red/20 p-2 bg-neon-red/5">ERROR: {error}</p>}
+                        {error && <div className="mt-3"><StatusMessage variant="error" title={error} /></div>}
                     </div>
                 )}
 
