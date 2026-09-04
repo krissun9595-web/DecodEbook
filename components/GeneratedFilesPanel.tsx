@@ -37,7 +37,7 @@ const DEFAULT_FILE_CONFIG = { icon: <FileIcon size={14} />, label: 'FILE', color
 
 // Internal caches/extractions, not user-generated outputs — hidden from the panel (the reader's
 // per-chapter extracted text, the uploaded source blob, and auto-extracted source figure images).
-const HIDDEN_TYPES = ['chapter-text', 'source-file', 'original-file', 'figure-image', 'translation-mem'];
+const HIDDEN_TYPES = ['chapter-text', 'source-file', 'original-file', 'figure-image', 'translation-mem', 'audio-batch'];
 
 // The badge on each item names the MODULE that produced the file (its componentSource), not the file
 // type — e.g. a translation JSON made inside the reader shows VOICE_SYNTH, not TRANSLATION. The file
@@ -336,7 +336,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                 {/* File Info */}
                 <div className="flex-1 min-w-0">
                   <div className="mb-0.5">
-                    <span className="text-xs md:text-sm text-zinc-200 font-medium truncate block">{file.filename}</span>
+                    <span title={file.filename} className="text-xs md:text-sm text-zinc-200 font-medium truncate block">{file.filename}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] md:text-[10px] font-mono text-zinc-600">
                     <span className="truncate max-w-[140px] md:max-w-[220px]">{file.bookTitle || getBookTitle(file.bookId)}</span>

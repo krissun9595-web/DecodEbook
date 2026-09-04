@@ -94,7 +94,18 @@ interface TokenInfo {
 export const countCjkChars = (s: string): number =>
   (s.match(/[㐀-鿿豈-﫿぀-ヿ가-힯]/g) || []).length;
 
-const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string, extraUnits?: { chars?: number; cjkChars?: number; seconds?: number; images?: number }) => {
+// Per-EXECUTION session id (ambient). A generation calls beginUsageSession(label) before its many
+// sub-calls and endUsageSession() after; every usage_logs row it produces carries the same id + label,
+// so the Credit History groups a whole generation into ONE immutable line — and a re-run (new session)
+// is a SEPARATE line, never a rewrite of the previous one. Format: `<Friendly Label>#<uuid>`.
+let _usageSession: string | null = null;
+export const beginUsageSession = (label: string): void => {
+  const rand = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : `${_currentBook.length}-${performance.now()}`;
+  _usageSession = `${label}#${rand}`;
+};
+export const endUsageSession = (): void => { _usageSession = null; };
+
+const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string, extraUnits?: { chars?: number; cjkChars?: number; seconds?: number; images?: number }, sessionId?: string) => {
   const t: TokenInfo = typeof tokens === 'number'
     ? { total: tokens, input: 0, output: 0 }
     : tokens;
@@ -102,8 +113,22 @@ const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: stri
   const units = { inTok: t.input, outTok: t.output, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT, ...(extraUnits || {}) };
   const creditsCost = creditsForAction(action, m, units);
   const costCents = costCentsForAction(action, m, units);
+  // Explicit sessionId wins over the ambient one — used to group a whole page-view's translation
+  // (current page + its prefetch) into ONE credit line, immune to the deferred translation job chain.
+  const session = sessionId ?? _usageSession;
   getUser().then(user => {
-    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost, m, _currentBook || null);
+    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost, m, _currentBook || null, session);
+  }).catch(() => {});
+};
+
+// Records a zero-credit "this generation was stopped part-way" marker (model='__partial__'), so the
+// Credit History can tag the delivered-partial work as e.g. "Audio generation (Partial)". Harmless if
+// no batches were charged — the grouping simply has nothing to tag.
+export const PARTIAL_MARKER = '__partial__';
+export const logGenerationPartial = (action: string) => {
+  const session = _usageSession;
+  getUser().then(user => {
+    if (user) logUsage(user.id, action, 0, 0, 0, 0, 0, PARTIAL_MARKER, _currentBook || null, session);
   }).catch(() => {});
 };
 
@@ -138,6 +163,7 @@ const callUnifiedLLM = async (params: {
   systemInstruction?: string;
   generationConfig?: any;
   creditAction?: string;
+  creditSession?: string; // groups this call's charge under a specific credit-history line
 }): Promise<string> => {
   const model = params.model || resolveModel(params.creditAction);
 
@@ -148,7 +174,7 @@ const callUnifiedLLM = async (params: {
     if (params.generationConfig) Object.assign(config, params.generationConfig);
     if (!modelRequiresThinking(model)) config.thinkingConfig = { thinkingBudget: 0 };
     const response = await ai.models.generateContent({ model, contents: params.contents, config });
-    trackUsage(params.creditAction || 'translate', extractTokens(response), model);
+    trackUsage(params.creditAction || 'translate', extractTokens(response), model, undefined, params.creditSession);
     return response.text || '';
   }
 
@@ -180,7 +206,7 @@ const callUnifiedLLM = async (params: {
     total: usage.total_tokens || 0,
     input: usage.prompt_tokens || 0,
     output: usage.completion_tokens || 0,
-  }, model);
+  }, model, undefined, params.creditSession);
   return data.text || '';
 };
 
@@ -474,8 +500,13 @@ export const analyzeBookStructure = async (file: FileContext): Promise<BookStruc
   }
 };
 
-export const translateSentences = async (sentences: string[], targetLanguage: string): Promise<string[]> => {
+export const translateSentences = async (sentences: string[], targetLanguage: string, sessionId?: string): Promise<string[]> => {
   if (sentences.length === 0) return [];
+  // All of this call's batches log under ONE credit line. When the reader passes a shared sessionId,
+  // a page's translation AND its next-page prefetch combine into a single line; otherwise this call is
+  // its own "Translation" line. Explicit (not ambient) so it's immune to the deferred job chain.
+  const rand = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(sentences.length);
+  const creditSession = sessionId || `Translation#${rand}`;
   const batchSize = 10;
   const results: string[] = [];
   const SEGMENT_ID_PREFIX = 'DBSEG';
@@ -530,6 +561,7 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
         parts: [{ text: `Translate this short phrase to ${targetLanguage}. Return ONLY the translation, no added context.\n\n${fragment}` }]
       },
       creditAction: 'translate',
+      creditSession,
     });
     return cleanGenAiText(text || '').trim();
   };
@@ -617,6 +649,7 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
         parts: [{ text: `Translate this single complete passage to ${targetLanguage}. Return ONLY the translated passage as one string. Do not split semicolon-separated names into separate list items. Tokens like [[${NAME_TOKEN_PREFIX}_0]] are protected personal names: copy every token exactly, keep each token in its original position, and do not translate or alter tokens. Preserve the paragraph meaning.\n\nPassage:\n${protectedPassage.text}` }]
       },
       creditAction: 'translate',
+      creditSession,
     });
     return restoreProtectedNames(cleanGenAiText(text || '').trim(), protectedPassage.names);
   };
@@ -640,6 +673,7 @@ export const translateSentences = async (sentences: string[], targetLanguage: st
           parts: [{ text: `Translate these source segments to ${targetLanguage}.\n\nReturn ONLY a JSON array of objects. Every output object MUST have exactly these fields:\n- "id": copy the input id exactly\n- "translation": the translation for only that same input segment\n\nHard alignment rules:\n- Return exactly ${batch.length} objects.\n- Copy every id exactly once. Do not invent, omit, rename, sort, merge, or split ids.\n- Translate each segment independently. Never attach translation from a previous or later segment.\n- If a segment is a sentence fragment, translate only that fragment; do not complete it from surrounding context.\n- Preserve personal names exactly, including initials and generational suffixes such as "V. Harwood Bocker, III" and "Robert Lawrence, III".\n- Do not treat "III" or a single-letter initial period as a sentence boundary.\n\nInput segments:\n${JSON.stringify(batch)}` }]
         },
         creditAction: 'translate',
+        creditSession,
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -913,7 +947,7 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
 };
 
 // TTS uses Gemini flash TTS in BOTH modes.
-export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
+export const generateSpeech = async (text: string, voiceName: string = 'Kore', signal?: AbortSignal): Promise<string> => {
   return withRetry(async () => {
     const ai = await getAi();
     const response = await ai.models.generateContent({
@@ -926,13 +960,16 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
             prebuiltVoiceConfig: { voiceName },
           },
         },
+        // Cancels the in-flight request when the user hits STOP → the promise rejects BEFORE
+        // trackUsage below, so a stopped batch isn't billed.
+        abortSignal: signal,
       },
     });
     trackUsage('tts', extractTokens(response), _ttsModel, { chars: text.length, cjkChars: countCjkChars(text) });
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Failed to generate audio");
     return base64Audio;
-  });
+  }, 3, 2000, signal);
 };
 
 export const translateText = async (text: string, targetLanguage: string): Promise<string> => {

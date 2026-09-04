@@ -243,20 +243,22 @@ export async function saveUserSettings(userId: string, settings: UserSettings) {
 
 // ---- Usage logging ----
 
-export async function logUsage(userId: string, action: string, tokensUsed: number = 0, costCents: number = 0, inputTokens: number = 0, outputTokens: number = 0, creditsCost: number = 0, model: string | null = null, book: string | null = null) {
+export async function logUsage(userId: string, action: string, tokensUsed: number = 0, costCents: number = 0, inputTokens: number = 0, outputTokens: number = 0, creditsCost: number = 0, model: string | null = null, book: string | null = null, sessionId: string | null = null) {
   const client = getSupabase();
   if (!client) return;
-  await client
-    .from('usage_logs')
-    .insert({ user_id: userId, action, tokens_used: tokensUsed, cost_cents: costCents, input_tokens: inputTokens, output_tokens: outputTokens, credits_cost: creditsCost, model, book_title: book });
+  const base = { user_id: userId, action, tokens_used: tokensUsed, cost_cents: costCents, input_tokens: inputTokens, output_tokens: outputTokens, credits_cost: creditsCost, model, book_title: book };
+  const { error } = await client.from('usage_logs').insert(sessionId ? { ...base, session_id: sessionId } : base);
+  // If session_id isn't a column yet (migration 021 not run), retry without it so billing still records.
+  if (error && sessionId) await client.from('usage_logs').insert(base);
 }
 
 export interface CreditHistoryEntry {
   delta: number;      // negative = consumed, positive = added
-  type: string;       // 'consume' | 'earn' | 'purchase' | 'bonus' | 'renewal'
+  type: string;       // 'consume' | 'earn' | 'purchase' | 'bonus' | 'renewal' | 'partial-marker'
   reason: string;     // action name or description
   book?: string;      // source book title (consumption only)
   created_at: string;
+  session?: string;   // per-execution id ("<Label>#<uuid>") — groups one generation's rows into one line
 }
 
 // Unified credit history: consumption from usage_logs + additions from credit_ledger.
@@ -264,18 +266,30 @@ export interface CreditHistoryEntry {
 export async function fetchCreditHistory(userId: string, limit = 50): Promise<CreditHistoryEntry[]> {
   const client = getSupabase();
   if (!client) return [];
+  const fetchUsage = async () => {
+    let res = await client.from('usage_logs').select('action, credits_cost, created_at, book_title, model, session_id')
+      .eq('user_id', userId).order('created_at', { ascending: false }).limit(limit);
+    // session_id column may not exist yet (migration 021 not run) → retry without it.
+    if (res.error) res = await client.from('usage_logs').select('action, credits_cost, created_at, book_title, model')
+      .eq('user_id', userId).order('created_at', { ascending: false }).limit(limit);
+    return res;
+  };
   const [usage, ledger] = await Promise.all([
-    client.from('usage_logs').select('action, credits_cost, created_at, book_title')
-      .eq('user_id', userId).order('created_at', { ascending: false }).limit(limit),
+    fetchUsage(),
     client.from('credit_ledger').select('delta, type, reason, created_at')
       .eq('user_id', userId).order('created_at', { ascending: false }).limit(limit),
   ]);
-  const consume: CreditHistoryEntry[] = (usage.data || [])
-    .filter((r: any) => (r.credits_cost || 0) !== 0)
-    .map((r: any) => ({ delta: -(r.credits_cost || 0), type: 'consume', reason: r.action, book: r.book_title || undefined, created_at: r.created_at }));
+  const usageRows = (usage.data || []) as any[];
+  const consume: CreditHistoryEntry[] = usageRows
+    .filter(r => (r.credits_cost || 0) !== 0)
+    .map(r => ({ delta: -(r.credits_cost || 0), type: 'consume', reason: r.action, book: r.book_title || undefined, created_at: r.created_at, session: r.session_id || undefined }));
+  // Zero-credit "generation stopped part-way" markers → let the UI tag the delivered work "(Partial)".
+  const markers: CreditHistoryEntry[] = usageRows
+    .filter(r => (r.credits_cost || 0) === 0 && r.model === '__partial__')
+    .map(r => ({ delta: 0, type: 'partial-marker', reason: r.action, book: r.book_title || undefined, created_at: r.created_at, session: r.session_id || undefined }));
   const adds: CreditHistoryEntry[] = (ledger.data || [])
     .map((r: any) => ({ delta: r.delta || 0, type: r.type, reason: r.reason || r.type, created_at: r.created_at }));
-  return [...consume, ...adds]
+  return [...consume, ...markers, ...adds]
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     .slice(0, limit);
 }

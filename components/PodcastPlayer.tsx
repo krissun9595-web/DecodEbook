@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, RotateCw, Mic2, Download, FileDown, Settings2, Activity, Radio, Globe, Square, Loader as LoaderIcon, AlertCircle, RefreshCw, Minimize2, Maximize2, Zap, Share2 } from 'lucide-react';
-import { generatePodcastAudio } from '../services/gemini';
+import { generatePodcastAudio, logGenerationPartial } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
@@ -321,6 +321,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
       inflightPodcastMap.delete(key);
       setIsLoading(false);
       setHasInitiated(true);
+      logGenerationPartial('podcastAudio'); // stopped part-way → tag delivered work "(Partial)"
       return;
     }
 

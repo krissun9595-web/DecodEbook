@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2 } from 'lucide-react';
 import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFigure } from '../types';
-import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated } from '../services/gemini';
+import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated, logGenerationPartial, beginUsageSession, endUsageSession } from '../services/gemini';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
 import { creditsForAction } from '../services/pricing';
 import { CreditNotice } from './ui/CreditNotice';
@@ -2474,6 +2474,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       language
     );
   };
+  // Content-addressed per-BATCH TTS cache (voice + exact spoken text). A batch synthesized once is
+  // reused everywhere with no re-charge — so a stopped read-aloud keeps its finished batches and a
+  // re-run only pays for the missing ones, exactly like the translation cache reuses sentences.
+  const batchAudioKey = (voice: string, batchText: string): string => {
+    let h = 5381;
+    for (let i = 0; i < batchText.length; i++) h = ((h << 5) + h + batchText.charCodeAt(i)) >>> 0;
+    return buildCacheKey(bookId, chapter.id, 'audio-batch', AUDIO_CACHE_VERSION, voice, h.toString(36) + '-' + batchText.length);
+  };
   const cleanInkSelectionText = (value: string): string => stripFootnoteMarkers(value).replace(/\s+/g, ' ').trim();
   const normalizeInkText = (value: string): string => cleanInkSelectionText(value).toLowerCase();
 
@@ -2690,7 +2698,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     pageIndex: number,
     _pageText: string,
     sentenceMap: SentenceMap[],
-    language: string = settings.targetLanguage
+    language: string = settings.targetLanguage,
+    creditSession?: string // when set, this page's translation charge joins that shared credit line
   ): Promise<string[] | null> => {
     if (language === 'Original' || sentenceMap.length === 0) return null;
 
@@ -2750,15 +2759,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       }
 
       const missing = stillMissing();
-      // AUDIT: sentences on this page, how many weren't already cached, and whether that forces a
-      // (billed) model call. On a revisit of a translated page this should read missing=0 / model=false.
-      console.debug(`[tcache] pg${pageIndex + 1} sentences=${pageSentences.length} missing=${missing.length} modelCall=${missing.length > 0} cold=${coldMap}`);
       if (missing.length > 0) {
         const originalByNorm = new Map<string, string>(); // dedupe identical sentences within the page
         missing.forEach(s => { const n = norm(s); if (!originalByNorm.has(n)) originalByNorm.set(n, s); });
         const originals = [...originalByNorm.values()];
         const translated = normalizeTranslationArray(
-          (await translateSentences(originals, language)).map(stripLeakedTokens),
+          (await translateSentences(originals, language, creditSession)).map(stripLeakedTokens),
           originals.length,
           false
         );
@@ -2837,7 +2843,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           settings.targetLanguage
         );
         latestTranslationRequestRef.current = requestIdentity;
-        const translations = await loadOrGeneratePageTranslation(currentPage, pageText, requestSentenceMap);
+        // One session for this page-VIEW: the current page + its next-page prefetch bill into ONE line.
+        const viewSession = `Translation#${(typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(currentPage)}`;
+        const translations = await loadOrGeneratePageTranslation(currentPage, pageText, requestSentenceMap, settings.targetLanguage, viewSession);
         if (!translations) {
           setIsTranslating(false);
           return;
@@ -2852,6 +2860,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           });
           return { identity: requestIdentity, byIndex };
         });
+
+        // Prefetch ONLY the next page so turning the page is instant — billed into THIS view's line
+        // (same session), so it's one record, not a separate charge. Runs after the current page renders.
+        const nextIdx = currentPage + 1;
+        if (!ignore && nextIdx < pages.length && pages[nextIdx]?.text) {
+          try {
+            const { flatSentenceMap: nextMap } = buildPageSentenceData(pages[nextIdx].text);
+            if (nextMap.length) await loadOrGeneratePageTranslation(nextIdx, pages[nextIdx].text, nextMap, settings.targetLanguage, viewSession);
+          } catch (e) { console.warn('Next-page prefetch translation failed:', e); }
+        }
       } catch(e) {
         console.error("Translation error", e);
         if (!ignore) {
@@ -2877,41 +2895,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     settings.targetLanguage,
   ]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const prefetchTranslations = async () => {
-      if (settings.targetLanguage === 'Original' || pages.length === 0) return;
-
-      const maxPage = Math.min(pages.length - 1, currentPage + 3);
-      for (let pageIndex = currentPage + 1; pageIndex <= maxPage; pageIndex++) {
-        if (cancelled) return;
-        const page = pages[pageIndex];
-        if (!page?.text) continue;
-
-        const { flatSentenceMap: prefetchSentenceMap } = buildPageSentenceData(page.text);
-        if (prefetchSentenceMap.length === 0) continue;
-
-        try {
-          await loadOrGeneratePageTranslation(pageIndex, page.text, prefetchSentenceMap);
-        } catch (error) {
-          console.warn(`Translation prefetch failed for page ${pageIndex + 1}:`, error);
-        }
-      }
-    };
-
-    prefetchTranslations();
-    return () => { cancelled = true; };
-  }, [
-    bookId,
-    chapter.id,
-    chapter.title,
-    currentPage,
-    fileContext.content.length,
-    fileContext.sourceHash,
-    pages,
-    settings.targetLanguage,
-  ]);
+  // Next-page prefetch now runs inside the current-page translation effect above (billed into the same
+  // credit line), so a separate +3 prefetch effect is no longer needed.
 
   // Keep the per-page translation files in sync with the CURRENT pagination whenever it changes (bigger
   // font / more line spacing repacks words per page). The reader's live translation only touches the
@@ -3199,6 +3184,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         inflightAudioMap.delete(key);
         setIsGenerating(false);
         setHasInitiated(true);
+        logGenerationPartial('tts'); // stopped part-way → tag the delivered audio "(Partial)"
         return;
     }
     generatePageAudio();
@@ -3231,6 +3217,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     setAudioError(null);
 
     abortGenerationRef.current = false;
+    // Cancels in-flight TTS requests on STOP so a stopped batch isn't billed (see inflight.abort below).
+    const abortController = new AbortController();
     setIsGenerating(true);
     setHasInitiated(true);
     setGenerationProgress("INIT_VOICE_CORE...");
@@ -3313,35 +3301,85 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           batchedSentences.push(sentencesToSpeak.slice(i, i + TTS_BATCH_SIZE).join(' '));
         }
 
+        // This execution's TTS batches group into ONE "Audio generation" credit line (a re-run gets its
+        // own new line). Translation above already ran under its own 'Translation' session.
+        beginUsageSession('Audio generation');
+
         const audioResults: (string | null)[] = new Array(batchedSentences.length).fill(null);
-        let firstBatchPlayed = false;
+        let lastStreamedPrefix = 0;
+        // Longest run of finished batches starting at 0. We only ever stream/save this CONTIGUOUS
+        // prefix, so a partial always begins at the first sentence (never a stray later batch) even
+        // though batches finish out of order under concurrency.
+        const contiguousPrefixLen = () => { let k = 0; while (k < audioResults.length && audioResults[k] != null) k++; return k; };
+        const buildPrefix = () => {
+          const k = contiguousPrefixLen();
+          const truncated = audioResults.map((r, i) => (i < k ? r : null));
+          return { k, ...buildAudioFromResults(truncated, sentencesToSpeak) };
+        };
+        const streamContiguousPrefix = () => {
+          const p = buildPrefix();
+          if (p.k <= lastStreamedPrefix || p.totalBytes <= 0) return;
+          lastStreamedPrefix = p.k;
+          const url = URL.createObjectURL(pcmToWav(p.mergedBuffer.buffer, 24000));
+          setTimings(p.newTimings);
+          setAudioSrc(url);
+        };
 
         await processQueue<string, string | null>(
           batchedSentences,
           CONCURRENCY_LIMIT,
           async (batchText, idx) => {
             if (abortGenerationRef.current) return null;
+            // Reuse a previously-synthesized batch (same voice + exact text) — no charge, no API call.
+            try {
+              const cachedBatch = await getFile(batchAudioKey(capturedVoice, batchText));
+              if (cachedBatch) { const b64 = await cachedBatch.blob.text(); audioResults[idx] = b64; streamContiguousPrefix(); return b64; }
+            } catch { /* not cached → synthesize */ }
+            if (abortGenerationRef.current) return null;
             setGenerationProgress(`PACKET_${idx + 1}_OF_${batchedSentences.length}`);
-            const result = await generateSpeech(batchText, capturedVoice);
+            let result: string | null = null;
+            try {
+              result = await generateSpeech(batchText, capturedVoice, abortController.signal);
+            } catch (e: any) {
+              if (abortGenerationRef.current || e?.name === 'AbortError') return null; // stopped → not billed
+              throw e;
+            }
             audioResults[idx] = result;
-
-            // Stream: play first completed batch immediately
-            if (!firstBatchPlayed && result) {
-              firstBatchPlayed = true;
-              const partial = buildAudioFromResults(audioResults, sentencesToSpeak);
-              if (partial.totalBytes > 0) {
-                const blob = pcmToWav(partial.mergedBuffer.buffer, 24000);
-                const url = URL.createObjectURL(blob);
-                setTimings(partial.newTimings);
-                setAudioSrc(url);
-              }
+            if (result) {
+              // Persist this batch so a re-run / resume reuses it with no re-charge (translation-style).
+              saveFile(batchAudioKey(capturedVoice, batchText), new Blob([result], { type: 'text/plain' }), {
+                filename: `voice-batch-${capturedChapterLabel}-${capturedVoice.toUpperCase()}.txt`,
+                mimeType: 'text/plain', timestamp: Date.now(),
+                bookId: capturedBookId, bookTitle: capturedBookTitle, chapterId: capturedChapterId,
+                componentSource: 'audiobook', fileType: 'audio-batch',
+              }).catch(() => {});
+              streamContiguousPrefix();
             }
             return result;
           },
           () => abortGenerationRef.current
         );
 
-        if (abortGenerationRef.current) return null;
+        if (abortGenerationRef.current) {
+          // Stopped part-way: save the delivered contiguous prefix under the page key so returning to
+          // the page replays it (instead of losing it). The per-batch cache above already lets a re-run
+          // reuse the finished batches without re-charging.
+          const p = buildPrefix();
+          if (p.k > 0 && p.totalBytes > 0) {
+            const pblob = pcmToWav(p.mergedBuffer.buffer, 24000);
+            saveFile(genKey, pblob, {
+              filename: `voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}.wav`,
+              mimeType: 'audio/wav', timestamp: Date.now(),
+              bookId: capturedBookId, bookTitle: capturedBookTitle, chapterId: capturedChapterId,
+              componentSource: 'audiobook', fileType: 'audio',
+            }).catch(e => console.warn('Partial audio cache save failed:', e));
+            deleteMatchingKeys(staleAudioMatch).catch(() => {});
+            timingsCache.set(genKey, p.newTimings);
+            writeStoredTimings(genKey, p.newTimings);
+            return { blob: pblob, timings: p.newTimings };
+          }
+          return null;
+        }
 
         // Build final complete audio
         const final = buildAudioFromResults(audioResults, sentencesToSpeak);
@@ -3376,11 +3414,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         setGenerationProgress("");
         return null;
       } finally {
+        endUsageSession();
         inflightAudioMap.delete(genKey);
       }
     })();
 
-    inflightAudioMap.set(genKey, { promise: genPromise, abort: () => { abortGenerationRef.current = true; } });
+    inflightAudioMap.set(genKey, { promise: genPromise, abort: () => { abortGenerationRef.current = true; abortController.abort(); } });
 
     try {
       const result = await genPromise;

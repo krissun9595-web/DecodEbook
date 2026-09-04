@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon, Globe, Archive, PlayCircle, Play, Square, Maximize, ChevronLeft, ChevronRight, Copy, Share2 } from 'lucide-react';
 import { Concept, Chapter, FileContext } from '../types';
-import { extractConcepts, generateConceptImage } from '../services/gemini';
+import { extractConcepts, generateConceptImage, logGenerationPartial } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { CreditNotice } from './ui/CreditNotice';
@@ -154,6 +154,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
       abortRef.current = true;
       generatingRef.current = false;
       setIsGeneratingAll(false);
+      logGenerationPartial('generateImage'); // stopped part-way → tag delivered images "(Partial)"
       return;
     }
 

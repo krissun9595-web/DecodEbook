@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, RefreshCw, Play, Pause, RotateCw, Volume2, VolumeX, Maximize2, Minimize2, Gauge, Share2 } from 'lucide-react';
 import { Chapter, FileContext } from '../types';
-import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel } from '../services/gemini';
+import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel, logGenerationPartial } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { StatusMessage } from './ui/StatusMessage';
 import { CreditNotice } from './ui/CreditNotice';
@@ -87,6 +87,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
         abortRef.current = true;
         setIsGenerating(false);
         setStatus("");
+        logGenerationPartial(getVideoModel().startsWith('dreamina-') || getVideoModel().startsWith('doubao-seedance') ? 'videoSeedance' : 'videoVeo');
         return;
     }
     setError(null);
