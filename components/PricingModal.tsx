@@ -231,22 +231,25 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
     try { localStorage.setItem('generation_mode', next); } catch {}
     onModeChange?.(next);
   };
-  // Complete, per-MODE credit costs for the main functions, from the same cost-derived math as billing
+  // Complete, per-MODE credit RANGES for the main functions, from the same cost-derived math as billing
   // (the mode swaps the model → the price). Text uses its token footprint, media its per-unit rate; TTS
-  // is identical in both modes. These are TYPICAL values — the real charge scales with actual length.
+  // is identical in both modes. Ranges span a short vs long input — the real charge scales with length.
   const IMG_MODEL = { balanced: 'gemini-2.5-flash-image', premium: 'gemini-3-pro-image' };
   const VID_MODEL = { balanced: 'dreamina-seedance-2-0-mini', premium: 'veo-3.1-fast' };
   const TTS_MODEL = 'gemini-3.1-flash-tts';
-  const cost = (action: string, model: string, u: any = {}) => creditsForAction(action, model, u);
+  const c = (action: string, model: string, u: any = {}) => creditsForAction(action, model, u);
+  const fmt = (lo: number, hi: number, unit: string) => `${lo === hi ? lo : `${lo}–${hi}`} ${unit}`;
+  // Translate is footprint-billed per batch (~10 sentences); a page is roughly 1–3 batches.
+  const trB = c('translate', resolveModel('translate', 'balanced'));
+  const trP = c('translate', resolveModel('translate', 'premium'));
   const modeRows = [
-    { label: 'Translate · page',   b: cost('translate', resolveModel('translate', 'balanced')),               p: cost('translate', resolveModel('translate', 'premium')) },
-    { label: 'Definition',         b: cost('quickDefinition', resolveModel('quickDefinition', 'balanced')),    p: cost('quickDefinition', resolveModel('quickDefinition', 'premium')) },
-    { label: 'Chat · message',     b: cost('chat', resolveModel('chat', 'balanced')),                          p: cost('chat', resolveModel('chat', 'premium')) },
-    { label: 'Read-aloud · page',  b: cost('tts', TTS_MODEL, { chars: 1500 }),                                 p: cost('tts', TTS_MODEL, { chars: 1500 }) },
-    { label: 'Podcast · episode',  b: cost('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 8000, outTok: 8000 }) + cost('podcastAudio', TTS_MODEL, { chars: 4000 }),
-                                    p: cost('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 8000, outTok: 8000 }) + cost('podcastAudio', TTS_MODEL, { chars: 4000 }) },
-    { label: 'Concept image',      b: cost('generateImage', IMG_MODEL.balanced, { images: 1 }),                p: cost('generateImage', IMG_MODEL.premium, { images: 1 }) },
-    { label: 'Video · 8s clip',    b: cost('videoSeedance', VID_MODEL.balanced, { seconds: 8 }),               p: cost('videoVeo', VID_MODEL.premium, { seconds: 8 }) },
+    { module: 'READER',      fn: 'Translate',  b: fmt(trB, trB * 3, 'per page'), p: fmt(trP, trP * 3, 'per page') },
+    { module: 'READER',      fn: 'Definition', b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup') },
+    { module: 'ASSISTANT',   fn: 'Chat',       b: fmt(c('chat', resolveModel('chat', 'balanced'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'balanced'), { inTok: 1600, outTok: 800 }), 'per message'), p: fmt(c('chat', resolveModel('chat', 'premium'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'premium'), { inTok: 1600, outTok: 800 }), 'per message') },
+    { module: 'VOICE_SYNTH', fn: 'Audio',      b: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page'), p: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page') },
+    { module: 'NET_CAST',    fn: 'Podcast',    b: fmt(c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode'), p: fmt(c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode') },
+    { module: 'VISUAL_CORE', fn: 'Image',      b: fmt(c('generateImage', IMG_MODEL.balanced, { images: 1 }), c('generateImage', IMG_MODEL.balanced, { images: 1 }), 'per image'), p: fmt(c('generateImage', IMG_MODEL.premium, { images: 1 }), c('generateImage', IMG_MODEL.premium, { images: 1 }), 'per image') },
+    { module: 'CINE_RENDER', fn: 'Video',      b: fmt(c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), 'per clip'), p: fmt(c('videoVeo', VID_MODEL.premium, { seconds: 8 }), c('videoVeo', VID_MODEL.premium, { seconds: 8 }), 'per clip') },
   ];
 
   return (
@@ -323,25 +326,27 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-5' : ''}`} />
                     </button>
                   </div>
-                  <div className="mt-3 space-y-2 text-[10px] text-zinc-600 font-mono">
-                    <p>{genMode === 'premium'
+                  <div className="mt-3 space-y-2 text-zinc-600 font-mono">
+                    <p className="text-[10px]">{genMode === 'premium'
                       ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
                       : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
-                    <div className="space-y-0.5">
-                      <div className="flex items-center text-[9px] uppercase tracking-wider text-zinc-700 pb-0.5 border-b border-zinc-800/60">
-                        <span className="flex-1">Typical cost</span>
-                        <span className={`w-14 text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
-                        <span className={`w-14 text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
+                    <div className="space-y-0.5 text-[9px]">
+                      <div className="flex items-center gap-2 uppercase tracking-wider text-zinc-700 pb-0.5 border-b border-zinc-800/60">
+                        <span className="w-[70px]">Module</span>
+                        <span className="flex-1">Function</span>
+                        <span className={`w-[100px] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
+                        <span className={`w-[100px] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
                       </div>
                       {modeRows.map(r => (
-                        <div key={r.label} className="flex items-center text-zinc-500">
-                          <span className="flex-1 truncate">{r.label}</span>
-                          <span className={`w-14 text-right ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.b}</span>
-                          <span className={`w-14 text-right ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.p}</span>
+                        <div key={r.fn} className="flex items-center gap-2">
+                          <span className="w-[70px] text-zinc-600 truncate">{r.module}</span>
+                          <span className="flex-1 text-zinc-400 truncate">{r.fn}</span>
+                          <span className={`w-[100px] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.b}</span>
+                          <span className={`w-[100px] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.p}</span>
                         </div>
                       ))}
                     </div>
-                    <p>Typical credits per action — the real charge scales with length. TTS (read-aloud/podcast audio) is the same in both modes. You're only charged when you generate; re-opening a saved result is free.</p>
+                    <p className="text-[9px]">Typical credits per action — the real charge scales with length. TTS (audio/podcast) is the same in both modes. You're only charged when you generate; re-opening a saved result is free.</p>
                   </div>
                 </div>
               </div>
