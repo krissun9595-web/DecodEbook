@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, Modality, Chat, Content, Part } from "@google/genai";
+import { GoogleGenAI, Type, Modality, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
 import { creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from "./pricing";
@@ -68,7 +68,9 @@ export const FUNCTION_MODELS: Record<string, string> = {
   quickDefinition:      'gemini-3-flash-preview',
 };
 export const modelFor = (fn: string): string => FUNCTION_MODELS[fn] || DEFAULT_TEXT_MODEL;
-const getDirectKey = () => _userApiKey || process.env.API_KEY || '';
+// Direct (non-proxy) provider access is ONLY for a key the user pastes themselves. There is no
+// build-time/bundled key fallback — the server key stays server-side behind the /api/gemini proxy.
+const getDirectKey = () => _userApiKey || '';
 const useProxy = () => !getDirectKey();
 const isGeminiModel = (model?: string) => { const m = model || _selectedModel; return !m.startsWith('gpt-') && !m.startsWith('claude-') && !m.startsWith('deepseek'); };
 // gemini-3.x Pro is a reasoning model that ONLY works with thinking (thinkingBudget 0 →
@@ -80,8 +82,9 @@ const isMissingProviderKeyError = (message: string): boolean =>
 
 interface TokenInfo {
   total: number;
-  input: number;
+  input: number;   // TOTAL prompt tokens (includes any cached prefix)
   output: number;
+  cached?: number; // subset of input served from Gemini's implicit context cache (billed at 10%)
 }
 
 // Credits charged + real cost are BOTH derived from the model's unit price
@@ -105,19 +108,28 @@ export const beginUsageSession = (label: string): void => {
 };
 export const endUsageSession = (): void => { _usageSession = null; };
 
-const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string, extraUnits?: { chars?: number; cjkChars?: number; seconds?: number; images?: number }, sessionId?: string) => {
+// A unique idempotency key per charge, so the durable client write (supabase.ts) can re-send a
+// row after a tab-close / crash without double-charging (ON CONFLICT DO NOTHING on usage_id).
+const newUsageId = (): string => {
+  try { return (crypto as any).randomUUID(); } catch { return `u-${Date.now()}-${Math.round(Math.random() * 1e9)}`; }
+};
+
+const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: string, extraUnits?: { chars?: number; cjkChars?: number; seconds?: number; images?: number }, sessionId?: string, usageId?: string) => {
   const t: TokenInfo = typeof tokens === 'number'
     ? { total: tokens, input: 0, output: 0 }
     : tokens;
   const m = model || _selectedModel;
-  const units = { inTok: t.input, outTok: t.output, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT, ...(extraUnits || {}) };
+  const units = { inTok: t.input, outTok: t.output, cachedTok: t.cached ?? 0, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT, ...(extraUnits || {}) };
   const creditsCost = creditsForAction(action, m, units);
   const costCents = costCentsForAction(action, m, units);
   // Explicit sessionId wins over the ambient one — used to group a whole page-view's translation
   // (current page + its prefetch) into ONE credit line, immune to the deferred translation job chain.
   const session = sessionId ?? _usageSession;
+  // Explicit usageId (passed by a caller that also sent it to the worker) lets the worker's Phase-A
+  // dual-write dedupe against this client write on the SAME id; otherwise generate a fresh one.
+  const uid = usageId || newUsageId();
   getUser().then(user => {
-    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost, m, _currentBook || null, session);
+    if (user) logUsage(user.id, action, t.total, costCents, t.input, t.output, creditsCost, m, _currentBook || null, session, uid);
   }).catch(() => {});
 };
 
@@ -127,8 +139,9 @@ const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: stri
 export const PARTIAL_MARKER = '__partial__';
 export const logGenerationPartial = (action: string) => {
   const session = _usageSession;
+  const usageId = newUsageId();
   getUser().then(user => {
-    if (user) logUsage(user.id, action, 0, 0, 0, 0, 0, PARTIAL_MARKER, _currentBook || null, session);
+    if (user) logUsage(user.id, action, 0, 0, 0, 0, 0, PARTIAL_MARKER, _currentBook || null, session, usageId);
   }).catch(() => {});
 };
 
@@ -137,7 +150,9 @@ const extractTokens = (response: any): TokenInfo => {
   if (!meta) return { total: 0, input: 0, output: 0 };
   const input = meta.promptTokenCount || 0;
   const output = meta.candidatesTokenCount || 0;
-  return { total: input + output, input, output };
+  // Implicit-cache hit count: the slice of `input` Gemini served from cache (billed at 10%).
+  const cached = meta.cachedContentTokenCount || 0;
+  return { total: input + output, input, output, cached };
 };
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
@@ -146,9 +161,29 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   return session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
 };
 
-const getAi = async () => {
+// Phase-A metering headers — tell the worker how to record this call's charge (it dedupes on
+// usageId, so this is a no-op double vs the client's own write). Reused by getAi() (SDK calls) AND
+// the direct media fetches (image / video / seedance). Text tokens come from the response; media
+// units (chars/seconds/images) are passed here.
+type UsageMeta = { usageId?: string; action?: string; model?: string; book?: string; session?: string; chars?: number; cjkChars?: number; seconds?: number; images?: number };
+const usageHeaders = (meta?: UsageMeta): Record<string, string> => {
+  const h: Record<string, string> = {};
+  if (!meta?.usageId) return h;
+  h['X-Db-Usage-Id'] = meta.usageId;
+  if (meta.action)          h['X-Db-Action']  = meta.action;
+  if (meta.model)           h['X-Db-Model']   = meta.model;
+  if (meta.book)            h['X-Db-Book']    = encodeURIComponent(meta.book); // may be non-ASCII
+  if (meta.session)         h['X-Db-Session'] = meta.session;
+  if (meta.chars != null)   h['X-Db-Chars']   = String(meta.chars);
+  if (meta.cjkChars != null)h['X-Db-Cjk']     = String(meta.cjkChars);
+  if (meta.seconds != null) h['X-Db-Seconds'] = String(meta.seconds);
+  if (meta.images != null)  h['X-Db-Images']  = String(meta.images);
+  return h;
+};
+
+const getAi = async (meta?: UsageMeta) => {
   if (useProxy()) {
-    const headers = await getAuthHeaders();
+    const headers = { ...(await getAuthHeaders()), ...usageHeaders(meta) };
     return new GoogleGenAI({
       apiKey: 'proxy',
       httpOptions: { baseUrl: `${window.location.origin}/api/gemini`, headers },
@@ -164,24 +199,29 @@ const callUnifiedLLM = async (params: {
   generationConfig?: any;
   creditAction?: string;
   creditSession?: string; // groups this call's charge under a specific credit-history line
+  signal?: AbortSignal;   // optional cancellation (used by chat); existing callers omit it
 }): Promise<string> => {
   const model = params.model || resolveModel(params.creditAction);
 
   if (isGeminiModel(model)) {
-    const ai = await getAi();
+    const usageId = newUsageId();
+    const ai = await getAi({ usageId, action: params.creditAction || 'translate', model, book: _currentBook || undefined, session: params.creditSession });
     const config: any = {};
     if (params.systemInstruction) config.systemInstruction = params.systemInstruction;
     if (params.generationConfig) Object.assign(config, params.generationConfig);
     if (!modelRequiresThinking(model)) config.thinkingConfig = { thinkingBudget: 0 };
+    if (params.signal) config.abortSignal = params.signal;
     const response = await ai.models.generateContent({ model, contents: params.contents, config });
-    trackUsage(params.creditAction || 'translate', extractTokens(response), model, undefined, params.creditSession);
+    trackUsage(params.creditAction || 'translate', extractTokens(response), model, undefined, params.creditSession, usageId);
     return response.text || '';
   }
 
-  const headers = await getAuthHeaders();
+  const llmUsageId = newUsageId();
+  const headers = { ...(await getAuthHeaders()), ...usageHeaders({ usageId: llmUsageId, action: params.creditAction || 'translate', model, book: _currentBook || undefined, session: params.creditSession }) };
   const res = await fetch('/api/llm/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
+    signal: params.signal,
     body: JSON.stringify({
       model,
       contents: Array.isArray(params.contents) ? params.contents : [params.contents],
@@ -206,7 +246,7 @@ const callUnifiedLLM = async (params: {
     total: usage.total_tokens || 0,
     input: usage.prompt_tokens || 0,
     output: usage.completion_tokens || 0,
-  }, model, undefined, params.creditSession);
+  }, model, undefined, params.creditSession, llmUsageId);
   return data.text || '';
 };
 
@@ -304,6 +344,29 @@ const getStructureFilePart = (file: FileContext): Part => {
   return { text: buildStructureAnalysisText(file.content) };
 };
 
+// Chapter-scoped context for per-chapter generations (concept extraction, video prompt). These
+// ask the model about ONE chapter, so sending the whole book is wasted context (~47 credits each).
+// Send just this chapter's text when we can slice it; fall back to the full file otherwise.
+const getChapterPart = (file: FileContext, chapter: Chapter): Part => {
+  try {
+    if (file.isText && file.content) {
+      const t = extractChapterFromSource(file.content, chapter);
+      if (t && t.trim().length > 0) return { text: t };
+    }
+  } catch {}
+  return getFilePart(file);
+};
+
+// Guard: a failed/empty download (e.g. a proxy error JSON ~32 bytes, or a missing URL) must never
+// be returned/saved as a "video". Reject anything that isn't a real binary blob so the caller fails
+// the generation instead of persisting a broken file.
+const assertVideoBlob = async (response: Response): Promise<Blob> => {
+  if (!response.ok) throw new Error('Video download failed');
+  const blob = await response.blob();
+  if (blob.size < 1024 || /application\/json|text\//i.test(blob.type)) throw new Error('Video download returned no data');
+  return blob;
+};
+
 // On-demand figure translation: read the text baked INTO a figure image (diagram labels, captions)
 // and translate each, returning normalized bounding boxes so the reader can overlay the translations.
 export const translateFigureText = async (
@@ -314,7 +377,8 @@ export const translateFigureText = async (
 ): Promise<{ box: [number, number, number, number]; original: string; translated: string }[]> => {
   try {
     return await withRetry(async () => {
-      const ai = await getAi();
+      const usageId = newUsageId();
+      const ai = await getAi({ usageId, action: 'translateFigureText', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: {
@@ -347,7 +411,7 @@ export const translateFigureText = async (
           },
         },
       });
-      trackUsage('translateFigureText', extractTokens(response), 'gemini-3-flash-preview');
+      trackUsage('translateFigureText', extractTokens(response), 'gemini-3-flash-preview', undefined, undefined, usageId);
       const raw = response.text;
       if (!raw) return [];
       const data = safeJsonParse<{ labels?: any[] }>(raw);
@@ -381,7 +445,8 @@ export const redrawFigureTranslated = async (
   const ratio = width && height ? closestRatio(width, height) : undefined;
   try {
     return await withRetry(async () => {
-      const ai = await getAi();
+      const usageId = newUsageId();
+      const ai = await getAi({ usageId, action: 'redrawFigureTranslated', model: _imageModel, book: _currentBook || undefined, session: _usageSession || undefined, images: 1 });
       const response = await ai.models.generateContent({
         model: _imageModel,
         contents: {
@@ -392,7 +457,7 @@ export const redrawFigureTranslated = async (
         },
         config: { abortSignal: signal, ...(ratio ? { imageConfig: { aspectRatio: ratio } } : {}) } as any,
       });
-      trackUsage('redrawFigureTranslated', extractTokens(response), _imageModel);
+      trackUsage('redrawFigureTranslated', extractTokens(response), _imageModel, undefined, undefined, usageId);
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
       }
@@ -406,7 +471,8 @@ export const redrawFigureTranslated = async (
 export const analyzeBookStructure = async (file: FileContext): Promise<BookStructure> => {
   try {
     return await withRetry(async () => {
-      const ai = await getAi();
+      const usageId = newUsageId();
+      const ai = await getAi({ usageId, action: 'analyzeBookStructure', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
 
       // Switched to gemini-3-flash-preview to prevent 429 Resource Exhausted errors on Pro quota
       const response = await ai.models.generateContent({
@@ -447,7 +513,7 @@ export const analyzeBookStructure = async (file: FileContext): Promise<BookStruc
         }
       });
 
-      trackUsage('analyzeBookStructure', extractTokens(response), 'gemini-3-flash-preview');
+      trackUsage('analyzeBookStructure', extractTokens(response), 'gemini-3-flash-preview', undefined, undefined, usageId);
       if (!response.text) throw new Error("Empty response from model");
 
       const data = safeJsonParse<any>(response.text);
@@ -726,8 +792,9 @@ export const generatePodcastAudio = async (
   language: string = 'English'
 ): Promise<{ audio: string; script: string; episodeTitle: string }> => {
   return withRetry(async () => {
-    const ai = await getAi();
     const scriptModel = resolveModel('podcastScript');
+    const usageId = newUsageId();
+    const ai = await getAi({ usageId, action: 'podcastScript', model: scriptModel, book: _currentBook || undefined, session: _usageSession || undefined });
     const scriptResponse = await ai.models.generateContent({
       model: scriptModel,
       contents: {
@@ -750,7 +817,7 @@ export const generatePodcastAudio = async (
       }
     });
 
-    trackUsage('podcastScript', extractTokens(scriptResponse), scriptModel);
+    trackUsage('podcastScript', extractTokens(scriptResponse), scriptModel, undefined, undefined, usageId);
     const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
 
@@ -826,21 +893,22 @@ export const generatePodcastAudio = async (
     }
     const finalAudio = window.btoa(binary);
 
-    const totalChars = dialogueLines.reduce((sum, l) => sum + l.text.length, 0);
-    const totalCjk = dialogueLines.reduce((sum, l) => sum + countCjkChars(l.text), 0);
-    trackUsage('podcastAudio', { total: totalChars, input: totalChars, output: dialogueLines.length }, _ttsModel, { chars: totalChars, cjkChars: totalCjk });
+    // NOTE: the podcast audio is billed by the per-line generateSpeech('tts') calls above (each is a
+    // real TTS API call). The old aggregate trackUsage('podcastAudio') here double-charged the same
+    // dialogue, so it's removed.
     return { audio: finalAudio, script: parsedResponse.script, episodeTitle: parsedResponse.episodeTitle };
   });
 };
 
 export const extractConcepts = async (file: FileContext, chapter: Chapter): Promise<Concept[]> => {
   return withRetry(async () => {
-    const ai = await getAi();
+    const usageId = newUsageId();
+    const ai = await getAi({ usageId, action: 'extractConcepts', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
         parts: [
-          getFilePart(file),
+          getChapterPart(file, chapter),
           { text: `Identify 3 key concepts from "${chapter.title}". Return as JSON array of objects with 'term', 'definition', and 'visualPrompt'.` }
         ]
       },
@@ -861,7 +929,7 @@ export const extractConcepts = async (file: FileContext, chapter: Chapter): Prom
         }
       }
     });
-    trackUsage('extractConcepts', extractTokens(response), 'gemini-3-flash-preview');
+    trackUsage('extractConcepts', extractTokens(response), 'gemini-3-flash-preview', undefined, undefined, usageId);
     return safeJsonParse<Concept[]>(response.text || "[]");
   });
 };
@@ -899,7 +967,8 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
   }
 
   return withRetry(async () => {
-    const ai = await getAi();
+    const usageId = newUsageId();
+    const ai = await getAi({ usageId, action: 'generateImage', model: _imageModel, book: _currentBook || undefined, session: _usageSession || undefined, images: 1 });
     const response = await ai.models.generateContent({
       model: _imageModel,
       contents: { parts: [{ text: `${style} style: ${visualPrompt}` }] },
@@ -910,7 +979,7 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
           }
       }
     });
-    trackUsage('generateImage', extractTokens(response), _imageModel);
+    trackUsage('generateImage', extractTokens(response), _imageModel, undefined, undefined, usageId);
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
@@ -949,7 +1018,9 @@ export const translateDictionary = async (entries: DictionaryEntry[], targetLang
 // TTS uses Gemini flash TTS in BOTH modes.
 export const generateSpeech = async (text: string, voiceName: string = 'Kore', signal?: AbortSignal): Promise<string> => {
   return withRetry(async () => {
-    const ai = await getAi();
+    const usageId = newUsageId();
+    const cjk = countCjkChars(text);
+    const ai = await getAi({ usageId, action: 'tts', model: _ttsModel, book: _currentBook || undefined, session: _usageSession || undefined, chars: text.length, cjkChars: cjk });
     const response = await ai.models.generateContent({
       model: _ttsModel,
       contents: [{ parts: [{ text }] }],
@@ -965,7 +1036,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore', s
         abortSignal: signal,
       },
     });
-    trackUsage('tts', extractTokens(response), _ttsModel, { chars: text.length, cjkChars: countCjkChars(text) });
+    trackUsage('tts', extractTokens(response), _ttsModel, { chars: text.length, cjkChars: cjk }, undefined, usageId);
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) throw new Error("Failed to generate audio");
     return base64Audio;
@@ -1084,14 +1155,22 @@ export const generateSummaryVideo = async (
   language: string = 'English',
   resolution: '720p' | '1080p' = '720p'
 ): Promise<Blob> => {
-  return withRetry(async () => {
+  // One per-execution session so the video prompt + the render fold into ONE "Video generation"
+  // history line, and two separate videos never merge into one.
+  beginUsageSession('Video generation');
+  try {
+  return await withRetry(async () => {
     const ai = await getAi();
     onStatus("Crafting visual narrative...");
-    const promptResponse = await ai.models.generateContent({
+    // Dedicated client for the prompt call ONLY, so the worker meters videoPrompt (a text
+    // generateContent — safe to buffer) without tagging the generateVideos/poll requests.
+    const vpUsageId = newUsageId();
+    const promptAi = await getAi({ usageId: vpUsageId, action: 'videoPrompt', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
+    const promptResponse = await promptAi.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
         parts: [
-          getFilePart(file),
+          getChapterPart(file, chapter),
           { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
         ]
       },
@@ -1099,10 +1178,15 @@ export const generateSummaryVideo = async (
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
-    trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview');
+    trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview', undefined, undefined, vpUsageId);
     const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
 
     onStatus("Transmitting to Veo Core...");
+    // Meter Veo at COMPLETION: poll the operation on a metered client so the worker records the
+    // charge when the operation reports done. The worker reads `done` from a CLONE and streams the
+    // original body untouched (safe — unlike the earlier buffer-and-return that broke playback).
+    const usageId = newUsageId();
+    const pollAi = await getAi({ usageId, action: 'videoVeo', model: _videoModel, book: _currentBook || undefined, session: _usageSession || undefined, seconds: VIDEO_SECONDS_DEFAULT });
     let operation = await ai.models.generateVideos({
       model: _videoModel,
       prompt: videoPrompt,
@@ -1116,12 +1200,13 @@ export const generateSummaryVideo = async (
     while (!operation.done) {
       onStatus("Synthesizing temporal data...");
       await new Promise(resolve => setTimeout(resolve, 10000));
-      operation = await ai.operations.getVideosOperation({operation: operation});
+      operation = await pollAi.operations.getVideosOperation({operation: operation});
     }
 
-    trackUsage('videoVeo', { total: 0, input: videoPrompt.length, output: 0 }, _videoModel);
+    trackUsage('videoVeo', { total: 0, input: videoPrompt.length, output: 0 }, _videoModel, undefined, undefined, usageId);
     onStatus("Finalizing transmission...");
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    if (!downloadLink) throw new Error('Video generation returned no download URL');
     const authHeaders = await getAuthHeaders();
     const response = useProxy()
       ? await fetch('/api/gemini/video-download', {
@@ -1132,8 +1217,11 @@ export const generateSummaryVideo = async (
       : await fetch(downloadLink, {
           headers: { 'x-goog-api-key': getDirectKey() },
         });
-    return await response.blob();
+    return await assertVideoBlob(response);
   });
+  } finally {
+    endUsageSession();
+  }
 };
 
 export const generateSeedanceVideo = async (
@@ -1144,19 +1232,23 @@ export const generateSeedanceVideo = async (
   language: string = 'English',
   resolution: '720p' | '1080p' = '720p'
 ): Promise<Blob> => {
-  const ai = await getAi();
+  // One per-execution session so prompt + render fold into ONE "Video generation" line.
+  beginUsageSession('Video generation');
+  try {
   onStatus("Crafting visual narrative...");
-  const promptResponse = await ai.models.generateContent({
+  const vpUsageId = newUsageId();
+  const promptAi = await getAi({ usageId: vpUsageId, action: 'videoPrompt', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
+  const promptResponse = await promptAi.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        getFilePart(file),
+        getChapterPart(file, chapter),
         { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
       ]
     },
     config: { thinkingConfig: { thinkingBudget: 0 } }
   });
-  trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview');
+  trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview', undefined, undefined, vpUsageId);
   const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
 
   onStatus("Transmitting to Seedance Core...");
@@ -1176,6 +1268,12 @@ export const generateSeedanceVideo = async (
   if (createRes.status === 429) throw new Error(INSUFFICIENT_CREDITS);
   if (!createRes.ok || !taskId) throw new Error(error || 'Failed to create Seedance task');
 
+  // Meter at COMPLETION: the poll requests carry the metering headers so the worker records the
+  // charge on the poll that reports 'succeeded' (not on download). Same usageId as the client's
+  // trackUsage below → deduped to one row.
+  const seedanceAction = _videoModel.includes('fast') ? 'videoSeedanceFast' : 'videoSeedance';
+  const usageId = newUsageId();
+  const dbHeaders = usageHeaders({ usageId, action: seedanceAction, model: _videoModel, book: _currentBook || undefined, session: _usageSession || undefined, seconds: VIDEO_SECONDS_DEFAULT });
   let status = 'queued';
   let videoUrl: string | null = null;
   let tokensUsed = 0;
@@ -1184,7 +1282,7 @@ export const generateSeedanceVideo = async (
     await new Promise(resolve => setTimeout(resolve, 10000));
     const pollRes = await fetch('/api/seedance/poll', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      headers: { 'Content-Type': 'application/json', ...authHeaders, ...dbHeaders },
       body: JSON.stringify({ taskId }),
     });
     const pollData = await pollRes.json() as any;
@@ -1194,8 +1292,7 @@ export const generateSeedanceVideo = async (
   }
 
   if (status === 'failed' || !videoUrl) throw new Error('Seedance video generation failed');
-  const seedanceAction = _videoModel.includes('fast') ? 'videoSeedanceFast' : 'videoSeedance';
-  trackUsage(seedanceAction, { total: tokensUsed, input: videoPrompt.length, output: 0 }, _videoModel);
+  trackUsage(seedanceAction, { total: tokensUsed, input: videoPrompt.length, output: 0 }, _videoModel, undefined, undefined, usageId);
 
   onStatus("Finalizing transmission...");
   const dlRes = await fetch('/api/seedance/download', {
@@ -1203,45 +1300,43 @@ export const generateSeedanceVideo = async (
     headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({ url: videoUrl }),
   });
-  return await dlRes.blob();
+  return await assertVideoBlob(dlRes);
+  } finally {
+    endUsageSession();
+  }
 };
 
-export const createChatSession = async (file: FileContext, history: Content[] = []): Promise<Chat> => {
-  const ai = await getAi();
-  const chatModel = resolveModel('chat');
-  return ai.chats.create({
-    model: chatModel,
-    config: {
-      systemInstruction: "You are a reading assistant. Answer questions strictly based on the provided document.",
-      ...(modelRequiresThinking(chatModel) ? {} : { thinkingConfig: { thinkingBudget: 0 } })
-    },
-    history: [
-      {
-        role: 'user',
-        parts: [getFilePart(file)]
-      },
-      ...history
-    ]
+// Stateless chat session: holds the document context + running conversation history. Each turn is a
+// fresh callUnifiedLLM call (Gemini is stateless under the hood, so this is token-equivalent to the
+// old ai.chats.sendMessage) — which means every message gets its own usage_id and is worker-metered
+// like every other generation (needed for server-authoritative billing). Same external interface as
+// before, so AIAssistant only changes the state type.
+const CHAT_SYSTEM_INSTRUCTION = "You are a reading assistant. Answer strictly based on the provided document. Format replies in clean Markdown so they're easy to scan: use short paragraphs, bullet points or numbered lists when listing multiple items or steps, and **bold** for key terms. Never dump everything into one dense block.";
+export interface ChatSession { docParts: Part[]; history: Content[]; }
+
+export const createChatSession = async (file: FileContext, history: Content[] = []): Promise<ChatSession> => {
+  return { docParts: [getFilePart(file)], history: [...history] };
+};
+
+export const sendMessageToChat = async (chat: ChatSession, message: string | Part[], signal?: AbortSignal): Promise<string> => {
+  const userParts: Part[] = typeof message === 'string' ? [{ text: message }] : message;
+  // The document is the first user turn (as before), then the accumulated dialogue, then this message.
+  const contents: Content[] = [
+    { role: 'user', parts: chat.docParts },
+    ...chat.history,
+    { role: 'user', parts: userParts },
+  ];
+  const text = await callUnifiedLLM({
+    model: resolveModel('chat'),
+    contents,
+    systemInstruction: CHAT_SYSTEM_INSTRUCTION,
+    creditAction: 'chat',
+    creditSession: `Chat#${newUsageId()}`, // one credit-history line per message
+    signal,
   });
-};
-
-export const sendMessageToChat = async (chat: Chat, message: string | Part[], signal?: AbortSignal): Promise<string> => {
-  return withRetry(async () => {
-    const messageContent = typeof message === 'string' ? { message } : { message: { parts: message } };
-    
-    let response;
-    if (signal) {
-        const abortPromise = new Promise<never>((_, reject) => {
-            signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-        });
-        // Race the SDK call against the abort signal
-        response = await Promise.race([chat.sendMessage(messageContent as any), abortPromise]);
-    } else {
-        response = await chat.sendMessage(messageContent as any);
-    }
-    
-    trackUsage('chat', extractTokens(response), resolveModel('chat'));
-    return response.text || "";
-  }, 3, 2000, signal);
+  // Persist the turn for continuity on the next message (the SDK Chat did this internally).
+  chat.history.push({ role: 'user', parts: userParts });
+  chat.history.push({ role: 'model', parts: [{ text }] });
+  return text;
 };
 

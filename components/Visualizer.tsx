@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon, Globe, Archive, PlayCircle, Play, Square, Maximize, ChevronLeft, ChevronRight, Copy, Share2 } from 'lucide-react';
 import { Concept, Chapter, FileContext } from '../types';
-import { extractConcepts, generateConceptImage, logGenerationPartial } from '../services/gemini';
+import { extractConcepts, generateConceptImage, logGenerationPartial, beginUsageSession, endUsageSession } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { CreditNotice } from './ui/CreditNotice';
@@ -13,6 +13,7 @@ import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import JSZip from 'jszip';
 import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
+import { getFileOrCloud } from '../services/figureSync';
 
 interface Props {
   chapter: Chapter;
@@ -65,7 +66,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     // Load previously-extracted concepts for this chapter so extractConcepts is never re-charged.
     (async () => {
       try {
-        const file = await getFile(conceptsKey());
+        const file = await getFileOrCloud(conceptsKey());
         if (!file || cancelled) return;
         const parsed = JSON.parse(await file.blob.text());
         if (Array.isArray(parsed) && parsed.length) setConcepts(parsed); // hasInitiated is set by the image cache-load effect (per current style)
@@ -88,7 +89,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
       for (const concept of concepts) {
         const key = buildCacheKey(bookId, chapter.id, 'concept-image', slugify(concept.term), selectedStyle, selectedRatio);
         try {
-          const file = await getFile(key);
+          const file = await getFileOrCloud(key);
           if (file && !cancelled) {
             cached[concept.term] = URL.createObjectURL(file.blob);
           }
@@ -109,7 +110,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     // Never re-charge for an image already generated at this style+ratio — load the cached one.
     if (!forceRegenerate) {
       try {
-        const file = await getFile(key);
+        const file = await getFileOrCloud(key);
         if (file) { setImages(prev => ({ ...prev, [concept.term]: URL.createObjectURL(file.blob) })); return; }
       } catch { /* not cached — fall through to generate */ }
     }
@@ -129,7 +130,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
         const imgResp = await fetch(imgUrl);
         const imgBlob = await imgResp.blob();
         saveFile(key, imgBlob, {
-          filename: `concept-${chapterFileLabel(chapter, allChapters)}-${titleCase(concept.term)}.png`,
+          filename: `concept-${chapterFileLabel(chapter, allChapters)}-${titleCase(concept.term)}-${titleCase(selectedStyle, 20)}-${selectedRatio}.png`,
           mimeType: 'image/png',
           timestamp: Date.now(),
           bookId,
@@ -160,6 +161,8 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
     abortRef.current = false;
     generatingRef.current = true;
+    beginUsageSession('Image generation'); // fold concept-extraction + all images into ONE history line
+    try {
     setCreditTier(null); // fresh attempt — clear any prior out-of-credits notice
     let activeConcepts = concepts;
 
@@ -169,7 +172,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
         // Reuse cached concepts if present (a click before the mount-load finished) — never re-charge.
         let extracted: Concept[] | null = null;
         try {
-          const file = await getFile(conceptsKey());
+          const file = await getFileOrCloud(conceptsKey());
           if (file) { const p = JSON.parse(await file.blob.text()); if (Array.isArray(p) && p.length) extracted = p; }
         } catch {}
         if (!extracted) {
@@ -178,7 +181,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
           if (!gate.ok) { setCreditTier(gate.tier); setIsInitializing(false); generatingRef.current = false; return; }
           extracted = await extractConcepts(fileContext, chapter);
           saveFile(conceptsKey(), new Blob([JSON.stringify(extracted)], { type: 'application/json' }), {
-            filename: `concepts-${chapter.id}.json`, mimeType: 'application/json', timestamp: Date.now(),
+            filename: `concepts-${chapterFileLabel(chapter, allChapters)}.json`, mimeType: 'application/json', timestamp: Date.now(),
             bookId, bookTitle, chapterId: chapter.id, componentSource: 'visualizer', fileType: 'concepts',
           }).catch(() => {});
         }
@@ -222,6 +225,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     generatingRef.current = false;
     // Reflect the just-generated images for the current style/ratio (the effect was paused).
     setHasInitiated(true);
+    } finally {
+      endUsageSession();
+    }
   };
 
   const handleNext = () => {

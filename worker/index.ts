@@ -1,4 +1,4 @@
-import { gateCost } from '../services/pricing';
+import { gateCost, creditsForAction, costCentsForAction } from '../services/pricing';
 
 interface Env {
   GEMINI_API_KEY: string;
@@ -18,6 +18,12 @@ interface Env {
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   ASSETS: { fetch: typeof fetch };
+  // Per-user generation rate limiter (KV). Optional: absent until the namespace is provisioned,
+  // in which case checkRateLimit() no-ops (safe). Bind in wrangler as `RATE_LIMIT`.
+  RATE_LIMIT?: {
+    get(key: string): Promise<string | null>;
+    put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
+  };
 }
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
@@ -34,8 +40,65 @@ const TIER_CREDITS: Record<string, number> = {
 
 const PACK_CREDITS: Record<string, number> = { S: 1000, M: 2500, L: 4000 };
 
+// --- SSRF guards for the two user-supplied-URL download proxies ---
+// A logged-in user controls the download URL, so we must restrict where the worker will fetch —
+// critically for handleVideoDownload, which attaches GEMINI_API_KEY (an unrestricted fetch there
+// leaks the key to any host the attacker names).
+function isPrivateHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h)) return true;            // loopback / RFC1918 / link-local
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;                          // 172.16–31.x
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true; // IPv6 private
+  return false;
+}
+// Returns a validated URL (https, non-internal, and — when `allow` is given — host must match an
+// allowlisted suffix) or null. Callers MUST treat null as "refuse to fetch".
+function safeFetchUrl(raw: string, allow?: string[]): URL | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:') return null;
+    if (isPrivateHost(u.hostname)) return null;
+    if (allow) {
+      const h = u.hostname.toLowerCase();
+      if (!allow.some(s => h === s || h.endsWith('.' + s))) return null;
+    }
+    return u;
+  } catch { return null; }
+}
+
+// Per-user rate limit on the generation routes. Caps runaway abuse (scripted loops burning our
+// provider budget) regardless of client-side metering. Generous enough that no human hits it.
+const RATE_LIMIT_MAX = 100;     // generation requests
+const RATE_LIMIT_WINDOW = 60;   // ...per this many seconds, per user
+async function checkRateLimit(userId: string, env: Env): Promise<Response | null> {
+  if (!env.RATE_LIMIT || !userId) return null;   // no-op until the KV namespace is bound
+  try {
+    const bucket = Math.floor(Date.now() / 1000 / RATE_LIMIT_WINDOW);
+    const key = `rl:${userId}:${bucket}`;
+    const cur = parseInt((await env.RATE_LIMIT.get(key)) || '0', 10);
+    if (cur >= RATE_LIMIT_MAX) {
+      return new Response(JSON.stringify({ error: 'Too many requests — please slow down and try again shortly.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': String(RATE_LIMIT_WINDOW), 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    // KV isn't atomic; a small overshoot during a burst is acceptable for an abuse cap.
+    await env.RATE_LIMIT.put(key, String(cur + 1), { expirationTtl: RATE_LIMIT_WINDOW * 2 });
+    return null;
+  } catch { return null; }   // a limiter failure must never break a legitimate request
+}
+
+// Constant-time hex-string compare (for the Stripe webhook signature — avoids leaking bytes via timing).
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: { waitUntil: (p: Promise<any>) => void }): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
@@ -43,7 +106,7 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, x-goog-api-key, Authorization',
+          'Access-Control-Allow-Headers': 'Content-Type, x-goog-api-key, Authorization, X-Db-Action, X-Db-Model, X-Db-Book, X-Db-Session, X-Db-Usage-Id, X-Db-Chars, X-Db-Cjk, X-Db-Seconds, X-Db-Images',
           'Access-Control-Max-Age': '86400',
         },
       });
@@ -103,24 +166,47 @@ export default {
     if (url.pathname === '/api/llm/generate') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
+      const rl = await checkRateLimit(auth.userId, env);
+      if (rl) return rl;
       const body = await request.clone().json() as any;
       const creditAction = body.creditAction || 'translate';
       const check = await checkCreditBalance(auth.userId, creditAction, env);
       if (check) return check;
-      return handleUnifiedLLM(request, env);
+      const resp = await handleUnifiedLLM(request, env);
+      // Phase-A metering for the non-Gemini text path (e.g. Balanced translate → deepseek). Read the
+      // real tokens from the clone's raw.usage; stream the original untouched.
+      const lm = usageMetaFromHeaders(request);
+      if (resp.ok && lm.usageId && ctx) {
+        ctx.waitUntil((async () => {
+          try {
+            const d = await resp.clone().json();
+            const u = d?.raw?.usage || {};
+            await recordUsage(env, auth.userId, {
+              action: lm.action || creditAction, model: lm.model || body.model || '',
+              book: lm.book, session: lm.session, usageId: lm.usageId,
+              inTok: u.prompt_tokens || 0, outTok: u.completion_tokens || 0,
+            });
+          } catch {}
+        })());
+      }
+      return resp;
     }
 
     if (url.pathname === '/api/fal/image') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
+      const rl = await checkRateLimit(auth.userId, env);
+      if (rl) return rl;
       const check = await checkCreditBalance(auth.userId, 'generateImage', env);
       if (check) return check;
-      return handleFalImage(request, env);
+      return handleFalImage(request, env, auth.userId, ctx);
     }
 
     if (url.pathname === '/api/seedance/generate') {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
+      const rl = await checkRateLimit(auth.userId, env);
+      if (rl) return rl;
       const body = await request.clone().json() as any;
       const isFast = (body.model || '').includes('fast');
       const check = await checkCreditBalance(auth.userId, isFast ? 'videoSeedanceFast' : 'videoSeedance', env);
@@ -129,23 +215,27 @@ export default {
     }
 
     if (url.pathname === '/api/seedance/poll') {
-      const authError = await verifyAuth(request, env);
-      if (authError) return authError;
-      return handleSeedancePoll(request, env);
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      return handleSeedancePoll(request, env, auth.userId, ctx);
     }
 
     if (url.pathname === '/api/seedance/download') {
-      const authError = await verifyAuth(request, env);
-      if (authError) return authError;
-      return handleSeedanceDownload(request);
+      const auth = await getUserIdFromAuth(request, env);
+      if (auth instanceof Response) return auth;
+      return handleSeedanceDownload(request, env, auth.userId, ctx);
     }
 
     if (url.pathname.startsWith('/api/gemini/')) {
       const auth = await getUserIdFromAuth(request, env);
       if (auth instanceof Response) return auth;
+      // This proxy carries the highest-volume path (Gemini text generateContent, which has no
+      // per-call credit gate) plus TTS/Veo — so the rate limit here is the main worker-side cost cap.
+      const rl = await checkRateLimit(auth.userId, env);
+      if (rl) return rl;
 
       if (url.pathname.startsWith('/api/gemini/video-download')) {
-        return handleVideoDownload(request, env);
+        return handleVideoDownload(request, env, auth.userId, ctx);
       }
       // The @google/genai SDK routes TTS + Veo through this proxy (unlike text,
       // which uses /api/llm/generate). Credit-gate those two generation calls so
@@ -158,7 +248,7 @@ export default {
         const check = await checkCreditBalance(auth.userId, 'tts', env);
         if (check) return check;
       }
-      return handleGeminiProxy(request, url, env);
+      return handleGeminiProxy(request, url, env, auth.userId, ctx);
     }
 
     return env.ASSETS.fetch(request);
@@ -166,7 +256,9 @@ export default {
 };
 
 async function verifyAuth(request: Request, env: Env): Promise<Response | null> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null;
+  // Fail CLOSED: if we can't verify tokens (auth backend not configured), reject rather than
+  // treat the request as authenticated. A misconfigured deploy must not open every route.
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return jsonError('Auth not configured', 503);
 
   const authHeader = request.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -330,7 +422,7 @@ async function callAnthropic(body: any, env: Env): Promise<Response> {
   return jsonResponse({ text, usage, raw: data });
 }
 
-async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<Response> {
+async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: string, ctx?: { waitUntil: (p: Promise<any>) => void }): Promise<Response> {
   if (!env.GEMINI_API_KEY) {
     return jsonError('API key not configured on server', 500);
   }
@@ -359,6 +451,59 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<
   const resHeaders = new Headers(response.headers);
   resHeaders.set('Access-Control-Allow-Origin', '*');
 
+  // Phase-A metering: for a TEXT generateContent (not tts) carrying a client usage id, buffer the
+  // (small JSON) response, read usageMetadata, and record the charge idempotently (deduped vs the
+  // client). Everything else streams through unchanged — tts/veo/ops responses are large and priced
+  // from the request, not the body — and with no usage id it's pure passthrough (no regression).
+  const meta = usageMetaFromHeaders(request);
+  const isGenerate = /:generateContent/.test(path);
+
+  // Veo completion: the client polls the operation through this proxy with X-Db-Action=videoVeo.
+  // CLONE the response to read `done` while the ORIGINAL body streams back UNTOUCHED (buffering +
+  // re-returning it previously corrupted the SDK's operation parse → unplayable video). Meter once,
+  // at completion (done=true); idempotent on usage_id handles repeated polls.
+  if (response.ok && !isGenerate && meta.action === 'videoVeo' && meta.usageId && meta.model && userId && ctx) {
+    const clone = response.clone();
+    ctx.waitUntil((async () => {
+      try {
+        const d = await clone.json();
+        if (d.done === true) {
+          await recordUsage(env, userId, {
+            action: 'videoVeo', model: meta.model, book: meta.book, session: meta.session,
+            usageId: meta.usageId, seconds: meta.seconds,
+          });
+        }
+      } catch {}
+    })());
+    // fall through — do NOT return a re-encoded body
+  }
+
+  // TTS + image generateContent return LARGE bodies and are priced from request units, not tokens —
+  // meter them from headers without buffering. Only genuine TEXT generateContent gets buffered.
+  const isMedia = isGenerate && (/tts/i.test(path) || /image/i.test(meta.model || '') || meta.action === 'generateImage' || meta.action === 'redrawFigureTranslated');
+  const isText = isGenerate && !isMedia;
+  if (response.ok && isText && meta.usageId && userId && ctx) {
+    const buf = await response.arrayBuffer();
+    ctx.waitUntil((async () => {
+      try {
+        const data = JSON.parse(new TextDecoder().decode(buf));
+        const um = data.usageMetadata || {};
+        await recordUsage(env, userId, {
+          action: meta.action || 'translate',
+          model: meta.model || (path.match(/models\/([^:]+):/)?.[1] ?? ''),
+          book: meta.book, session: meta.session, usageId: meta.usageId,
+          inTok: um.promptTokenCount || 0, outTok: um.candidatesTokenCount || 0,
+          cachedTok: um.cachedContentTokenCount || 0, // implicit-cache hit slice → billed at 10%
+        });
+      } catch {}
+    })());
+    return new Response(buf, { status: response.status, statusText: response.statusText, headers: resHeaders });
+  }
+
+  if (response.ok && isMedia) {
+    meterMediaFromHeaders(env, userId, request, ctx); // tts (chars) / image (images) from headers
+  }
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -366,14 +511,18 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env): Promise<
   });
 }
 
-async function handleVideoDownload(request: Request, env: Env): Promise<Response> {
+async function handleVideoDownload(request: Request, env: Env, userId?: string, ctx?: { waitUntil: (p: Promise<any>) => void }): Promise<Response> {
   if (!env.GEMINI_API_KEY) {
     return jsonError('API key not configured on server', 500);
   }
 
   try {
     const { uri } = (await request.json()) as { uri: string };
-    const response = await fetch(uri, {
+    // Veo returns file URIs on *.googleapis.com. Only fetch (and only attach the API key) when the
+    // target is an allowlisted Google host — otherwise the key would be handed to an attacker host.
+    const safe = safeFetchUrl(uri, ['googleapis.com']);
+    if (!safe) return jsonError('Invalid download URL', 400);
+    const response = await fetch(safe.toString(), {
       headers: { 'x-goog-api-key': env.GEMINI_API_KEY },
     });
     return new Response(response.body, {
@@ -388,7 +537,8 @@ async function handleVideoDownload(request: Request, env: Env): Promise<Response
 // --- Auth helper that extracts user ID ---
 
 async function getUserIdFromAuth(request: Request, env: Env): Promise<{ userId: string } | Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return { userId: '' };
+  // Fail CLOSED (see verifyAuth): no auth backend configured → reject, never return an empty userId.
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return jsonError('Auth not configured', 503);
   const authHeader = request.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return jsonError('Authentication required', 401);
   const token = authHeader.slice(7);
@@ -419,6 +569,70 @@ function supabaseAdmin(env: Env, path: string, options: RequestInit = {}) {
   });
 }
 
+// --- Phase-A server-side metering (dual-write) ---
+// The worker records the charge itself, idempotent on usage_id so it DEDUPES against the client's
+// own write (ON CONFLICT DO NOTHING via the sql/022 unique index). It only engages when the client
+// sends X-Db-Usage-Id, so older clients stay pure passthrough — no regression. Always fire-and-forget
+// (ctx.waitUntil) and error-swallowing: metering must never block or fail a generation.
+function usageMetaFromHeaders(request: Request) {
+  const h = request.headers;
+  const dec = (v: string | null) => { if (!v) return undefined; try { return decodeURIComponent(v); } catch { return v; } };
+  const num = (v: string | null) => { const n = v ? parseInt(v, 10) : NaN; return Number.isFinite(n) ? n : undefined; };
+  return {
+    usageId: h.get('X-Db-Usage-Id') || undefined,
+    action:  h.get('X-Db-Action') || undefined,
+    model:   h.get('X-Db-Model') || undefined,
+    book:    dec(h.get('X-Db-Book')),      // may contain non-ASCII → the client encodeURIComponent's it
+    session: h.get('X-Db-Session') || undefined,
+    // media billing units (text tokens come from the response instead)
+    chars:    num(h.get('X-Db-Chars')),
+    cjkChars: num(h.get('X-Db-Cjk')),
+    seconds:  num(h.get('X-Db-Seconds')),
+    images:   num(h.get('X-Db-Images')),
+  };
+}
+
+// Record a MEDIA charge from client-provided header units (chars/seconds/images) — no need to buffer
+// the large audio/video/image responses. Fire-and-forget; only engages when a usage id is present.
+function meterMediaFromHeaders(env: Env, userId: string | undefined, request: Request, ctx?: { waitUntil: (p: Promise<any>) => void }, actionOverride?: string): void {
+  const m = usageMetaFromHeaders(request);
+  const action = actionOverride || m.action;
+  if (!userId || !m.usageId || !action || !m.model || !ctx) return;
+  ctx.waitUntil(recordUsage(env, userId, {
+    action, model: m.model, book: m.book, session: m.session, usageId: m.usageId,
+    chars: m.chars, cjkChars: m.cjkChars, seconds: m.seconds, images: m.images,
+  }));
+}
+
+async function recordUsage(env: Env, userId: string, meta: {
+  action: string; model: string; book?: string; session?: string; usageId: string;
+  inTok?: number; outTok?: number; cachedTok?: number; chars?: number; cjkChars?: number; images?: number; seconds?: number;
+}): Promise<void> {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY || !userId || !meta.usageId || !meta.action || !meta.model) return;
+  try {
+    const units = {
+      inTok: meta.inTok, outTok: meta.outTok, cachedTok: meta.cachedTok, chars: meta.chars, cjkChars: meta.cjkChars,
+      images: meta.images, seconds: meta.seconds,
+    };
+    const credits = creditsForAction(meta.action, meta.model, units);
+    const costCents = costCentsForAction(meta.action, meta.model, units);
+    const row: any = {
+      user_id: userId, action: meta.action, credits_cost: credits, cost_cents: costCents, model: meta.model,
+      tokens_used: (meta.inTok || 0) + (meta.outTok || 0),
+      input_tokens: meta.inTok || 0, output_tokens: meta.outTok || 0,
+      usage_id: meta.usageId,
+    };
+    if (meta.book) row.book_title = meta.book;
+    if (meta.session) row.session_id = meta.session;
+    // ON CONFLICT (usage_id) DO NOTHING — dedupes vs the client's write.
+    await supabaseAdmin(env, '/usage_logs', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify(row),
+    });
+  } catch {}
+}
+
 // --- Tier & quota ---
 
 async function handleGetTier(userId: string, env: Env): Promise<Response> {
@@ -442,7 +656,10 @@ async function handleGetTier(userId: string, env: Env): Promise<Response> {
 }
 
 async function checkCreditBalance(userId: string, action: string, env: Env): Promise<Response | null> {
-  if (!env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  // Fail CLOSED on missing config (a deploy with no service-role key must not serve ungated).
+  // (Transient unreachability below stays fail-OPEN on purpose: don't block paying users during a
+  //  Supabase blip — the charge is still metered client-side once it recovers.)
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return jsonError('Billing not configured', 503);
   try {
     const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_credits`, {
       method: 'POST',
@@ -514,57 +731,28 @@ async function handleGetReferralStats(userId: string, env: Env): Promise<Respons
 
 async function handleTrackClick(request: Request, env: Env): Promise<Response> {
   const { code } = await request.json() as { code: string };
-  if (!code) return jsonError('Missing referral code', 400);
+  if (!code || !/^[a-f0-9]{6,16}$/i.test(code)) return jsonError('Invalid referral code', 400);
 
   // Look up referrer by code
-  const codeRes = await supabaseAdmin(env, `/referral_codes?code=eq.${code}&select=user_id`, {
+  const codeRes = await supabaseAdmin(env, `/referral_codes?code=eq.${encodeURIComponent(code)}&select=user_id`, {
     method: 'GET', headers: { 'Prefer': '' },
   });
   const codes = await codeRes.json() as any[];
   if (!codes?.length) return jsonError('Invalid referral code', 404);
   const referrerId = codes[0].user_id;
 
-  // Hash visitor IP for uniqueness
+  // Record the click for STATS ONLY. Rewards are SIGNUP-ONLY now: the 100-credit reward is granted
+  // (via the sql/019 trigger) when a referred user verifies their email AND actually uses their free
+  // credits. Click-based credit was removed — raw-IP dedup made it farmable by IP rotation.
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
   const enc = new TextEncoder();
   const hashBuf = await crypto.subtle.digest('SHA-256', enc.encode(ip + referrerId));
   const visitorHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-
-  // Insert click (ignore duplicate)
-  const clickRes = await supabaseAdmin(env, '/referral_clicks', {
+  await supabaseAdmin(env, '/referral_clicks', {
     method: 'POST',
-    headers: { 'Prefer': 'resolution=ignore-duplicates,return=representation' },
+    headers: { 'Prefer': 'resolution=ignore-duplicates' },
     body: JSON.stringify({ referrer_id: referrerId, visitor_hash: visitorHash, credited: false }),
   });
-
-  // Check if this is a new unique click
-  const clicks = await clickRes.json() as any[];
-  if (clicks?.length > 0) {
-    // Count total credited clicks for this referrer
-    const countRes = await supabaseAdmin(env, `/referral_clicks?referrer_id=eq.${referrerId}&credited=eq.true&select=id`, {
-      method: 'GET', headers: { 'Prefer': 'count=exact' },
-    });
-    const countHeader = countRes.headers.get('content-range');
-    const creditedCount = countHeader ? parseInt(countHeader.split('/')[1] || '0') : 0;
-
-    if (creditedCount < 10) { // cap at 10 clicks * 5 cr = 50 cr
-      // Mark this click as credited
-      await supabaseAdmin(env, `/referral_clicks?referrer_id=eq.${referrerId}&visitor_hash=eq.${visitorHash}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ credited: true }),
-      });
-      // Award 5 bonus credits
-      await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/add_bonus_credits`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
-          'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-        body: JSON.stringify({ p_user_id: referrerId, p_credits: 5 }),
-      });
-    }
-  }
 
   return jsonResponse({ ok: true, referrer_id: referrerId });
 }
@@ -575,6 +763,15 @@ async function handleReferralSignup(request: Request, env: Env): Promise<Respons
 
   const { referrer_id } = await request.json() as { referrer_id: string };
   if (!referrer_id || referrer_id === auth.userId) return jsonError('Invalid referral', 400);
+
+  // Validate the referrer is a REAL referral-code owner (not an arbitrary uuid the client invented,
+  // which was the H7 ring-farming vector). Full click-match is stronger but the reward is already
+  // gated on email-verify + real spend (sql/019); this stops targeting a stranger's account.
+  const ownerRes = await supabaseAdmin(env, `/referral_codes?user_id=eq.${referrer_id}&select=user_id&limit=1`, {
+    method: 'GET', headers: { 'Prefer': '' },
+  });
+  const owner = await ownerRes.json() as any[];
+  if (!owner?.length) return jsonError('Invalid referral', 400);
 
   // Check not already referred
   const existRes = await supabaseAdmin(env, `/referral_signups?referred_user_id=eq.${auth.userId}&select=id`, {
@@ -741,11 +938,10 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         const credits = parseInt(session.metadata.credits, 10) || 0;
         const packType = session.metadata.pack_type;
         if (credits > 0) {
-          await supabaseAdmin(env, '/rpc/add_pack_credits', {
-            method: 'POST',
-            body: JSON.stringify({ p_user_id: userId, p_credits: credits }),
-          });
-          await supabaseAdmin(env, '/credit_pack_purchases', {
+          // Idempotent: insert the purchase FIRST (stripe_session_id is UNIQUE). Only grant credits
+          // when this insert actually created a row — so a replayed/redelivered webhook (same session)
+          // gets a 409 and skips the grant, instead of double-crediting.
+          const purRes = await supabaseAdmin(env, '/credit_pack_purchases', {
             method: 'POST',
             body: JSON.stringify({
               user_id: userId,
@@ -755,6 +951,12 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
               amount_cents: session.amount_total || 0,
             }),
           });
+          if (purRes.ok) {
+            await supabaseAdmin(env, '/rpc/add_pack_credits', {
+              method: 'POST',
+              body: JSON.stringify({ p_user_id: userId, p_credits: credits }),
+            });
+          }
         }
         break;
       }
@@ -873,12 +1075,12 @@ async function verifyStripeSignature(payload: string, header: string, secret: st
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${timestamp}.${payload}`));
   const expected = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('');
-  return expected === sig;
+  return timingSafeEqualHex(expected, sig);
 }
 
 // --- Seedance handlers ---
 
-async function handleFalImage(request: Request, env: Env): Promise<Response> {
+async function handleFalImage(request: Request, env: Env, userId?: string, ctx?: { waitUntil: (p: Promise<any>) => void }): Promise<Response> {
   if (!env.FAL_API_KEY) return jsonError('fal.ai API key not configured', 500);
 
   const body = await request.json() as any;
@@ -906,6 +1108,7 @@ async function handleFalImage(request: Request, env: Env): Promise<Response> {
   const imageUrl = data.images?.[0]?.url;
   if (!imageUrl) return jsonError('No image generated', 500);
 
+  meterMediaFromHeaders(env, userId, request, ctx, 'generateImage'); // idempotent dual-write (flat per image)
   return jsonResponse({ imageUrl });
 }
 
@@ -935,16 +1138,22 @@ async function handleSeedanceGenerate(request: Request, env: Env): Promise<Respo
   return jsonResponse({ taskId: data.id });
 }
 
-async function handleSeedancePoll(request: Request, env: Env): Promise<Response> {
+async function handleSeedancePoll(request: Request, env: Env, userId?: string, ctx?: { waitUntil: (p: Promise<any>) => void }): Promise<Response> {
   if (!env.BYTEPLUS_API_KEY) return jsonError('BytePlus API key not configured', 500);
 
   const { taskId } = await request.json() as { taskId: string };
-  const res = await fetch(`${BYTEPLUS_BASE}/contents/generations/tasks/${taskId}`, {
+  // taskId is interpolated into a URL that carries the BytePlus key — validate its charset and
+  // encode it so it can't inject path segments / alter where the keyed request goes.
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(taskId || '')) return jsonError('Invalid task id', 400);
+  const res = await fetch(`${BYTEPLUS_BASE}/contents/generations/tasks/${encodeURIComponent(taskId)}`, {
     headers: { 'Authorization': `Bearer ${env.BYTEPLUS_API_KEY}` },
   });
 
   const data = await res.json() as any;
   if (!res.ok) return jsonError(data.error?.message || 'Seedance poll failed', res.status);
+  // Meter at GENERATION COMPLETION (the poll that reports success), not on download — matches our
+  // provider cost and doesn't depend on the user fetching the file. Idempotent on usage_id.
+  if (data.status === 'succeeded') meterMediaFromHeaders(env, userId, request, ctx); // action from X-Db-Action
   return jsonResponse({
     status: data.status,
     videoUrl: data.content?.video_url || null,
@@ -952,9 +1161,13 @@ async function handleSeedancePoll(request: Request, env: Env): Promise<Response>
   });
 }
 
-async function handleSeedanceDownload(request: Request): Promise<Response> {
+async function handleSeedanceDownload(request: Request, env: Env, userId?: string, ctx?: { waitUntil: (p: Promise<any>) => void }): Promise<Response> {
   const { url } = await request.json() as { url: string };
-  const response = await fetch(url);
+  // No secret is attached here, but the URL is user-supplied — require https and block internal
+  // hosts so the worker can't be used to probe/relay non-public targets.
+  const safe = safeFetchUrl(url);
+  if (!safe) return jsonError('Invalid download URL', 400);
+  const response = await fetch(safe.toString());
   return new Response(response.body, {
     status: response.status,
     headers: {

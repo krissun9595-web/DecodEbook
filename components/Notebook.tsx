@@ -344,14 +344,11 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     await new Promise(resolve => setTimeout(resolve, 800));
     
     try {
-        const rootLabel = activeChapter?.title || bookTitle || "CATALOG_INDEX";
+        // Build from the ACTUAL scope of the filtered notes (not the reader's current chapter/book) —
+        // an "all books" view was previously mislabeled with one chapter as the root.
+        const scopeBooks = [...new Set(filteredItems.map(i => i.bookTitle).filter(Boolean))] as string[];
+        const scopeChapters = [...new Set(filteredItems.map(i => i.sourceChapter).filter(Boolean))] as string[];
 
-        const groups = {
-            word: filteredItems.filter(i => i.type === 'word'),
-            phrase: filteredItems.filter(i => i.type === 'phrase'),
-            sentence: filteredItems.filter(i => i.type === 'sentence')
-        };
-        
         // Depth 4: Note Node (5th Layer)
         const createNoteNode = (item: NotebookItem): MindMapNode[] => {
             if (!item.comment) return [];
@@ -386,10 +383,38 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
             }))
         });
 
-        const children: MindMapNode[] = [];
-        if (groups.word.length > 0) children.push(createCategoryNode('WORDS', groups.word, 'cat-word'));
-        if (groups.phrase.length > 0) children.push(createCategoryNode('PHRASES', groups.phrase, 'cat-phrase'));
-        if (groups.sentence.length > 0) children.push(createCategoryNode('SENTENCES', groups.sentence, 'cat-sentence'));
+        const makeCategories = (list: NotebookItem[], suffix: string): MindMapNode[] => {
+            const out: MindMapNode[] = [];
+            const w = list.filter(i => i.type === 'word');
+            const p = list.filter(i => i.type === 'phrase');
+            const s = list.filter(i => i.type === 'sentence');
+            if (w.length) out.push(createCategoryNode('WORDS', w, `cat-word-${suffix}`));
+            if (p.length) out.push(createCategoryNode('PHRASES', p, `cat-phrase-${suffix}`));
+            if (s.length) out.push(createCategoryNode('SENTENCES', s, `cat-sentence-${suffix}`));
+            return out;
+        };
+
+        let rootLabel: string;
+        let children: MindMapNode[];
+        let preCollapse: string[] = [];
+        if (scopeBooks.length > 1) {
+            // Multiple books in scope → group by BOOK so a large cross-book map stays organized and
+            // each book is collapsible. Root is a neutral scope label, never a single chapter (the bug).
+            rootLabel = 'ALL NOTES';
+            children = scopeBooks.map((bt, idx) => ({
+                id: `book-${idx}`,
+                label: bt,
+                type: 'category',
+                children: makeCategories(filteredItems.filter(i => i.bookTitle === bt), String(idx)),
+            }));
+            // Open compact: show the book list collapsed, expand a book on demand (keeps huge maps sane).
+            preCollapse = children.map(c => c.id);
+        } else {
+            // Single book in scope → root is that book, or the single chapter if every note is from one.
+            const theBook = scopeBooks[0] || bookTitle;
+            rootLabel = (scopeChapters.length === 1 ? scopeChapters[0] : theBook) || activeChapter?.title || bookTitle || 'CATALOG_INDEX';
+            children = makeCategories(filteredItems, 'all');
+        }
 
         const structure: MindMapNode = {
             id: 'root',
@@ -399,6 +424,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         };
 
         if (abortMapRef.current) return;
+        setCollapsedNodeIds(new Set(preCollapse));
         setMindMapData(structure);
         setIsMindMapMode(true);
     } catch (e) {
@@ -473,14 +499,21 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                 estimatedWidth += /[^\u0000-\u00ff]/.test(text[i]) ? fontSize : fontSize * 0.65;
              }
              width = Math.max(100, estimatedWidth + padding * 2);
-             if (width > 400) width = 400; // Cap width for very long root labels
+             if (width > 348) width = 348; // cap to the wrap width (maxTextW 300 + padding*2)
              
-             // Wrap if needed (simple)
-             if (text.length > 50) {
-                 lines = [text]; // Keep simple for root/category
-             } else {
-                 lines = [text];
+             // Wrap long labels so a CENTERED label never overflows sideways onto the connector
+             // lines (long book titles did this). Cap at 4 lines with an ellipsis.
+             const maxTextW = 300;
+             let cur = '', curW = 0;
+             lines = [];
+             for (let i = 0; i < text.length; i++) {
+                 const cw = /[^ -ÿ]/.test(text[i]) ? fontSize : fontSize * 0.65;
+                 if (curW + cw > maxTextW && cur) { lines.push(cur); cur = text[i]; curW = cw; }
+                 else { cur += text[i]; curW += cw; }
              }
+             if (cur) lines.push(cur);
+             if (lines.length === 0) lines = [text];
+             if (lines.length > 4) { lines = lines.slice(0, 4); lines[3] = lines[3].slice(0, -1) + '…'; }
              height = (lines.length * (fontSize * 1.4)) + 20;
         }
 
@@ -637,7 +670,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     });
 
     const blob = await Packer.toBlob(doc);
-    const filename = `mindmap-${titleCase(activeChapter?.title || bookTitle || 'export')}.docx`;
+    const filename = `mindmap-${titleCase(mindMapData?.label || activeChapter?.title || bookTitle || 'export')}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -693,7 +726,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     zip.file("metadata.json", "{}");
 
     const blob = await zip.generateAsync({ type: "blob" });
-    const filename = `mindmap-${titleCase(activeChapter?.title || bookTitle || 'export')}.xmind`;
+    const filename = `mindmap-${titleCase(mindMapData?.label || activeChapter?.title || bookTitle || 'export')}.xmind`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -777,7 +810,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                 svgParts.push(`</text>`);
             } else {
                 const escapedLines = node.lines.map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
-                svgParts.push(`<text x="${node.x + node.width / 2}" y="${ty + node.height / 2 + fontSize / 3}" text-anchor="middle" fill="${NEON_BLUE_VAL}" font-size="${fontSize}" font-family="monospace" font-weight="${isRoot ? '900' : 'bold'}">`);
+                svgParts.push(`<text x="${node.x + node.width / 2}" y="${ty + node.height / 2 + fontSize / 3 - (node.lines.length - 1) * fontSize * 0.6}" text-anchor="middle" fill="${NEON_BLUE_VAL}" font-size="${fontSize}" font-family="monospace" font-weight="${isRoot ? '900' : 'bold'}">`);
                 escapedLines.forEach((line, i) => {
                     svgParts.push(`<tspan x="${node.x + node.width / 2}" dy="${i === 0 ? 0 : '1.2em'}">${line}</tspan>`);
                 });
@@ -828,7 +861,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         });
 
         doc.addImage(dataUrl, 'PNG', 0, 0, fullW, fullH);
-        const filename = `mindmap-${titleCase(activeChapter?.title || bookTitle || 'export')}.pdf`;
+        const filename = `mindmap-${titleCase(mindMapData?.label || activeChapter?.title || bookTitle || 'export')}.pdf`;
         const pdfBlob = doc.output('blob');
         return { blob: pdfBlob, filename };
     } catch (e) {
@@ -894,7 +927,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                     </div>
                     <div className="w-[1px] h-3.5 bg-zinc-700"></div>
                     <div className="flex items-center gap-1 md:gap-1.5">
-                        <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
+                        <div className="p-1 md:p-1.5 text-zinc-500"><Quote size={13} /></div>
                         <select
                             value={activeFilter}
                             onChange={(e) => setActiveFilter(e.target.value as FilterType)}
@@ -941,7 +974,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                     <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
                     <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
                     <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
-                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
+                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${mindMapData?.label || activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
                     <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-red text-neon-red rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
                </div>
 
@@ -1060,9 +1093,9 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                                     fill="transparent" 
                                                 />
                                                 
-                                                <text 
-                                                    x={node.width / 2} 
-                                                    y={node.height / 2 + fontSize / 3} 
+                                                <text
+                                                    x={node.width / 2}
+                                                    y={node.height / 2 + fontSize / 3 - (node.lines.length - 1) * fontSize * 0.6}
                                                     textAnchor="middle"
                                                     fill={NEON_BLUE} 
                                                     fontSize={fontSize} 

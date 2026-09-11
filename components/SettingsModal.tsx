@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { X, Globe, Highlighter, PenLine, Type, AlignJustify, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film } from 'lucide-react';
+import { X, Globe, Highlighter, PenLine, Type, AlignJustify, AlignLeft, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film, CaseSensitive, ALargeSmall, Send } from 'lucide-react';
 import { Engine } from './ui/glyphs';
 import { AppSettings, ThemeColor } from '../types';
 import { inkLineStyle } from '../utils/inkLine';
@@ -112,18 +112,19 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
   if (!isOpen) return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Settings" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans">
-      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative">
+    <div role="dialog" aria-modal="true" aria-label="Settings" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans" onClick={onClose}>
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
-        <div className="p-6 border-b border-zinc-800 flex items-center justify-between shrink-0">
+        <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">System_Config</h2>
           <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors">
             <X size={24} />
           </button>
         </div>
 
-        <div className="p-6 space-y-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
+        <div className="h-[calc(70vh+69px)] flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-[1.6rem] custom-scrollbar">
           {/* LLM engines are admin-set per function in services/gemini.ts (FUNCTION_MODELS)
               + the media model defaults; users don't choose them. */}
 
@@ -136,7 +137,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
             <select
               value={settings.targetLanguage}
               onChange={(e) => onUpdate({ ...settings, targetLanguage: e.target.value })}
-              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-4 py-3 transition-all cursor-pointer"
+              className="block w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
             >
               {LANGUAGES.map((lang) => (
                 <option key={lang} value={lang}>{lang}</option>
@@ -190,18 +191,20 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
             </div>
           </div>
 
-          <hr className="border-zinc-800" />
 
           {/* Typography Settings */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 text-neon-cyan">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-neon-cyan mb-2">
               <Type size={18} />
               <label className="text-xs font-bold uppercase tracking-widest font-mono">Typography_Modules</label>
             </div>
-            
+
             {/* Font Family */}
-            <div className="space-y-2">
-                 <span className="text-[10px] text-zinc-500 uppercase font-mono">Font_Family</span>
+            <div className="space-y-1.5">
+                 <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase">
+                    <CaseSensitive size={14} />
+                    <span>Font_Family</span>
+                 </div>
                  <select
                     value={settings.font || 'Inter'}
                     onChange={(e) => onUpdate({ ...settings, font: e.target.value as any })}
@@ -214,8 +217,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
             </div>
 
             {/* Font Size */}
-            <div className="space-y-2">
-                <span className="text-[10px] text-zinc-500 uppercase font-mono">Font_Scale</span>
+            <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase">
+                    <ALargeSmall size={14} />
+                    <span>Font_Scale</span>
+                </div>
                 <div className="flex bg-zinc-900 p-1 rounded-sm border border-zinc-800">
                 {(['sm', 'base', 'lg', 'xl'] as const).map((size) => (
                     <button
@@ -232,7 +238,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
             </div>
 
             {/* Line Height */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
                  <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase">
                     <AlignJustify size={14} />
                     <span>Line_Height</span>
@@ -276,7 +282,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
              {/* Text Alignment */}
              <div className="space-y-2">
                  <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono uppercase">
-                    <AlignJustify size={14} />
+                    <AlignLeft size={14} />
                     <span>Alignment</span>
                  </div>
                 <div className="flex bg-zinc-900 p-1 rounded-sm border border-zinc-800">
@@ -297,13 +303,14 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
           </div>
         </div>
 
-        <div className="p-4 bg-zinc-900 border-t border-zinc-800 flex justify-end">
-           <button 
+        <div className="px-6 py-4 bg-zinc-900 border-t border-zinc-800 flex justify-end shrink-0">
+           <button
              onClick={onClose}
-             className="px-8 py-2.5 bg-neon-cyan hover:bg-[#00c2cc] text-black rounded-sm font-bold uppercase tracking-wider transition-all shadow-glow-cyan hover:shadow-[0_0_25px_rgba(0,243,255,0.5)] font-mono text-xs"
+             className="btn-action btn-go"
            >
-             Apply_Changes
+             <Send size={14} /> APPLY
            </button>
+        </div>
         </div>
       </div>
     </div>

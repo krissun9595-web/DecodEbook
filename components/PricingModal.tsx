@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { X, Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, ChevronDown, ChevronUp, Package, Gift, Share2, Copy, Check } from 'lucide-react';
+import { X, Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet } from 'lucide-react';
 import { Privacy, Pro } from './ui/glyphs';
 import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
 import { creditsForAction } from '../services/pricing';
 import { GenMode, getGenerationMode, setGenerationMode, resolveModel } from '../services/gemini';
 import { CreditHistory } from './CreditHistory';
 import { StatusMessage } from './ui/StatusMessage';
+import { InfoTooltip, InfoSection } from './ui/InfoTooltip';
 import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
   isSupabaseConfigured, linkProvider, unlinkProvider, getIdentities
@@ -80,7 +81,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const [refCode, setRefCode] = useState<string | null>(null);
   const [refStats, setRefStats] = useState<ReferralStats | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showTerms, setShowTerms] = useState(false);
   const [genMode, setGenMode] = useState<GenMode>(getGenerationMode());
   const [identities, setIdentities] = useState<any[]>(user?.identities || []);
   const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
@@ -204,6 +204,20 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
     setSuccess('');
   };
 
+  // TEMP: measure every MY_ACCOUNT panel height + the two title→table-header gaps for layout tuning.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    requestAnimationFrame(() => {
+      document.querySelectorAll<HTMLElement>('[data-acct-panel]').forEach(el =>
+        console.log('[MY_ACCOUNT panel]', el.dataset.acctPanel, '=', el.offsetHeight, 'px'));
+      const gap = (a: string, b: string) => {
+        const ea = document.querySelector(`[data-gap="${a}"]`), eb = document.querySelector(`[data-gap="${b}"]`);
+        return ea && eb ? Math.round((eb.getBoundingClientRect().top - ea.getBoundingClientRect().bottom) * 10) / 10 : null;
+      };
+      console.log('[gap] Active_Mode desc→header =', gap('am-desc', 'am-hd'), 'px  |  Credit_History title→header =', gap('ch-title', 'ch-hd'), 'px');
+    });
+  });
+
   if (!isOpen) return null;
 
   const currentTier = tierInfo?.tier || 'free';
@@ -243,13 +257,13 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const trB = c('translate', resolveModel('translate', 'balanced'));
   const trP = c('translate', resolveModel('translate', 'premium'));
   const modeRows = [
-    { module: 'READER',      fn: 'Translate',  b: fmt(trB, trB * 3, 'per page'), p: fmt(trP, trP * 3, 'per page') },
-    { module: 'READER',      fn: 'Definition', b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup') },
-    { module: 'ASSISTANT',   fn: 'Chat',       b: fmt(c('chat', resolveModel('chat', 'balanced'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'balanced'), { inTok: 1600, outTok: 800 }), 'per message'), p: fmt(c('chat', resolveModel('chat', 'premium'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'premium'), { inTok: 1600, outTok: 800 }), 'per message') },
-    { module: 'VOICE_SYNTH', fn: 'Audio',      b: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page'), p: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page') },
-    { module: 'NET_CAST',    fn: 'Podcast',    b: fmt(c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode'), p: fmt(c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode') },
-    { module: 'VISUAL_CORE', fn: 'Image',      b: fmt(c('generateImage', IMG_MODEL.balanced, { images: 1 }), c('generateImage', IMG_MODEL.balanced, { images: 1 }), 'per image'), p: fmt(c('generateImage', IMG_MODEL.premium, { images: 1 }), c('generateImage', IMG_MODEL.premium, { images: 1 }), 'per image') },
-    { module: 'CINE_RENDER', fn: 'Video',      b: fmt(c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), 'per clip'), p: fmt(c('videoVeo', VID_MODEL.premium, { seconds: 8 }), c('videoVeo', VID_MODEL.premium, { seconds: 8 }), 'per clip') },
+    { module: 'VOICE_SYNTH', fn: 'Translation', b: fmt(trB, trB * 3, 'per page'), p: fmt(trP, trP * 3, 'per page') },
+    { module: 'VOICE_SYNTH', fn: 'Definition',  b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup') },
+    { module: 'VOICE_SYNTH', fn: 'Audio',       b: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page'), p: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page') },
+    { module: 'NET_CAST',    fn: 'Podcast',     b: fmt(c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode'), p: fmt(c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode') },
+    { module: 'VISUAL_CORE', fn: 'Image',       b: fmt(c('generateImage', IMG_MODEL.balanced, { images: 1 }), c('generateImage', IMG_MODEL.balanced, { images: 1 }), 'per image'), p: fmt(c('generateImage', IMG_MODEL.premium, { images: 1 }), c('generateImage', IMG_MODEL.premium, { images: 1 }), 'per image') },
+    { module: 'CINE_RENDER', fn: 'Video',       b: fmt(c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), 'per clip'), p: fmt(c('videoVeo', VID_MODEL.premium, { seconds: 8 }), c('videoVeo', VID_MODEL.premium, { seconds: 8 }), 'per clip') },
+    { module: 'ASSISTANT',   fn: 'Chat',        b: fmt(c('chat', resolveModel('chat', 'balanced'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'balanced'), { inTok: 1600, outTok: 800 }), 'per message'), p: fmt(c('chat', resolveModel('chat', 'premium'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'premium'), { inTok: 1600, outTok: 800 }), 'per message') },
   ];
 
   return (
@@ -257,14 +271,33 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
       <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
-        <div className="p-6 border-b border-zinc-800 flex items-center justify-between shrink-0">
+        <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">My_Account</h2>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition active:scale-90"><X size={24} /></button>
+          <div className="flex items-center gap-3">
+            <InfoTooltip label="About My_Account">
+              <InfoSection title="Account_Info">
+                <p>Your identity and linked sign-in accounts. You can add your own Gemini API key to run on your own quota.</p>
+              </InfoSection>
+              <InfoSection title="Active_Mode">
+                <p><span className="text-zinc-300">Balanced</span> uses cost-optimized models; <span className="text-zinc-300">Premium</span> uses the most capable ones. The mode sets both quality and the credits each action costs.</p>
+              </InfoSection>
+              <InfoSection title="Credit_Balance & Packs">
+                <p>Shows your monthly, pack, and bonus credits. Buy credit packs or upgrade your plan here. Actions are metered on real usage; the Mode column in history shows which model ran.</p>
+              </InfoSection>
+              <InfoSection title="Earn_Free_Credits">
+                <p>Share your referral link: earn <span className="text-zinc-300">100 credits</span> when a new user you referred signs up and starts using their free credits (up to 1,000 credits).</p>
+              </InfoSection>
+              <InfoSection title="Rights & terms">
+                <p>Credits are prepaid usage units, non-transferable and non-refundable except as required by law. Billing runs on a secure provider; we never store card details. Abuse of referrals may reverse bonus credits.</p>
+              </InfoSection>
+            </InfoTooltip>
+            <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition active:scale-90"><X size={24} /></button>
+          </div>
         </div>
 
         <div className="h-[calc(70vh+69px)] overflow-y-auto custom-scrollbar">
           {user ? (
-            <div className="p-6 space-y-8">
+            <div className="p-6 space-y-[1.6rem]">
 
               {/* ── Account Info ── */}
               <div className="space-y-3">
@@ -272,7 +305,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <Privacy size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Account_Info</label>
                 </div>
-                <div className="content-panel rounded-sm p-4 space-y-1 min-h-[175px]">
+                <div data-acct-panel="Account_Info" className="content-panel rounded-sm p-4 space-y-1 min-h-[175px]">
                   <div className="relative">
                     {/* credits figure absolutely positioned so it doesn't inflate the name row.
                         NOTE: keep spacing OFF this wrapper's `space-y-*` — an out-of-flow first
@@ -315,38 +348,40 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <Zap size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Active_Mode</label>
                 </div>
-                <div className="content-panel rounded-sm p-4 min-h-[175px] flex flex-col">
+                <div data-acct-panel="Active_Mode" className="content-panel rounded-sm p-4 min-h-[262px] flex flex-col">
+                  {/* Toggle row height = the text line (h-4 switch), so "Balanced" sits at the same
+                      top as the account name, and the mt-2 below matches the name→email gap. */}
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-neon-cyan font-mono font-bold">{genMode === 'premium' ? 'Premium' : 'Balanced'}</span>
                     <button
                       role="switch" aria-checked={genMode === 'premium'} aria-label="Toggle generation mode"
                       onClick={handleToggleMode}
-                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
+                      className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
                     >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-5' : ''}`} />
+                      <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-4' : ''}`} />
                     </button>
                   </div>
-                  <div className="mt-3 space-y-2 text-zinc-600 font-mono">
-                    <p className="text-[10px]">{genMode === 'premium'
+                  <div className="mt-2 text-zinc-600 font-mono">
+                    <p data-gap="am-desc" className="text-[10px] mb-[6.5px]">{genMode === 'premium'
                       ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
                       : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
-                    <div className="space-y-0.5 text-[9px]">
-                      <div className="flex items-center gap-2 uppercase tracking-wider text-zinc-700 pb-0.5 border-b border-zinc-800/60">
-                        <span className="w-[70px]">Module</span>
+                    <div className="text-[9px]">
+                      <div data-gap="am-hd" className="flex items-center gap-3 text-[8px] uppercase tracking-widest text-zinc-600 pb-1 border-b border-zinc-800/60">
+                        <span className="flex-[1.15]">Module</span>
                         <span className="flex-1">Function</span>
-                        <span className={`w-[100px] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
-                        <span className={`w-[100px] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
+                        <span className={`flex-[1.5] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
+                        <span className={`flex-[1.5] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
                       </div>
                       {modeRows.map(r => (
-                        <div key={r.fn} className="flex items-center gap-2">
-                          <span className="w-[70px] text-zinc-600 truncate">{r.module}</span>
-                          <span className="flex-1 text-zinc-400 truncate">{r.fn}</span>
-                          <span className={`w-[100px] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.b}</span>
-                          <span className={`w-[100px] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.p}</span>
+                        <div key={r.fn} className="flex items-center gap-3 py-[3px]">
+                          <span className="flex-[1.15] text-zinc-600 truncate">{r.module}</span>
+                          <span className="flex-1 text-zinc-600 truncate">{r.fn}</span>
+                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.b}</span>
+                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.p}</span>
                         </div>
                       ))}
                     </div>
-                    <p className="text-[9px]">Typical credits per action — the real charge scales with length. TTS (audio/podcast) is the same in both modes. You're only charged when you generate; re-opening a saved result is free.</p>
+                    <p className="text-[9px]">Actual cost scales with length; No charge for saved result re-open; Other functions costs will be recorded in Credit history table.</p>
                   </div>
                 </div>
               </div>
@@ -358,7 +393,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">{currentTier === 'pro' ? 'Credit_Packs' : 'Upgrade'}</label>
                 </div>
                 {currentTier === 'pro' ? (
-                  <div className="space-y-3 min-h-[175px]">
+                  <div data-acct-panel="Credit_Packs" className="space-y-3 min-h-[175px]">
                     <div className="flex items-center justify-between">
                       <p className="text-[9px] text-zinc-600 font-mono">Credit packs are used only after your monthly credits run out, and never expire.</p>
                       <button onClick={handleManage} disabled={portalLoading} className="text-[9px] font-mono uppercase tracking-widest text-zinc-500 hover:text-neon-cyan transition flex items-center gap-1">
@@ -404,7 +439,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               {/* ── Credits Dashboard ── */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-neon-cyan mb-2">
-                  <BarChart3 size={18} />
+                  <Wallet size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Credit_Balance</label>
                 </div>
 
@@ -413,7 +448,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Loader2 size={16} className="animate-spin text-zinc-500" />
                   </div>
                 ) : tierInfo ? (
-                  <div className="content-panel rounded-sm p-4 flex flex-col gap-2 h-[227.5px]">
+                  <div data-acct-panel="Credit_Balance" className="content-panel rounded-sm p-4 flex flex-col gap-2 h-[262px]">
                     {(
                       <>
                         <div className="flex items-center justify-between text-xs">
@@ -465,15 +500,15 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-neon-cyan mb-2">
                     <Gift size={18} />
-                    <label className="text-xs font-bold uppercase tracking-widest font-mono">Earn Free Credits</label>
+                    <label className="text-xs font-bold uppercase tracking-widest font-mono">Earn_Free_Credits</label>
                   </div>
-                  <div className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-4 min-h-[227.5px]">
+                  <div data-acct-panel="Earn_Free_Credits" className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 flex flex-col h-[262px]">
                     {/* Share link */}
                     <div className="space-y-2">
                       <p className="text-xs text-neon-cyan font-mono font-bold">Limited Time Offer</p>
-                      <p className="text-[10px] text-zinc-400 font-mono">Earn <span className="text-neon-cyan">5 credits</span> per unique click on your sharing link (up to 50 credits); earn extra <span className="text-neon-cyan">100 credits</span> when a new user you referred signs up and starts using their free credits (up to 1,000 credits).</p>
+                      <p className="text-[10px] text-zinc-400 font-mono">Earn <span className="text-neon-cyan">100 credits</span> when a new user you referred signs up and starts using their free credits (up to 1,000 credits).</p>
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-void-1 border border-zinc-800 rounded-sm px-3 py-1.5 text-[10px] font-mono text-zinc-400 truncate">
+                        <div className="flex-1 bg-void-1 border border-zinc-800 rounded-sm px-3 py-1.5 text-[10px] font-mono text-neon-cyan truncate">
                           {getShareUrl(refCode)}
                         </div>
                         <button
@@ -484,13 +519,13 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           {copied ? <Check size={12} className="text-neon-cyan" /> : <Copy size={12} />}
                         </button>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">𝕏 Twitter</button>
-                        <button onClick={() => shareOnFacebook(refCode)} title="Copies the caption, then opens Facebook" className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">Facebook</button>
-                        <button onClick={() => shareOnLinkedIn(refCode)} title="Copies the caption, then opens LinkedIn" className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">LinkedIn</button>
-                        <button onClick={() => shareOnInstagram(refCode)} title="Copies the caption, then opens Instagram" className="text-[9px] font-mono uppercase tracking-widest px-2.5 py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95">Instagram</button>
+                      <p className="text-[9px] text-zinc-600 font-mono">Send the URL to friends directly; Quick sharing buttons below copies the caption to your clipboard automatically - paste it into the post that opens.</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><span className="text-[11px] leading-none">𝕏</span> Twitter</button>
+                        <button onClick={() => shareOnFacebook(refCode)} title="Copies the caption, then opens Facebook" className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><Facebook size={11} /> Facebook</button>
+                        <button onClick={() => shareOnLinkedIn(refCode)} title="Copies the caption, then opens LinkedIn" className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><Linkedin size={11} /> LinkedIn</button>
+                        <button onClick={() => shareOnInstagram(refCode)} title="Copies the caption, then opens Instagram" className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><Instagram size={11} /> Instagram</button>
                       </div>
-                      <p className="text-[9px] text-zinc-600 font-mono">Sharing copies the caption to your clipboard — paste it into the post that opens.</p>
                     </div>
 
 
@@ -516,23 +551,16 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       </div>
                     )}
 
-                    {/* Program terms (collapsible) */}
-                    <div className="border-t border-zinc-800 pt-2">
-                      <button
-                        onClick={() => setShowTerms(v => !v)}
-                        className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition"
-                      >
-                        {showTerms ? <ChevronUp size={9} /> : <ChevronDown size={9} />} Program terms
-                      </button>
-                      {showTerms && (
-                        <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono leading-relaxed list-disc list-inside">
-                          <li>Bonus credits are promotional store credit for use within DecodEbook only — they have no cash value and are not redeemable, transferable, or refundable.</li>
-                          <li>Credits earned never expire. They are applied after your monthly credits and before any purchased packs.</li>
-                          <li>Rewards: 5 credits per unique visitor click (up to 50 credits total); 100 credits when a new user you referred signs up, verifies their email, and starts using their free credits (up to 1,000 credits total).</li>
-                          <li>Self-referrals, duplicate or automated clicks, and other abuse do not qualify and may result in credit reversal or account action.</li>
-                          <li>This is a limited-time promotion. DecodEbook may change, suspend, or end it at any time; credits already earned are unaffected.</li>
-                        </ul>
-                      )}
+                    {/* Program terms — always shown; the list scrolls within the remaining space, like the Credit History table area. */}
+                    <div className="flex flex-col min-h-0 flex-1">
+                      <p className="text-[10px] font-mono text-zinc-600">Program terms</p>
+                      <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono leading-relaxed list-disc list-inside overflow-y-auto custom-scrollbar min-h-0 flex-1 pr-2">
+                        <li>Bonus credits are promotional store credit for use within DecodEbook only — they have no cash value and are not redeemable, transferable, or refundable.</li>
+                        <li>Credits earned never expire. They are applied after your monthly credits and before any purchased packs.</li>
+                        <li>Rewards: 5 credits per unique visitor click (up to 50 credits total); 100 credits when a new user you referred signs up, verifies their email, and starts using their free credits (up to 1,000 credits total).</li>
+                        <li>Self-referrals, duplicate or automated clicks, and other abuse do not qualify and may result in credit reversal or account action.</li>
+                        <li>This is a limited-time promotion. DecodEbook may change, suspend, or end it at any time; credits already earned are unaffected.</li>
+                      </ul>
                     </div>
                   </div>
                 </div>

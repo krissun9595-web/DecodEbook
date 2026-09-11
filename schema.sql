@@ -105,6 +105,8 @@ create table public.user_books (
   content      text,
   mime_type    text not null default 'text/plain',
   is_text      boolean not null default true,
+  pdf_outline  jsonb,           -- sql/020: PDF bookmark outline (correct chapter re-derivation on reload)
+  pdf_figures  jsonb,           -- sql/027: figure manifest (dims + column fraction) for cross-device sizing
   upload_date  bigint not null,
   updated_at   timestamptz not null default now(),
   primary key (id, user_id)

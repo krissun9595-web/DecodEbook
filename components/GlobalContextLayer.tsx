@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, BookOpen, Volume2, PenLine, MessageSquare, Square } from 'lucide-react';
+import { Search, Loader2, BookA, Volume2, PenLine, MessageSquare, Square } from 'lucide-react';
 import { getBilingualDefinition } from '../services/gemini';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
 import { CreditNotice } from './ui/CreditNotice';
@@ -630,7 +630,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
   };
 
   return (
-    <div className="fixed inset-0 z-[100] pointer-events-none font-sans text-left">
+    <div className="fixed inset-0 z-[10050] pointer-events-none font-sans text-left">
         {menu.visible && (
             <div 
                 ref={menuRef}
@@ -684,7 +684,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
              >
 	                 <div className="flex items-start justify-between mb-3 shrink-0">
 	                     <h3 className="text-neon-cyan font-bold font-mono text-sm uppercase tracking-wider flex items-center gap-2">
-	                         <BookOpen size={16} />
+	                         <BookA size={16} />
 	                         Definition
 	                     </h3>
 	                     <button onClick={() => setDefinition(prev => ({ ...prev, visible: false }))} className="text-zinc-600 hover:text-white transition-colors text-xl p-1">×</button>
@@ -699,7 +699,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                      ) : defineCreditTier ? (
                          <div className="py-3"><CreditNotice tier={defineCreditTier} /></div>
                      ) : (
-                         <div className="leading-relaxed content-font border-l-2 border-zinc-800 pl-3 animate-fade-in">
+                         <div className="leading-relaxed content-font animate-fade-in">
                              {formatDefinition(definition.text || "")}
                          </div>
                      )}

@@ -38,7 +38,22 @@ const labelKeyFor = (action: string): string => {
   return ACTION_LABELS[key] || action || 'Usage';
 };
 
-interface DisplayRow { created_at: string; label: string; book?: string; delta: number; type: string; }
+interface DisplayRow { created_at: string; label: string; book?: string; delta: number; type: string; mode?: string; }
+
+// Balanced vs Premium — only for functions the mode toggle actually switches. Fixed internal steps
+// (book analysis, concept extraction, video prompt) and TTS always use the same model regardless of
+// mode, so they'd be misleading as "Balanced"; they get a blank (—). For the mode-switched ones the
+// tier is read from the served model: gemini-pro / pro-image / veo = Premium, else Balanced.
+const MODE_SWITCHED = new Set(['translate', 'chat', 'quickDefinition', 'podcastScript', 'generateImage', 'redrawFigureTranslated', 'videoVeo', 'videoSeedance', 'videoSeedanceFast']);
+function modeForRow(action?: string, model?: string): string {
+  if (!model || model === '__partial__') return '';
+  const key = action?.startsWith('text:') ? 'translate' : (action || '');
+  if (!MODE_SWITCHED.has(key)) return '';
+  const m = model.toLowerCase();
+  if (/tts/.test(m)) return '';
+  if (/gemini[-\d.]*pro|pro-image|veo/.test(m)) return 'Premium';
+  return 'Balanced';
+}
 
 // One "generate" fires many API calls → many rows. Collapse a single EXECUTION's rows into ONE line:
 // primarily by its per-execution session id (so a re-run or a different page is its OWN immutable line,
@@ -64,12 +79,12 @@ function buildDisplayRows(entries: CreditHistoryEntry[]): DisplayRow[] {
     const credits = es.reduce((s, e) => s + -e.delta, 0);
     const latest = es.reduce((t, e) => (e.created_at > t ? e.created_at : t), es[0].created_at);
     const partial = markers.some(m => m.session === sid);
-    rows.push({ created_at: latest, label: label + (partial ? ' (Partial)' : ''), book: es[0].book, delta: -credits, type: 'consume' });
+    rows.push({ created_at: latest, label: label + (partial ? ' (Partial)' : ''), book: es[0].book, delta: -credits, type: 'consume', mode: modeForRow(es[0].reason, (es.find(e => e.model) || es[0]).model) });
   }
 
   // 2) Legacy / single-call rows (no session) → burst-group by label+book as a fallback.
   const asc = [...sessionless].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-  interface G { label: string; book?: string; startMs: number; endMs: number; endIso: string; credits: number; }
+  interface G { label: string; book?: string; startMs: number; endMs: number; endIso: string; credits: number; model?: string; action?: string; }
   const groups: G[] = [];
   const lastIdx = new Map<string, number>();
   for (const e of asc) {
@@ -80,7 +95,7 @@ function buildDisplayRows(entries: CreditHistoryEntry[]): DisplayRow[] {
     if (gi != null && ms - groups[gi].endMs <= GROUP_GAP_MS) {
       groups[gi].endMs = ms; groups[gi].endIso = e.created_at; groups[gi].credits += -e.delta;
     } else {
-      groups.push({ label, book: e.book, startMs: ms, endMs: ms, endIso: e.created_at, credits: -e.delta });
+      groups.push({ label, book: e.book, startMs: ms, endMs: ms, endIso: e.created_at, credits: -e.delta, model: e.model, action: e.reason });
       lastIdx.set(k, groups.length - 1);
     }
   }
@@ -90,7 +105,7 @@ function buildDisplayRows(entries: CreditHistoryEntry[]): DisplayRow[] {
       const t = new Date(m.created_at).getTime();
       return t >= g.startMs - GROUP_GAP_MS && t <= g.endMs + GROUP_GAP_MS;
     });
-    rows.push({ created_at: g.endIso, label: g.label + (partial ? ' (Partial)' : ''), book: g.book, delta: -g.credits, type: 'consume' });
+    rows.push({ created_at: g.endIso, label: g.label + (partial ? ' (Partial)' : ''), book: g.book, delta: -g.credits, type: 'consume', mode: modeForRow(g.action, g.model) });
   }
 
   // 3) additions (packs / bonus / renewal) pass through unchanged.
@@ -135,7 +150,8 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
   const col = {
     time: 'w-[118px] shrink-0',
     action: 'flex-[3] min-w-0',
-    source: 'flex-[2] min-w-0',
+    mode: 'w-[58px] shrink-0',   // Balanced / Premium tier for this charge
+    source: 'flex-[4] min-w-0',  // book title
     credits: 'w-10 shrink-0 text-left',
   };
 
@@ -143,7 +159,7 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
     <div className="flex flex-col min-h-0 flex-1">
       {/* header line with month navigation */}
       <div className="flex items-center justify-between mb-1">
-        <p className="text-[10px] text-zinc-600 font-mono">Credit History · <span className="text-zinc-500">{monthLabel}</span></p>
+        <p data-gap="ch-title" className="text-[10px] text-zinc-600 font-mono">Credit History · <span className="text-zinc-500">{monthLabel}</span></p>
         <div className="flex items-center gap-1">
           <button onClick={() => setMonthOffset(o => o - 1)} aria-label="Previous month" className={btn}><ChevronLeft size={12} /></button>
           <button onClick={() => setMonthOffset(o => Math.min(0, o + 1))} disabled={monthOffset >= 0} aria-label="Next month" className={btn}><ChevronRight size={12} /></button>
@@ -151,9 +167,10 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
       </div>
 
       {/* column headers (pr-2 keeps them aligned with the scrollable rows below) */}
-      <div className="flex items-center gap-2 text-[8px] text-zinc-600 font-mono uppercase tracking-widest pb-1 border-b border-zinc-900 pr-2">
+      <div data-gap="ch-hd" className="flex items-center gap-3 text-[8px] text-zinc-600 font-mono uppercase tracking-widest pb-1 border-b border-zinc-900 pr-2">
         <span className={col.time}>Time</span>
         <span className={col.action}>Action</span>
+        <span className={col.mode}>Mode</span>
         <span className={col.source}>Source</span>
         <span className={col.credits}>Credits</span>
       </div>
@@ -165,9 +182,10 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-zinc-900/60 pr-2">
           {shown.map((e, i) => (
-            <div key={i} className="flex items-center gap-2 text-[9px] font-mono py-1">
+            <div key={i} className="flex items-center gap-3 text-[9px] font-mono py-[3px]">
               <span className={`${col.time} text-zinc-600`}>{fmtTimestamp(e.created_at)}</span>
-              <span className={`${col.action} truncate ${e.type === 'renewal' ? 'text-zinc-600' : 'text-zinc-400'}`}>{e.label}</span>
+              <span className={`${col.action} truncate ${e.type === 'renewal' ? 'text-zinc-600' : 'text-zinc-500'}`}>{e.label}</span>
+              <span className={`${col.mode} truncate ${e.mode === 'Premium' ? 'text-neon-cyan' : 'text-zinc-600'}`}>{e.mode || '—'}</span>
               <span className={`${col.source} text-zinc-600 truncate`}>{e.book || '—'}</span>
               <span className={`${col.credits} ${e.delta >= 0 ? 'text-neon-cyan' : 'text-zinc-500'}`}>{e.delta >= 0 ? '+' : ''}{e.delta}</span>
             </div>

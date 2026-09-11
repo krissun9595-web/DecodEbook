@@ -112,6 +112,7 @@ const VIDEO_ACTIONS = new Set(['videoVeo', 'videoSeedance', 'videoSeedanceFast']
 const MEASURED_TEXT_ACTIONS = new Set([
   'videoPrompt', 'podcastScript', 'analyzeBookStructure', 'chat',
   'extractConcepts', 'extractChapterText', // send the whole chapter → footprint was ~22x too low (real leak)
+  'translate', // measured: Premium (pro, output-heavy) footprint over-charged short pages 2-3x; Balanced (deepseek) stays at the 1-credit floor either way. Falls back to footprint when tokens aren't surfaced.
 ]);
 
 // Longest-prefix match so 'gpt-4o-mini' wins over 'gpt-4o', 'veo-3.1-fast' over 'veo'.
@@ -126,12 +127,23 @@ export function creditsFromCents(cents: number): number {
   return Math.max(1, Math.ceil((cents * MARGIN) / CENTS_PER_CREDIT));
 }
 
-export function textCostCents(model: string, inTok: number, outTok: number): number {
+// Implicit context-cache pass-through: when a request re-uses a prefix (e.g. the whole book
+// resent every chat message), Gemini bills the matched tokens at the model's "Context caching
+// price" row instead of the "Input price" row. For every current Gemini 3.x tier that ratio is
+// exactly one-tenth (pricing.md.txt Gemini 3.1 Pro Preview: input $2.00/$4.00 vs cached
+// $0.20/$0.40). So a cached input token costs 10% of a fresh one. Google surfaces the hit count
+// in usageMetadata.cachedContentTokenCount (aka usage.total_cached_tokens); we split the prompt
+// into (fresh @ full rate) + (cached @ 10%) so the charge tracks what Google actually bills.
+export const CACHED_INPUT_FRACTION = 0.1;
+
+export function textCostCents(model: string, inTok: number, outTok: number, cachedTok: number = 0): number {
   const r = rateFor(TEXT_PRICING, model, TEXT_FALLBACK);
-  return (inTok * r.in + outTok * r.out) / 1_000_000;
+  const cached = Math.min(Math.max(cachedTok, 0), inTok); // cached is a SUBSET of the (total) input tokens
+  const fresh = inTok - cached;
+  return (fresh * r.in + cached * r.in * CACHED_INPUT_FRACTION + outTok * r.out) / 1_000_000;
 }
 
-export interface Units { inTok?: number; outTok?: number; chars?: number; cjkChars?: number; images?: number; seconds?: number; }
+export interface Units { inTok?: number; outTok?: number; cachedTok?: number; chars?: number; cjkChars?: number; images?: number; seconds?: number; }
 
 // Gemini TTS is billed by AUDIO-OUTPUT tokens (Google invoice: ~$28.35/M audio-tok).
 // Audio tokens scale with spoken DURATION, so per source character they vary by script:
@@ -156,7 +168,7 @@ function modalityCostCents(action: string, model: string, u: Units): number {
   if (TTS_ACTIONS.has(action))   return ttsCostCents(model, u);
   if (IMAGE_ACTIONS.has(action)) return (u.images ?? 1) * rateFor(IMAGE_PRICING, model, IMAGE_FALLBACK);
   if (VIDEO_ACTIONS.has(action)) return (u.seconds ?? VIDEO_SECONDS_DEFAULT) * rateFor(VIDEO_PRICING, model, VIDEO_FALLBACK);
-  return textCostCents(model, u.inTok ?? 0, u.outTok ?? 0);
+  return textCostCents(model, u.inTok ?? 0, u.outTok ?? 0, u.cachedTok ?? 0);
 }
 
 // Discrete "generate X" media/creative actions are rounded UP to a clean multiple of 5
@@ -177,7 +189,7 @@ export function creditsForAction(action: string, model: string, u: Units = {}): 
   if (TTS_ACTIONS.has(action) || IMAGE_ACTIONS.has(action) || VIDEO_ACTIONS.has(action)) {
     credits = creditsFromCents(modalityCostCents(action, model, u));
   } else if (MEASURED_TEXT_ACTIONS.has(key) && ((u.inTok ?? 0) + (u.outTok ?? 0) > 0)) {
-    credits = creditsFromCents(textCostCents(model, u.inTok ?? 0, u.outTok ?? 0)); // real tokens (file-scaled)
+    credits = creditsFromCents(textCostCents(model, u.inTok ?? 0, u.outTok ?? 0, u.cachedTok ?? 0)); // real tokens (file-scaled); cached prefix billed at 10%
   } else {
     const t = ACTION_TOKENS[key] ?? ACTION_TOKENS_FALLBACK;
     credits = creditsFromCents(textCostCents(model, t.in, t.out));
@@ -211,7 +223,8 @@ export const GATE_COSTS: Record<string, number> = {
   chat: 50,                    //  max 45 (premium pro + thinking)
   analyzeBookStructure: 15,    //  max 10
   extractConcepts: 50,         //  max 45
-  extractChapterText: 50,      //  measured, ~extractConcepts
+  // extractChapterText is LOCAL-only (slices already-extracted source text, no LLM call) → never
+  // charged and never gated; intentionally NOT listed so it can't block a low-credit user.
   podcastScript: 200,          //  max 185
   videoPrompt: 50,             //  max 46
   // media / creative one-shots — conservative ≈ observed max

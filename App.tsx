@@ -17,6 +17,7 @@ import { fetchUserTier, UserTier } from './services/stripe';
 import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
 import { CreditNotice } from './components/ui/CreditNotice';
 import { StatusMessage } from './components/ui/StatusMessage';
+import { InfoTooltip, InfoSection } from './components/ui/InfoTooltip';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
 import { trackReferralClick, registerReferralSignup } from './services/referral';
@@ -7567,11 +7568,33 @@ const App: React.FC = () => {
         <div role="dialog" aria-modal="true" aria-label="Generated Files" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans" onClick={() => setIsFilesOpen(false)}>
           <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={(e) => e.stopPropagation()}>
             <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
-            <div className="p-6 border-b border-zinc-800 flex items-center justify-between shrink-0">
+            <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
               <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">Gen_Files</h2>
-              <button onClick={() => setIsFilesOpen(false)} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
+              <div className="flex items-center gap-3">
+                <InfoTooltip label="About Gen_Files & storage">
+                  <InfoSection title="Local / Cloud modes">
+                    <p>The <span className="text-zinc-300">File_Storage</span> switch flips the whole panel between two inventories: <span className="text-zinc-300">Local</span> (files on this device) and <span className="text-zinc-300">Cloud</span> (files synced to your account). The bar tracks the active side's usage of its <span className="text-zinc-300">1&nbsp;GB</span> quota. A cyan icon on a row means the file <span className="text-zinc-300">also exists on the other side</span>.</p>
+                  </InfoSection>
+                  <InfoSection title="Files_Scope">
+                    <p>Narrow the current side by <span className="text-zinc-300">book</span> and <span className="text-zinc-300">type</span> (translation, audio, podcast, images, video, notebook).</p>
+                  </InfoSection>
+                  <InfoSection title="File_List — buttons">
+                    <p><span className="text-neon-cyan">Sync</span> (Local mode) pushes the checked files to the cloud — it never removes; re-syncing just refreshes them. <span className="text-neon-cyan">Download</span> (Cloud mode) pulls them to this device. <span className="text-neon-cyan">Export</span> writes them to your device's file system to open in native players / PDF readers. <span className="text-neon-red">Delete</span> (Local mode) removes them from this device; <span className="text-neon-red">Remove</span> (Cloud mode) takes them off the cloud — <span className="text-zinc-300">current side only</span>, click twice to confirm.</p>
+                  </InfoSection>
+                  <InfoSection title="Dual protection">
+                    <p>Because Delete (Local) / Remove (Cloud) only touches the side you're viewing, a file that lives on <span className="text-zinc-300">both</span> is safe — clearing one copy leaves the other. The button turns red <span className="text-neon-red">PERMANENT!</span> when a checked file has <span className="text-zinc-300">no copy on the other side</span>, i.e. it would be gone for good. Files stored on only one side aren't protected — sync (or download) them to get redundancy.</p>
+                  </InfoSection>
+                  <InfoSection title="The storage meter">
+                    <p>Right figure <span className="text-zinc-300">total used / 1&nbsp;GB</span> — the whole side's usage against quota; the bar's <span className="text-zinc-300">yellow-black hazard stripes</span> fill to it. Left figure <span className="text-zinc-300">generated files / total used</span> — the listed files, drawn as the <span className="text-zinc-300">solid coloured</span> fill (colour warns as you near the limit). The striped remainder (Local mode) is your uploaded source books and internal caches — not listed, but still using space.</p>
+                  </InfoSection>
+                  <InfoSection title="Terms">
+                    <p>Cloud copies are <span className="text-zinc-300">private to you</span> (per-user isolation, encrypted at rest); we never share or train on them. Free cloud storage is capped at <span className="text-zinc-300">1&nbsp;GB</span>.</p>
+                  </InfoSection>
+                </InfoTooltip>
+                <button onClick={() => setIsFilesOpen(false)} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
+              </div>
             </div>
-            <div className="h-[calc(70vh+69px)] p-6 flex flex-col">
+            <div className="h-[calc(70vh+69px)] flex flex-col">
               <ErrorBoundary>
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
                   <GeneratedFilesPanel library={library} />

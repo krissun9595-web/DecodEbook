@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle, AlertTriangle } from 'lucide-react';
-import { createChatSession, sendMessageToChat } from '../services/gemini';
+import { createChatSession, sendMessageToChat, ChatSession } from '../services/gemini';
 import { FileContext } from '../types';
-import { Chat, Content } from "@google/genai";
+import { Content } from "@google/genai";
 import { TIER_CREDITS } from '../services/stripe';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
 
@@ -17,6 +17,64 @@ interface Message {
   text: string;
 }
 
+// Chat history persists per book in localStorage so it survives a page refresh (it was memory-only
+// in a useRef before, which is why the conversation vanished on reload). Capped to the last 100 turns.
+const chatKey = (bookId: string) => `decode_chat_${bookId}`;
+const loadChatHistory = (bookId: string): Message[] => {
+  try { const raw = localStorage.getItem(chatKey(bookId)); const a = raw ? JSON.parse(raw) : null; return Array.isArray(a) ? a : []; } catch { return []; }
+};
+const saveChatHistory = (bookId: string, msgs: Message[]) => {
+  try { localStorage.setItem(chatKey(bookId), JSON.stringify(msgs.slice(-100))); } catch {}
+};
+
+// Lightweight markdown → React renderer for assistant replies (paragraphs, bullet/numbered lists,
+// bold, inline code). Everything is React elements — NO dangerouslySetInnerHTML — so it keeps the
+// app's no-HTML-injection posture even though the content is model output.
+const renderInline = (s: string): React.ReactNode[] => {
+  const out: React.ReactNode[] = [];
+  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let last = 0, k = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    const t = m[0];
+    if (t.startsWith('**')) out.push(<strong key={k++} className="font-semibold text-zinc-100">{t.slice(2, -2)}</strong>);
+    else out.push(<code key={k++} className="px-1 py-0.5 rounded bg-black/50 text-neon-cyan">{t.slice(1, -1)}</code>);
+    last = m.index + t.length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+};
+
+const MarkdownText: React.FC<{ text: string }> = ({ text }) => {
+  const lines = text.replace(/\r/g, '').split('\n');
+  const bullet = (l: string) => /^\s*[-*•]\s+/.test(l);
+  const numbered = (l: string) => /^\s*\d+[.)]\s+/.test(l);
+  const blocks: React.ReactNode[] = [];
+  let i = 0, k = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    const h = line.match(/^\s*#{1,6}\s+(.*)/);
+    if (h) { blocks.push(<p key={k++} className="font-bold text-zinc-100">{renderInline(h[1])}</p>); i++; continue; }
+    if (bullet(line)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && bullet(lines[i])) { items.push(<li key={items.length}>{renderInline(lines[i].replace(/^\s*[-*•]\s+/, ''))}</li>); i++; }
+      blocks.push(<ul key={k++} className="list-disc pl-4 space-y-1">{items}</ul>);
+      continue;
+    }
+    if (numbered(line)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && numbered(lines[i])) { items.push(<li key={items.length}>{renderInline(lines[i].replace(/^\s*\d+[.)]\s+/, ''))}</li>); i++; }
+      blocks.push(<ol key={k++} className="list-decimal pl-4 space-y-1">{items}</ol>);
+      continue;
+    }
+    const para: string[] = [];
+    while (i < lines.length && lines[i].trim() && !bullet(lines[i]) && !numbered(lines[i]) && !/^\s*#{1,6}\s+/.test(lines[i])) { para.push(lines[i]); i++; }
+    blocks.push(<p key={k++}>{renderInline(para.join(' '))}</p>);
+  }
+  return <div className="space-y-2">{blocks}</div>;
+};
+
 export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -26,7 +84,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState({ x: 0, y: 0 });
   
-  const [chatSession, setChatSession] = useState<Chat | null>(null);
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +131,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
         historyCache.current[prevBookId.current] = messages;
     }
 
-    const cachedMessages = historyCache.current[bookId];
+    const cachedMessages = historyCache.current[bookId] || loadChatHistory(bookId);
 
     const apiHistory: Content[] = cachedMessages
         ? cachedMessages.map(m => ({
@@ -95,6 +153,14 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
 
     prevBookId.current = bookId;
   }, [bookId, fileContext]);
+
+  // Persist chat history (per book) on every change so it survives a page refresh.
+  useEffect(() => {
+    if (bookId && messages.length > 0) {
+      historyCache.current[bookId] = messages;
+      saveChatHistory(bookId, messages);
+    }
+  }, [messages, bookId]);
 
   // Dragging Logic (mouse + touch)
   useEffect(() => {
@@ -238,8 +304,10 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     } catch(e: any) {
                          if (isInsufficientCreditsError(e)) {
                             setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
-                         } else if (e.name !== 'AbortError') {
-                            setMessages(prev => [...prev, { role: 'model', text: "ERR: Audio transmission failed." }]);
+                         } else if (controller.signal.aborted) {
+                            setMessages(prev => [...prev, { role: 'model', text: "Request cancelled — what can I help you with?" }]);
+                         } else {
+                            setMessages(prev => [...prev, { role: 'model', text: "Couldn't process the audio. Please try again." }]);
                          }
                     } finally {
                         setIsLoading(false);
@@ -279,8 +347,10 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     } catch (e: any) {
         if (isInsufficientCreditsError(e)) {
             setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
-        } else if (e.name !== 'AbortError') {
-            setMessages(prev => [...prev, { role: 'model', text: "ERR: Neural connection severed." }]);
+        } else if (controller.signal.aborted) {
+            setMessages(prev => [...prev, { role: 'model', text: "Request cancelled — what can I help you with?" }]);
+        } else {
+            setMessages(prev => [...prev, { role: 'model', text: "Something went wrong. Please try again." }]);
         }
     } finally {
         setIsLoading(false);
@@ -317,21 +387,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 <div className="absolute inset-0 bg-gradient-to-tr from-neon-cyan/40 to-transparent rounded-full animate-pulse-slow"></div>
                 <Cpu className="text-neon-cyan relative z-10 w-8 h-8 drop-shadow-[0_0_5px_rgba(0,243,255,1)]" />
                 <div className="absolute -inset-2 border border-dashed border-neon-cyan/30 rounded-full animate-spin-slow pointer-events-none"></div>
-                
-                {/* Expand Button on Sphere */}
-                <button 
-                  onClick={handleQuickExpand}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-neon-cyan text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-125 z-50 border border-white/20"
-                  title="Expand to Full View"
-                >
-                  <Maximize2 size={12} />
-                </button>
-
                 <div className="absolute -inset-1 border border-dotted border-neon-red/30 rounded-full animate-reverse-spin pointer-events-none opacity-50"></div>
-                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black border border-neon-cyan/50 px-2 py-0.5 rounded text-[9px] font-mono text-neon-cyan opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    AI_CORE_ACTIVE
-                </div>
             </div>
         )}
 
@@ -383,7 +439,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                     : 'bg-[#1a1a1c] text-zinc-300 border border-zinc-700 rounded-t-lg rounded-br-lg'
                                 }
                             `}>
-                                {msg.text}
+                                {msg.role === 'model' ? <MarkdownText text={msg.text} /> : msg.text}
                             </div>
                         </div>
                     ))}

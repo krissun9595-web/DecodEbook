@@ -9,6 +9,7 @@ import { StatusMessage } from './ui/StatusMessage';
 import { CreditNotice } from './ui/CreditNotice';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
+import { getFileOrCloud } from '../services/figureSync';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -67,6 +68,11 @@ const podcastPlaybackPositions = new Map<string, number>();
 let lastPodcastTone: string | null = null;
 let lastPodcastLanguage: string | null = null;
 let lastEpisodeTitle: string | null = null;
+// Persist the AI episode title per podcast key so it survives a refresh AND can be synced (via the
+// sidecar) so the player's centre label shows across devices. Same key the sidecar reads/writes.
+const podcastTitleLSKey = (k: string) => `decodebook_podcast_title:${k}`;
+const readPodcastTitle = (k: string): string => { try { return (typeof window !== 'undefined' && localStorage.getItem(podcastTitleLSKey(k))) || ''; } catch { return ''; } };
+const writePodcastTitle = (k: string, t: string): void => { try { if (t && typeof window !== 'undefined') localStorage.setItem(podcastTitleLSKey(k), t); } catch { /* best-effort */ } };
 let lastPodcastPlayerMinimized: boolean | null = null;
 
 const readStoredValue = (key: string): string | null => {
@@ -274,10 +280,13 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
       const audioKey = key;
       const scriptKey = buildCacheKey(bookId, chapter.id, 'podcast-script', selectedTone, selectedLanguage);
       try {
-        const [cachedAudio, cachedScript] = await Promise.all([getFile(audioKey), getFile(scriptKey)]);
+        const [cachedAudio, cachedScript] = await Promise.all([getFileOrCloud(audioKey), getFileOrCloud(scriptKey)]);
         if (cachedAudio && cachedScript && !cancelled) {
           setAudioSrc(URL.createObjectURL(cachedAudio.blob));
           setScript(await cachedScript.blob.text());
+          // Restore the AI episode title from its persisted/sidecar-synced store; fall back to the
+          // chapter title so the player's centre label is never blank.
+          if (!episodeTitle) setEpisodeTitle(readPodcastTitle(key) || chapter.title || bookTitle || '');
           setHasInitiated(true);
           return;
         }
@@ -294,7 +303,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
           if (result) {
             setAudioSrc(URL.createObjectURL(result.audioBlob));
             setScript(result.script);
-            setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle;
+            setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle; writePodcastTitle(key, result.episodeTitle);
             setActiveIndex(-1);
           }
         } catch (e: any) {
@@ -361,7 +370,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
         // Cache results (runs even if component is unmounted)
         const audioCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-audio', capturedTone, capturedLanguage);
         saveFile(audioCacheKey, audioBlob, {
-          filename: `podcast-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.wav`,
+          filename: `podcast-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${capturedLanguage}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -373,7 +382,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
         const scriptBlob = new Blob([result.script], { type: 'text/plain' });
         const scriptCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-script', capturedTone, capturedLanguage);
         saveFile(scriptCacheKey, scriptBlob, {
-          filename: `script-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.txt`,
+          filename: `script-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${capturedLanguage}.txt`,
           mimeType: 'text/plain',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -401,7 +410,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
       if (podcastGenKeyRef.current === genKey && result) {
         setAudioSrc(URL.createObjectURL(result.audioBlob));
         setScript(result.script);
-        setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle;
+        setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle; writePodcastTitle(genKey, result.episodeTitle);
         setActiveIndex(-1);
       }
     } catch (e: any) {

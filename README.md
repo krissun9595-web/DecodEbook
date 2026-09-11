@@ -15,6 +15,10 @@ View your app in AI Studio: https://ai.studio/apps/e468963d-bbff-4509-96e4-ae233
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Run the app:
    `npm run dev`
+
+> Provider API keys (Gemini, etc.) are NOT set in the client build — they live only as Cloudflare
+> Worker secrets (`wrangler secret put GEMINI_API_KEY --env staging`) and are injected server-side by
+> the `/api/gemini` proxy. Never put a provider key in `.env.local` / the client bundle. To use your
+> own key for local direct testing, paste it into the app's Settings (it stays in your browser only).

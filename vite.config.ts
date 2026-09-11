@@ -10,9 +10,11 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
+      // NOTE: never inline a provider secret here. GEMINI_API_KEY lives ONLY in the Worker
+      // (wrangler secret) and is injected server-side by the /api/gemini proxy. Defining
+      // process.env.GEMINI_API_KEY/API_KEY here would compile the key into public JS if it were
+      // ever present at build time. Only these two PUBLIC values are inlined.
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
         'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || ''),
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY || ''),
       },

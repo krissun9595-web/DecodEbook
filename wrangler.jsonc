@@ -10,6 +10,11 @@
   "build": {
     "command": "npm run build"
   },
+  // Production (top-level env) bindings. Named envs (staging) do NOT inherit these — staging keeps its
+  // own RATE_LIMIT below. RATE_LIMIT is optional in the worker (checkRateLimit no-ops if unbound).
+  "kv_namespaces": [
+    { "binding": "RATE_LIMIT", "id": "48a66e5ac6d246449e07c02fc2b3f51c" }
+  ],
   "env": {
     "staging": {
       "workers_dev": true,
@@ -19,7 +24,10 @@
       },
       "vars": {
         "ENVIRONMENT": "staging"
-      }
+      },
+      "kv_namespaces": [
+        { "binding": "RATE_LIMIT", "id": "7a30e45009e14647922ca96a562ea2c8" }
+      ]
     }
   }
 }

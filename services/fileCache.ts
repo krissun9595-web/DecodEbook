@@ -28,8 +28,11 @@ function openDB(): Promise<IDBDatabase> {
 // after each saveFile, mirroring how pronunciationAudio.ts self-trims.
 const MAX_CACHE_BYTES = 1_000_000_000; // 1 GB soft cap
 const EVICT_TO_BYTES  =   800_000_000; // low-water mark after an eviction pass
-// NEVER evict these — losing them forces a full re-extraction / re-upload:
-const PROTECTED_TYPES: CachedFileType[] = ['source-file', 'original-file'];
+// NEVER evict these — losing them forces a full re-extraction / re-upload, or (for figures)
+// silently blanks images the reader can't re-derive on demand. Extracted figures and
+// notebook-clipped figures are irreplaceable source content, not regenerable media, so they
+// are protected alongside the source/original files.
+const PROTECTED_TYPES: CachedFileType[] = ['source-file', 'original-file', 'figure-image', 'notebook-figure'];
 
 export async function enforceCacheBudget(): Promise<void> {
   const db = await openDB();

@@ -62,6 +62,11 @@ export async function saveBookToCloud(userId: string, item: LibraryItem): Promis
     // falls back to a lossy heuristic (fewer, mis-split chapters). Sync it so every device rebuilds
     // the same chapters the upload produced.
     pdf_outline: item.fileContext.pdfOutline ?? null,
+    // Figure manifest (per-figure dimensions + column-width fraction). Lightweight metadata, NO image
+    // bytes (those sync separately to Storage). Without it, a figure pulled on another device has no
+    // size info → the reader falls back to a 4/3 box + full column width, so it renders letterboxed and
+    // wider than the original. Syncing it makes synced figures match the source exactly.
+    pdf_figures: item.fileContext.pdfFigures ?? null,
     upload_date: item.uploadDate,
   }, { onConflict: 'id,user_id' });
   if (error) console.warn('[sync] saveBook failed:', error.message);
@@ -96,6 +101,7 @@ export async function loadLibraryFromCloud(userId: string): Promise<LibraryItem[
       ...decodeMimeType(row.mime_type),
       isText: row.is_text,
       pdfOutline: row.pdf_outline ?? undefined,
+      pdfFigures: row.pdf_figures ?? undefined,
     },
     uploadDate: row.upload_date,
   }));

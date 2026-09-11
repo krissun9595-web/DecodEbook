@@ -10,6 +10,8 @@ import { StatusMessage } from './ui/StatusMessage';
 import { Loader } from './ui/Loader';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, deleteFile, deleteMatchingKeys, buildCacheKey } from '../services/fileCache';
+import { uploadFigureToCloud, fetchFigureFromCloud, uploadGenFileToCloud } from '../services/supabase';
+import { syncBookFiguresToCloud, getFileOrCloud } from '../services/figureSync';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -150,6 +152,9 @@ const initialVoiceSynthMinimized = (): boolean => {
 
 // Module-level cache for timings (keyed same as audio cache)
 const timingsCache = new Map<string, ChunkTiming[]>();
+// memKeys whose chapter-memory we've already back-filled to the cloud this session (push once, not on
+// every chapter open) — see the cold-seed in loadOrGeneratePageTranslation.
+const translationMemPushed = new Set<string>();
 // Serializes translation work per chapter+language key so concurrent page/prefetch requests share one
 // accumulating map instead of each re-translating and re-saving.
 const translationJobMap = new Map<string, Promise<unknown>>();
@@ -199,6 +204,20 @@ const writeStoredTimings = (audioKey: string, timings: ChunkTiming[]): void => {
   } catch {
     // Timing persistence is best-effort; audio generation should not fail if storage is full.
   }
+};
+
+// Estimate per-sentence timings from an audio's total duration + the spoken sentences, distributing
+// time in proportion to text length. Generation uses this same proportional model, so it reproduces
+// equivalent timings on ANY device with NO synced sidecar — the fallback used when a loaded audio has
+// none (so the reading-sentence highlight still follows playback). One entry per sentence, in order.
+const buildFallbackTimings = (sentences: string[], duration: number): ChunkTiming[] => {
+  const totalChars = sentences.reduce((a, s) => a + (s ? s.length : 0), 0) || 1;
+  let acc = 0;
+  return sentences.map((text) => {
+    const dur = ((text ? text.length : 0) / totalChars) * duration;
+    const start = acc; acc += dur;
+    return { text, start, end: start + dur, isWhitespace: false };
+  });
 };
 
 interface SentenceMap {
@@ -1780,8 +1799,20 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
       try {
         const rec = await getFile(buildCacheKey(bookId, 0, 'figure-image', figId));
         if (!alive) return;
-        if (rec?.blob) { blobRef.current = rec.blob; obj = URL.createObjectURL(rec.blob); setUrl(obj); setState('ready'); }
-        else setState('missing');
+        if (rec?.blob) {
+          blobRef.current = rec.blob; obj = URL.createObjectURL(rec.blob); setUrl(obj); setState('ready');
+          // Backfill the cloud copy so OTHER devices can pull this figure (best-effort, de-duped).
+          uploadFigureToCloud(bookId, figId, rec.blob);
+          return;
+        }
+        // Local miss (e.g. a device that only received the synced text) — try the cloud, then
+        // cache it locally so subsequent loads are instant and offline.
+        const cloud = await fetchFigureFromCloud(bookId, figId);
+        if (!alive) { return; }
+        if (cloud) {
+          blobRef.current = cloud; obj = URL.createObjectURL(cloud); setUrl(obj); setState('ready');
+          saveFile(buildCacheKey(bookId, 0, 'figure-image', figId), cloud, { filename: `${figId}.jpg`, mimeType: cloud.type || 'image/jpeg', timestamp: Date.now(), bookId, bookTitle, chapterId: 0, componentSource: 'CloudSync', fileType: 'figure-image' }).catch(() => {});
+        } else setState('missing');
       } catch { if (alive) setState('missing'); }
     })();
     return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
@@ -1877,7 +1908,12 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
     </div>
   );
 
-  const box = imageBox(state === 'ready' ? url : null, state === 'loading', state === 'loading' ? 'loading figure…' : 'figure unavailable');
+  // When the figure MANIFEST is absent (e.g. a figure pulled from cloud on another device — the
+  // pdfFigures manifest doesn't sync, only the image bytes do), `aspect` falls back to 4/3 and the
+  // wide/short image gets letterboxed inside a too-tall framed box. In that case size the box to the
+  // image's OWN aspect (natural) so the frame hugs the picture — no empty band above/below.
+  const haveAspect = !!(meta && meta.wPx && meta.hPx);
+  const box = imageBox(state === 'ready' ? url : null, state === 'loading', state === 'loading' ? 'loading figure…' : 'figure unavailable', !haveAspect);
   const trPane = tr.state === 'rendering' ? imageBox(null, true, 'rendering…')
     : tr.state === 'done' && tr.url ? imageBox(tr.url, false, '', true)
     : box;
@@ -1951,7 +1987,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // "load cached audio" effect can tell whether THIS page's audio is already showing — fixing audio not
   // re-attaching when returning to a page after the first pagination/measure churn on mount.
   const attachedAudioKeyRef = useRef<string>('');
+  const fallbackTimingsKeyRef = useRef<string>(''); // audio key we've already built estimated timings for
   const [timings, setTimings] = useState<ChunkTiming[]>([]);
+  // Proactively mirror ALL of this book's extracted figures to the cloud (once per session) so every
+  // figure — not just the pages viewed on the upload device — is available on the user's other devices.
+  useEffect(() => { if (bookId) syncBookFiguresToCloud(bookId); }, [bookId]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasInitiated, setHasInitiated] = useState(false);
   const [generationProgress, setGenerationProgress] = useState("");
@@ -2614,7 +2654,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       // why cached audio failed to re-attach until a page change forced a clean reset.
       if (attachedAudioKeyRef.current === key) return;
       try {
-        const cached = await getFile(key);
+        const cached = await getFileOrCloud(key);
         if (cached && !cancelled) {
           setAudioSrc(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(cached.blob); });
           attachedAudioKeyRef.current = key;
@@ -2629,6 +2669,30 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     loadCached();
     return () => { cancelled = true; };
   }, [currentPage, selectedVoice, audioLanguage, bookId, chapter.id, pages, currentPageText, sourceFingerprint, isGenerating]);
+
+  // Opportunistic cleanup of this chapter's OBSOLETE per-page translation JSONs, run 4s AFTER pagination
+  // settles (debounced so a transient mid-measure page count can't delete live files). A per-page key is
+  // `bookId:chapter:translation:VERSION:sourceFingerprint:pgN:language`; we drop those that are either a
+  // superseded cache generation (different VERSION / sourceFingerprint) OR sit at a page index beyond the
+  // current pagination (orphaned by a re-flow to fewer pages). Current-pagination files (idx < pages.length,
+  // current version+fingerprint) are never touched. SAFE: the chapter MEMORY holds every paid sentence
+  // (pagination-independent), so anything pruned re-creates for FREE if a page needs it again — this only
+  // reclaims dead cache, never paid content. The 'translation-doc' .txt / 'translation-mem' / figure files
+  // don't match the predicate, so they're left alone.
+  useEffect(() => {
+    if (!bookId || pages.length === 0) return;
+    const maxPage = pages.length;
+    const timer = setTimeout(() => {
+      deleteMatchingKeys(k => {
+        const p = k.split(':');
+        if (p.length < 7 || p[0] !== bookId || p[1] !== String(chapter.id) || p[2] !== 'translation' || !p[5].startsWith('pg')) return false;
+        if (p[3] !== TRANSLATION_CACHE_VERSION || p[4] !== sourceFingerprint) return true; // superseded generation
+        const idx = parseInt(p[5].slice(2), 10);
+        return Number.isFinite(idx) && idx >= maxPage; // orphaned by the current (coarser) pagination
+      }).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [bookId, chapter.id, pages.length, sourceFingerprint]);
 
   // The PERSISTED file is per PAGE, self-contained and in reading order, keyed by page NUMBER only (no
   // page text / sentence-signature) — so re-flowing the chapter overwrites the same page file instead
@@ -2724,7 +2788,18 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       // a missing/invalid mem file silently falls back to the per-page seed below (today's behavior).
       if (coldMap) {
         try {
-          const memFile = await getFile(memKey).catch(() => null);
+          const memName = `translation-memory-${chapterFileLabel(chapter, allChapters)}-${titleCase(language, 20)}.json`;
+          // Local-first: if THIS device already translated the chapter, seed from the local memory and
+          // back-fill it to the cloud ONCE per session — so a device that never translated it can reuse
+          // it (covers chapters done BEFORE cross-device memory sync existed). Otherwise PULL the memory
+          // from the cloud (getFileOrCloud) so every sentence already paid for seeds the map → no
+          // re-charge. Pagination-independent, so it also covers pages that reflowed differently.
+          let memFile = await getFile(memKey).catch(() => null);
+          if (memFile?.blob && !translationMemPushed.has(memKey)) {
+            translationMemPushed.add(memKey);
+            uploadGenFileToCloud(memKey, memFile.blob, { filename: memName, fileType: 'translation-mem', bookId, bookTitle, size: memFile.blob.size }).catch(() => {});
+          }
+          if (!memFile) memFile = await getFileOrCloud(memKey).catch(() => null);
           if (memFile) {
             const memObj = JSON.parse(await memFile.blob.text());
             if (memObj && typeof memObj === 'object') {
@@ -2741,7 +2816,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       // Read this page's already-saved file ONCE — to seed the map (cross-session reuse, no model call)
       // AND to know its current stored content so we only re-save when it would actually change.
       let existingText: string | null = null;
-      const cached = await getFile(pageKey).catch(() => null);
+      const cached = await getFileOrCloud(pageKey).catch(() => null);
       if (cached) {
         try {
           existingText = await cached.blob.text();
@@ -2773,8 +2848,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         // reuses them regardless of pagination. Only written when the map actually grew (guarded above),
         // so pure cache-hit revisits never touch disk.
         try {
-          await saveFile(memKey, new Blob([JSON.stringify(Object.fromEntries(map!))], { type: 'application/json' }), {
-            filename: `translation-memory-${chapterFileLabel(chapter, allChapters)}-${titleCase(language, 20)}.json`,
+          const memBlob = new Blob([JSON.stringify(Object.fromEntries(map!))], { type: 'application/json' });
+          const memName = `translation-memory-${chapterFileLabel(chapter, allChapters)}-${titleCase(language, 20)}.json`;
+          await saveFile(memKey, memBlob, {
+            filename: memName,
             mimeType: 'application/json',
             timestamp: Date.now(),
             bookId,
@@ -2783,6 +2860,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             componentSource: 'audiobook',
             fileType: 'translation-mem',
           }).catch(e => console.warn('[tcache] chapter-memory save failed:', e));
+          // Push the grown chapter MEMORY to the cloud so ANOTHER device seeds from it and never
+          // re-charges for sentences already paid for. One file per chapter+language, pagination-
+          // independent; 'translation-mem' is a HIDDEN_TYPE so it never clutters Cloud mode. Best-effort.
+          uploadGenFileToCloud(memKey, memBlob, { filename: memName, fileType: 'translation-mem', bookId, bookTitle, size: memBlob.size }).catch(() => {});
         } catch (memSaveErr) { console.warn('[tcache] chapter-memory save error:', memSaveErr); }
       }
 
@@ -3012,7 +3093,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       // Remember where we are so returning to this audio resumes here.
       if (loadedAudioKeyRef.current && t > 0.1) audioPlaybackPositions.set(loadedAudioKeyRef.current, t);
 
-      const activeIdx = timings.findIndex(chunk => !chunk.isWhitespace && t >= chunk.start && t < chunk.end);
+      // If the loaded audio has NO timings — a cached/pulled file whose timings didn't travel with it,
+      // an older file predating timings persistence, or one whose layout-dependent key differs from
+      // where the sidecar lives — synthesise them locally: the audio speaks flatSentenceMap in order, so
+      // distribute its total duration across those sentences in proportion to text length. That's the
+      // SAME proportional model generation uses (see buildAudioFromResults), so the reading-sentence
+      // highlight follows playback on any device with NO dependency on a synced timings sidecar. Built
+      // once per audio (ref-guarded); real generation-time timings still win whenever they're present.
+      let liveTimings = timings;
+      if (timings.length === 0 && d > 0 && flatSentenceMap.length > 0 && fallbackTimingsKeyRef.current !== loadedAudioKeyRef.current) {
+        fallbackTimingsKeyRef.current = loadedAudioKeyRef.current;
+        liveTimings = buildFallbackTimings(flatSentenceMap.map(m => m.text), d);
+        setTimings(liveTimings);
+        if (loadedAudioKeyRef.current) timingsCache.set(loadedAudioKeyRef.current, liveTimings);
+      }
+      const activeIdx = liveTimings.findIndex(chunk => !chunk.isWhitespace && t >= chunk.start && t < chunk.end);
       if (activeIdx !== -1 && activeIdx !== activeSentenceIndex) {
           setActiveSentenceIndex(activeIdx);
       }
@@ -3368,7 +3463,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           if (p.k > 0 && p.totalBytes > 0) {
             const pblob = pcmToWav(p.mergedBuffer.buffer, 24000);
             saveFile(genKey, pblob, {
-              filename: `voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}.wav`,
+              filename: `voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}-${capturedAudioLanguage}.wav`,
               mimeType: 'audio/wav', timestamp: Date.now(),
               bookId: capturedBookId, bookTitle: capturedBookTitle, chapterId: capturedChapterId,
               componentSource: 'audiobook', fileType: 'audio',
@@ -3387,7 +3482,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
         // Cache the complete result (runs even if component is unmounted)
         saveFile(genKey, blob, {
-          filename: `voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}.wav`,
+          filename: `voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}-${capturedAudioLanguage}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,

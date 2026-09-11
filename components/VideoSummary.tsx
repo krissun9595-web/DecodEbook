@@ -12,6 +12,7 @@ import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
+import { getFileOrCloud } from '../services/figureSync';
 
 interface Props {
   chapter: Chapter;
@@ -74,7 +75,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
     const loadCached = async () => {
       const key = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
       try {
-        const cached = await getFile(key);
+        const cached = await getFileOrCloud(key);
         if (cached && !cancelled) setVideoUrl(URL.createObjectURL(cached.blob));
       } catch (e) { /* cache miss → idle */ }
     };

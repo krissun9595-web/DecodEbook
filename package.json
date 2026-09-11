@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "node scripts/check-bundle-secrets.mjs",
     "preview": "vite preview",
     "test": "npm run test:source-index && npm run test:structure-analysis && npm run test:reader-structure && npm run test:audio-book-formatting && npm run test:rollback-version && npm run test:regression && npm run test:regression-chapters",
     "test:rollback-version": "esbuild tests/rollbackVersion.test.ts --bundle --platform=node --format=esm --log-level=warning --outfile=/tmp/decodebook-rollbackVersion.test.mjs && node /tmp/decodebook-rollbackVersion.test.mjs",
