@@ -624,13 +624,29 @@ async function recordUsage(env: Env, userId: string, meta: {
     };
     if (meta.book) row.book_title = meta.book;
     if (meta.session) row.session_id = meta.session;
-    // ON CONFLICT (usage_id) DO NOTHING — dedupes vs the client's write.
-    await supabaseAdmin(env, '/usage_logs', {
+    // Write the charge. ON CONFLICT (usage_id) DO NOTHING dedupes vs the client's own write. Crucially,
+    // we LOG any failure (visible in `wrangler tail`) instead of swallowing it — a silent catch here is
+    // how a prod schema gap (missing model/book_title/session_id column) leaked revenue undetected. And
+    // we retry once WITHOUT the optional columns (session_id / book_title), mirroring the client's
+    // fallback, so a schema missing one of those still records a correct charge rather than none.
+    const post = (body: any) => supabaseAdmin(env, '/usage_logs', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
-      body: JSON.stringify(row),
+      body: JSON.stringify(body),
     });
-  } catch {}
+    let res = await post(row);
+    if (!res.ok) {
+      let detail = await res.text().catch(() => '');
+      const { session_id, book_title, ...core } = row;
+      if (session_id !== undefined || book_title !== undefined) {
+        res = await post(core);
+        if (!res.ok) detail = await res.text().catch(() => detail);
+      }
+      if (!res.ok) console.error('[meter] usage_logs insert failed', res.status, detail, 'action=' + meta.action, 'model=' + meta.model);
+    }
+  } catch (e) {
+    console.error('[meter] usage_logs insert threw', String(e), 'action=' + meta.action);
+  }
 }
 
 // --- Tier & quota ---
