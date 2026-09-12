@@ -49,6 +49,7 @@ create table public.subscriptions (
   current_period_end      timestamptz,
   cancel_at_period_end    boolean not null default false,
   pack_credits_balance    int default 0,
+  pack_credits_purchased  int default 0,   -- sql/018: cumulative purchased (progress-bar denominator)
   created_at              timestamptz not null default now(),
   updated_at              timestamptz not null default now()
 );
@@ -69,6 +70,8 @@ create table public.usage_logs (
   output_tokens int default 0,
   cost_cents    int default 0,
   credits_cost  int default 0,
+  session_id    text,            -- sql/021: groups a page-view's charges into one history line
+  usage_id      uuid,            -- sql/022: idempotency key (unique index) so a re-send dedupes
   created_at    timestamptz default now()
 );
 
@@ -512,7 +515,7 @@ end;
 $$;
 
 -- ------------------------------------------------------------
--- add_pack_credits  (sql/009)
+-- add_pack_credits  (sql/018 — bump remaining balance + cumulative purchased + ledger row)
 -- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION add_pack_credits(p_user_id uuid, p_credits int)
 RETURNS void
@@ -521,14 +524,17 @@ SECURITY DEFINER
 AS $$
 BEGIN
   UPDATE subscriptions
-  SET pack_credits_balance = COALESCE(pack_credits_balance, 0) + p_credits,
-      updated_at = now()
-  WHERE user_id = p_user_id AND status IN ('active', 'trialing');
+     SET pack_credits_balance   = COALESCE(pack_credits_balance, 0)   + p_credits,
+         pack_credits_purchased = COALESCE(pack_credits_purchased, 0) + p_credits,
+         updated_at = now()
+   WHERE user_id = p_user_id AND status IN ('active', 'trialing');
+  INSERT INTO public.credit_ledger (user_id, delta, type, reason)
+  VALUES (p_user_id, p_credits, 'purchase', 'Credit pack');
 END;
 $$;
 
 -- ------------------------------------------------------------
--- get_user_credits  (sql/010 version — includes bonus_credits; supersedes sql/009)
+-- get_user_credits  (sql/018 — caps monthly usage at the allowance; exposes pack_purchased + bonus)
 -- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION get_user_credits(p_user_id uuid)
 RETURNS json
@@ -536,37 +542,45 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_tier text := 'free';
+  v_tier         text := 'free';
   v_period_start timestamptz;
-  v_period_end timestamptz;
-  v_cancel boolean := false;
+  v_period_end   timestamptz;
+  v_cancel       boolean := false;
   v_pack_balance int := 0;
-  v_bonus int := 0;
+  v_pack_bought  int := 0;
+  v_bonus        int := 0;
   v_credits_used int;
+  v_monthly      int;
 BEGIN
-  SELECT tier, current_period_start, current_period_end,
-         cancel_at_period_end, COALESCE(pack_credits_balance, 0)
-  INTO v_tier, v_period_start, v_period_end, v_cancel, v_pack_balance
-  FROM subscriptions
-  WHERE user_id = p_user_id AND status IN ('active', 'trialing')
-  ORDER BY created_at DESC LIMIT 1;
+  SELECT tier, current_period_start, current_period_end, cancel_at_period_end,
+         COALESCE(pack_credits_balance, 0), COALESCE(pack_credits_purchased, 0)
+    INTO v_tier, v_period_start, v_period_end, v_cancel, v_pack_balance, v_pack_bought
+    FROM public.subscriptions
+   WHERE user_id = p_user_id AND status IN ('active', 'trialing')
+   ORDER BY created_at DESC
+   LIMIT 1;
 
   IF v_tier IS NULL THEN v_tier := 'free'; END IF;
+
   IF v_tier = 'free' THEN
-    -- Free credits are a one-time lifetime grant (not monthly): count usage since signup.
-    SELECT first_seen_at INTO v_period_start FROM profiles WHERE id = p_user_id;
+    SELECT first_seen_at INTO v_period_start FROM public.profiles WHERE id = p_user_id;
     v_period_start := COALESCE(v_period_start, '1970-01-01'::timestamptz);
     v_period_end := NULL;
   ELSIF v_period_start IS NULL THEN
     v_period_start := date_trunc('month', now());
   END IF;
 
-  SELECT COALESCE(balance, 0) INTO v_bonus FROM bonus_credits WHERE user_id = p_user_id;
+  SELECT COALESCE(balance, 0) INTO v_bonus FROM public.bonus_credits WHERE user_id = p_user_id;
 
-  SELECT COALESCE(SUM(credits_cost), 0)
-  INTO v_credits_used
-  FROM usage_logs
-  WHERE user_id = p_user_id AND created_at >= v_period_start;
+  SELECT COALESCE(SUM(credits_cost), 0) INTO v_credits_used
+    FROM public.usage_logs
+   WHERE user_id = p_user_id AND created_at >= v_period_start;
+
+  -- Cap monthly usage at the allowance; over-monthly overflow is accounted in the wallet.
+  v_monthly := tier_monthly_credits(v_tier);
+  IF v_monthly IS NOT NULL AND v_credits_used > v_monthly THEN
+    v_credits_used := v_monthly;
+  END IF;
 
   RETURN json_build_object(
     'tier', v_tier,
@@ -575,6 +589,7 @@ BEGIN
     'cancel_at_period_end', v_cancel,
     'credits_used', v_credits_used,
     'pack_credits', v_pack_balance,
+    'pack_purchased', v_pack_bought,
     'bonus_credits', COALESCE(v_bonus, 0)
   );
 END;
@@ -874,3 +889,281 @@ create policy "Users read own bonus credits" on public.bonus_credits
 --  entirely by RLS policies above plus Supabase's default role grants. All index
 --  DDL is defined in the INDEXES section above, adjacent to its table.
 --  idx_books_user is intentionally omitted — it was dropped with public.books.)
+
+-- ============================================================================
+-- Credit Model v2 + cross-device sync — reconciled with the live DB (2026-09-12).
+-- These were missing from schema.sql (drifted). Definitions are verbatim from the
+-- migrations that are live on staging+prod: 018 (depletion), 019 (referral trigger,
+-- tier_monthly_credits final), 024 (email-normalized referral), 028 (synced-file index).
+-- ============================================================================
+
+-- monthly allowance per tier (019 final): pro=1000, else 100.
+CREATE OR REPLACE FUNCTION tier_monthly_credits(p_tier text)
+RETURNS int
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_tier
+           WHEN 'pro' THEN 1000
+           ELSE 100          -- free and any legacy/unknown tier: metered at the free allowance
+         END;
+$$;
+
+-- metering period start (018): free=since signup, paid=billing period.
+CREATE OR REPLACE FUNCTION credit_period_start(p_user_id uuid, p_tier text, p_sub_start timestamptz)
+RETURNS timestamptz
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE v timestamptz;
+BEGIN
+  IF p_tier = 'free' THEN
+    SELECT first_seen_at INTO v FROM profiles WHERE id = p_user_id;
+    RETURN COALESCE(v, '1970-01-01'::timestamptz);
+  END IF;
+  RETURN COALESCE(p_sub_start, date_trunc('month', now()));
+END;
+$$;
+
+-- depletion trigger (018): overflow drains BONUS first, then PACKS.
+CREATE OR REPLACE FUNCTION deplete_wallet_on_usage()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_tier         text := 'free';
+  v_sub_start    timestamptz;
+  v_monthly      int;
+  v_period_start timestamptz;
+  v_prior_used   int;
+  v_from_monthly int;
+  v_overflow     int;
+  v_pack         int := 0;
+  v_bonus        int := 0;
+  v_take         int;
+BEGIN
+  IF COALESCE(NEW.credits_cost, 0) <= 0 THEN RETURN NEW; END IF;
+
+  SELECT tier, current_period_start, COALESCE(pack_credits_balance, 0)
+    INTO v_tier, v_sub_start, v_pack
+    FROM subscriptions
+   WHERE user_id = NEW.user_id AND status IN ('active', 'trialing')
+   ORDER BY created_at DESC
+   LIMIT 1;
+  IF v_tier IS NULL THEN v_tier := 'free'; END IF;
+
+  v_monthly := tier_monthly_credits(v_tier);
+  IF v_monthly IS NULL THEN RETURN NEW; END IF;         -- unmetered tier
+
+  v_period_start := credit_period_start(NEW.user_id, v_tier, v_sub_start);
+
+  -- Usage in this period BEFORE this row. This is an AFTER trigger, so NEW is already
+  -- counted in the SUM — subtract it back out to get the prior total.
+  SELECT COALESCE(SUM(credits_cost), 0) - NEW.credits_cost
+    INTO v_prior_used
+    FROM usage_logs
+   WHERE user_id = NEW.user_id AND created_at >= v_period_start;
+  IF v_prior_used < 0 THEN v_prior_used := 0; END IF;
+
+  v_from_monthly := LEAST(NEW.credits_cost, GREATEST(0, v_monthly - v_prior_used));
+  v_overflow := NEW.credits_cost - v_from_monthly;
+  IF v_overflow <= 0 THEN RETURN NEW; END IF;           -- fully covered by monthly
+
+  -- Bonus first: it's temporary/free, so drain it before the paid packs.
+  SELECT COALESCE(balance, 0) INTO v_bonus FROM bonus_credits WHERE user_id = NEW.user_id;
+  IF v_bonus > 0 THEN
+    v_take := LEAST(v_overflow, v_bonus);
+    UPDATE bonus_credits
+       SET balance = balance - v_take, updated_at = now()
+     WHERE user_id = NEW.user_id;
+    v_overflow := v_overflow - v_take;
+  END IF;
+
+  -- Then packs (paid, never expire — preserved for last).
+  IF v_overflow > 0 AND v_pack > 0 THEN
+    v_take := LEAST(v_overflow, v_pack);
+    UPDATE subscriptions
+       SET pack_credits_balance = COALESCE(pack_credits_balance, 0) - v_take,
+           updated_at = now()
+     WHERE user_id = NEW.user_id AND status IN ('active', 'trialing');
+    v_overflow := v_overflow - v_take;
+  END IF;
+
+  -- Any remaining v_overflow means the pre-charge gate let an over-budget action
+  -- through; it is intentionally not clamped here (history stays truthful).
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_deplete_wallet ON usage_logs;
+CREATE TRIGGER trg_deplete_wallet
+  AFTER INSERT ON usage_logs
+  FOR EACH ROW
+  EXECUTE FUNCTION deplete_wallet_on_usage();
+
+-- email canonicalizer for referral anti-abuse (024).
+CREATE OR REPLACE FUNCTION normalize_email(e text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT CASE
+    WHEN e IS NULL OR position('@' in e) = 0 THEN NULL
+    ELSE (
+      WITH p AS (
+        SELECT split_part(lower(trim(e)), '@', 1) AS loc,
+               split_part(lower(trim(e)), '@', 2) AS dom
+      )
+      SELECT CASE
+        WHEN dom IN ('gmail.com', 'googlemail.com')
+          THEN regexp_replace(split_part(loc, '+', 1), '\.', '', 'g') || '@gmail.com'
+        ELSE split_part(loc, '+', 1) || '@' || dom
+      END
+      FROM p
+    )
+  END;
+$$;
+
+-- referral reward on engagement (024 — email-normalized).
+CREATE OR REPLACE FUNCTION award_referral_on_engagement(p_referred uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_id            bigint;
+  v_referrer      uuid;
+  v_ip_hash       text;
+  v_email_ok      timestamptz;
+  v_used          int;
+  v_credited      int;
+  v_referred_norm text;
+  v_referrer_norm text;
+  threshold constant int := 20;   -- free credits the referred user must spend to qualify (tunable)
+BEGIN
+  -- Pending (not-yet-processed) referral for this user?
+  SELECT id, referrer_id, referred_ip_hash
+    INTO v_id, v_referrer, v_ip_hash
+    FROM referral_signups
+   WHERE referred_user_id = p_referred AND activated = false
+   LIMIT 1;
+  IF v_id IS NULL THEN RETURN; END IF;
+
+  -- (1) email verified
+  SELECT email_confirmed_at INTO v_email_ok FROM auth.users WHERE id = p_referred;
+  IF v_email_ok IS NULL THEN RETURN; END IF;   -- not yet verified; try again on later usage
+
+  -- (2) genuine free-credit usage
+  SELECT COALESCE(SUM(credits_cost), 0) INTO v_used FROM usage_logs WHERE user_id = p_referred;
+  IF v_used < threshold THEN RETURN; END IF;    -- not engaged enough yet; try again later
+
+  -- (NEW) one PERSON per canonical inbox: block self-referral-by-email and a second account whose
+  -- normalized email matches an already-credited referral of the same referrer.
+  SELECT normalize_email(email) INTO v_referred_norm FROM auth.users WHERE id = p_referred;
+  SELECT normalize_email(email) INTO v_referrer_norm FROM auth.users WHERE id = v_referrer;
+  IF v_referred_norm IS NOT NULL AND (
+        v_referred_norm = v_referrer_norm
+     OR EXISTS (
+          SELECT 1 FROM referral_signups s2
+            JOIN auth.users u2 ON u2.id = s2.referred_user_id
+           WHERE s2.referrer_id = v_referrer
+             AND s2.referred_user_id <> p_referred
+             AND s2.referrer_credited = true
+             AND normalize_email(u2.email) = v_referred_norm
+        )
+  ) THEN
+    UPDATE referral_signups SET activated = true, referrer_credited = false WHERE id = v_id;
+    RETURN;
+  END IF;
+
+  -- (6) same-IP self-farm guard: another already-credited referral by this referrer shares this IP
+  IF v_ip_hash IS NOT NULL AND EXISTS (
+    SELECT 1 FROM referral_signups s2
+     WHERE s2.referrer_id = v_referrer
+       AND s2.referred_user_id <> p_referred
+       AND s2.referred_ip_hash = v_ip_hash
+       AND s2.referrer_credited = true
+  ) THEN
+    UPDATE referral_signups SET activated = true, referrer_credited = false WHERE id = v_id;
+    RETURN;
+  END IF;
+
+  -- (4) per-referrer cap: 1,000 credits = 10 x 100
+  SELECT count(*) INTO v_credited FROM referral_signups
+   WHERE referrer_id = v_referrer AND referrer_credited = true;
+
+  -- Mark processed once; credit only under the cap.
+  UPDATE referral_signups
+     SET activated = true, referrer_credited = (v_credited < 10)
+   WHERE id = v_id;
+
+  IF v_credited < 10 THEN
+    PERFORM add_bonus_credits(v_referrer, 100);   -- also writes a credit_ledger 'bonus' row (015)
+  END IF;
+END;
+$$;
+
+-- fire the referral check on each charge (019).
+CREATE OR REPLACE FUNCTION trg_referral_engagement()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Never let referral logic break usage logging: swallow any error.
+  BEGIN
+    PERFORM award_referral_on_engagement(NEW.user_id);
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_referral_engagement ON usage_logs;
+CREATE TRIGGER trg_referral_engagement
+  AFTER INSERT ON usage_logs
+  FOR EACH ROW
+  EXECUTE FUNCTION trg_referral_engagement();
+
+-- referred signup IP hash for the same-IP self-farm guard (019).
+ALTER TABLE public.referral_signups ADD COLUMN IF NOT EXISTS referred_ip_hash text;
+
+-- cloud file index for GEN_FILES Cloud mode (028).
+create table if not exists public.user_synced_files (
+  user_id     uuid   not null references auth.users(id) on delete cascade,
+  file_key    text   not null,           -- the fileCache cache-key (also the Storage object name)
+  filename    text,
+  file_type   text,
+  size        bigint default 0,
+  book_id     text,
+  book_title  text,
+  synced_at   bigint,
+  primary key (user_id, file_key)
+);
+
+alter table public.user_synced_files enable row level security;
+drop policy if exists "Users manage own synced files" on public.user_synced_files;
+create policy "Users manage own synced files" on public.user_synced_files
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- credit_ledger (015): audit log of credit ADDITIONS (bonus/purchase/renewal); consumption stays in
+-- usage_logs. schema.sql referenced this table in functions but never defined it. Added for parity.
+create table if not exists public.credit_ledger (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  delta      int not null,
+  type       text not null,
+  reason     text,
+  created_at timestamptz not null default now()
+);
+alter table public.credit_ledger enable row level security;
+drop policy if exists "Users read own credit ledger" on public.credit_ledger;
+create policy "Users read own credit ledger" on public.credit_ledger
+  for select using (auth.uid() = user_id);
+create index if not exists idx_credit_ledger_user on public.credit_ledger(user_id, created_at desc);
