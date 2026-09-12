@@ -1,36 +1,12 @@
--- ============================================================================
--- 018: Persistent pack (and bonus) credit depletion.
+-- 032: PROD PARITY (Tier 3 — byte-identical function bodies).
 --
--- Problem: subscriptions.pack_credits_balance and bonus_credits.balance were only
--- ever INCREMENTED (on purchase / referral). Usage above the monthly allowance was
--- never drawn from them, and because credits_used is a per-period SUM(usage_logs)
--- that resets each billing period, packs & bonus behaved like infinite wallets:
---   available = max(0, monthly - used) + pack_balance + bonus_balance
--- with pack_balance / bonus_balance never decreasing.
---
--- Fix: an AFTER INSERT trigger on usage_logs draws the OVER-MONTHLY overflow of each
--- charge from bonus first, then packs — persistently. Monthly is still metered by the
--- usage_logs period-sum (unchanged); only the overflow touches the wallets, so packs
--- deplete correctly AND survive a period reset (the balance is stored, not derived).
---
--- Waterfall order per charge: monthly allowance → bonus_credits → pack_credits.
--- Bonus is temporary/free so it drains BEFORE the paid, never-expiring packs, i.e.
--- packs are preserved until both the monthly allowance and any bonus are exhausted.
---
--- Run on STAGING first, verify, then prod.
--- ============================================================================
+-- 031 brought these 6 functions to the correct LOGIC but I retyped them (lowercase/compact), so their
+-- stored source differed from staging (md5 mismatch, cosmetic only). This re-creates them from the
+-- VERBATIM sql/018 & sql/019 text — exactly what staging ran — so pg_get_functiondef (and its md5)
+-- matches staging byte-for-byte, and eliminates any transcription risk. award_referral_on_engagement is
+-- deliberately untouched (prod already has the newer 024). Idempotent.
 
--- 1. Cumulative packs purchased — the stable denominator for the pack progress bar.
---    Backfill from the current balance, which until now HAS been the cumulative
---    purchased total (it was never decremented).
-ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS pack_credits_purchased int DEFAULT 0;
-UPDATE subscriptions
-   SET pack_credits_purchased = COALESCE(pack_credits_balance, 0)
- WHERE COALESCE(pack_credits_purchased, 0) = 0
-   AND COALESCE(pack_credits_balance, 0) > 0;
-
--- 2. Purchases now bump BOTH the remaining balance and the cumulative purchased total.
---    (Keeps the credit_ledger row from 015 so pack purchases still show in Credit History.)
+-- ---- add_pack_credits (sql/018) ----
 CREATE OR REPLACE FUNCTION add_pack_credits(p_user_id uuid, p_credits int)
 RETURNS void
 LANGUAGE plpgsql
@@ -47,21 +23,7 @@ BEGIN
 END;
 $$;
 
--- 3. Monthly allowance per tier. NULL = unlimited / byok (never draws the wallet).
-CREATE OR REPLACE FUNCTION tier_monthly_credits(p_tier text)
-RETURNS int
-LANGUAGE sql
-IMMUTABLE
-AS $$
-  SELECT CASE p_tier
-           WHEN 'free' THEN 100
-           WHEN 'pro'  THEN 1000
-           ELSE NULL            -- byok / unlimited: unmetered
-         END;
-$$;
-
--- 4. Period start used to meter monthly usage — mirrors get_user_credits (017):
---    free = usage since signup (one-time grant); paid = current billing period.
+-- ---- credit_period_start (sql/018) ----
 CREATE OR REPLACE FUNCTION credit_period_start(p_user_id uuid, p_tier text, p_sub_start timestamptz)
 RETURNS timestamptz
 LANGUAGE plpgsql
@@ -77,7 +39,7 @@ BEGIN
 END;
 $$;
 
--- 5. The depletion trigger: draw each charge's over-monthly overflow from the wallet.
+-- ---- deplete_wallet_on_usage (sql/018) ----
 CREATE OR REPLACE FUNCTION deplete_wallet_on_usage()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -154,9 +116,7 @@ CREATE TRIGGER trg_deplete_wallet
   FOR EACH ROW
   EXECUTE FUNCTION deplete_wallet_on_usage();
 
--- 6. get_user_credits: cap credits_used at the monthly allowance (the overflow now
---    lives in the wallet balances, so counting it again would double-charge) and
---    expose pack_credits_purchased for the progress bar.
+-- ---- get_user_credits (sql/018) ----
 CREATE OR REPLACE FUNCTION get_user_credits(p_user_id uuid)
 RETURNS json
 LANGUAGE plpgsql
@@ -215,3 +175,47 @@ BEGIN
   );
 END;
 $$;
+
+-- ---- tier_monthly_credits (sql/019 FINAL) ----
+CREATE OR REPLACE FUNCTION tier_monthly_credits(p_tier text)
+RETURNS int
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_tier
+           WHEN 'pro' THEN 1000
+           ELSE 100          -- free and any legacy/unknown tier: metered at the free allowance
+         END;
+$$;
+
+-- ---- trg_referral_engagement (sql/019) ----
+CREATE OR REPLACE FUNCTION trg_referral_engagement()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Never let referral logic break usage logging: swallow any error.
+  BEGIN
+    PERFORM award_referral_on_engagement(NEW.user_id);
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_referral_engagement ON usage_logs;
+CREATE TRIGGER trg_referral_engagement
+  AFTER INSERT ON usage_logs
+  FOR EACH ROW
+  EXECUTE FUNCTION trg_referral_engagement();
+
+-- Re-pin search_path on the SECURITY DEFINER functions above (CREATE OR REPLACE drops the pin; grants
+-- persist). Same DO-block as sql/023. Idempotent.
+do $$ declare r record; begin
+  for r in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.proname in (
+      'add_pack_credits','get_user_credits','deplete_wallet_on_usage','credit_period_start','trg_referral_engagement')
+  loop execute format('alter function %s set search_path = public, pg_temp', r.sig); end loop;
+end $$;
