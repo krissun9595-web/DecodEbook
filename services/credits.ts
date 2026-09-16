@@ -1,4 +1,4 @@
-import { UserTier, getAvailableCredits, fetchUserTier } from './stripe';
+import { UserTier, getAvailableCredits, fetchUserTier, TIER_CREDITS } from './stripe';
 import { gateCost } from './pricing';
 
 // ============================================================================
@@ -20,6 +20,31 @@ export function isInsufficientCreditsError(e: unknown): boolean {
 let cachedTier: UserTier | null = null;
 export function setCachedTier(t: UserTier | null) { cachedTier = t; }
 export function getCachedTier(): UserTier | null { return cachedTier; }
+
+// Optimistically reduce the cached balance by a charge that JUST happened, in the server's
+// depletion order (monthly → pack → bonus), so the very next pre-check reflects it without a
+// round-trip — even the first "out of credits" notice fires instantly. Reconciled by the next
+// real fetchUserTier; the worker's 429 is the backstop for any drift.
+export function applyLocalCharge(credits: number): void {
+  if (!cachedTier || !(credits > 0)) return;
+  const monthly = TIER_CREDITS[cachedTier.tier] ?? TIER_CREDITS.free;
+  if (monthly === Infinity) return; // unmetered tier
+  let remaining = credits;
+  const monthlyRemaining = Math.max(0, monthly - (cachedTier.credits_used || 0));
+  const fromMonthly = Math.min(monthlyRemaining, remaining);
+  cachedTier.credits_used = (cachedTier.credits_used || 0) + fromMonthly;
+  remaining -= fromMonthly;
+  if (remaining > 0 && (cachedTier.pack_credits || 0) > 0) {
+    const fromPack = Math.min(cachedTier.pack_credits, remaining);
+    cachedTier.pack_credits -= fromPack;
+    remaining -= fromPack;
+  }
+  if (remaining > 0 && (cachedTier.bonus_credits || 0) > 0) {
+    const fromBonus = Math.min(cachedTier.bonus_credits, remaining);
+    cachedTier.bonus_credits -= fromBonus;
+    remaining -= fromBonus;
+  }
+}
 
 // Fired by a blocked action's CTA; App.tsx listens and opens MY_ACCOUNT (to the
 // Upgrade section for free users, the Credit_Packs section for pro users).
@@ -43,6 +68,21 @@ export interface CreditCheck {
 // knowable up front (e.g. a full-page read-aloud makes many TTS batches — gate on the page's whole
 // estimated cost, not one batch). Falls back to the calibrated GATE_COSTS[action].
 export async function ensureCredits(action: string, estimatedCost?: number): Promise<CreditCheck> {
+  const cost = typeof estimatedCost === 'number' ? estimatedCost : gateCost(action);
+
+  // Fast path: if the CACHED balance already can't cover this, reject INSTANTLY — no network
+  // wait — so the "not enough credits" notice shows immediately instead of after a tier fetch.
+  // Refresh the cache in the background for next time; the worker's 429 is the authoritative
+  // backstop for any staleness (an over-optimistic cache still gets blocked server-side).
+  if (cachedTier) {
+    const cachedAvailable = getAvailableCredits(cachedTier);
+    if (cachedAvailable !== Infinity && cachedAvailable < cost) {
+      fetchUserTier().then(setCachedTier).catch(() => { /* keep cached */ });
+      return { ok: false, available: cachedAvailable, tier: (cachedTier.tier === 'pro' ? 'pro' : 'free') };
+    }
+  }
+
+  // Cache says affordable (or none yet) → confirm with a fresh read (catches a just-ran-out).
   let tier = cachedTier;
   try {
     tier = await fetchUserTier();
@@ -52,7 +92,6 @@ export async function ensureCredits(action: string, estimatedCost?: number): Pro
   }
   if (!tier) return { ok: true, available: Infinity, tier: 'free' };
   const available = getAvailableCredits(tier);
-  const cost = typeof estimatedCost === 'number' ? estimatedCost : gateCost(action);
   const ok = available === Infinity || available >= cost;
   return { ok, available, tier: (tier.tier === 'pro' ? 'pro' : 'free') };
 }

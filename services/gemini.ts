@@ -3,7 +3,7 @@ import { GoogleGenAI, Type, Modality, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
 import { creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from "./pricing";
-import { INSUFFICIENT_CREDITS } from "./credits";
+import { INSUFFICIENT_CREDITS, applyLocalCharge } from "./credits";
 import { extractChapterFromSource } from "../utils/sourceIndex";
 import { buildLocalTextStructure, buildStructureAnalysisText, isReadableChapterTitle } from "../utils/structureAnalysis";
 import { PDF_TEXT_EXTRACTION_VERSION } from "../utils/sourceVersion";
@@ -126,6 +126,10 @@ const trackUsage = (action: string, tokens: TokenInfo | number = 0, model?: stri
   const units = { inTok: t.input, outTok: t.output, cachedTok: t.cached ?? 0, chars: t.input, images: 1, seconds: VIDEO_SECONDS_DEFAULT, ...(extraUnits || {}) };
   const creditsCost = creditsForAction(action, m, units);
   const costCents = costCentsForAction(action, m, units);
+  // Optimistically decrement the cached balance so the NEXT credit pre-check reflects this
+  // charge instantly (no tier round-trip) — the reason a low-credit user's "not enough" notice
+  // now appears immediately even on the boundary action.
+  applyLocalCharge(creditsCost);
   // Explicit sessionId wins over the ambient one — used to group a whole page-view's translation
   // (current page + its prefetch) into ONE credit line, immune to the deferred translation job chain.
   const session = sessionId ?? _usageSession;
