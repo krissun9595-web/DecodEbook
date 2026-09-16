@@ -1674,7 +1674,7 @@ function FeatureScreenE({
       <button
         type="button"
         onClick={onNext}
-        className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 opacity-[0.55] transition-[opacity,filter] hover:opacity-100 sm:bottom-7"
+        className="absolute bottom-5 left-0 right-0 z-20 mx-auto w-fit opacity-[0.55] transition-[opacity,filter] hover:opacity-100 sm:bottom-7 animate-bounce"
         style={{
           color: feature.color,
           filter: `drop-shadow(0 0 8px ${feature.color}80)`,
@@ -2415,7 +2415,7 @@ function TransformationLanding({
                   intensity={1.15}
                   className="font-mono font-bold uppercase tracking-widest"
                 >
-                  <TextType as="span" text="Start with your 100 free credits" loop={false} typingSpeed={45} initialDelay={350} showCursor cursorCharacter="_" />
+                  <TextType as="span" text="Start with your 100 free credits" loop={false} typingSpeed={45} initialDelay={350} showCursor={false} />
                 </SpecularButton>
               </span>
             ) : (
@@ -2427,7 +2427,7 @@ function TransformationLanding({
         </div>
         <button
           onClick={() => scrollToScreen(1)}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 text-neon-cyan opacity-[0.55] transition-[opacity,filter] hover:opacity-100 animate-bounce"
+          className="absolute bottom-8 left-0 right-0 mx-auto w-fit text-neon-cyan opacity-[0.55] transition-[opacity,filter] hover:opacity-100 animate-bounce"
           style={{ filter: 'drop-shadow(0 0 8px rgba(0, 243, 255, 0.5))' }}
           aria-label="Next"
         >
