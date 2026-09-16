@@ -13,6 +13,8 @@ import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { AccountPanel } from './components/PricingModal';
 import { LandingPage } from './components/LandingPage';
+import BrandMark from './components/ui/BrandMark';
+import { CloseButton } from './components/ui/CloseButton';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
 import { CreditNotice } from './components/ui/CreditNotice';
@@ -453,6 +455,26 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authGatePassed, setAuthGatePassed] = useState(false);
   const [configReady, setConfigReady] = useState(false);
+
+  // Mark this browser as "has an account" the first time we ever see a signed-in
+  // user (session restore, gate sign-in, OAuth, or the account panel). This flag
+  // persists after logout/expiry so returning account-holders skip the public
+  // landing and go straight to the auth screen, while genuinely new visitors
+  // (no flag) see the landing first. Note: per-browser — a real account-holder on
+  // a fresh device / incognito looks "new" and sees the landing (can sign in there).
+  useEffect(() => {
+    if (currentUser) localStorage.setItem('db_has_account', '1');
+  }, [currentUser]);
+
+  // With no books, the reader/dashboard has nothing to show — the UPLOAD page IS the
+  // book-less home (it carries upload + MY_ACCOUNT + billing). Route any empty-library
+  // landing on the app view straight to UPLOAD so the "empty data bank" screen is never
+  // seen. (Notebook is exempt — it can hold items without a book.)
+  useEffect(() => {
+    if (library.length === 0 && view === AppView.DASHBOARD && activeTab !== Tab.NOTEBOOK) {
+      setView(AppView.UPLOAD);
+    }
+  }, [library.length, view, activeTab]);
   const [settings, setSettings] = useState<AppSettings>(() => {
     const defaults: AppSettings = {
       targetLanguage: 'Spanish',
@@ -567,7 +589,10 @@ const App: React.FC = () => {
       bootstrapSupabase().then(async () => {
         // LLM allocation is admin-set per function (services/gemini.ts FUNCTION_MODELS).
         // Geo-routing removed — model allocation will be decided later alongside media rates.
-        if (localStorage.getItem('auth_gate_skipped')) setAuthGatePassed(true);
+        // "Continue without account" was removed (anonymous users can't reach any
+        // server-metered feature — it 401'd = dead end). Purge the stale flag so
+        // users who previously skipped are no longer bypassed past the AuthGate.
+        localStorage.removeItem('auth_gate_skipped');
         // Explicitly exchange OAuth code if present in URL (PKCE flow)
         const oauthSession = await handleOAuthCallback();
         if (oauthSession) return oauthSession;
@@ -7406,12 +7431,15 @@ const App: React.FC = () => {
     );
   }
 
-  if (isSupabaseConfigured() && !authGatePassed) {
+  // New visitors (no db_has_account flag) see the public landing first; the auth
+  // gate still guards every app view. Returning account-holders (flag set, but no
+  // live session) hit the auth screen directly instead of the landing.
+  const isNewVisitorOnLanding = view === AppView.LANDING && !localStorage.getItem('db_has_account');
+  if (isSupabaseConfigured() && !authGatePassed && !isNewVisitorOnLanding) {
     return (
       <ErrorBoundary>
         <AuthGate
           onAuthChange={(user) => { if (user) { setCurrentUser(user); setAuthGatePassed(true); } }}
-          onSkip={() => { setAuthGatePassed(true); localStorage.setItem('auth_gate_skipped', '1'); }}
         />
       </ErrorBoundary>
     );
@@ -7423,7 +7451,10 @@ const App: React.FC = () => {
         <LandingPage
           variant={landingVariant}
           onEnterApp={() => setView(AppView.UPLOAD)}
-          onSignIn={() => setIsAccountOpen(true)}
+          /* Non-signed-in users sign in through the full-screen AuthGate (entering an app
+             view trips the gate). The AccountPanel's auth form is reserved for signing back
+             in after an in-app Sign Out from MY_ACCOUNT. */
+          onSignIn={() => setView(AppView.UPLOAD)}
         />
         <AccountPanel
           isOpen={isAccountOpen}
@@ -7444,30 +7475,26 @@ const App: React.FC = () => {
         <div className="absolute top-8 left-8 w-24 h-24 border-l border-t border-zinc-800 rounded-tl-lg pointer-events-none hidden md:block"></div>
         <div className="absolute bottom-8 right-8 w-24 h-24 border-r border-b border-zinc-800 rounded-br-lg pointer-events-none hidden md:block"></div>
 
+
         <div className="z-10 max-w-lg w-full text-center space-y-8 md:space-y-12">
           <div className="space-y-2 animate-fade-in-up text-center">
-             <div className="flex items-center justify-center mb-4">
-                {/* Brand terminal glyph — same square/miter `>_` as the header (public/icon.svg), enlarged to the
-                    logo's prominent proportion, with the underscore blinking like a terminal caret so users learn
-                    the `>_` mark (which toggles the DATA_BANKS in the reader header) reads as a live terminal. */}
-                <svg width="72" height="46" viewBox="2 7 21 14" fill="none" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true" className="drop-shadow-[0_0_12px_rgba(0,243,255,0.45)]">
-                    <polyline points="4,9 9,14 4,19" stroke="#00f3ff" />
-                    <line x1="12" y1="19" x2="21" y2="19" stroke="#00f3ff" className="animate-blink" />
-                </svg>
-             </div>
-            <h1 className="text-4xl md:text-7xl font-bold tracking-tighter text-white drop-shadow-[0_0_25px_rgba(0,243,255,0.3)]">
-              Decod<span className="text-neon-cyan">Ebook</span>
-            </h1>
+            <BrandMark stacked className="text-4xl md:text-7xl mb-4" />
             <p className="text-zinc-500 tracking-[0.2em] text-[10px] md:text-xs uppercase">
               V.4.2 // Neural Text Decoding Interface
             </p>
           </div>
 
           <div className="relative group animate-fade-in-up hud-border bg-void-1 p-6 md:p-10 transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,243,255,0.1)]" style={{ animationDelay: '0.1s' }}>
+            {/* One fixed content height so switching dropzone ↔ loader ↔ error never
+                resizes the frame (no layout jiggle). */}
+            <div className="min-h-[220px] flex items-center justify-center w-full">
               {isProcessing ? (
                 <Loader text="DECODING_SOURCE..." />
+              ) : uploadCreditTier ? (
+                /* Out of credits: the error takes over the frame (upload modules hidden). */
+                <div className="w-full px-2"><CreditNotice tier={uploadCreditTier} /></div>
               ) : (
-                <div className="relative flex flex-col items-center justify-center space-y-8">
+                <div className="relative flex flex-col items-center justify-center space-y-8 w-full">
                   <div className="relative">
                     <div className="w-32 h-32 content-panel rounded-full flex items-center justify-center group-hover:border-neon-cyan transition-all duration-300">
                         <Upload className="w-12 h-12 text-zinc-600 group-hover:text-neon-cyan transition-colors" />
@@ -7488,6 +7515,7 @@ const App: React.FC = () => {
                   />
                 </div>
               )}
+            </div>
           </div>
 
           {library.length > 0 && (
@@ -7499,9 +7527,7 @@ const App: React.FC = () => {
                 Access_Data_Bank [{library.length}]
              </button>
           )}
-          {uploadCreditTier ? (
-            <div className="py-2"><CreditNotice tier={uploadCreditTier} /></div>
-          ) : error ? (
+          {error && !uploadCreditTier ? (
             <div className="py-2"><StatusMessage variant="error" title={error} /></div>
           ) : null}
         </div>
@@ -7536,6 +7562,18 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+        {/* B1: mount the account panel here so a credit-notice "Upgrade to Pro" /
+            "Buy Extra Credits" button opens it even from the (book-less) upload view. */}
+        <AccountPanel
+          isOpen={isAccountOpen}
+          onClose={() => setIsAccountOpen(false)}
+          user={currentUser}
+          onAuthChange={setCurrentUser}
+          proPriceId={localStorage.getItem('stripe_pro_price_id') || ''}
+          proAnnualPriceId={localStorage.getItem('stripe_pro_annual_price_id') || ''}
+          onModeChange={setGenMode}
+          key={isAccountOpen ? 'open' : 'closed'}
+        />
       </div>
     );
   }
@@ -7572,26 +7610,24 @@ const App: React.FC = () => {
               <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">Gen_Files</h2>
               <div className="flex items-center gap-3">
                 <InfoTooltip label="About Gen_Files & storage">
-                  <InfoSection title="Local / Cloud modes">
-                    <p>The <span className="text-zinc-300">File_Storage</span> switch flips the whole panel between two inventories: <span className="text-zinc-300">Local</span> (files on this device) and <span className="text-zinc-300">Cloud</span> (files synced to your account). The bar tracks the active side's usage of its <span className="text-zinc-300">1&nbsp;GB</span> quota. A cyan icon on a row means the file <span className="text-zinc-300">also exists on the other side</span>.</p>
+                  <InfoSection title="File_Storage">
+                    <p><span className="text-zinc-300">Local mode</span> shows storage on this device. <span className="text-zinc-300">Cloud mode</span> shows storage synced to your account. The switch changes the active inventory for the entire panel.</p>
+                    <p><span className="text-zinc-300">Storage meter:</span> the right figure is <span className="text-zinc-300">total used / 1&nbsp;GB</span> for the active mode. The left figure is <span className="text-zinc-300">generated files / total used</span>. The solid fill represents generated files; the striped remainder represents other stored data that isn't shown in File_List, such as source books, caches, and figures.</p>
+                    <p><span className="text-zinc-300">Terms:</span> cloud copies are private to you through per-user isolation and encryption at rest; we never share them or use them for training. Free cloud storage is capped at <span className="text-zinc-300">1&nbsp;GB</span>.</p>
                   </InfoSection>
                   <InfoSection title="Files_Scope">
                     <p>Narrow the current side by <span className="text-zinc-300">book</span> and <span className="text-zinc-300">type</span> (translation, audio, podcast, images, video, notebook).</p>
                   </InfoSection>
-                  <InfoSection title="File_List — buttons">
-                    <p><span className="text-neon-cyan">Sync</span> (Local mode) pushes the checked files to the cloud — it never removes; re-syncing just refreshes them. <span className="text-neon-cyan">Download</span> (Cloud mode) pulls them to this device. <span className="text-neon-cyan">Export</span> writes them to your device's file system to open in native players / PDF readers. <span className="text-neon-red">Delete</span> (Local mode) removes them from this device; <span className="text-neon-red">Remove</span> (Cloud mode) takes them off the cloud — <span className="text-zinc-300">current side only</span>, click twice to confirm.</p>
-                  </InfoSection>
-                  <InfoSection title="Dual protection">
-                    <p>Because Delete (Local) / Remove (Cloud) only touches the side you're viewing, a file that lives on <span className="text-zinc-300">both</span> is safe — clearing one copy leaves the other. The button turns red <span className="text-neon-red">PERMANENT!</span> when a checked file has <span className="text-zinc-300">no copy on the other side</span>, i.e. it would be gone for good. Files stored on only one side aren't protected — sync (or download) them to get redundancy.</p>
-                  </InfoSection>
-                  <InfoSection title="The storage meter">
-                    <p>Right figure <span className="text-zinc-300">total used / 1&nbsp;GB</span> — the whole side's usage against quota; the bar's <span className="text-zinc-300">yellow-black hazard stripes</span> fill to it. Left figure <span className="text-zinc-300">generated files / total used</span> — the listed files, drawn as the <span className="text-zinc-300">solid coloured</span> fill (colour warns as you near the limit). The striped remainder (Local mode) is your uploaded source books and internal caches — not listed, but still using space.</p>
-                  </InfoSection>
-                  <InfoSection title="Terms">
-                    <p>Cloud copies are <span className="text-zinc-300">private to you</span> (per-user isolation, encrypted at rest); we never share or train on them. Free cloud storage is capped at <span className="text-zinc-300">1&nbsp;GB</span>.</p>
+                  <InfoSection title="File_List">
+                    <p><span className="text-zinc-300">Local mode</span> lists generated files stored on this device. A cyan cloud icon means a file also has a cloud copy; selecting it again refreshes that copy.</p>
+                    <p><span className="text-zinc-300">Cloud mode</span> lists files synced to your account. A cyan download icon means a file also exists on this device.</p>
+                    <p><span className="text-neon-cyan">Sync / Download:</span> Sync pushes selected local files to the cloud without removing anything. Download pulls selected cloud files to this device.</p>
+                    <p><span className="text-neon-cyan">Export / Share:</span> Export writes files to your device's file system for native players or readers. Share opens the device's available sharing options.</p>
+                    <p><span className="text-neon-red">Delete / Remove:</span> Delete removes selected files from this device in Local mode; Remove deletes them from cloud storage in Cloud mode. Both affect the <span className="text-zinc-300">current side only</span> and require a second click to confirm.</p>
+                    <p><span className="text-zinc-300">Dual protection:</span> when a file exists on both sides, deleting one copy leaves the other intact. The confirmation changes to <span className="text-neon-red">PERMANENT!</span> when a selected file has no copy on the other side and would be gone for good. Sync or download single-side files to create redundancy.</p>
                   </InfoSection>
                 </InfoTooltip>
-                <button onClick={() => setIsFilesOpen(false)} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
+                <CloseButton onClick={() => setIsFilesOpen(false)} />
               </div>
             </div>
             <div className="h-[calc(70vh+69px)] flex flex-col">

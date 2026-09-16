@@ -1,6 +1,7 @@
 
 import React, { useEffect } from 'react';
-import { X, Globe, Highlighter, PenLine, Type, AlignJustify, AlignLeft, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film, CaseSensitive, ALargeSmall, Send } from 'lucide-react';
+import { Globe, Highlighter, PenLine, Type, AlignJustify, AlignLeft, MoveHorizontal, Cpu, MessageSquare, AudioLines, ImageIcon, Film, CaseSensitive, ALargeSmall, Send } from 'lucide-react';
+import { CloseButton } from './ui/CloseButton';
 import { Engine } from './ui/glyphs';
 import { AppSettings, ThemeColor } from '../types';
 import { inkLineStyle } from '../utils/inkLine';
@@ -118,9 +119,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
         <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">System_Config</h2>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition-colors">
-            <X size={24} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="h-[calc(70vh+69px)] flex flex-col">

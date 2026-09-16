@@ -78,6 +78,7 @@ async function checkRateLimit(userId: string, env: Env): Promise<Response | null
     const key = `rl:${userId}:${bucket}`;
     const cur = parseInt((await env.RATE_LIMIT.get(key)) || '0', 10);
     if (cur >= RATE_LIMIT_MAX) {
+      console.warn('[429] per-user rate-limit hit', 'user=' + userId, 'count=' + cur);
       return new Response(JSON.stringify({ error: 'Too many requests — please slow down and try again shortly.' }), {
         status: 429,
         headers: { 'Content-Type': 'application/json', 'Retry-After': String(RATE_LIMIT_WINDOW), 'Access-Control-Allow-Origin': '*' },
@@ -197,9 +198,11 @@ export default {
       if (auth instanceof Response) return auth;
       const rl = await checkRateLimit(auth.userId, env);
       if (rl) return rl;
-      const check = await checkCreditBalance(auth.userId, 'generateImage', env);
+      const check = await reserveMedia(auth.userId, 'generateImage', env, request);
       if (check) return check;
-      return handleFalImage(request, env, auth.userId, ctx);
+      const resp = await handleFalImage(request, env, auth.userId, ctx);
+      releaseReservation(env, request, ctx);
+      return resp;
     }
 
     if (url.pathname === '/api/seedance/generate') {
@@ -209,7 +212,7 @@ export default {
       if (rl) return rl;
       const body = await request.clone().json() as any;
       const isFast = (body.model || '').includes('fast');
-      const check = await checkCreditBalance(auth.userId, isFast ? 'videoSeedanceFast' : 'videoSeedance', env);
+      const check = await checkCreditBalance(auth.userId, isFast ? 'videoSeedanceFast' : 'videoSeedance', env, request);
       if (check) return check;
       return handleSeedanceGenerate(request, env);
     }
@@ -240,15 +243,31 @@ export default {
       // The @google/genai SDK routes TTS + Veo through this proxy (unlike text,
       // which uses /api/llm/generate). Credit-gate those two generation calls so
       // a 0-balance user can't synthesise audio or video. Polls/operations pass.
+      // Image, TTS and Veo all come through this proxy. Detect the modality by the model in
+      // the path (:generateContent carries the model name; :predictLongRunning is Veo) and
+      // credit-gate each on its REAL cost. NOTE: image generation previously had NO gate here
+      // — a premium image (any balance) ran ungated — this closes that hole.
       const p = url.pathname;
+      let releaseHold = false;
       if (/:predictLongRunning/.test(p)) {
-        const check = await checkCreditBalance(auth.userId, 'videoVeo', env);
+        // Veo is long-running (create → poll for minutes); a brief hold around create wouldn't
+        // cover the charge window, so keep the (accurate) read check here.
+        const check = await checkCreditBalance(auth.userId, 'videoVeo', env, request);
         if (check) return check;
-      } else if (/tts/i.test(p) && /:generateContent/.test(p)) {
-        const check = await checkCreditBalance(auth.userId, 'tts', env);
-        if (check) return check;
+      } else if (/:generateContent/.test(p)) {
+        if (/image/i.test(p)) {
+          const check = await reserveMedia(auth.userId, 'generateImage', env, request);
+          if (check) return check;
+          releaseHold = true;
+        } else if (/tts/i.test(p)) {
+          const check = await reserveMedia(auth.userId, 'tts', env, request);
+          if (check) return check;
+          releaseHold = true;
+        }
       }
-      return handleGeminiProxy(request, url, env, auth.userId, ctx);
+      const resp = await handleGeminiProxy(request, url, env, auth.userId, ctx);
+      if (releaseHold) releaseReservation(env, request, ctx);
+      return resp;
     }
 
     return env.ASSETS.fetch(request);
@@ -369,7 +388,10 @@ async function callOpenAICompatible(body: any, apiKey: string, endpoint: string,
   });
 
   const data = await res.json() as any;
-  if (data.error) return jsonError(data.error.message || `${providerName} error`, res.status);
+  if (data.error) {
+    if (res.status === 429) console.warn('[429] upstream provider quota/rate', 'provider=' + providerName, 'detail=' + JSON.stringify(data.error).slice(0, 200));
+    return jsonError(data.error.message || `${providerName} error`, res.status);
+  }
   const text = data.choices?.[0]?.message?.content || '';
   const usage = data.usage ? {
     total_tokens: data.usage.total_tokens || (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0),
@@ -671,11 +693,34 @@ async function handleGetTier(userId: string, env: Env): Promise<Response> {
   return jsonResponse(data);
 }
 
-async function checkCreditBalance(userId: string, action: string, env: Env): Promise<Response | null> {
+// Media actions whose real per-request cost is knowable up front (from the client's
+// billing units in the request headers) — gate on the ACTUAL cost, not the flat floor,
+// so a premium/batch generation can't start underfunded. These are also fail-CLOSED on a
+// balance-lookup error (an expensive generation must not run un-verified).
+const MEDIA_GATE_ACTIONS = new Set([
+  'generateImage', 'redrawFigureTranslated',
+  'videoSeedance', 'videoSeedanceFast', 'videoVeo',
+  'tts', 'podcastAudio',
+]);
+
+async function checkCreditBalance(userId: string, action: string, env: Env, request?: Request): Promise<Response | null> {
   // Fail CLOSED on missing config (a deploy with no service-role key must not serve ungated).
-  // (Transient unreachability below stays fail-OPEN on purpose: don't block paying users during a
-  //  Supabase blip — the charge is still metered client-side once it recovers.)
   if (!env.SUPABASE_SERVICE_ROLE_KEY) return jsonError('Billing not configured', 503);
+
+  const isMedia = MEDIA_GATE_ACTIONS.has(action);
+  // Gate cost = the REAL cost this request will incur. For media the units (images/seconds/
+  // chars) + model are in the headers, so creditsForAction() gives the SAME number the charge
+  // will (e.g. a premium image ≈ its true cost, not the flat 40 floor). Text tokens aren't
+  // known until the response, so text keeps the calibrated flat floor.
+  let cost = gateCost(action);
+  if (isMedia && request) {
+    const m = usageMetaFromHeaders(request);
+    if (m.model) {
+      const est = creditsForAction(action, m.model, { images: m.images, seconds: m.seconds, chars: m.chars, cjkChars: m.cjkChars });
+      if (Number.isFinite(est) && est > 0) cost = est;
+    }
+  }
+
   try {
     const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_credits`, {
       method: 'POST',
@@ -686,7 +731,9 @@ async function checkCreditBalance(userId: string, action: string, env: Env): Pro
       },
       body: JSON.stringify({ p_user_id: userId }),
     });
-    if (!res.ok) return null;
+    // Transient lookup failure: fail-OPEN for cheap text (don't block a paying reader during a
+    // Supabase blip), but fail-CLOSED for expensive media (better to ask a retry than overspend).
+    if (!res.ok) return isMedia ? jsonError('Could not verify your credit balance — please try again.', 503) : null;
     const data = await res.json() as any;
     const tier = data.tier || 'free';
     const monthlyCredits = TIER_CREDITS[tier] || TIER_CREDITS.free;
@@ -694,7 +741,6 @@ async function checkCreditBalance(userId: string, action: string, env: Env): Pro
     const creditsUsed = data.credits_used || 0;
     const packCredits = data.pack_credits || 0;
     const bonusCredits = data.bonus_credits || 0;
-    const cost = gateCost(action);
     const available = Math.max(0, monthlyCredits - creditsUsed) + packCredits + bonusCredits;
     if (available < cost) {
       return new Response(JSON.stringify({
@@ -706,8 +752,70 @@ async function checkCreditBalance(userId: string, action: string, env: Env): Pro
     }
     return null;
   } catch {
-    return null;
+    return isMedia ? jsonError('Could not verify your credit balance — please try again.', 503) : null;
   }
+}
+
+// Exact media cost from the request's billing headers (same creditsForAction the charge uses).
+function estimatedMediaCost(action: string, request: Request): number | null {
+  if (!MEDIA_GATE_ACTIONS.has(action)) return null;
+  const m = usageMetaFromHeaders(request);
+  if (!m.model) return null;
+  const est = creditsForAction(action, m.model, { images: m.images, seconds: m.seconds, chars: m.chars, cjkChars: m.cjkChars });
+  return Number.isFinite(est) && est > 0 ? est : null;
+}
+
+// Atomic gate for a synchronous media action: hold the exact cost for the duration of
+// the generation so two concurrent requests can't both pass on the same pre-charge balance.
+// Returns a Response to short-circuit (429 insufficient / 503 can't-verify), or null once the
+// hold is placed. Falls back to the read-only balance check if the reservation RPC isn't
+// available yet (migration 033 not applied) — so the worker is safe to deploy either order.
+async function reserveMedia(userId: string, action: string, env: Env, request: Request): Promise<Response | null> {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return jsonError('Billing not configured', 503);
+  const usageId = request.headers.get('X-Db-Usage-Id');
+  const cost = estimatedMediaCost(action, request);
+  if (!usageId || cost == null) return checkCreditBalance(userId, action, env, request);
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/reserve_credits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ p_user_id: userId, p_usage_id: usageId, p_credits: cost }),
+    });
+    if (!res.ok) return checkCreditBalance(userId, action, env, request); // RPC missing/blip → safe read check
+    const data = await res.json() as any;
+    if (data && data.ok === false) {
+      return new Response(JSON.stringify({
+        error: 'Insufficient credits',
+        credits_available: data.available,
+        credits_required: data.required,
+        tier: data.tier,
+      }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+    }
+    return null; // held
+  } catch {
+    return checkCreditBalance(userId, action, env, request);
+  }
+}
+
+// Release a hold once the generation returns (success or failure — the real charge, if any,
+// lands in usage_logs separately). Best-effort, keyed on the request's usage id.
+function releaseReservation(env: Env, request: Request, ctx?: ExecutionContext) {
+  const usageId = request.headers.get('X-Db-Usage-Id');
+  if (!usageId || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+  const p = fetch(`${env.SUPABASE_URL}/rest/v1/rpc/release_reservation`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ p_usage_id: usageId }),
+  }).then(() => {}).catch(() => {});
+  if (ctx) ctx.waitUntil(p);
 }
 
 // --- Referral handlers ---

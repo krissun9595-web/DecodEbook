@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon, Globe, Archive, PlayCircle, Play, Square, Maximize, ChevronLeft, ChevronRight, Copy, Share2 } from 'lucide-react';
 import { Concept, Chapter, FileContext } from '../types';
-import { extractConcepts, generateConceptImage, logGenerationPartial, beginUsageSession, endUsageSession } from '../services/gemini';
+import { extractConcepts, generateConceptImage, logGenerationPartial, beginUsageSession, endUsageSession, estimateImageCredits } from '../services/gemini';
 import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { CreditNotice } from './ui/CreditNotice';
@@ -117,7 +117,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     // Cache miss → this will cost credits. Pre-check so a 0-balance user sees the
     // HAZARD notice instead of a failed call (batch path pre-checks once → preChecked).
     if (!preChecked) {
-      const gate = await ensureCredits('generateImage');
+      const gate = await ensureCredits('generateImage', estimateImageCredits());
       if (!gate.ok) { setCreditTier(gate.tier); return; }
     }
     setLoadingImages(prev => ({ ...prev, [concept.term]: true }));
@@ -209,7 +209,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
     // Gate once for the batch (each image is cache-first; a 0-balance user is
     // stopped here rather than firing N failing calls).
-    const gate = await ensureCredits('generateImage');
+    const gate = await ensureCredits('generateImage', estimateImageCredits());
     if (!gate.ok) { setCreditTier(gate.tier); setIsGeneratingAll(false); generatingRef.current = false; return; }
 
     const BATCH_SIZE = 3;

@@ -56,10 +56,39 @@
   border: 1px solid currentColor;
   border-radius: 2px;
   background: rgba(0, 0, 0, 0.2);
-  font-family: "Roboto Mono", "Share Tech Mono", monospace;
+  /* Share Tech Mono — the DecodEbook logo typeface (Share_Tech_Mono.ttf). */
+  font-family: "Share Tech Mono", monospace;
   font-size: 0.5rem;
   line-height: 1;
   letter-spacing: 0.08em;
+}
+
+.decodebook-scroll-velocity--version-e .decodebook-scroll-velocity__group {
+  gap: 0.45rem;
+  padding-inline: 0.225rem;
+}
+
+.decodebook-scroll-velocity--version-e .decodebook-scroll-velocity__chip {
+  text-transform: uppercase;
+}
+
+.decodebook-scroll-velocity--version-e .star-border-container.decodebook-scroll-velocity__chip {
+  width: calc(9ch + 1.25rem + 0.72em + 2px);
+  min-height: 1.8rem;
+  border: 0;
+  border-radius: 0.5rem;
+}
+
+.decodebook-scroll-velocity--version-e .decodebook-scroll-velocity__row {
+  padding-block: 0.15rem;
+}
+
+.decodebook-scroll-velocity--version-e .star-border-container > .inner-content {
+  width: 100%;
+  min-height: calc(1.8rem - 2px);
+  border-radius: calc(0.5rem - 1px);
+  font: inherit;
+  letter-spacing: inherit;
 }
 
 @media (min-width: 640px) {
@@ -73,5 +102,19 @@
     padding-inline: 0.75rem;
     font-size: 0.625rem;
     letter-spacing: 0.12em;
+  }
+
+  .decodebook-scroll-velocity--version-e .decodebook-scroll-velocity__group {
+    gap: 0.6rem;
+    padding-inline: 0.3rem;
+  }
+
+  .decodebook-scroll-velocity--version-e .star-border-container.decodebook-scroll-velocity__chip {
+    width: calc(9ch + 1.5rem + 1.08em + 2px);
+    min-height: 1.95rem;
+  }
+
+  .decodebook-scroll-velocity--version-e .star-border-container > .inner-content {
+    min-height: calc(1.95rem - 2px);
   }
 }

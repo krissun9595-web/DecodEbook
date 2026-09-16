@@ -20,6 +20,10 @@ export const setGeminiApiKey = (key: string) => { _userApiKey = key; };
 export const setLLMModel = (model: string) => { _selectedModel = model; };
 export const setTTSModel = (model: string) => { _ttsModel = model; };
 export const setImageModel = (model: string) => { _imageModel = model; };
+// Real per-image credit cost for the CURRENT image model (mode-aware) — lets callers
+// pre-check on the true cost (a premium image is far pricier than the flat gate floor),
+// matching the worker's gate so the notice shows before the call, not after a 429.
+export const estimateImageCredits = (images = 1): number => creditsForAction('generateImage', _imageModel, { images });
 export const setVideoModel = (model: string) => { _videoModel = model; };
 export const getLLMModel = () => _selectedModel;
 export const getVideoModel = () => _videoModel;
@@ -233,7 +237,12 @@ const callUnifiedLLM = async (params: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }));
     const message = (err as any).error || 'LLM request failed';
-    if (res.status === 429 || /insufficient credits/i.test(message)) throw new Error(INSUFFICIENT_CREDITS);
+    // A 429 is only "insufficient credits" when the body actually says so (the worker's
+    // credit gate returns {"error":"Insufficient credits"}). A 429 from the per-user rate
+    // limiter or an upstream provider quota is NOT a credit problem — surface it as a
+    // retryable "service busy" instead of the misleading (silent) credit prompt.
+    if (/insufficient credits/i.test(message)) throw new Error(INSUFFICIENT_CREDITS);
+    if (res.status === 429) throw new Error('The AI service is busy right now — please wait a moment and try again.');
     if (model !== DEFAULT_TEXT_MODEL && isMissingProviderKeyError(message)) {
       console.warn(`${message}; falling back to ${DEFAULT_TEXT_MODEL}.`);
       return callUnifiedLLM({ ...params, model: DEFAULT_TEXT_MODEL });
@@ -294,7 +303,13 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000, sig
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const code = error.status || error.response?.status || error.code || 500;
     const message = (error.message || JSON.stringify(error)).toLowerCase();
-    
+
+    // A credit rejection is terminal — retrying can't help and just stalls the UI (a 429 is
+    // otherwise "retryable"). Surface it immediately as the insufficient-credits sentinel.
+    if (message.includes('insufficient credits') || message.includes('insufficient_credits')) {
+      throw new Error(INSUFFICIENT_CREDITS);
+    }
+
     console.warn(`Gemini API Request Failed [${code}]. Retries left: ${retries}.`);
 
     const isRetryable = 
@@ -952,8 +967,10 @@ export const generateConceptImage = async (visualPrompt: string, style: string =
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Image generation failed' }));
-        if (res.status === 429) throw new Error(INSUFFICIENT_CREDITS);
-        throw new Error((err as any).error || 'fal.ai image generation failed');
+        const message = (err as any).error || 'fal.ai image generation failed';
+        if (/insufficient credits/i.test(message)) throw new Error(INSUFFICIENT_CREDITS);
+        if (res.status === 429) throw new Error('The AI service is busy right now — please wait a moment and try again.');
+        throw new Error(message);
       }
       const data = await res.json() as any;
       trackUsage('generateImage');
@@ -1265,7 +1282,8 @@ export const generateSeedanceVideo = async (
     }),
   });
   const { taskId, error } = await createRes.json() as any;
-  if (createRes.status === 429) throw new Error(INSUFFICIENT_CREDITS);
+  if (/insufficient credits/i.test(error || '')) throw new Error(INSUFFICIENT_CREDITS);
+  if (createRes.status === 429) throw new Error('The AI service is busy right now — please wait a moment and try again.');
   if (!createRes.ok || !taskId) throw new Error(error || 'Failed to create Seedance task');
 
   // Meter at COMPLETION: the poll requests carry the metering headers so the worker records the

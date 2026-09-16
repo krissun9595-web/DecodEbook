@@ -1,3 +1,29 @@
+.landing-e-shell {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(0, 243, 255, 0.15), transparent 34rem),
+    #020202;
+}
+
+.landing-e-nav {
+  transition:
+    border-color 350ms ease,
+    box-shadow 350ms ease;
+}
+
+.landing-e-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 24%, rgba(0, 243, 255, 0.17), rgba(0, 243, 255, 0.07) 28%, transparent 66%),
+    linear-gradient(rgba(0, 243, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 243, 255, 0.035) 1px, transparent 1px);
+  background-size: auto, 56px 56px, 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 34%, black, transparent 76%);
+  opacity: 0.9;
+}
+
 .landing-g-shell {
   background:
     radial-gradient(circle at 50% 0%, rgba(0, 243, 255, 0.08), transparent 34rem),

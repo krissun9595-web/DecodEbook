@@ -27,7 +27,7 @@ export const CreditNotice: React.FC<{ tier: 'free' | 'pro'; action?: string; cla
       title={hasSome ? 'Not enough credits' : 'Out of credits'}
       sub={detail + cta}
       action={{
-        label: tier === 'free' ? 'Upgrade' : 'Buy Credits',
+        label: tier === 'free' ? 'Upgrade to Pro' : 'Buy Extra Credits',
         onClick: () => openAccount(tier === 'free' ? 'upgrade' : 'packs'),
       }}
       className={className}

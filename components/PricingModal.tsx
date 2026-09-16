@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { X, Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet } from 'lucide-react';
+import { Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet } from 'lucide-react';
+import { CloseButton } from './ui/CloseButton';
 import { Privacy, Pro } from './ui/glyphs';
 import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
 import { creditsForAction } from '../services/pricing';
@@ -94,6 +95,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [billingError, setBillingError] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -108,27 +110,39 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const handleUpgrade = async (tierId: string, annual = false) => {
     let priceId = '';
     if (tierId === 'pro') priceId = annual && proAnnualPriceId ? proAnnualPriceId : proPriceId;
-    if (!priceId) return;
+    if (!priceId) { setBillingError('The Pro price is not configured.'); return; }
+    setBillingError('');
     setUpgrading(tierId + (annual ? '_annual' : ''));
-    const url = await createCheckoutSession(priceId);
-    if (url) window.location.href = url;
-    setUpgrading(null);
+    try {
+      window.location.href = await createCheckoutSession(priceId);
+    } catch (e) {
+      setBillingError(e instanceof Error ? e.message : 'Unable to start checkout.');
+      setUpgrading(null);
+    }
   };
 
   const handleBuyPack = async (storageKey: string, packType: string) => {
     const priceId = localStorage.getItem(storageKey);
-    if (!priceId) return;
+    if (!priceId) { setBillingError('This credit pack is not configured.'); return; }
+    setBillingError('');
     setBuyingPack(packType);
-    const url = await createPackCheckout(priceId);
-    if (url) window.location.href = url;
-    setBuyingPack(null);
+    try {
+      window.location.href = await createPackCheckout(priceId);
+    } catch (e) {
+      setBillingError(e instanceof Error ? e.message : 'Unable to start checkout.');
+      setBuyingPack(null);
+    }
   };
 
   const handleManage = async () => {
+    setBillingError('');
     setPortalLoading(true);
-    const url = await openCustomerPortal();
-    if (url) window.location.href = url;
-    setPortalLoading(false);
+    try {
+      window.location.href = await openCustomerPortal();
+    } catch (e) {
+      setBillingError(e instanceof Error ? e.message : 'Unable to open the billing portal.');
+      setPortalLoading(false);
+    }
   };
 
   const handleAuth = async () => {
@@ -281,8 +295,11 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               <InfoSection title="Active_Mode">
                 <p><span className="text-zinc-300">Balanced</span> uses cost-optimized models; <span className="text-zinc-300">Premium</span> uses the most capable ones. The mode sets both quality and the credits each action costs.</p>
               </InfoSection>
-              <InfoSection title="Credit_Balance & Packs">
-                <p>Shows your monthly, pack, and bonus credits. Buy credit packs or upgrade your plan here. Actions are metered on real usage; the Mode column in history shows which model ran.</p>
+              <InfoSection title={currentTier === 'pro' ? 'Credit_Packs' : 'Upgrade_to_Pro'}>
+                <p>{currentTier === 'pro' ? 'Buy additional credit packs here.' : 'Upgrade your plan here.'}</p>
+              </InfoSection>
+              <InfoSection title="Credit_Balance">
+                <p>Shows your monthly, pack, and bonus credits. Actions are metered on real usage; the Mode column in history shows which model ran.</p>
               </InfoSection>
               <InfoSection title="Earn_Free_Credits">
                 <p>Share your referral link: earn <span className="text-zinc-300">100 credits</span> when a new user you referred signs up and starts using their free credits (up to 1,000 credits).</p>
@@ -291,7 +308,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 <p>Credits are prepaid usage units, non-transferable and non-refundable except as required by law. Billing runs on a secure provider; we never store card details. Abuse of referrals may reverse bonus credits.</p>
               </InfoSection>
             </InfoTooltip>
-            <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-white transition active:scale-90"><X size={24} /></button>
+            <CloseButton onClick={onClose} />
           </div>
         </div>
 
@@ -390,7 +407,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-neon-cyan mb-2">
                   {currentTier === 'pro' ? <Package size={18} /> : <Pro size={18} />}
-                  <label className="text-xs font-bold uppercase tracking-widest font-mono">{currentTier === 'pro' ? 'Credit_Packs' : 'Upgrade'}</label>
+                  <label className="text-xs font-bold uppercase tracking-widest font-mono">{currentTier === 'pro' ? 'Credit_Packs' : 'Upgrade_to_Pro'}</label>
                 </div>
                 {currentTier === 'pro' ? (
                   <div data-acct-panel="Credit_Packs" className="space-y-3 min-h-[175px]">
@@ -414,26 +431,33 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </div>
                   </div>
                 ) : currentTier === 'free' ? (
-                  <div className="bg-void-2 border border-zinc-800 rounded-sm overflow-hidden min-h-[175px]">
-                    <div className="p-4 relative space-y-2">
+                  <div className={`bg-void-2 border rounded-sm overflow-hidden min-h-[175px] ${billingError ? 'border-neon-red/40' : 'border-zinc-800'}`}>
+                    <div className="p-4 relative">
                       {/* $9.99 is absolutely positioned so it doesn't inflate the "Pro" row height */}
                       <div className="absolute top-4 right-4 text-right">
                         <span className="text-lg font-bold text-white">$9.99</span>
                         <span className="text-zinc-500 text-xs ml-0.5">/month</span>
                       </div>
-                      <p className="font-mono text-xs font-bold text-neon-cyan">Pro</p>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                        {['1,000 credits/month', 'Buy extra credit packs anytime'].map((f, i) => (
-                          <p key={i} className="text-[10px] text-zinc-500 font-mono flex items-center gap-1"><span className="text-neon-cyan">+</span> {f}</p>
-                        ))}
-                        <span className="text-[9px] text-zinc-600 font-mono">Auto-renewing · cancel anytime · secure payments via Stripe</span>
+                      {/* Keep vertical spacing off the price's parent: an absolutely positioned
+                          first child still makes Tailwind's space-y selector offset "Pro". */}
+                      <div>
+                        <p className="font-mono text-xs font-bold text-neon-cyan">Pro</p>
+                        <p className="mt-2 text-[10px] text-zinc-600 font-mono">Auto-renewing · cancel anytime · secure payments via Stripe</p>
+                        <button onClick={() => handleUpgrade('pro')} disabled={!!upgrading} className="mt-2 w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
+                          {upgrading === 'pro' ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade to Pro'}
+                        </button>
+                        <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono list-disc list-inside">
+                          <li>1,000 credits/month</li>
+                          <li>1 GB local space and 1 GB cloud space</li>
+                          <li>Buy extra credit packs anytime</li>
+                        </ul>
                       </div>
-                      <button onClick={() => handleUpgrade('pro')} disabled={!!upgrading} className="w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
-                        {upgrading === 'pro' ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade to Pro'}
-                      </button>
                     </div>
                   </div>
                 ) : null}
+                {billingError && (
+                  <div className="pt-1"><StatusMessage variant="error" title={billingError} inline /></div>
+                )}
               </div>
 
               {/* ── Credits Dashboard ── */}

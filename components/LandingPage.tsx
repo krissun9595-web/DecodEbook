@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Languages, Headphones, Brain, Film, Mic2, ChevronDown, Zap, Crown, ArrowRight, Sparkles, MessageSquare, Map, Image as ImageIcon, Upload } from 'lucide-react';
 import { Pro } from './ui/glyphs';
 import ScrollVelocity from './ui/ScrollVelocity';
+import StarBorder from './ui/StarBorder';
+import TextType from './ui/TextType';
+import SpecularButton from './ui/SpecularButton';
 import FallingText from './ui/FallingText';
 import DecryptedText from './ui/DecryptedText';
 import TrueFocus from './ui/TrueFocus';
@@ -143,7 +146,7 @@ function VersionA({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       {/* Nav */}
       <nav className="fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
-          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
+          <span className="font-tech font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
           <div className="flex items-center gap-2 sm:gap-3">
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
             <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-3 sm:px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Decode a Book</button>
@@ -643,7 +646,7 @@ function VersionC({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
 
       {/* Top bar */}
       <nav className="w-full flex items-center justify-between px-6 py-4 relative z-10">
-        <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
+        <span className="font-tech font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
         <div className="flex items-center gap-3">
           <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
         </div>
@@ -751,7 +754,7 @@ function VersionB({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       {/* Nav */}
       <nav className="fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-3">
-          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
+          <span className="font-tech font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
           <div className="flex items-center gap-3">
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
             <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Try Free</button>
@@ -935,7 +938,7 @@ function VersionD({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       {/* Tiny, restrained nav. White space does the talking. */}
       <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-6 sm:px-10 py-4">
-          <span className="font-semibold tracking-tight text-[15px] text-black">DecodEbook</span>
+          <span className="font-tech font-semibold tracking-tight text-[15px] text-black">DecodEbook</span>
           <div className="flex items-center gap-6">
             <button onClick={onSignIn} className="text-[13px] text-zinc-500 hover:text-black transition-colors">Sign in</button>
             <button onClick={onEnterApp} className="text-[13px] text-black hover:text-zinc-600 transition-colors">Open →</button>
@@ -1082,6 +1085,7 @@ type FeatureE = {
   color: string;
   before: string;
   after: string;
+  afterHighlight?: string;
   beforeHighlights?: string[];
   cta: string;
   demo: React.ReactNode;
@@ -1096,6 +1100,7 @@ const LANDING_E_PALETTE = {
   amber: '#fbbf24',
   violet: '#a78bfa',
   pink: '#ff4fd8',
+  yellow: '#fde047',
 };
 
 const LANDING_E_LEARNING_BLOCKS = [
@@ -1105,44 +1110,68 @@ const LANDING_E_LEARNING_BLOCKS = [
   { label: 'Visualize', color: LANDING_E_PALETTE.violet },
   { label: 'Watch', color: LANDING_E_PALETTE.rose },
   { label: 'Share', color: LANDING_E_PALETTE.pink },
-  { label: 'Recap', color: '#38bdf8' },
-  { label: 'Ask', color: '#f472b6' },
+  { label: 'Recap', color: LANDING_E_PALETTE.yellow },
+  { label: 'Ask', color: LANDING_E_PALETTE.cyan },
 ];
 
-function MediaFrameE({ children }: { children: React.ReactNode }) {
+function MediaFrameE({ children, color }: { children: React.ReactNode; color: string }) {
   return (
-    <div className="relative w-full max-w-[640px] mx-auto aspect-video">
+    <div
+      className="relative mx-auto aspect-[16/9] w-full max-w-[640px] overflow-hidden rounded-sm"
+      style={{ boxShadow: `0 0 32px ${color}14` }}
+    >
       {children}
+      <div
+        className="pointer-events-none absolute inset-0 rounded-sm border"
+        style={{ borderColor: `${color}40` }}
+      />
     </div>
   );
 }
 
-function LearningBlockRow({ blocks }: { blocks: typeof LANDING_E_LEARNING_BLOCKS }) {
+function LearningBlockRow({ blocks, glow = false }: { blocks: typeof LANDING_E_LEARNING_BLOCKS; glow?: boolean }) {
   return (
     <span className="decodebook-scroll-velocity__group">
-      {blocks.map(block => (
-        <span
-          key={block.label}
-          className="decodebook-scroll-velocity__chip"
-          style={{ color: block.color, borderColor: `${block.color}40` }}
-        >
-          {block.label}
-        </span>
-      ))}
+      {blocks.map(block => glow ? (
+          <StarBorder
+            key={block.label}
+            as="span"
+            className="decodebook-scroll-velocity__chip"
+            color={block.color}
+            speed="6s"
+            thickness={1}
+            backgroundColor="rgba(0, 0, 0, 0.72)"
+            textColor={block.color}
+            borderColor={`${block.color}40`}
+          >
+            {block.label}
+          </StarBorder>
+        ) : (
+          <span
+            key={block.label}
+            className="decodebook-scroll-velocity__chip"
+            style={{ color: block.color, borderColor: `${block.color}40` }}
+          >
+            {block.label}
+          </span>
+        ))}
     </span>
   );
 }
 
-function HeroLearningBlocksVelocity() {
+function HeroLearningBlocksVelocity({ isVersionE = false }: { isVersionE?: boolean }) {
   const rows = [
     LANDING_E_LEARNING_BLOCKS.slice(0, 4),
     LANDING_E_LEARNING_BLOCKS.slice(4),
   ];
 
   return (
-    <div className="decodebook-scroll-velocity mx-auto animate-fade-in" style={{ animationDelay: '0.25s' }}>
+    <div
+      className={`decodebook-scroll-velocity mx-auto animate-fade-in ${isVersionE ? 'decodebook-scroll-velocity--version-e' : ''}`}
+      style={{ animationDelay: '0.25s' }}
+    >
       <ScrollVelocity
-        texts={rows.map((blocks, index) => <LearningBlockRow key={index} blocks={blocks} />)}
+        texts={rows.map((blocks, index) => <LearningBlockRow key={index} blocks={blocks} glow={isVersionE} />)}
         velocity={18}
         damping={45}
         stiffness={320}
@@ -1384,6 +1413,7 @@ const FEATURES_E: FeatureE[] = [
     before: 'The original used to mean reading line by line with a dictionary always open.',
     beforeHighlights: ['original', 'dictionary'],
     after: 'Now the original, translation, and narration stay synced, with contextual meaning on tap.',
+    afterHighlight: 'synced',
     cta: 'Open the reader',
     demo: <VoiceSynthDemo />,
   },
@@ -1392,6 +1422,7 @@ const FEATURES_E: FeatureE[] = [
     before: 'Dense chapters used to demand a desk, silence, and an hour of focus.',
     beforeHighlights: ['Dense', 'chapters'],
     after: 'Now two hosts unpack the chapter in the tone and language you choose. Listen anywhere.',
+    afterHighlight: 'unpack',
     cta: 'Create a podcast',
     demo: <PodcastDemo />,
   },
@@ -1400,6 +1431,7 @@ const FEATURES_E: FeatureE[] = [
     before: 'Abstract scenes and ideas used to stay vague.',
     beforeHighlights: ['Abstract', 'ideas'],
     after: 'Now key concepts become reference images in the style and ratio you choose.',
+    afterHighlight: 'reference images',
     cta: 'Generate visuals',
     demo: <VisualCoreDemo />,
   },
@@ -1409,6 +1441,7 @@ const FEATURES_E: FeatureE[] = [
     before: 'Some chapters stay with you.',
     beforeHighlights: ['chapters'],
     after: 'Now more of them can: short summary videos give each chapter a memorable shape.',
+    afterHighlight: 'memorable',
     cta: 'Make a video',
     demo: <CineRenderDemo />,
   },
@@ -1417,6 +1450,7 @@ const FEATURES_E: FeatureE[] = [
     before: 'Highlights used to scatter across screenshots, notes, and downloads.',
     beforeHighlights: ['Highlights', 'scatter'],
     after: 'Now share a card with your thought or a mindmap with your thinking path.',
+    afterHighlight: 'thinking path',
     cta: 'Open the notebook',
     demo: <MemLogDemo />,
   },
@@ -1433,14 +1467,32 @@ const FEATURES_E: FeatureE[] = [
     before: 'Your questions used to outlive the reading session.',
     beforeHighlights: ['questions'],
     after: 'Now you ask about grammar, nuance, and context, and get answers grounded in the chapter.',
+    afterHighlight: 'get answers',
     cta: 'Ask the expert',
     demo: <AiTutorDemo />,
   },
 ];
 
+const LANDING_E_FEATURE_COLORS = [
+  LANDING_E_PALETTE.emerald,
+  LANDING_E_PALETTE.rose,
+  LANDING_E_PALETTE.amber,
+  LANDING_E_PALETTE.violet,
+  LANDING_E_PALETTE.pink,
+  '#fde047',
+] as const;
+
+const LANDING_E_FEATURES: FeatureE[] = FEATURES_E
+  .filter(feature => feature.id !== 'gen_files')
+  .map((feature, index) => ({
+    ...feature,
+    color: LANDING_E_FEATURE_COLORS[index],
+    ...(feature.id === 'neural_assistant' ? { num: '06', side: 'right' as const } : {}),
+  }));
+
 const LANDING_E_SECTION_IDS = [
   'e-hero',
-  ...FEATURES_E.map(feature => `e-feature-${feature.id}`),
+  ...LANDING_E_FEATURES.map(feature => `e-feature-${feature.id}`),
   'e-cta',
 ];
 
@@ -1458,7 +1510,7 @@ const LANDING_G_SECTION_IDS = [
 
 const LANDING_E_SECTION_ACCENTS = [
   LANDING_E_PALETTE.cyan,
-  ...FEATURES_E.map(feature => feature.color),
+  ...LANDING_E_FEATURES.map(feature => feature.color),
   LANDING_E_PALETTE.cyan,
 ];
 
@@ -1525,7 +1577,17 @@ function FeatureStepNavE({
   );
 }
 
-function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; index: number; onEnterApp: () => void }) {
+function FeatureScreenE({
+  feature,
+  index,
+  onEnterApp,
+  onNext,
+}: {
+  feature: FeatureE;
+  index: number;
+  onEnterApp: () => void;
+  onNext: () => void;
+}) {
   const sectionRef = useRef<HTMLElement | null>(null);
   const [visible, setVisible] = useState(false);
   const textOrder = feature.side === 'left' ? 'md:order-1' : 'md:order-2';
@@ -1533,6 +1595,9 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
   const beforeClass = feature.patternBreak
     ? 'text-[1.35rem] sm:text-2xl md:text-[2rem] text-zinc-300 leading-[1.25] max-w-[31rem] font-medium tracking-normal'
     : 'text-[15px] sm:text-[17px] md:text-[18px] text-zinc-500 leading-[1.7] max-w-[32rem]';
+  const afterHighlightStart = feature.afterHighlight
+    ? feature.after.indexOf(feature.afterHighlight)
+    : -1;
 
   useEffect(() => {
     const element = sectionRef.current;
@@ -1553,10 +1618,26 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
   return (
     <section
       ref={sectionRef}
-      className="min-h-[100svh] scroll-mt-16 flex items-center px-4 sm:px-6 md:px-10 py-20 sm:py-24 border-t border-zinc-900/50"
+      className="relative flex h-[100svh] scroll-mt-0 snap-start snap-always items-center justify-center overflow-hidden border-t border-zinc-900/50 px-4 py-16 sm:px-6 sm:py-20 md:px-10"
       id={`e-feature-${feature.id}`}
     >
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 sm:gap-14 md:gap-20 items-center w-full">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div
+          className="absolute inset-x-0 top-0 h-px"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, ${feature.color}80 18%, ${feature.color} 50%, ${feature.color}80 82%, transparent 100%)`,
+            boxShadow: `0 0 14px ${feature.color}, 0 0 38px ${feature.color}66`,
+          }}
+        />
+        <div
+          className="absolute inset-x-0 top-0 h-[70%]"
+          style={{
+            background: `radial-gradient(ellipse at 50% 0%, ${feature.color}24 0%, ${feature.color}10 30%, transparent 72%)`,
+          }}
+        />
+      </div>
+
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 sm:gap-14 md:grid-cols-2 md:gap-20">
         <div
           className={`space-y-5 sm:space-y-6 ${textOrder} transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
           style={{ transitionDelay: `${index * 30}ms` }}
@@ -1569,7 +1650,13 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
             <div className="flex-1 h-[1px]" style={{ background: `linear-gradient(to right, transparent, ${feature.color}66, transparent)` }} />
           </div>
           <h2 className="text-[1.65rem] sm:text-3xl md:text-[2.5rem] font-semibold tracking-normal text-white leading-[1.16] max-w-[34rem]">
-            {feature.after}
+            {afterHighlightStart >= 0 && feature.afterHighlight ? (
+              <>
+                {feature.after.slice(0, afterHighlightStart)}
+                <em className="italic" style={{ color: feature.color }}>{feature.afterHighlight}</em>
+                {feature.after.slice(afterHighlightStart + feature.afterHighlight.length)}
+              </>
+            ) : feature.after}
           </h2>
           <button
             onClick={onEnterApp}
@@ -1580,9 +1667,22 @@ function FeatureScreenE({ feature, index, onEnterApp }: { feature: FeatureE; ind
           </button>
         </div>
         <div className={`${demoOrder} transition-all duration-700 delay-150 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <MediaFrameE>{feature.demo}</MediaFrameE>
+          <MediaFrameE color={feature.color}>{feature.demo}</MediaFrameE>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={onNext}
+        className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 opacity-[0.55] transition-[opacity,filter] hover:opacity-100 sm:bottom-7"
+        style={{
+          color: feature.color,
+          filter: `drop-shadow(0 0 8px ${feature.color}80)`,
+        }}
+        aria-label="Next"
+      >
+        <ChevronDown size={22} strokeWidth={1.5} />
+      </button>
     </section>
   );
 }
@@ -1965,6 +2065,24 @@ function FeatureScreenG({ feature, index, onEnterApp }: { feature: FeatureE; ind
   );
 }
 
+function TransformationSocialProof() {
+  return (
+    <div className="mx-auto max-w-5xl">
+      <div className="flex flex-col items-center justify-center gap-6 text-center md:flex-row md:gap-12">
+        <div className="space-y-1">
+          <p className="text-2xl font-semibold tracking-normal text-white sm:text-3xl">EPUB, PDF, TXT</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500 sm:text-xs">Bring the book you already have</p>
+        </div>
+        <div className="hidden h-12 w-px bg-zinc-800 md:block" />
+        <div className="space-y-1">
+          <p className="text-2xl font-semibold tracking-normal text-white sm:text-3xl">50+ <span className="text-neon-cyan">languages</span></p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500 sm:text-xs">Read in the original, learn in yours</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TransformationLanding({
   onEnterApp,
   onSignIn,
@@ -1972,6 +2090,7 @@ function TransformationLanding({
   sectionAccents,
   heroId,
   ctaId,
+  features,
   renderFeature,
 }: {
   onEnterApp: () => void;
@@ -1980,7 +2099,8 @@ function TransformationLanding({
   sectionAccents: string[];
   heroId: string;
   ctaId: string;
-  renderFeature: (feature: FeatureE, index: number) => React.ReactNode;
+  features: FeatureE[];
+  renderFeature: (feature: FeatureE, index: number, onNext: () => void) => React.ReactNode;
 }) {
   useUnlockScroll();
   const [screen, setScreen] = useState(0);
@@ -1988,6 +2108,64 @@ function TransformationLanding({
   const activeAccent = sectionAccents[screen] || LANDING_E_PALETTE.cyan;
   const progressPercent = totalScreens > 1 ? (screen / (totalScreens - 1)) * 100 : 0;
   const isCyber = heroId.startsWith('g-');
+  const isVersionE = heroId.startsWith('e-');
+  const heroSectionRef = useRef<HTMLElement | null>(null);
+  const heroHeadlineRef = useRef<HTMLHeadingElement | null>(null);
+  const heroCtaRef = useRef<HTMLElement | null>(null);
+  const [finalTaglineTop, setFinalTaglineTop] = useState<number | null>(null);
+  const [finalCreditsBottom, setFinalCreditsBottom] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isVersionE) return;
+
+    let frame = 0;
+    let active = true;
+    const measureHeadlineTop = () => {
+      frame = 0;
+      const heroSection = heroSectionRef.current;
+      const heroHeadline = heroHeadlineRef.current;
+      const heroCta = heroCtaRef.current;
+      if (!active || !heroSection || !heroHeadline || !heroCta) return;
+
+      const sectionTop = heroSection.getBoundingClientRect().top;
+      const nextTaglineTop = heroHeadline.getBoundingClientRect().top - sectionTop;
+      const nextCreditsBottom = heroCta.getBoundingClientRect().bottom - sectionTop;
+      setFinalTaglineTop(current => current !== null && Math.abs(current - nextTaglineTop) < 0.25 ? current : nextTaglineTop);
+      setFinalCreditsBottom(current => current !== null && Math.abs(current - nextCreditsBottom) < 0.25 ? current : nextCreditsBottom);
+    };
+    const scheduleMeasurement = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(measureHeadlineTop);
+    };
+
+    scheduleMeasurement();
+    const resizeObserver = new ResizeObserver(scheduleMeasurement);
+    if (heroSectionRef.current) resizeObserver.observe(heroSectionRef.current);
+    if (heroHeadlineRef.current) resizeObserver.observe(heroHeadlineRef.current);
+    if (heroCtaRef.current) resizeObserver.observe(heroCtaRef.current);
+    document.fonts?.ready.then(scheduleMeasurement);
+    window.addEventListener('resize', scheduleMeasurement);
+    window.addEventListener('orientationchange', scheduleMeasurement);
+
+    return () => {
+      active = false;
+      if (frame) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', scheduleMeasurement);
+      window.removeEventListener('orientationchange', scheduleMeasurement);
+    };
+  }, [isVersionE]);
+
+  useEffect(() => {
+    if (!isVersionE) return;
+    const html = document.documentElement;
+    const previousScrollSnapType = html.style.scrollSnapType;
+    html.style.scrollSnapType = 'y mandatory';
+
+    return () => {
+      html.style.scrollSnapType = previousScrollSnapType;
+    };
+  }, [isVersionE]);
 
   useEffect(() => {
     let frame = 0;
@@ -2032,18 +2210,141 @@ function TransformationLanding({
     };
   }, [sectionIds]);
 
-  const scrollToScreen = (i: number) => {
+  const scrollToScreen = React.useCallback((i: number) => {
     const target = document.getElementById(sectionIds[Math.max(0, Math.min(totalScreens - 1, i))]);
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     target?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
-  };
+  }, [sectionIds, totalScreens]);
+
+  useEffect(() => {
+    if (!isVersionE) return;
+    let accumulatedDelta = 0;
+    let resetAccumulatorTimer = 0;
+    let releaseSnapTimer = 0;
+    let snapLocked = false;
+
+    const releaseSnapAfterGesture = () => {
+      window.clearTimeout(releaseSnapTimer);
+      releaseSnapTimer = window.setTimeout(() => {
+        snapLocked = false;
+      }, 650);
+    };
+
+    const nearestScreenIndex = () => {
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      sectionIds.forEach((id, index) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        const snapOffset = element.offsetTop;
+        const distance = Math.abs(window.scrollY - snapOffset);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+
+      return nearestIndex;
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      event.preventDefault();
+
+      if (snapLocked) {
+        releaseSnapAfterGesture();
+        return;
+      }
+
+      accumulatedDelta += event.deltaY;
+      window.clearTimeout(resetAccumulatorTimer);
+      resetAccumulatorTimer = window.setTimeout(() => {
+        accumulatedDelta = 0;
+      }, 140);
+
+      if (Math.abs(accumulatedDelta) < 32) return;
+
+      const direction = accumulatedDelta > 0 ? 1 : -1;
+      const currentIndex = nearestScreenIndex();
+      const nextIndex = Math.max(0, Math.min(totalScreens - 1, currentIndex + direction));
+      accumulatedDelta = 0;
+
+      if (nextIndex === currentIndex) return;
+      snapLocked = true;
+      scrollToScreen(nextIndex);
+      releaseSnapAfterGesture();
+    };
+
+    // Keyboard snapping — arrow keys / Page keys / Space move exactly one section,
+    // the same distance as clicking the downward arrow button.
+    const snapTo = (index: number) => {
+      const nextIndex = Math.max(0, Math.min(totalScreens - 1, index));
+      if (nextIndex === nearestScreenIndex()) return;
+      snapLocked = true;
+      scrollToScreen(nextIndex);
+      releaseSnapAfterGesture();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      let handled = true;
+      switch (event.key) {
+        case 'ArrowDown':
+        case 'PageDown':
+          if (!snapLocked) snapTo(nearestScreenIndex() + 1);
+          break;
+        case 'ArrowUp':
+        case 'PageUp':
+          if (!snapLocked) snapTo(nearestScreenIndex() - 1);
+          break;
+        case ' ':
+        case 'Spacebar':
+          if (!snapLocked) snapTo(nearestScreenIndex() + (event.shiftKey ? -1 : 1));
+          break;
+        case 'Home':
+          if (!snapLocked) snapTo(0);
+          break;
+        case 'End':
+          if (!snapLocked) snapTo(totalScreens - 1);
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) event.preventDefault();
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.clearTimeout(resetAccumulatorTimer);
+      window.clearTimeout(releaseSnapTimer);
+    };
+  }, [isVersionE, scrollToScreen, sectionIds, totalScreens]);
 
   return (
-    <div className={`bg-void-0 text-zinc-100 min-h-screen ${isCyber ? 'landing-g-shell' : ''}`}>
+    <div className={`bg-void-0 text-zinc-100 min-h-screen ${isCyber ? 'landing-g-shell' : ''} ${isVersionE ? 'landing-e-shell' : ''}`}>
       {/* Nav */}
-      <nav className={`fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900/60 ${isCyber ? 'landing-g-nav' : ''}`}>
+      <nav
+        className={`fixed top-0 w-full z-50 bg-void-0/80 backdrop-blur-md border-b border-zinc-900/60 ${isCyber ? 'landing-g-nav' : ''} ${isVersionE ? 'landing-e-nav' : ''}`}
+        style={isVersionE ? {
+          borderBottomColor: `${activeAccent}52`,
+          boxShadow: `0 1px 0 ${activeAccent}61, 0 5px 26px ${activeAccent}26`,
+        } : undefined}
+      >
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 md:px-10 py-3.5">
-          <span className="font-mono font-bold text-sm tracking-wider text-white">Decod<span className="text-neon-cyan">Ebook</span></span>
+          <span className="relative block h-5 w-[132px] shrink-0 sm:w-[164px]">
+            <img
+              src="/decodebook-logo.png"
+              alt="DecodEbook"
+              className="absolute left-1/2 top-1/2 w-[160px] max-w-none -translate-x-1/2 -translate-y-1/2 sm:w-[200px]"
+            />
+          </span>
           <div className="flex items-center gap-3 sm:gap-4">
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
             <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-3 sm:px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Decode</button>
@@ -2076,72 +2377,172 @@ function TransformationLanding({
       </div>
 
       {/* Screen 1 — Hero */}
-      <section id={heroId} className={`min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden ${isCyber ? 'landing-g-hero' : ''}`}>
+      <section ref={heroSectionRef} id={heroId} className={`min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden ${isCyber ? 'landing-g-hero' : ''} ${isVersionE ? 'h-[100svh] scroll-mt-0 landing-e-hero snap-start snap-always' : ''}`}>
         <div className="absolute inset-0 bg-grid opacity-20" />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,243,255,0.07) 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-4xl space-y-7 sm:space-y-9">
-          <p className="text-[10px] sm:text-xs font-mono tracking-[0.2em] text-zinc-500 animate-fade-in">One Book, Multiple Ways to Learn.</p>
-          <h1 className="text-[2.3rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
+          {!isVersionE && (
+            <p className="text-[10px] sm:text-xs font-mono tracking-[0.2em] text-zinc-500 animate-fade-in">One Book, Multiple Ways to Learn.</p>
+          )}
+          <h1 ref={heroHeadlineRef} className="text-[2.3rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
             Read the original.<br />
             <span className="text-neon-cyan drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
           </h1>
-          <p className="text-zinc-500 text-sm sm:text-base max-w-[34rem] mx-auto leading-[1.75] animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            DecodEbook turns EPUB, PDF, and text into a bilingual reader, pronunciation coach, live podcast, visual brief, video summary and notebook. With AI tutor, you can learn everything you want to.
+          <p className={`${isVersionE ? 'max-w-[46rem]' : 'max-w-[34rem]'} mx-auto text-sm leading-[1.75] text-zinc-500 animate-fade-in sm:text-base`} style={{ animationDelay: '0.2s' }}>
+            {isVersionE ? (
+              <>
+                <span className="sm:block">Upload a file, DecodEbook turns it into a bilingual reader with playable audio,</span>{' '}
+                <span className="sm:block">live podcast, visual brief, video summary and a mindmap from your notes.</span>{' '}
+                <span className="sm:block">Ask your AI tutor for anything you want to learn.</span>
+              </>
+            ) : (
+              <>DecodEbook turns EPUB, PDF, and text into a bilingual reader, pronunciation coach, live podcast, visual brief, video summary and notebook. With AI tutor, you can learn everything you want to.</>
+            )}
           </p>
-          <HeroLearningBlocksVelocity />
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <button onClick={onEnterApp} className="px-7 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg flex items-center gap-2">
-              Decode Your First Chapter <ArrowRight size={14} />
-            </button>
+          <HeroLearningBlocksVelocity isVersionE={isVersionE} />
+          <div className={`flex flex-col items-center justify-center gap-3 animate-fade-in sm:flex-row ${isVersionE ? 'relative top-3 sm:top-4' : ''}`} style={{ animationDelay: '0.3s' }}>
+            {isVersionE ? (
+              <span ref={heroCtaRef as React.RefObject<HTMLSpanElement>} className="inline-block">
+                <SpecularButton
+                  onClick={onEnterApp}
+                  size="lg"
+                  radius={4}
+                  lineColor="#00f3ff"
+                  baseColor="#0b3b42"
+                  textColor="#eafeff"
+                  tint="#00f3ff"
+                  tintOpacity={0.1}
+                  intensity={1.15}
+                  className="font-mono font-bold uppercase tracking-widest"
+                >
+                  <TextType as="span" text="Start with your 100 free credits" loop={false} typingSpeed={45} initialDelay={350} showCursor cursorCharacter="_" />
+                </SpecularButton>
+              </span>
+            ) : (
+              <button ref={heroCtaRef as React.RefObject<HTMLButtonElement>} onClick={onEnterApp} className="px-7 py-3 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-glow-lg flex items-center gap-2">
+                Decode Your First Chapter <ArrowRight size={14} />
+              </button>
+            )}
           </div>
         </div>
-        <button onClick={() => scrollToScreen(1)} className="absolute bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 hover:text-neon-cyan transition-colors animate-bounce" aria-label="Next">
+        <button
+          onClick={() => scrollToScreen(1)}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 text-neon-cyan opacity-[0.55] transition-[opacity,filter] hover:opacity-100 animate-bounce"
+          style={{ filter: 'drop-shadow(0 0 8px rgba(0, 243, 255, 0.5))' }}
+          aria-label="Next"
+        >
           <ChevronDown size={22} strokeWidth={1.5} />
         </button>
       </section>
 
-      {/* Screens 2–7 — feature transformations */}
-      {FEATURES_E.map((f, i) => (
-        <React.Fragment key={f.id}>{renderFeature(f, i)}</React.Fragment>
+      {/* Feature transformation screens */}
+      {features.map((f, i) => (
+        <React.Fragment key={f.id}>{renderFeature(f, i, () => scrollToScreen(i + 2))}</React.Fragment>
       ))}
 
-      {/* Social proof strip — between last feature and CTA */}
-      <section className="py-12 sm:py-16 px-4 sm:px-6 md:px-10 border-t border-zinc-900/50">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 text-center">
-            <div className="space-y-1">
-              <p className="text-2xl sm:text-3xl font-semibold tracking-normal text-white">EPUB, PDF, TXT</p>
-              <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">Bring the book you already have</p>
-            </div>
-            <div className="hidden md:block w-px h-12 bg-zinc-800" />
-            <div className="space-y-1">
-              <p className="text-2xl sm:text-3xl font-semibold tracking-normal text-white">50+ <span className="text-neon-cyan">languages</span></p>
-              <p className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">Read in the original, learn in yours</p>
+      {/* E keeps social proof inside the final fixed-height panel so every snap interval is identical. */}
+      {!isVersionE && (
+        <section className="border-t border-zinc-900/50 px-4 py-12 sm:px-6 sm:py-16 md:px-10">
+          <TransformationSocialProof />
+        </section>
+      )}
+
+      {/* Final CTA */}
+      <section
+        id={ctaId}
+        className={`flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden ${isVersionE ? 'h-[100svh] scroll-mt-0 snap-start snap-always' : 'min-h-[100svh] scroll-mt-16'}`}
+      >
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 70%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
+        {isVersionE && (
+          <div
+            className="absolute inset-x-0 z-10 px-4 text-center sm:px-6 md:px-10"
+            style={{ top: finalTaglineTop === null ? '28.33%' : `${finalTaglineTop}px` }}
+          >
+            <div className="mx-auto max-w-4xl">
+              <p className="mb-5 font-mono text-xs tracking-[0.2em] text-zinc-500 sm:mb-7 sm:text-sm">
+                One Book, Multiple Ways to Learn.
+              </p>
+              <div className="relative top-4">
+                <TransformationSocialProof />
+              </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Screen 8 — Final CTA */}
-      <section id={ctaId} className="min-h-[100svh] scroll-mt-16 flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden">
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 70%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
-        <div className="relative z-10 text-center max-w-3xl space-y-8 sm:space-y-10">
-          <h2 className="text-[2rem] sm:text-4xl md:text-[3.75rem] font-semibold tracking-normal leading-[1.1] text-white">
-            Decode your first chapter<br /><span className="text-neon-cyan">for free</span>.
+        )}
+        <div className={isVersionE
+          ? 'absolute left-1/2 top-[calc(40%+2rem)] z-10 w-full max-w-5xl -translate-x-1/2 space-y-8 px-4 text-center sm:space-y-10'
+          : 'relative z-10 max-w-3xl space-y-8 text-center sm:space-y-10'}>
+          <h2 className={isVersionE
+            ? 'text-[clamp(1.7rem,5.2vw,3.75rem)] font-semibold tracking-normal leading-[1.08] text-white'
+            : 'text-[2rem] sm:text-4xl md:text-[3.75rem] font-semibold tracking-normal leading-[1.14] text-white'}>
+            {isVersionE ? (
+              <>
+                <span className="block whitespace-nowrap">Decode your first chapter</span>
+                <span className="mt-2 block text-neon-cyan sm:mt-3">FOR FREE</span>
+              </>
+            ) : (
+              <>Decode your first chapter<br /><span className="text-neon-cyan">for free</span>.</>
+            )}
           </h2>
-          <p className="text-[11px] sm:text-xs text-zinc-500 font-mono tracking-wider">
-            100 credits for new user registered
-          </p>
-          <button onClick={onEnterApp} className="px-8 py-3.5 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_40px_rgba(0,243,255,0.4)] inline-flex items-center gap-2">
-            Decode Your First Chapter <ArrowRight size={14} />
-          </button>
+          {isVersionE ? (
+            <SpecularButton
+              onClick={onEnterApp}
+              size="lg"
+              radius={4}
+              lineColor="#00f3ff"
+              baseColor="#0b3b42"
+              textColor="#eafeff"
+              tint="#00f3ff"
+              tintOpacity={0.1}
+              intensity={1.15}
+              className="font-mono font-bold uppercase tracking-widest"
+            >
+              TRY IT NOW
+            </SpecularButton>
+          ) : (
+            <button onClick={onEnterApp} className="px-8 py-3.5 bg-neon-cyan text-black font-mono font-bold text-xs uppercase tracking-widest rounded-sm hover:bg-neon-cyan/90 transition-all hover:shadow-[0_0_40px_rgba(0,243,255,0.4)] inline-flex items-center gap-2">
+              Decode Your First Chapter <ArrowRight size={14} />
+            </button>
+          )}
+          {!isVersionE && (
+            <p className="font-mono text-[11px] tracking-wider text-zinc-500 sm:text-xs">
+              100 credits for new user registered
+            </p>
+          )}
         </div>
+        {isVersionE && (
+          <p
+            className="absolute inset-x-4 z-10 mx-auto w-fit -translate-y-full text-center font-mono text-sm font-semibold uppercase tracking-[0.14em] text-neon-cyan sm:text-base"
+            style={{ top: finalCreditsBottom === null ? '73%' : `${finalCreditsBottom}px` }}
+          >
+            <TextType
+              as="span"
+              text="100 credits for new user registered"
+              typingSpeed={55}
+              pauseDuration={2600}
+              deletingSpeed={28}
+              loop
+              showCursor
+              cursorCharacter="_"
+              textColors={['#00f3ff']}
+            />
+          </p>
+        )}
         <footer className="absolute bottom-6 left-0 right-0 px-4 sm:px-6 md:px-10">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
             <span className="font-mono text-[10px] text-zinc-600">DecodEbook &copy; {new Date().getFullYear()}</span>
             <div className="flex items-center gap-4 sm:gap-6">
-              <button onClick={onSignIn} className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Sign In</button>
-              <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Open App</button>
+              {isVersionE ? (
+                <>
+                  <a href="#terms-of-use" className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Terms of Use</a>
+                  <a href="#privacy-policy" className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Privacy Policy</a>
+                  <a href="#support" className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Support</a>
+                </>
+              ) : (
+                <>
+                  <button onClick={onSignIn} className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Sign In</button>
+                  <button onClick={onEnterApp} className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Open App</button>
+                </>
+              )}
             </div>
           </div>
         </footer>
@@ -2159,8 +2560,9 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       sectionAccents={LANDING_E_SECTION_ACCENTS}
       heroId="e-hero"
       ctaId="e-cta"
-      renderFeature={(feature, index) => (
-        <FeatureScreenE feature={feature} index={index} onEnterApp={onEnterApp} />
+      features={LANDING_E_FEATURES}
+      renderFeature={(feature, index, onNext) => (
+        <FeatureScreenE feature={feature} index={index} onEnterApp={onEnterApp} onNext={onNext} />
       )}
     />
   );
@@ -2175,6 +2577,7 @@ function VersionF({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       sectionAccents={LANDING_F_SECTION_ACCENTS}
       heroId="f-hero"
       ctaId="f-cta"
+      features={FEATURES_E}
       renderFeature={(feature, index) => (
         <FeatureScreenF feature={feature} index={index} onEnterApp={onEnterApp} />
       )}
@@ -2191,6 +2594,7 @@ function VersionG({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
       sectionAccents={LANDING_G_SECTION_ACCENTS}
       heroId="g-hero"
       ctaId="g-cta"
+      features={FEATURES_E}
       renderFeature={(feature, index) => (
         <FeatureScreenG feature={feature} index={index} onEnterApp={onEnterApp} />
       )}

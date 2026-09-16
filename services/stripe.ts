@@ -70,37 +70,45 @@ export async function fetchUserTier(): Promise<UserTier> {
   }
 }
 
-export async function createCheckoutSession(priceId: string): Promise<string | null> {
+// Reads the Worker's JSON response and returns the checkout URL, or throws an
+// Error carrying the server-provided message. Callers surface that message so a
+// failing Checkout (e.g. an expired/rotated STRIPE_SECRET_KEY) is never silent.
+async function readCheckoutUrl(res: Response): Promise<string> {
+  const data = await res.json().catch(() => ({})) as { url?: string; error?: string };
+  if (!res.ok) {
+    throw new Error(data.error || `Checkout failed (${res.status})`);
+  }
+  if (!data.url) {
+    throw new Error('Stripe did not return a checkout URL');
+  }
+  return data.url;
+}
+
+export async function createCheckoutSession(priceId: string): Promise<string> {
   const headers = await authHeaders();
   const res = await fetch('/api/stripe/checkout', {
     method: 'POST',
     headers,
     body: JSON.stringify({ priceId }),
   });
-  if (!res.ok) return null;
-  const data = await res.json() as { url: string };
-  return data.url;
+  return readCheckoutUrl(res);
 }
 
-export async function createPackCheckout(priceId: string): Promise<string | null> {
+export async function createPackCheckout(priceId: string): Promise<string> {
   const headers = await authHeaders();
   const res = await fetch('/api/stripe/pack-checkout', {
     method: 'POST',
     headers,
     body: JSON.stringify({ priceId }),
   });
-  if (!res.ok) return null;
-  const data = await res.json() as { url: string };
-  return data.url;
+  return readCheckoutUrl(res);
 }
 
-export async function openCustomerPortal(): Promise<string | null> {
+export async function openCustomerPortal(): Promise<string> {
   const headers = await authHeaders();
   const res = await fetch('/api/stripe/portal', {
     method: 'POST',
     headers,
   });
-  if (!res.ok) return null;
-  const data = await res.json() as { url: string };
-  return data.url;
+  return readCheckoutUrl(res);
 }
