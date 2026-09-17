@@ -660,6 +660,73 @@ const findHeadingCandidates = (
     }
   }
 
+  // Two-column / academic PDFs emit a bold section heading GLUED to the body on one line
+  // ("**ABSTRACT**Accurate…", "**3 OVERVIEW OF EXPERIMENTS**            The goal…"). The line-
+  // and normalized matchers above (and findHeadingOffsetByTitle) all require the heading to END
+  // its line, so they miss these and the chapter never gets an offset ("Source required"). Match
+  // a bold-delimited (optionally chapter-numbered) heading at a line start even when body text
+  // follows inline: the paired **…** / __…__ delimiters are the heading signal, so a bare title
+  // mention in prose (not wrapped in its own bold run at a line start) won't match.
+  for (const variant of variants) {
+    const escaped = escapeRegex(variant);
+    const boldPattern = new RegExp(
+      `(^|\\n)([ \\t]*(?:\\[\\[PAGE\\s+\\d+\\]\\][ \\t]*)?)(\\*\\*|__)[ \\t]*(?:\\d+[.):]?[ \\t]+)?${escaped}[ \\t]*\\3`,
+      'giu'
+    );
+    let bm: RegExpExecArray | null;
+    while ((bm = boldPattern.exec(content)) !== null) {
+      const lineStart = bm.index + bm[1].length;
+      const headingEnd = bm.index + bm[0].length;
+      // Body follows on the SAME line — advance past inline whitespace only (not newlines).
+      const inlineGap = content.slice(headingEnd).match(/^[ \t\u00A0]+/);
+      const contentStart = inlineGap ? headingEnd + inlineGap[0].length : headingEnd;
+      rawCandidates.push({
+        headingStart: lineStart,
+        headingEnd,
+        contentStart,
+        headingText: cleanHeadingLine(content.slice(lineStart, headingEnd)),
+        variant,
+        kind: 'line',
+        page: pageAtIndex(markers, lineStart),
+        score: 0,
+      });
+      if (boldPattern.lastIndex === bm.index) boldPattern.lastIndex++;
+    }
+  }
+
+  // Some section headings are glued to the END of the previous paragraph on the same line, with
+  // NO line break before the bold run ("…in HCI**1 INTRODUCTION** One of…", "…real world.**ACKNOWLEDGMENTS**This…").
+  // The line-start matcher above misses those. Match a bold-wrapped (optionally numbered) title
+  // preceded by prose (a non-space, non-delimiter char). Prose MENTIONS of a title aren't bold-
+  // wrapped — only the real heading is `**…**` — so requiring the exact title inside its own bold
+  // run keeps this from matching an inline word. headingStart is the opening delimiter so the
+  // previous chapter ends exactly where this heading begins.
+  for (const variant of variants) {
+    const escaped = escapeRegex(variant);
+    const boldMidLine = new RegExp(
+      `(?<=[^\\s*_])(\\*\\*|__)[ \\t]*(?:\\d+[.):]?[ \\t]+)?${escaped}[ \\t]*\\1`,
+      'giu'
+    );
+    let bm: RegExpExecArray | null;
+    while ((bm = boldMidLine.exec(content)) !== null) {
+      const headingStart = bm.index;
+      const headingEnd = bm.index + bm[0].length;
+      const inlineGap = content.slice(headingEnd).match(/^[ \t\u00A0]+/);
+      const contentStart = inlineGap ? headingEnd + inlineGap[0].length : headingEnd;
+      rawCandidates.push({
+        headingStart,
+        headingEnd,
+        contentStart,
+        headingText: cleanHeadingLine(content.slice(headingStart, headingEnd)),
+        variant,
+        kind: 'line',
+        page: pageAtIndex(markers, headingStart),
+        score: 0,
+      });
+      if (boldMidLine.lastIndex === bm.index) boldMidLine.lastIndex++;
+    }
+  }
+
   if (chapter.pageStart) {
     const marker = findMarkerForPage(markers, chapter.pageStart);
     if (marker) {

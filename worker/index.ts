@@ -584,7 +584,7 @@ async function handleVideoDownload(request: Request, env: Env, userId?: string, 
 
 // --- Auth helper that extracts user ID ---
 
-async function getUserIdFromAuth(request: Request, env: Env): Promise<{ userId: string } | Response> {
+async function getUserIdFromAuth(request: Request, env: Env): Promise<{ userId: string; email?: string } | Response> {
   // Fail CLOSED (see verifyAuth): no auth backend configured → reject, never return an empty userId.
   if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return jsonError('Auth not configured', 503);
   const authHeader = request.headers.get('Authorization');
@@ -596,7 +596,7 @@ async function getUserIdFromAuth(request: Request, env: Env): Promise<{ userId: 
     });
     if (!res.ok) return jsonError('Invalid or expired session', 401);
     const user = await res.json() as any;
-    return { userId: user.id };
+    return { userId: user.id, email: user.email };
   } catch {
     return jsonError('Auth verification failed', 500);
   }
@@ -1047,11 +1047,19 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
     'cancel_url': new URL(request.url).origin,
     'line_items[0][price]': priceId,
     'line_items[0][quantity]': '1',
-    'customer': subs[0].stripe_customer_id,
     'metadata[user_id]': auth.userId,
     'metadata[pack_type]': packType,
     'metadata[credits]': String(credits),
   };
+  // A pro account created outside Stripe checkout (e.g. a manually/test-granted Pro) has no
+  // stripe_customer_id. Passing it as `customer` sends the literal string "null" → Stripe
+  // "No such customer: 'null'". Only pass a real customer; otherwise seed the email so Stripe
+  // creates/attaches one (the webhook still credits the pack via metadata[user_id] regardless).
+  if (subs[0].stripe_customer_id) {
+    params['customer'] = subs[0].stripe_customer_id;
+  } else if (auth.email) {
+    params['customer_email'] = auth.email;
+  }
 
   const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
