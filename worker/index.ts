@@ -468,16 +468,42 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
     init.body = request.body;
   }
 
-  const response = await fetch(targetUrl.toString(), init);
+  const meta = usageMetaFromHeaders(request);
+  const model = meta.model || (path.match(/models\/([^:]+):/)?.[1] ?? 'unknown');
+  let response: Response;
+  try {
+    response = await fetch(targetUrl.toString(), init);
+  } catch (error) {
+    console.error('[gemini] upstream fetch failed', JSON.stringify({
+      user_id: userId || 'anonymous',
+      action: meta.action || 'unknown',
+      model,
+      error: String(error instanceof Error ? error.message : error).slice(0, 500),
+    }));
+    throw error;
+  }
 
   const resHeaders = new Headers(response.headers);
   resHeaders.set('Access-Control-Allow-Origin', '*');
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      detail = (await response.clone().text()).replace(/\s+/g, ' ').slice(0, 500);
+    } catch {}
+    console.warn('[gemini] upstream non-ok', JSON.stringify({
+      user_id: userId || 'anonymous',
+      action: meta.action || 'unknown',
+      model,
+      status: response.status,
+      detail,
+    }));
+  }
 
   // Phase-A metering: for a TEXT generateContent (not tts) carrying a client usage id, buffer the
   // (small JSON) response, read usageMetadata, and record the charge idempotently (deduped vs the
   // client). Everything else streams through unchanged — tts/veo/ops responses are large and priced
   // from the request, not the body — and with no usage id it's pure passthrough (no regression).
-  const meta = usageMetaFromHeaders(request);
   const isGenerate = /:generateContent/.test(path);
 
   // Veo completion: the client polls the operation through this proxy with X-Db-Action=videoVeo.

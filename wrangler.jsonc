@@ -10,6 +10,16 @@
   "build": {
     "command": "npm run build"
   },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   // Production (top-level env) bindings. Named envs (staging) do NOT inherit these — staging keeps its
   // own RATE_LIMIT below. RATE_LIMIT is optional in the worker (checkRateLimit no-ops if unbound).
   "kv_namespaces": [

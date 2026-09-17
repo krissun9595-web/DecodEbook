@@ -7080,19 +7080,48 @@ const App: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const uploadMeta = {
+      format: file.name.split('.').pop()?.toLowerCase() || 'unknown',
+      file_size: file.size,
+    };
+    let uploadStage = 'validation';
+    const describeUploadError = (err: unknown): string => {
+      if (typeof err === 'string') return err;
+      if (err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
+        return (err as { message: string }).message;
+      }
+      return 'Unknown upload error';
+    };
+    const reportUploadFailure = (stage: string, err: unknown, displayMessage: string) => {
+      const diagnosticMessage = describeUploadError(err);
+      const rawStatus = err && typeof err === 'object'
+        ? ((err as any).status ?? (err as any).response?.status ?? (err as any).code)
+        : undefined;
+      trackEvent('error', 'upload_failed', {
+        ...uploadMeta,
+        stage,
+        ...(rawStatus !== undefined ? { status: String(rawStatus) } : {}),
+        message: diagnosticMessage.slice(0, 500),
+      });
+      setError(displayMessage);
+    };
+
     const allowedExtensions = ['.pdf', '.txt', '.md', '.html', '.xml', '.epub'];
     const hasAllowedExt = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
 
     if (!hasAllowedExt) {
-      setError("Supported formats: PDF, EPUB, TXT, MD, HTML.");
+      const message = "Supported formats: PDF, EPUB, TXT, MD, HTML.";
+      reportUploadFailure('validation', 'unsupported_file_format', message);
       return;
     }
 
     if (!file.type.startsWith('text/') && !file.name.toLowerCase().endsWith('.epub') && file.size > 50 * 1024 * 1024) {
-       setError("PDF too large (>50MB). Please optimize or split the file.");
+       const message = "PDF too large (>50MB). Please optimize or split the file.";
+       reportUploadFailure('validation', 'file_too_large', message);
        return;
     }
 
+    trackEvent('book', 'upload_attempt', uploadMeta);
     setIsProcessing(true);
     setError(null);
     setUploadCreditTier(null);
@@ -7103,6 +7132,7 @@ const App: React.FC = () => {
 
     const finalizeUpload = async (context: FileContext, pdfFigures?: ExtractedFigure[]) => {
         try {
+            uploadStage = 'prepare_context';
             // Carry the figure MANIFEST (no bytes) on the context so the reader can find them; the
             // bytes are cached below once the book id exists.
             if (pdfFigures?.length) context = { ...context, pdfFigures: pdfFigures.map(({ blob, ...meta }) => meta) };
@@ -7111,8 +7141,20 @@ const App: React.FC = () => {
             context = { ...context, sourceFileName: context.sourceFileName || file.name };
             const preparedContext = hydrateFileContext(context);
             // Analysing the book (chapter structure) costs credits — gate before charging.
+            uploadStage = 'credit_gate';
             const gate = await ensureCredits('analyzeBookStructure');
-            if (!gate.ok) { setUploadCreditTier(gate.tier); return; }
+            if (!gate.ok) {
+              trackEvent('error', 'upload_blocked', {
+                ...uploadMeta,
+                stage: uploadStage,
+                reason: 'insufficient_credits',
+                tier: gate.tier,
+                available: gate.available,
+              });
+              setUploadCreditTier(gate.tier);
+              return;
+            }
+            uploadStage = 'analyze_structure';
             const structure = await analyzeBookStructure(preparedContext);
             // Prefer the PDF's own metadata Title over the one inferred from the first content
             // line. Set on `structure` so the display title AND the re-upload dedup (which matches
@@ -7126,6 +7168,7 @@ const App: React.FC = () => {
             const useOutline =
               (preparedContext.sourceKind === 'pdf' && isUsablePdfOutline(preparedContext.content, preparedContext.pdfOutline)) ||
               (preparedContext.sourceKind === 'epub' && isUsableEpubOutline(preparedContext.pdfOutline));
+            uploadStage = 'index_chapters';
             const indexedChapters = useOutline
               ? buildChaptersFromOutline(preparedContext.content, preparedContext.pdfOutline!)
               : preparedContext.isText
@@ -7164,6 +7207,7 @@ const App: React.FC = () => {
             // the reader can load each [[FIG id]] on demand. Best-effort: a cache miss just hides a
             // figure, it never blocks the upload.
             if (pdfFigures?.length) {
+              uploadStage = 'cache_figures';
               const ts = Date.now();
               await Promise.all(pdfFigures.map(f =>
                 saveFile(buildCacheKey(structure.id, 0, 'figure-image', f.id), f.blob, {
@@ -7203,6 +7247,7 @@ const App: React.FC = () => {
                   clearBook(superseded.book.id).catch(() => {});
                 });
             }
+            uploadStage = 'save_source';
             await saveSourceToCache(newItem);
             // Keep the ORIGINAL uploaded file so a future extractor bump can auto-re-extract without a manual
             // re-upload. Best-effort: a save failure (e.g. IndexedDB quota) just leaves this book on the
@@ -7223,12 +7268,28 @@ const App: React.FC = () => {
             }
             setPendingLanguagePromptBookId(structure.id);
             setShowLibraryList(false);
+            uploadStage = 'complete';
             trackBookAction('upload', { title: structure.title, chapter_count: structure.chapters.length, file_size: file.size, format: file.name.split('.').pop() }, structure.id);
             if (currentUser) saveBookToCloud(currentUser.id, newItem).catch(() => {});
         } catch (err: any) {
             console.error("Analysis Error:", err);
-            if (isInsufficientCreditsError(err)) setUploadCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
-            else setError("Decoding failed. " + (err.message || "The file might be too complex or the model is busy."));
+            if (isInsufficientCreditsError(err)) {
+              const tier = getCachedTier()?.tier === 'pro' ? 'pro' : 'free';
+              trackEvent('error', 'upload_blocked', {
+                ...uploadMeta,
+                stage: uploadStage,
+                reason: 'credit_rejected_during_analysis',
+                tier,
+              });
+              setUploadCreditTier(tier);
+            } else {
+              const detail = err?.message || "The file might be too complex or the model is busy.";
+              reportUploadFailure(
+                uploadStage,
+                err,
+                "Decoding failed. " + detail,
+              );
+            }
         } finally {
             setIsProcessing(false);
         }
@@ -7236,6 +7297,7 @@ const App: React.FC = () => {
 
     if (isEpub) {
        try {
+         uploadStage = 'extract_epub';
          const { content: textContent, outline: epubOutline, title: epubDocTitle, figures: epubFigures, anchors: epubAnchors, justified: epubJustified, firstLineIndent: epubFirstLineIndent, firstLineIndentEm: epubFirstLineIndentEm } = await processEpub(file);
          await finalizeUpload({
             content: textContent,
@@ -7251,7 +7313,7 @@ const App: React.FC = () => {
             sourceFirstLineIndentEm: epubFirstLineIndentEm,
          }, epubFigures.length ? epubFigures : undefined);
        } catch (err: any) {
-         setError(err.message || "Failed to process EPUB.");
+         reportUploadFailure(uploadStage, err, err.message || "Failed to process EPUB.");
          setIsProcessing(false);
        }
        return;
@@ -7259,6 +7321,7 @@ const App: React.FC = () => {
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
 	       try {
+	         uploadStage = 'extract_pdf';
 	         const { content: textContent, outline: pdfOutline, title: docTitle, figures, justified, firstLineIndent, firstLineIndentEm, hangs } = await processPdf(file);
 	         await finalizeUpload({
             content: textContent,
@@ -7274,7 +7337,7 @@ const App: React.FC = () => {
             sourceHangs: hangs,
          }, figures);
        } catch (err: any) {
-         setError(err.message || "Failed to process PDF.");
+         reportUploadFailure(uploadStage, err, err.message || "Failed to process PDF.");
          setIsProcessing(false);
        }
        return;
@@ -7284,19 +7347,22 @@ const App: React.FC = () => {
 
     reader.onerror = () => {
       console.error("FileReader error:", reader.error);
-      setError("Failed to read file. It may be too large for this device.");
+      reportUploadFailure('read_file', reader.error, "Failed to read file. It may be too large for this device.");
       setIsProcessing(false);
     };
 
     if (isTextBased) {
+      uploadStage = 'read_text';
       reader.onload = async (e) => {
         const content = e.target?.result as string;
         await finalizeUpload({ content, mimeType: 'text/plain', isText: true, sourceKind: 'text' });
       };
       reader.readAsText(file);
     } else {
+      uploadStage = 'read_binary';
       reader.onload = async (e) => {
         try {
+          uploadStage = 'encode_file';
           const buffer = e.target?.result as ArrayBuffer;
           const bytes = new Uint8Array(buffer);
           let binary = '';
@@ -7308,7 +7374,7 @@ const App: React.FC = () => {
           await finalizeUpload({ content: base64, mimeType: 'application/pdf', isText: false });
         } catch (err: any) {
           console.error("PDF encoding error:", err);
-          setError("Failed to encode PDF. Try a smaller file or convert to EPUB/TXT.");
+          reportUploadFailure(uploadStage, err, "Failed to encode PDF. Try a smaller file or convert to EPUB/TXT.");
           setIsProcessing(false);
         }
       };
@@ -7493,6 +7559,14 @@ const App: React.FC = () => {
               ) : uploadCreditTier ? (
                 /* Out of credits: the error takes over the frame (upload modules hidden). */
                 <div className="w-full px-2"><CreditNotice tier={uploadCreditTier} /></div>
+              ) : error ? (
+                /* Upload failures replace the dropzone so the complete message stays in view. */
+                <StatusMessage
+                  variant="error"
+                  title={error}
+                  action={{ label: 'Try Another File', onClick: () => setError(null) }}
+                  className="w-full"
+                />
               ) : (
                 <div className="relative flex flex-col items-center justify-center space-y-8 w-full">
                   <div className="relative">
@@ -7527,9 +7601,6 @@ const App: React.FC = () => {
                 Access_Data_Bank [{library.length}]
              </button>
           )}
-          {error && !uploadCreditTier ? (
-            <div className="py-2"><StatusMessage variant="error" title={error} /></div>
-          ) : null}
         </div>
         {pendingLanguagePromptBookId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
