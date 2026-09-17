@@ -21,10 +21,11 @@ function isInAppBrowser(): boolean {
 // Full-page auth gate — shown before the app when not logged in
 interface AuthGateProps {
   onAuthChange: (user: User | null) => void;
+  initialMode?: 'login' | 'signup';
 }
 
-export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange }) => {
-  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
+export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, initialMode = 'login' }) => {
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -67,10 +68,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-void-0">
+    <div className="fixed inset-0 z-[300] flex justify-center overflow-y-auto bg-void-0">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(0,243,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,243,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
 
-      <div className="w-full max-w-sm p-8 relative z-10">
+      <div className="w-full max-w-[25rem] p-8 relative z-10 my-auto">
         <div className="text-center mb-8">
           <BrandMark stacked className="text-[2.25rem] mb-3" />
           <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">V.4.2 // Neural Text Decoding Interface</p>
@@ -133,27 +134,32 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange }) => {
               </div>
             </div>
 
-            {mode === 'login' && (
-              <div className="flex justify-end">
-                <button onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">
-                  Forgot Password?
-                </button>
-              </div>
-            )}
+            {/* Fixed-height slot so the submit button below holds the same position whether
+                this row shows the login "Forgot Password?" link or the signup terms checkbox.
+                !mt-3 keeps the password->button region tighter than the rest (space-y-4). */}
+            <div className="min-h-[1.25rem] flex items-center !mt-3">
+              {mode === 'login' && (
+                <div className="w-full flex justify-end">
+                  <button onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
 
-            {mode === 'signup' && (
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input id="gate-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-neon-cyan" />
-                <span className="text-[10px] text-zinc-500 font-mono leading-relaxed">
-                  I agree to the{' '}
-                  <a href="/terms" target="_blank" className="text-neon-cyan hover:underline">Terms of Service</a>
-                  {' '}and{' '}
-                  <a href="/privacy" target="_blank" className="text-neon-cyan hover:underline">Privacy Policy</a>
-                </span>
-              </label>
-            )}
+              {mode === 'signup' && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input id="gate-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-neon-cyan" />
+                  <span className="text-[10px] text-zinc-500 font-mono leading-relaxed">
+                    I agree to the{' '}
+                    <a href="/terms" target="_blank" className="text-neon-cyan hover:underline">Terms of Service</a>
+                    {' '}and{' '}
+                    <a href="/privacy" target="_blank" className="text-neon-cyan hover:underline">Privacy Policy</a>
+                  </span>
+                </label>
+              )}
+            </div>
 
-            <button onClick={handleAuth} disabled={loading || (mode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+            <button onClick={handleAuth} disabled={loading || (mode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 !mt-3">
               {loading ? <Loader2 size={14} className="animate-spin" /> : mode === 'login' ? <LogIn size={14} /> : <UserPlus size={14} />}
               {mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
@@ -188,7 +194,9 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange }) => {
               </button>
             </div>
 
-            <p className="text-[9px] text-zinc-500 font-mono text-center leading-relaxed">
+            {/* Always occupies space so the card is identical height in both modes (so toggling
+                Sign In/Sign Up doesn't resize/re-center the card); hidden in sign-in. */}
+            <p className={`text-[9px] text-zinc-500 font-mono text-center leading-relaxed ${mode === 'signup' ? '' : 'invisible'}`} aria-hidden={mode !== 'signup'}>
               By continuing, you agree to our{' '}
               <a href="/terms" target="_blank" className="text-zinc-500 hover:text-neon-cyan underline">Terms of Service</a>
               {' '}and{' '}

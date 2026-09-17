@@ -313,6 +313,9 @@ const restoreLibrarySources = async (items: LibraryItem[]): Promise<LibraryItem[
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.LANDING);
   const [landingVariant, setLandingVariant] = useState<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'>('A');
+  // Which mode the full-screen AuthGate opens in — set by the landing CTA the visitor clicked
+  // (Sign Up → create-account, Sign In / everything else → login).
+  const [authGateMode, setAuthGateMode] = useState<'login' | 'signup'>('login');
   const unsubRef = useRef<(() => void) | null>(null);
 
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -7505,6 +7508,7 @@ const App: React.FC = () => {
     return (
       <ErrorBoundary>
         <AuthGate
+          initialMode={authGateMode}
           onAuthChange={(user) => { if (user) { setCurrentUser(user); setAuthGatePassed(true); } }}
         />
       </ErrorBoundary>
@@ -7516,11 +7520,12 @@ const App: React.FC = () => {
       <>
         <LandingPage
           variant={landingVariant}
-          onEnterApp={() => setView(AppView.UPLOAD)}
-          /* Non-signed-in users sign in through the full-screen AuthGate (entering an app
-             view trips the gate). The AccountPanel's auth form is reserved for signing back
-             in after an in-app Sign Out from MY_ACCOUNT. */
-          onSignIn={() => setView(AppView.UPLOAD)}
+          /* Non-signed-in users pass through the full-screen AuthGate (entering an app view
+             trips the gate); the CTA they clicked picks which mode it opens in. The
+             AccountPanel's auth form is reserved for signing back in after an in-app Sign Out. */
+          onEnterApp={() => { setAuthGateMode('signup'); setView(AppView.UPLOAD); }}
+          onSignUp={() => { setAuthGateMode('signup'); setView(AppView.UPLOAD); }}
+          onSignIn={() => { setAuthGateMode('login'); setView(AppView.UPLOAD); }}
         />
         <AccountPanel
           isOpen={isAccountOpen}

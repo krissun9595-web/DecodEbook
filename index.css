@@ -346,3 +346,16 @@ body {
   font-weight: 400;
   font-style: normal;
 }
+
+/* Keep browser autofill on the dark theme. Chrome/Safari paint a white/yellow
+   background on autofilled inputs; the long background-color transition defers
+   that paint indefinitely so our transparent input keeps showing the dark
+   container behind it, and text stays light instead of black-on-white. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #d4d4d8;
+  caret-color: #d4d4d8;
+  transition: background-color 9999s ease-in-out 0s;
+}

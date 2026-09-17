@@ -14,6 +14,7 @@ interface LandingPageProps {
   variant: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   onEnterApp: () => void;
   onSignIn: () => void;
+  onSignUp: () => void;
 }
 
 function useUnlockScroll() {
@@ -2086,6 +2087,7 @@ function TransformationSocialProof() {
 function TransformationLanding({
   onEnterApp,
   onSignIn,
+  onSignUp,
   sectionIds,
   sectionAccents,
   heroId,
@@ -2095,6 +2097,7 @@ function TransformationLanding({
 }: {
   onEnterApp: () => void;
   onSignIn: () => void;
+  onSignUp: () => void;
   sectionIds: string[];
   sectionAccents: string[];
   heroId: string;
@@ -2342,12 +2345,15 @@ function TransformationLanding({
             <img
               src="/decodebook-logo.png"
               alt="DecodEbook"
-              className="absolute left-1/2 top-1/2 w-[160px] max-w-none -translate-x-1/2 -translate-y-1/2 sm:w-[200px]"
+              /* The logo PNG has an opaque black background; on the dark nav, mix-blend
+                 screen drops that black to nothing so the glowing bottom border shows
+                 through instead of being punched out, while the bright glyphs stay. */
+              className="absolute left-1/2 top-1/2 w-[160px] max-w-none -translate-x-1/2 -translate-y-1/2 mix-blend-screen sm:w-[200px]"
             />
           </span>
           <div className="flex items-center gap-3 sm:gap-4">
+            <button onClick={onSignUp} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign Up</button>
             <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
-            <button onClick={onEnterApp} className="text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-3 sm:px-4 py-1.5 rounded-sm hover:bg-neon-cyan/20 transition-colors">Decode</button>
           </div>
         </div>
       </nav>
@@ -2527,8 +2533,8 @@ function TransformationLanding({
             />
           </p>
         )}
-        <footer className="absolute bottom-6 left-0 right-0 px-4 sm:px-6 md:px-10">
-          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
+        <footer className="absolute bottom-6 left-0 right-0">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4 px-4 sm:px-6 md:px-10">
             <span className="font-mono text-[10px] text-zinc-600">DecodEbook &copy; {new Date().getFullYear()}</span>
             <div className="flex items-center gap-4 sm:gap-6">
               {isVersionE ? (
@@ -2551,11 +2557,12 @@ function TransformationLanding({
   );
 }
 
-function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+function VersionE({ onEnterApp, onSignIn, onSignUp }: { onEnterApp: () => void; onSignIn: () => void; onSignUp: () => void }) {
   return (
     <TransformationLanding
       onEnterApp={onEnterApp}
       onSignIn={onSignIn}
+      onSignUp={onSignUp}
       sectionIds={LANDING_E_SECTION_IDS}
       sectionAccents={LANDING_E_SECTION_ACCENTS}
       heroId="e-hero"
@@ -2568,11 +2575,12 @@ function VersionE({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   );
 }
 
-function VersionF({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+function VersionF({ onEnterApp, onSignIn, onSignUp }: { onEnterApp: () => void; onSignIn: () => void; onSignUp: () => void }) {
   return (
     <TransformationLanding
       onEnterApp={onEnterApp}
       onSignIn={onSignIn}
+      onSignUp={onSignUp}
       sectionIds={LANDING_F_SECTION_IDS}
       sectionAccents={LANDING_F_SECTION_ACCENTS}
       heroId="f-hero"
@@ -2585,11 +2593,12 @@ function VersionF({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
   );
 }
 
-function VersionG({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: () => void }) {
+function VersionG({ onEnterApp, onSignIn, onSignUp }: { onEnterApp: () => void; onSignIn: () => void; onSignUp: () => void }) {
   return (
     <TransformationLanding
       onEnterApp={onEnterApp}
       onSignIn={onSignIn}
+      onSignUp={onSignUp}
       sectionIds={LANDING_G_SECTION_IDS}
       sectionAccents={LANDING_G_SECTION_ACCENTS}
       heroId="g-hero"
@@ -2604,14 +2613,14 @@ function VersionG({ onEnterApp, onSignIn }: { onEnterApp: () => void; onSignIn: 
 
 // ─── Main Export ───
 
-export function LandingPage({ variant, onEnterApp, onSignIn }: LandingPageProps) {
+export function LandingPage({ variant, onEnterApp, onSignIn, onSignUp }: LandingPageProps) {
   switch (variant) {
     case 'A': return <VersionA onEnterApp={onEnterApp} onSignIn={onSignIn} />;
     case 'B': return <VersionB onEnterApp={onEnterApp} onSignIn={onSignIn} />;
     case 'C': return <VersionC onEnterApp={onEnterApp} onSignIn={onSignIn} />;
     case 'D': return <VersionD onEnterApp={onEnterApp} onSignIn={onSignIn} />;
-    case 'E': return <VersionE onEnterApp={onEnterApp} onSignIn={onSignIn} />;
-    case 'F': return <VersionF onEnterApp={onEnterApp} onSignIn={onSignIn} />;
-    case 'G': return <VersionG onEnterApp={onEnterApp} onSignIn={onSignIn} />;
+    case 'E': return <VersionE onEnterApp={onEnterApp} onSignIn={onSignIn} onSignUp={onSignUp} />;
+    case 'F': return <VersionF onEnterApp={onEnterApp} onSignIn={onSignIn} onSignUp={onSignUp} />;
+    case 'G': return <VersionG onEnterApp={onEnterApp} onSignIn={onSignIn} onSignUp={onSignUp} />;
   }
 }
