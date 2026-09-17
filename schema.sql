@@ -302,7 +302,6 @@ CREATE FUNCTION public.get_referral_stats(p_user_id uuid) RETURNS json
 DECLARE
   v_code TEXT;
   v_clicks INT;
-  v_click_credits INT;
   v_signups INT;
   v_activated INT;
   v_signup_credits INT;
@@ -310,9 +309,9 @@ DECLARE
 BEGIN
   SELECT code INTO v_code FROM referral_codes WHERE user_id = p_user_id;
 
+  -- Informational only; click-based crediting was removed (signup-only model).
   SELECT COUNT(*) INTO v_clicks FROM referral_clicks
     WHERE referrer_id = p_user_id AND credited = true;
-  v_click_credits := LEAST(v_clicks * 5, 50);
 
   SELECT COUNT(*) INTO v_signups FROM referral_signups
     WHERE referrer_id = p_user_id;
@@ -325,13 +324,13 @@ BEGIN
   RETURN json_build_object(
     'code', v_code,
     'clicks', v_clicks,
-    'click_credits', v_click_credits,
-    'click_credits_cap', 50,
+    'click_credits', 0,
+    'click_credits_cap', 0,
     'signups', v_signups,
     'activated', v_activated,
     'signup_credits', v_signup_credits,
     'bonus_balance', COALESCE(v_bonus, 0),
-    'total_earned', v_click_credits + v_signup_credits
+    'total_earned', v_signup_credits
   );
 END;
 $$;

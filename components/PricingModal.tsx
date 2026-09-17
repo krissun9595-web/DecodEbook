@@ -12,7 +12,7 @@ import {
   signIn, signUp, signInWithOAuth, signOut, resetPassword,
   isSupabaseConfigured, linkProvider, unlinkProvider, getIdentities
 } from '../services/supabase';
-import { getReferralCode, getReferralStats, getShareUrl, shareOnTwitter, shareOnFacebook, shareOnLinkedIn, shareOnInstagram, ReferralStats } from '../services/referral';
+import { getReferralCode, getShareUrl, shareOnTwitter, shareOnFacebook, shareOnLinkedIn, shareOnInstagram } from '../services/referral';
 import type { User } from '@supabase/supabase-js';
 import { trackAuth } from '../utils/analytics';
 
@@ -80,7 +80,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
 
   const [refCode, setRefCode] = useState<string | null>(null);
-  const [refStats, setRefStats] = useState<ReferralStats | null>(null);
   const [copied, setCopied] = useState(false);
   const [genMode, setGenMode] = useState<GenMode>(getGenerationMode());
   const [identities, setIdentities] = useState<any[]>(user?.identities || []);
@@ -103,7 +102,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
       setLoading(true);
       fetchUserTier().then(t => { setTierInfo(t); setLoading(false); });
       getReferralCode().then(setRefCode);
-      getReferralStats().then(setRefStats);
     }
   }, [isOpen, user]);
 
@@ -553,36 +551,14 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </div>
 
 
-                    {/* Stats */}
-                    {refStats && refStats.total_earned > 0 && (
-                      <div className="border-t border-zinc-800 pt-3 flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-sm font-bold text-neon-cyan font-mono">{refStats.total_earned}</p>
-                          <p className="text-[8px] text-zinc-600 font-mono uppercase">Earned</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-bold text-white font-mono">{refStats.clicks}</p>
-                          <p className="text-[8px] text-zinc-600 font-mono uppercase">Clicks</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-bold text-white font-mono">{refStats.signups}</p>
-                          <p className="text-[8px] text-zinc-600 font-mono uppercase">Signups</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-bold text-white font-mono">{refStats.activated}</p>
-                          <p className="text-[8px] text-zinc-600 font-mono uppercase">Activated</p>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Program terms — always shown; the list scrolls within the remaining space, like the Credit History table area. */}
                     <div className="flex flex-col min-h-0 flex-1">
                       <p className="text-[10px] font-mono text-zinc-600">Program terms</p>
                       <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono leading-relaxed list-disc list-inside overflow-y-auto custom-scrollbar min-h-0 flex-1 pr-2">
                         <li>Bonus credits are promotional store credit for use within DecodEbook only — they have no cash value and are not redeemable, transferable, or refundable.</li>
                         <li>Credits earned never expire. They are applied after your monthly credits and before any purchased packs.</li>
-                        <li>Rewards: 5 credits per unique visitor click (up to 50 credits total); 100 credits when a new user you referred signs up, verifies their email, and starts using their free credits (up to 1,000 credits total).</li>
-                        <li>Self-referrals, duplicate or automated clicks, and other abuse do not qualify and may result in credit reversal or account action.</li>
+                        <li>Rewards: 100 credits when a new user you referred signs up, verifies their email, and starts using their free credits (up to 1,000 credits total).</li>
+                        <li>Self-referrals, duplicate or automated signups, and other abuse do not qualify and may result in credit reversal or account action.</li>
                         <li>This is a limited-time promotion. DecodEbook may change, suspend, or end it at any time; credits already earned are unaffected.</li>
                       </ul>
                     </div>
