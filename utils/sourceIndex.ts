@@ -660,6 +660,9 @@ const findHeadingCandidates = (
     }
   }
 
+  // [PAPERS-DESIGN] Academic-paper heuristic — see memory project_decodebook_papers_design_assessment.
+  // Additive-only (0-drift on ebook fixtures) so it's safe unGated for now, but when a document-class
+  // gate ("isAcademicPaper") is built, this + the mid-line matcher below should move behind it.
   // Two-column / academic PDFs emit a bold section heading GLUED to the body on one line
   // ("**ABSTRACT**Accurate…", "**3 OVERVIEW OF EXPERIMENTS**            The goal…"). The line-
   // and normalized matchers above (and findHeadingOffsetByTitle) all require the heading to END
@@ -694,6 +697,8 @@ const findHeadingCandidates = (
     }
   }
 
+  // [PAPERS-DESIGN] Academic-paper heuristic (pairs with the bold line-start matcher above; gate both
+  // behind isAcademicPaper when the papers-design track lands). See memory project_decodebook_papers_design_assessment.
   // Some section headings are glued to the END of the previous paragraph on the same line, with
   // NO line break before the bold run ("…in HCI**1 INTRODUCTION** One of…", "…real world.**ACKNOWLEDGMENTS**This…").
   // The line-start matcher above misses those. Match a bold-wrapped (optionally numbered) title
