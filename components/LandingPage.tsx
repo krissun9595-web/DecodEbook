@@ -2539,9 +2539,9 @@ function TransformationLanding({
             <div className="flex items-center gap-4 sm:gap-6">
               {isVersionE ? (
                 <>
-                  <a href="#terms-of-use" className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Terms of Use</a>
-                  <a href="#privacy-policy" className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Privacy Policy</a>
-                  <a href="#support" className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Support</a>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Terms of Use</a>
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[10px] font-mono text-zinc-600 hover:text-white transition-colors uppercase tracking-widest">Privacy Policy</a>
+                  <a href="mailto:support@decodebook.app" className="text-[10px] font-mono text-zinc-600 hover:text-neon-cyan transition-colors uppercase tracking-widest">Support</a>
                 </>
               ) : (
                 <>

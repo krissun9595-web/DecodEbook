@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet } from 'lucide-react';
+import { Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet, Trash2 } from 'lucide-react';
 import { CloseButton } from './ui/CloseButton';
 import { Privacy, Pro } from './ui/glyphs';
 import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
@@ -9,7 +9,7 @@ import { CreditHistory } from './CreditHistory';
 import { StatusMessage } from './ui/StatusMessage';
 import { InfoTooltip, InfoSection } from './ui/InfoTooltip';
 import {
-  signIn, signUp, signInWithOAuth, signOut, resetPassword,
+  signIn, signUp, signInWithOAuth, signOut, resetPassword, deleteAccount,
   isSupabaseConfigured, linkProvider, unlinkProvider, getIdentities
 } from '../services/supabase';
 import { getReferralCode, getShareUrl, shareOnTwitter, shareOnFacebook, shareOnLinkedIn, shareOnInstagram } from '../services/referral';
@@ -205,6 +205,25 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
     onAuthChange(null);
     setTierInfo(null);
     setSuccess('Signed out');
+  };
+
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const handleDeleteAccount = async () => {
+    setDeleting(true); setError('');
+    try {
+      await deleteAccount();
+      trackAuth('account_deleted');
+      onAuthChange(null);
+      setTierInfo(null);
+      onClose();
+      // Full reload clears in-memory + local caches for the now-deleted account.
+      window.location.href = '/';
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete account.');
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
   };
 
   const handleSwitchAccount = async () => {
@@ -566,6 +585,30 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 </div>
               )}
 
+
+              {/* Delete account (danger zone) — a small grey link below Earn_Free_Credits that expands
+                  into a red confirmation with DELETE / CANCEL (same height as the binded-account buttons). */}
+              <div>
+                {!confirmingDelete ? (
+                  <div className="text-center">
+                    <button onClick={() => { setConfirmingDelete(true); setError(''); }} className="text-[9px] font-mono uppercase tracking-widest text-zinc-600 hover:text-neon-red transition-colors">
+                      Delete Account
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-neon-red font-mono leading-relaxed text-center">This cannot be undone, remaining credit balance cannot be refunded, still Delete?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={handleDeleteAccount} disabled={deleting} className="py-2 rounded-sm border border-neon-red/50 bg-neon-red/10 text-neon-red hover:bg-neon-red/20 text-[10px] font-mono uppercase tracking-widest transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-1.5">
+                        {deleting ? <Loader2 size={11} className="animate-spin" /> : null}Delete
+                      </button>
+                      <button onClick={() => setConfirmingDelete(false)} disabled={deleting} className="py-2 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 text-[10px] font-mono uppercase tracking-widest transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
             </div>
           ) : (

@@ -144,6 +144,9 @@ export default {
       if (auth instanceof Response) return auth;
       return handleGetTier(auth.userId, env);
     }
+    if (url.pathname === '/api/account/delete' && request.method === 'POST') {
+      return handleDeleteAccount(request, env);
+    }
 
     // --- Referral routes ---
     if (url.pathname === '/api/ref/code') {
@@ -1072,6 +1075,68 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
   const session = await stripeRes.json() as any;
   if (session.error) return jsonError(session.error.message, 400);
   return jsonResponse({ url: session.url });
+}
+
+// Permanently delete the signed-in user's account and all associated data (GDPR/CCPA erasure).
+async function handleDeleteAccount(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return jsonError('Not configured', 503);
+  const auth = await getUserIdFromAuth(request, env);
+  if (auth instanceof Response) return auth;
+  const uid = auth.userId;
+  const svc = { 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+
+  // 1) Delete rows in tables whose FK to auth.users has NO ON DELETE CASCADE — otherwise the auth
+  //    admin-delete below fails on the constraint. (Cascading tables — profiles, subscriptions,
+  //    generations, credit_ledger, user_books, user_notebook, user_reading_state, user_synced_files,
+  //    plus sessions/events which SET NULL — are handled automatically when the auth user is deleted.)
+  const nonCascade = [
+    `/usage_logs?user_id=eq.${uid}`,
+    `/user_settings?user_id=eq.${uid}`,
+    `/bonus_credits?user_id=eq.${uid}`,
+    `/credit_pack_purchases?user_id=eq.${uid}`,
+    `/referral_clicks?referrer_id=eq.${uid}`,
+    `/referral_signups?referrer_id=eq.${uid}`,
+    `/referral_signups?referred_user_id=eq.${uid}`,
+    `/referral_codes?user_id=eq.${uid}`,
+  ];
+  for (const path of nonCascade) {
+    const r = await supabaseAdmin(env, path, { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      console.error('[account/delete] row delete failed', path, r.status, t);
+      return jsonError('Failed to delete account data. Please contact support@decodebook.app.', 500);
+    }
+  }
+
+  // 2) Best-effort: remove the user's private Storage folder ({uid}/ in the book-media bucket). Do not
+  //    fail the whole deletion if storage cleanup is incomplete — log and continue. (Nested folders may
+  //    need a recursive sweep; the personal data in the database is fully removed by steps 1 + 3.)
+  try {
+    const listRes = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/book-media`, {
+      method: 'POST',
+      headers: { ...svc, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefix: `${uid}/`, limit: 1000 }),
+    });
+    if (listRes.ok) {
+      const objs = await listRes.json() as any[];
+      const names = (objs || []).map(o => `${uid}/${o.name}`).filter(n => n && !n.endsWith('/'));
+      if (names.length) {
+        await fetch(`${env.SUPABASE_URL}/storage/v1/object/book-media`, {
+          method: 'DELETE', headers: { ...svc, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prefixes: names }),
+        }).catch(e => console.error('[account/delete] storage remove failed', e));
+      }
+    }
+  } catch (e) { console.error('[account/delete] storage cleanup error', e); }
+
+  // 3) Delete the auth user — cascades the remaining user tables.
+  const res = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers: svc });
+  if (!res.ok && res.status !== 404) {
+    const t = await res.text().catch(() => '');
+    console.error('[account/delete] auth admin delete failed', res.status, t);
+    return jsonError('Failed to delete account. Please contact support@decodebook.app.', 500);
+  }
+  return jsonResponse({ deleted: true });
 }
 
 async function handleStripeWebhook(request: Request, env: Env): Promise<Response> {

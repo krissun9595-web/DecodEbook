@@ -312,7 +312,8 @@ const restoreLibrarySources = async (items: LibraryItem[]): Promise<LibraryItem[
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.LANDING);
-  const [landingVariant, setLandingVariant] = useState<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'>('A');
+  // Version E is the only landing shown in production; the A–D/F/G variants and the ?v= switcher were retired.
+  const [landingVariant] = useState<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'>('E');
   // Which mode the full-screen AuthGate opens in — set by the landing CTA the visitor clicked
   // (Sign Up → create-account, Sign In / everything else → login).
   const [authGateMode, setAuthGateMode] = useState<'login' | 'signup'>('login');
@@ -513,13 +514,6 @@ const App: React.FC = () => {
   useEffect(() => {
       let cancelled = false;
       const params = new URLSearchParams(window.location.search);
-      const v = params.get('v');
-      if (v === 'B' || v === 'b') setLandingVariant('B');
-      else if (v === 'C' || v === 'c') setLandingVariant('C');
-      else if (v === 'D' || v === 'd') setLandingVariant('D');
-      else if (v === 'E' || v === 'e') setLandingVariant('E');
-      else if (v === 'F' || v === 'f') setLandingVariant('F');
-      else if (v === 'G' || v === 'g') setLandingVariant('G');
 
       // Handle referral link
       const refCode = params.get('ref');

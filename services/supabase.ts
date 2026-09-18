@@ -107,11 +107,23 @@ export async function testConnection(): Promise<boolean> {
 
 // ---- Auth helpers ----
 
+// Version of the Terms of Service / Privacy Policy the user agrees to at sign-up. Bump this when the
+// legal docs change materially; the recorded value + timestamp is our proof-of-consent and lets us
+// re-prompt users whose accepted version is older than the current one.
+export const TERMS_VERSION = '2026-09-18';
+
 export async function signUp(email: string, password: string) {
   const client = getSupabase();
   if (!client) throw new Error('Supabase not configured. Check supabase_url and supabase_anon_key in localStorage.');
   console.log('[Supabase] signUp attempt:', email);
-  const { data, error } = await client.auth.signUp({ email, password });
+  // Record consent to the Terms/Privacy at sign-up (the UI requires the agree checkbox before this
+  // runs). Stored in auth user_metadata so it's captured atomically with the account, survives the
+  // email-confirmation flow, and is queryable/tamper-evident.
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+    options: { data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } },
+  });
   if (error) {
     console.error('[Supabase] signUp error:', error.message, error.status, error);
     throw error;
@@ -148,6 +160,25 @@ export async function signOut() {
   const client = getSupabase();
   if (!client) return;
   await client.auth.signOut();
+}
+
+// Permanently delete the signed-in user's account and all associated data. The worker
+// (service role) deletes the non-cascading rows, the user's Storage folder, and the auth
+// user (which cascades the rest); we then sign out locally.
+export async function deleteAccount(): Promise<void> {
+  const client = getSupabase();
+  if (!client) throw new Error('Supabase not configured.');
+  const { data: { session } } = await client.auth.getSession();
+  if (!session?.access_token) throw new Error('You must be signed in to delete your account.');
+  const res = await fetch(`${window.location.origin}/api/account/delete`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as any));
+    throw new Error((body as any).error || 'Failed to delete account. Please try again or contact support@decodebook.app.');
+  }
+  await client.auth.signOut().catch(() => {});
 }
 
 // ---- Identity (account) linking ----
@@ -198,8 +229,16 @@ export async function getUser(): Promise<User | null> {
 export function onAuthStateChange(callback: (user: User | null) => void): (() => void) | null {
   const client = getSupabase();
   if (!client) return null;
-  const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-    callback(session?.user ?? null);
+  const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+    const user = session?.user ?? null;
+    // Record consent for sign-ins that didn't go through the email signUp path (OAuth: Google/GitHub/
+    // X/Discord — and any legacy account created before consent was recorded). The AuthGate shows the
+    // "By continuing you agree to the Terms/Privacy" notice, so an authenticated session implies consent.
+    // Idempotent: only writes when terms_version is missing; the resulting USER_UPDATED event no-ops.
+    if (user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !(user.user_metadata as any)?.terms_version) {
+      client.auth.updateUser({ data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } }).catch(() => {});
+    }
+    callback(user);
   });
   return () => subscription.unsubscribe();
 }
