@@ -515,6 +515,15 @@ const App: React.FC = () => {
       let cancelled = false;
       const params = new URLSearchParams(window.location.search);
 
+      // Open the AuthGate in the requested mode when arriving from a static page (e.g. /terms,
+      // /privacy) via ?auth=signup / ?auth=signin — entering an app view trips the full-screen gate.
+      const authParam = params.get('auth');
+      if (authParam === 'signup' || authParam === 'signin' || authParam === 'login') {
+        setAuthGateMode(authParam === 'signup' ? 'signup' : 'login');
+        setView(AppView.UPLOAD);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
       // Handle referral link
       const refCode = params.get('ref');
       if (refCode) {

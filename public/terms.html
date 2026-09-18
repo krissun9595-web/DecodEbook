@@ -18,16 +18,21 @@
   .meta { color:var(--faint); font-size:.85rem; margin-bottom:1.6em; }
   hr { border:none; border-top:1px solid var(--line); margin:2.4em 0; }
   .small { color:var(--faint); font-size:.8rem; }
-  header { border-bottom:1px solid var(--line); position:sticky; top:0; background:rgba(2,2,2,.85); backdrop-filter:blur(8px); z-index:10; }
-  .nav { max-width:1120px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:12px 22px; }
-  .nav-logo img { height:20px; width:auto; display:block; mix-blend-mode:screen; }
-  .nav-links { display:flex; gap:18px; }
-  .nav-links a { font-family:"Share Tech Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--dim); }
+  header { border-bottom:1px solid #00f3ff52; box-shadow:0 1px 0 #00f3ff61, 0 5px 26px #00f3ff26; position:sticky; top:0; background:rgba(2,2,2,.8); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); z-index:50; }
+  .nav { max-width:1152px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:14px 16px; }
+  @media (min-width:640px){ .nav { padding:14px 24px; } }
+  @media (min-width:768px){ .nav { padding:14px 40px; } }
+  .nav-logo { position:relative; display:block; height:20px; width:132px; flex:none; }
+  .nav-logo img { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:160px; height:auto; max-width:none; display:block; mix-blend-mode:screen; }
+  @media (min-width:640px){ .nav-logo { width:164px; } .nav-logo img { width:200px; } }
+  .nav-links { display:flex; align-items:center; gap:12px; }
+  @media (min-width:640px){ .nav-links { gap:16px; } }
+  .nav-links a { font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#71717a; transition:color .15s; }
   .nav-links a:hover { color:#fff; text-decoration:none; }
 </style>
 </head>
 <body>
-<header><div class="nav"><a class="nav-logo" href="/"><img src="/decodebook-logo.png" alt="DecodEbook" /></a><div class="nav-links"><a href="/">Sign Up</a><a href="/">Sign In</a></div></div></header>
+<header><div class="nav"><a class="nav-logo" href="/"><img src="/decodebook-logo.png" alt="DecodEbook" /></a><div class="nav-links"><a href="/?auth=signup">Sign Up</a><a href="/?auth=signin">Sign In</a></div></div></header>
 <div class="wrap">
   <h1>Terms of Service</h1>
   <div class="meta mono">Effective date: 2026-09-18</div>
