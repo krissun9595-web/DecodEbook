@@ -13,6 +13,7 @@ import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { getFileOrCloud } from '../services/figureSync';
+import { GEN_STYLES } from '../utils/genStyles';
 
 interface Props {
   chapter: Chapter;
@@ -22,10 +23,7 @@ interface Props {
   bookTitle?: string;
 }
 
-const STYLES = [
-  'Cinematic', 'Anime', 'Photorealistic', 'Cartoon', 'Cyberpunk', 
-  'Vaporwave', 'Noir', 'Documentary', 'Surreal'
-];
+const STYLES = GEN_STYLES;
 
 const RESOLUTIONS: ('720p' | '1080p')[] = ['720p', '1080p'];
 const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];

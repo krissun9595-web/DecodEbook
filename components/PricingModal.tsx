@@ -105,6 +105,28 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
     }
   }, [isOpen, user]);
 
+  // Stripe cancel/back navigation can restore this modal from the browser's
+  // back-forward cache, preserving the old spinner state. Clear transient
+  // checkout state when a cached page is restored so every Buy button works.
+  useEffect(() => {
+    const resetCheckoutState = (event?: PageTransitionEvent) => {
+      if (event && !event.persisted) return;
+      setBuyingPack(null);
+      setUpgrading(null);
+      setPortalLoading(false);
+    };
+    window.addEventListener('pageshow', resetCheckoutState);
+    return () => window.removeEventListener('pageshow', resetCheckoutState);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setBuyingPack(null);
+      setUpgrading(null);
+      setPortalLoading(false);
+    }
+  }, [isOpen]);
+
   const handleUpgrade = async (tierId: string, annual = false) => {
     let priceId = '';
     if (tierId === 'pro') priceId = annual && proAnnualPriceId ? proAnnualPriceId : proPriceId;
@@ -440,7 +462,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           <p className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</p>
                           <p className="text-[9px] text-zinc-500 font-mono uppercase">credits</p>
                           <p className="text-sm font-bold text-neon-cyan">{pack.price}</p>
-                          <button onClick={() => handleBuyPack(pack.storageKey, pack.type)} disabled={!!buyingPack} className="w-full py-1.5 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1">
+                          <button onClick={() => handleBuyPack(pack.storageKey, pack.type)} disabled={!!buyingPack} aria-busy={buyingPack === pack.type} className="w-full min-h-[28px] py-1.5 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1">
                             {buyingPack === pack.type ? <Loader2 size={10} className="animate-spin" /> : 'Buy'}
                           </button>
                         </div>

@@ -1104,6 +1104,11 @@ const LANDING_E_PALETTE = {
   yellow: '#fde047',
 };
 
+// The landing films are 3320×2160 (83:54). Keep their frames native so the
+// full compositions are visible without crop or letterboxing.
+const PART_FILM_FRAME_ASPECT_RATIO = '83 / 54';
+const DEFAULT_LANDING_FRAME_ASPECT_RATIO = '16 / 9';
+
 const LANDING_E_LEARNING_BLOCKS = [
   { label: 'Read', color: LANDING_E_PALETTE.cyan },
   { label: 'Listen', color: LANDING_E_PALETTE.emerald },
@@ -1115,11 +1120,19 @@ const LANDING_E_LEARNING_BLOCKS = [
   { label: 'Ask', color: LANDING_E_PALETTE.cyan },
 ];
 
-function MediaFrameE({ children, color }: { children: React.ReactNode; color: string }) {
+function MediaFrameE({
+  children,
+  color,
+  aspectRatio = DEFAULT_LANDING_FRAME_ASPECT_RATIO,
+}: {
+  children: React.ReactNode;
+  color: string;
+  aspectRatio?: string;
+}) {
   return (
     <div
-      className="relative mx-auto aspect-[16/9] w-full max-w-[640px] overflow-hidden rounded-sm"
-      style={{ boxShadow: `0 0 32px ${color}14` }}
+      className="relative mx-auto w-full max-w-[640px] overflow-hidden rounded-sm"
+      style={{ aspectRatio, boxShadow: `0 0 32px ${color}14` }}
     >
       {children}
       <div
@@ -1188,64 +1201,38 @@ function HeroLearningBlocksVelocity({ isVersionE = false }: { isVersionE?: boole
 
 function VoiceSynthDemo() {
   return (
-    <div className="h-full bg-void-2 border border-neon-cyan/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-cyan/40 to-transparent" />
-      <div className="flex items-center justify-between">
-        <p className="text-[8px] sm:text-[9px] uppercase tracking-widest text-zinc-600">Le Petit Prince · Ch. 21</p>
-        <span className="text-[9px] text-zinc-600">FR ↔ EN</span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 text-zinc-400 leading-[1.6]">
-        <div>
-          <p className="text-[9px] uppercase tracking-widest text-zinc-600 mb-2">Original</p>
-          <p>"Je ne suis pas <span className="bg-neon-cyan/15 text-neon-cyan px-1 rounded-sm">apprivoisé</span>", dit le renard.</p>
-        </div>
-        <div>
-          <p className="text-[9px] uppercase tracking-widest text-zinc-600 mb-2">Decoded</p>
-          <p>"I am not <span className="bg-neon-cyan/15 text-neon-cyan px-1 rounded-sm">tamed</span>", said the fox.</p>
-        </div>
-      </div>
-      <div className="border-t border-zinc-800 pt-3 space-y-1.5 flex-1 min-h-0">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-600">apprivoisé · in this passage</p>
-        <p className="text-zinc-400 leading-[1.65]">Tamed, but in Saint-Exupery's hands it means something deeper: <em className="text-zinc-300 not-italic">to be bound to another by ritual and care.</em></p>
-      </div>
-      <div className="flex items-center gap-3 pt-1">
-        <div className="w-7 h-7 rounded-full bg-neon-cyan/10 border border-neon-cyan/40 flex items-center justify-center shrink-0">
-          <div className="w-0 h-0 border-l-[6px] border-l-neon-cyan border-y-[4px] border-y-transparent ml-[2px]" />
-        </div>
-        <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full w-1/3 bg-neon-cyan" /></div>
-        <span className="text-[9px] text-zinc-600">0:14 / 0:42</span>
-      </div>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-cyan/20 bg-void-2">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-cyan/40 to-transparent z-10" />
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="block h-full w-full object-contain"
+      >
+        <source src="/01part_1.webm" type="video/webm" />
+        <source src="/01part_1.mp4" type="video/mp4" />
+      </video>
     </div>
   );
 }
 
 function PodcastDemo() {
   return (
-    <div className="h-full bg-void-2 border border-neon-amber/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-amber/20 bg-void-2">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-amber/40 to-transparent" />
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] uppercase tracking-widest text-zinc-600">Ep · ch. 21</span>
-          <span className="text-neon-amber">●</span>
-          <span className="text-[9px] text-zinc-500">FR book · EN discussion · late-night</span>
-        </div>
-        <span className="text-[9px] text-zinc-600">12:04</span>
-      </div>
-      <div className="flex items-end gap-[2px] h-10 sm:h-12 shrink-0">
-        {[3,7,4,8,5,9,6,4,7,8,5,3,6,9,7,4,8,5,9,6,3,7,5,8,4,6,9,5,3,7,4,8,5,9,6,4,7,5,3,6,8,4,9,5,7].map((h,i) => (
-          <div key={i} className="flex-1 bg-neon-amber/50" style={{ height: `${h*10}%` }} />
-        ))}
-      </div>
-      <div className="border-t border-zinc-800 pt-3 space-y-2.5 flex-1 min-h-0">
-        <div className="flex gap-2.5">
-          <span className="text-[9px] text-neon-amber uppercase tracking-widest shrink-0 w-10">Maya</span>
-          <p className="text-zinc-400 leading-[1.6]">"The fox is not defining taming. He is showing how responsibility begins."</p>
-        </div>
-        <div className="flex gap-2.5">
-          <span className="text-[9px] text-zinc-500 uppercase tracking-widest shrink-0 w-10">Jules</span>
-          <p className="text-zinc-500 leading-[1.6]">"Exactly. The rituals, the trust, the slow approach. The relationship creates the meaning."</p>
-        </div>
-      </div>
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="block h-full w-full object-contain"
+      >
+        <source src="/part02.webm" type="video/webm" />
+        <source src="/part02.mp4" type="video/mp4" />
+      </video>
     </div>
   );
 }
@@ -1668,7 +1655,12 @@ function FeatureScreenE({
           </button>
         </div>
         <div className={`${demoOrder} transition-all duration-700 delay-150 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <MediaFrameE color={feature.color}>{feature.demo}</MediaFrameE>
+          <MediaFrameE
+            color={feature.color}
+            aspectRatio={feature.id === 'voice_synth' || feature.id === 'net_cast' ? PART_FILM_FRAME_ASPECT_RATIO : undefined}
+          >
+            {feature.demo}
+          </MediaFrameE>
         </div>
       </div>
 
@@ -1696,6 +1688,11 @@ function FeatureScreenF({ feature, index, onEnterApp }: { feature: FeatureE; ind
   const activeStep = FEATURE_STEP_ORDER[stepIndex];
   const demoDurationMs = feature.demoDurationMs ?? FEATURE_STEP_DURATIONS_MS.demo;
   const activeDurationMs = activeStep === 'demo' ? demoDurationMs : FEATURE_STEP_DURATIONS_MS[activeStep];
+  const isPartFilm = feature.id === 'voice_synth' || feature.id === 'net_cast';
+  const frameAspectRatio = isPartFilm ? PART_FILM_FRAME_ASPECT_RATIO : DEFAULT_LANDING_FRAME_ASPECT_RATIO;
+  const frameWidth = isPartFilm
+    ? 'min(80vw, calc(80svh * 83 / 54))'
+    : 'min(80vw, calc(80svh * 16 / 9))';
 
   useEffect(() => {
     const element = sectionRef.current;
@@ -1749,11 +1746,12 @@ function FeatureScreenF({ feature, index, onEnterApp }: { feature: FeatureE; ind
           <FeatureTitleE feature={feature} />
         </div>
         <div
-          className={`relative aspect-video overflow-hidden rounded-sm border bg-[#050507]/95 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
+          className={`relative overflow-hidden rounded-sm border bg-[#050507]/95 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
           style={{
-            width: 'min(80vw, calc(80svh * 16 / 9))',
+            width: frameWidth,
             maxWidth: '1280px',
             maxHeight: '80svh',
+            aspectRatio: frameAspectRatio,
             borderColor: `${feature.color}33`,
             boxShadow: `0 0 48px ${feature.color}14`,
             transitionDelay: `${index * 30}ms`,
@@ -1878,6 +1876,11 @@ function FeatureScreenG({ feature, index, onEnterApp }: { feature: FeatureE; ind
   const activeStep = FEATURE_STEP_ORDER[stepIndex];
   const demoDurationMs = feature.demoDurationMs ?? FEATURE_STEP_DURATIONS_MS.demo;
   const activeDurationMs = activeStep === 'demo' ? demoDurationMs : FEATURE_STEP_DURATIONS_MS[activeStep];
+  const isPartFilm = feature.id === 'voice_synth' || feature.id === 'net_cast';
+  const frameAspectRatio = isPartFilm ? PART_FILM_FRAME_ASPECT_RATIO : DEFAULT_LANDING_FRAME_ASPECT_RATIO;
+  const frameWidth = isPartFilm
+    ? 'min(80vw, calc(80svh * 83 / 54))'
+    : 'min(80vw, calc(80svh * 16 / 9))';
 
   useEffect(() => {
     const element = sectionRef.current;
@@ -1940,12 +1943,13 @@ function FeatureScreenG({ feature, index, onEnterApp }: { feature: FeatureE; ind
         </div>
 
         <div
-          className={`landing-g-console relative aspect-video overflow-hidden rounded-sm border transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
+          className={`landing-g-console relative overflow-hidden rounded-sm border transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
           onPointerMove={updatePointer}
           style={{
-            width: 'min(80vw, calc(80svh * 16 / 9))',
+            width: frameWidth,
             maxWidth: '1280px',
             maxHeight: '80svh',
+            aspectRatio: frameAspectRatio,
             borderColor: `${feature.color}66`,
             boxShadow: `0 0 58px ${feature.color}18, inset 0 0 42px rgba(0, 243, 255, 0.04)`,
             background: `radial-gradient(circle at ${pointer.x}% ${pointer.y}%, ${feature.color}24 0%, transparent 28%), linear-gradient(135deg, rgba(2, 2, 4, 0.58) 0%, rgba(7, 9, 16, 0.44) 56%, rgba(3, 3, 5, 0.5) 100%)`,

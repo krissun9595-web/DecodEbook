@@ -22,7 +22,10 @@ export function getSupabase(): SupabaseClient | null {
   if (!url || !key) return null;
 
   supabase = createClient(url, key, {
-    auth: { detectSessionInUrl: true, flowType: 'pkce' },
+    // OAuth callbacks are exchanged explicitly by handleOAuthCallback() during app bootstrap.
+    // Leaving detectSessionInUrl enabled makes GoTrue auto-exchange the code as the client
+    // initializes, then our explicit exchange races it and reports "PKCE code verifier not found".
+    auth: { detectSessionInUrl: false, flowType: 'pkce' },
   });
   return supabase;
 }
@@ -31,7 +34,7 @@ export function configureSupabase(url: string, anonKey: string) {
   localStorage.setItem('supabase_url', url);
   localStorage.setItem('supabase_anon_key', anonKey);
   supabase = createClient(url, anonKey, {
-    auth: { detectSessionInUrl: true, flowType: 'pkce' },
+    auth: { detectSessionInUrl: false, flowType: 'pkce' },
   });
   return supabase;
 }

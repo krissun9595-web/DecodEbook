@@ -14,6 +14,7 @@ import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import JSZip from 'jszip';
 import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
 import { getFileOrCloud } from '../services/figureSync';
+import { GEN_STYLES } from '../utils/genStyles';
 
 interface Props {
   chapter: Chapter;
@@ -23,11 +24,7 @@ interface Props {
   bookTitle?: string;
 }
 
-const STYLES = [
-  'Digital Art', 'Cinematic', 'Anime', 'Photorealistic', 'Cartoon', 'Sketch', 
-  'Cyberpunk', 'Vaporwave', 'Neon', 'Line Art', 'Low Poly', 'Isometric',
-  '3D Render', 'Pixel Art'
-];
+const STYLES = GEN_STYLES;
 const RATIOS = ['1:1', '16:9', '4:3', '3:2', '9:16', '3:4', '2:3'];
 
 export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext, bookId, bookTitle }) => {

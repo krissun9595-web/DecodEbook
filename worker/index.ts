@@ -1031,7 +1031,10 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
   const auth = await getUserIdFromAuth(request, env);
   if (auth instanceof Response) return auth;
 
-  const subRes = await supabaseAdmin(env, `/subscriptions?user_id=eq.${auth.userId}&select=stripe_customer_id,tier&status=eq.active&limit=1`, {
+  // BYOK is retired. Select the newest eligible Pro subscription explicitly;
+  // without tier/order filters, a stale active BYOK row can be returned first
+  // and incorrectly reject a real Pro subscriber.
+  const subRes = await supabaseAdmin(env, `/subscriptions?user_id=eq.${auth.userId}&select=stripe_customer_id,tier,status,created_at&status=in.(active,trialing)&tier=eq.pro&order=created_at.desc&limit=1`, {
     method: 'GET', headers: { 'Prefer': '' },
   });
   const subs = await subRes.json() as any[];

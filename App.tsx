@@ -586,7 +586,8 @@ const App: React.FC = () => {
       }
 
       // Handle Stripe checkout return
-      const checkoutParam = new URLSearchParams(window.location.search).get('checkout');
+      const paramsAfterCheckout = new URLSearchParams(window.location.search);
+      const checkoutParam = paramsAfterCheckout.get('checkout') || paramsAfterCheckout.get('pack');
       if (checkoutParam === 'success') {
         window.history.replaceState({}, '', window.location.pathname);
         setTimeout(() => { fetchUserTier().then(applyUserTier).catch(() => {}); }, 2000);
