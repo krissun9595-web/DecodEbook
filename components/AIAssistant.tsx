@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle, AlertTriangle, Pencil, Copy, Check, RefreshCw, Share2, Volume2 } from 'lucide-react';
+import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Minus, Mic, Square, StopCircle, AlertTriangle, Pencil, Copy, Check, RefreshCw, Share2, Volume2, Clock, MessageSquarePlus, MoreHorizontal, Pin, Trash2 } from 'lucide-react';
 import { createChatSession, sendMessageToChat, ChatSession } from '../services/gemini';
 import { FileContext } from '../types';
 import { Content } from "@google/genai";
@@ -25,6 +25,53 @@ const loadChatHistory = (bookId: string): Message[] => {
 };
 const saveChatHistory = (bookId: string, msgs: Message[]) => {
   try { localStorage.setItem(chatKey(bookId), JSON.stringify(msgs.slice(-100))); } catch {}
+};
+
+// Multiple conversations per book (history list). Each session is one conversation.
+interface ChatSessionRecord {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: number;
+  updatedAt: number;
+  pinned?: boolean;
+}
+// Compact relative timestamp for the history list (DeepSeek-style): now / 5m / 3h / 2d / Mar 3.
+const relativeTime = (ts: number): string => {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d`;
+  try { return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return `${days}d`; }
+};
+const sessionsKey = (bookId: string) => `decode_chats_${bookId}`;
+const greeting = (bookTitle?: string): Message => ({ role: 'model', text: `Neural Link Established: "${bookTitle || 'Unknown Source'}". \nReady for query.` });
+const newSessionId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const deriveTitle = (msgs: Message[]): string => {
+  const firstUser = msgs.find(m => m.role === 'user');
+  if (!firstUser) return 'New chat';
+  const t = firstUser.text.trim().replace(/\s+/g, ' ');
+  return !t ? 'New chat' : (t.length > 36 ? `${t.slice(0, 36)}…` : t);
+};
+const makeSession = (bookTitle?: string): ChatSessionRecord => {
+  const now = Date.now();
+  return { id: newSessionId(), title: 'New chat', messages: [greeting(bookTitle)], createdAt: now, updatedAt: now };
+};
+// Loads the per-book session list; migrates the old single-conversation key on first read.
+const loadSessions = (bookId: string): ChatSessionRecord[] => {
+  try {
+    const raw = localStorage.getItem(sessionsKey(bookId));
+    if (raw) { const a = JSON.parse(raw); if (Array.isArray(a) && a.length) return a; }
+    const old = loadChatHistory(bookId);
+    if (old.length > 0) { const now = Date.now(); return [{ id: newSessionId(), title: deriveTitle(old), messages: old, createdAt: now, updatedAt: now }]; }
+  } catch {}
+  return [];
+};
+const saveSessions = (bookId: string, list: ChatSessionRecord[]) => {
+  try { localStorage.setItem(sessionsKey(bookId), JSON.stringify(list.slice(-50))); } catch {}
 };
 
 // Lightweight markdown → React renderer for assistant replies (paragraphs, bullet/numbered lists,
@@ -115,7 +162,11 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
 
-  const historyCache = useRef<Record<string, Message[]>>({});
+  // Per-book conversation history (list of sessions), the active one, and the history-panel toggle.
+  const [sessions, setSessions] = useState<ChatSessionRecord[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const prevBookId = useRef<string | null>(null);
 
   const sphereRef = useRef<HTMLDivElement>(null);
@@ -131,43 +182,38 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     if (!fileContext || !bookId) {
        setChatSession(null);
        setMessages([]);
+       setSessions([]);
+       setActiveId(null);
        return;
     }
 
-    if (prevBookId.current && prevBookId.current !== bookId) {
-        historyCache.current[prevBookId.current] = messages;
-    }
+    let list = loadSessions(bookId);
+    if (list.length === 0) list = [makeSession(bookTitle)];
+    const active = list[list.length - 1];   // most recently updated conversation
 
-    const cachedMessages = historyCache.current[bookId] || loadChatHistory(bookId);
-
-    const apiHistory: Content[] = cachedMessages
-        ? cachedMessages.map(m => ({
-            role: m.role,
-            parts: [{ text: m.text }]
-        }))
-        : [];
+    setSessions(list);
+    setActiveId(active.id);
+    setMessages(active.messages);
+    setShowHistory(false);
+    setMenuOpenId(null);
 
     (async () => {
-      const session = await createChatSession(fileContext, apiHistory);
+      const session = await createChatSession(fileContext, active.messages.map(m => ({ role: m.role, parts: [{ text: m.text }] })));
       setChatSession(session);
     })();
-
-    if (cachedMessages && cachedMessages.length > 0) {
-        setMessages(cachedMessages);
-    } else {
-        setMessages([{ role: 'model', text: `Neural Link Established: "${bookTitle || 'Unknown Source'}". \nReady for query.` }]);
-    }
 
     prevBookId.current = bookId;
   }, [bookId, fileContext]);
 
-  // Persist chat history (per book) on every change so it survives a page refresh.
+  // Persist the active conversation back into the per-book session list on every change.
   useEffect(() => {
-    if (bookId && messages.length > 0) {
-      historyCache.current[bookId] = messages;
-      saveChatHistory(bookId, messages);
-    }
-  }, [messages, bookId]);
+    if (!bookId || !activeId || messages.length === 0) return;
+    setSessions(prev => {
+      const next = prev.map(s => (s.id === activeId ? { ...s, messages, title: deriveTitle(messages), updatedAt: Date.now() } : s));
+      saveSessions(bookId, next);
+      return next;
+    });
+  }, [messages, bookId, activeId]);
 
   // Dragging Logic (mouse + touch)
   useEffect(() => {
@@ -492,6 +538,67 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     } catch { /* speech unavailable — ignore */ }
   };
 
+  // Start a fresh conversation (added to the history list). Stays put if the current chat is
+  // still empty (greeting only) so repeated clicks don't stack blank sessions.
+  const newChat = () => {
+    if (!bookId) return;
+    setShowHistory(false);
+    setEditingIndex(null);
+    if (!messages.some(m => m.role === 'user')) return;
+    const rec = makeSession(bookTitle);
+    setSessions(prev => { const next = [...prev, rec]; saveSessions(bookId, next); return next; });
+    setActiveId(rec.id);
+    setMessages(rec.messages);
+    if (fileContext) (async () => { const s = await createChatSession(fileContext, []); setChatSession(s); })();
+  };
+
+  // Open a past conversation from the history list into the chat window.
+  const openSession = (id: string) => {
+    const rec = sessions.find(s => s.id === id);
+    if (!rec) return;
+    setShowHistory(false);
+    setEditingIndex(null);
+    setActiveId(id);
+    setMessages(rec.messages);
+    if (fileContext) (async () => { const s = await createChatSession(fileContext, rec.messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }))); setChatSession(s); })();
+  };
+
+  // Share the WHOLE conversation as a plain-text transcript.
+  const shareSession = (rec: ChatSessionRecord) => {
+    setMenuOpenId(null);
+    const transcript = rec.messages.map(m => `${m.role === 'user' ? 'You' : 'Tutor'}: ${m.text}`).join('\n\n');
+    handleShare(transcript);
+  };
+
+  const togglePin = (id: string) => {
+    if (!bookId) return;
+    setMenuOpenId(null);
+    setSessions(prev => { const next = prev.map(s => (s.id === id ? { ...s, pinned: !s.pinned } : s)); saveSessions(bookId, next); return next; });
+  };
+
+  const deleteSession = (id: string) => {
+    if (!bookId) return;
+    setMenuOpenId(null);
+    const next = sessions.filter(s => s.id !== id);
+    if (id === activeId) {
+      // Deleting the open chat — fall back to the next most recent, or a fresh one.
+      const fallback = next[next.length - 1] ?? null;
+      if (fallback) {
+        setActiveId(fallback.id);
+        setMessages(fallback.messages);
+        if (fileContext) (async () => { const s = await createChatSession(fileContext, fallback.messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }))); setChatSession(s); })();
+      } else {
+        const rec = makeSession(bookTitle);
+        next.push(rec);
+        setActiveId(rec.id);
+        setMessages(rec.messages);
+        if (fileContext) (async () => { const s = await createChatSession(fileContext, []); setChatSession(s); })();
+      }
+    }
+    setSessions(next);
+    saveSessions(bookId, next);
+  };
+
   useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen, isLoading]);
@@ -537,12 +644,27 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     onTouchStart={handleTouchStart}
                     className={`p-3 bg-zinc-900/90 border-b border-neon-cyan/20 flex items-center justify-between select-none shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
                 >
-                    <div className="flex items-center gap-2 text-neon-cyan">
-                        <Zap size={16} className="fill-current" />
+                    <div className="flex items-center gap-1.5 text-neon-cyan">
                         <span className="text-xs font-bold font-tech uppercase tracking-widest text-shadow-neon">Neural_Assistant</span>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setShowHistory(v => !v); }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className={`p-1 rounded transition-colors ${showHistory ? 'text-neon-cyan bg-neon-cyan/10' : 'text-zinc-500 hover:text-neon-cyan hover:bg-neon-cyan/10'}`}
+                            title="Chat history"
+                        >
+                            <Clock size={14} />
+                        </button>
                     </div>
                     <div className="flex items-center gap-1">
-                        <button 
+                        <button
+                            onClick={(e) => { e.stopPropagation(); newChat(); }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
+                            title="New chat"
+                        >
+                            <MessageSquarePlus size={14} />
+                        </button>
+                        <button
                             onClick={(e) => { e.stopPropagation(); setIsFullScreen(!isFullScreen); }}
                             onMouseDown={(e) => e.stopPropagation()}
                             className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
@@ -561,6 +683,50 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     </div>
                 </div>
 
+                <div className="relative flex-1 flex min-h-0 overflow-hidden">
+                {menuOpenId && <div className="absolute inset-0 z-20" onMouseDown={(e) => { e.stopPropagation(); setMenuOpenId(null); }} />}
+                {/* History sidebar (DeepSeek-style) — narrows the chat column while open */}
+                {showHistory && (
+                    <div className="flex w-2/5 max-w-[220px] shrink-0 flex-col border-r border-neon-cyan/20 bg-zinc-900/70">
+                        <div className="shrink-0 border-b border-zinc-800 px-2 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">History</div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            {sessions.length === 0 ? (
+                                <div className="p-2 font-mono text-[10px] text-zinc-600">No chats yet</div>
+                            ) : [...sessions].sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt)).map(s => (
+                                <div key={s.id} className={`group relative ${menuOpenId === s.id ? 'z-30' : ''}`}>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openSession(s.id); }}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        title={s.title}
+                                        className={`block w-full border-b border-zinc-800/50 px-2 py-2 pr-6 text-left transition-colors ${s.id === activeId ? 'bg-neon-cyan/5' : 'hover:bg-neon-cyan/5'}`}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {s.pinned && <Pin size={9} className="shrink-0 text-neon-cyan/70" fill="currentColor" />}
+                                            <span className={`truncate text-[10px] leading-snug content-font ${s.id === activeId ? 'text-neon-cyan' : 'text-zinc-300'}`}>{s.title || 'New chat'}</span>
+                                        </div>
+                                        <span className="mt-0.5 block font-mono text-[8px] text-zinc-600">{relativeTime(s.updatedAt)}</span>
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === s.id ? null : s.id); }}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        title="More"
+                                        className={`absolute right-1 top-1.5 rounded p-0.5 text-zinc-500 transition hover:bg-neon-cyan/10 hover:text-neon-cyan ${menuOpenId === s.id ? 'text-neon-cyan opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                    >
+                                        <MoreHorizontal size={13} />
+                                    </button>
+                                    {menuOpenId === s.id && (
+                                        <div className="absolute right-1 top-7 z-30 w-max rounded-sm border border-zinc-700 bg-zinc-900 py-1 shadow-lg" onMouseDown={(e) => e.stopPropagation()}>
+                                            <button onClick={(e) => { e.stopPropagation(); shareSession(s); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Share2 size={11} /> Share</button>
+                                            <button onClick={(e) => { e.stopPropagation(); togglePin(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Pin size={11} /> {s.pinned ? 'Unpin' : 'Pin'}</button>
+                                            <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-neon-red hover:bg-neon-red/10"><Trash2 size={11} /> Delete</button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <div className="flex flex-1 flex-col min-w-0">
                 {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/40 relative">
                     <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] z-0 pointer-events-none bg-[length:100%_4px,3px_100%]"></div>
@@ -689,6 +855,8 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     >
                         {isLoading ? <StopCircle size={16} fill="currentColor" /> : <Send size={16} />}
                     </button>
+                </div>
+                </div>
                 </div>
             </div>
         )}
