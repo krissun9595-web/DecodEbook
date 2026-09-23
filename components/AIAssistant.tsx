@@ -3,7 +3,6 @@ import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Minus, Mic,
 import { createChatSession, sendMessageToChat, ChatSession } from '../services/gemini';
 import { FileContext } from '../types';
 import { Content } from "@google/genai";
-import { TIER_CREDITS } from '../services/stripe';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
 
 interface Props {
@@ -135,14 +134,11 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [lowCredits, setLowCredits] = useState(false);
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
 
   const checkChatQuota = async (): Promise<boolean> => {
     try {
       const check = await ensureCredits('chat');
-      const monthly = TIER_CREDITS[check.tier] || 100;
-      if (check.available !== Infinity && monthly !== Infinity) setLowCredits(check.available < monthly * 0.2);
       if (!check.ok) { setCreditTier(check.tier); return false; }
       setCreditTier(null);
       return true;
@@ -831,7 +827,6 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                             </button>
                           </div>
                         )}
-                        {!creditTier && lowCredits && <div className="absolute -top-7 left-0 right-0 text-[9px] text-amber-400/70 font-mono truncate">Running low? Share your link — +5 per click, +100 on trial.</div>}
                         <input
                             type="text"
                             value={input}
