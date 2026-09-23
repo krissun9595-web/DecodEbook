@@ -8,6 +8,7 @@ import SpecularButton from './ui/SpecularButton';
 import FallingText from './ui/FallingText';
 import DecryptedText from './ui/DecryptedText';
 import TrueFocus from './ui/TrueFocus';
+import TiltedCard from './TiltedCard';
 import './ui/LandingCyberpunk.css';
 
 interface LandingPageProps {
@@ -1108,6 +1109,8 @@ const LANDING_E_PALETTE = {
 // full compositions are visible without crop or letterboxing.
 const PART_FILM_FRAME_ASPECT_RATIO = '83 / 54';
 const DEFAULT_LANDING_FRAME_ASPECT_RATIO = '16 / 9';
+// Features whose demo is a native-ratio part-film video (framed at PART_FILM_FRAME_ASPECT_RATIO).
+const PART_FILM_FEATURE_IDS = new Set(['voice_synth', 'net_cast', 'visual_core', 'cine_render', 'mem_log']);
 
 const LANDING_E_LEARNING_BLOCKS = [
   { label: 'Read', color: LANDING_E_PALETTE.cyan },
@@ -1124,14 +1127,16 @@ function MediaFrameE({
   children,
   color,
   aspectRatio = DEFAULT_LANDING_FRAME_ASPECT_RATIO,
+  tilt = false,
 }: {
   children: React.ReactNode;
   color: string;
   aspectRatio?: string;
+  tilt?: boolean;
 }) {
-  return (
+  const frame = (
     <div
-      className="relative mx-auto w-full max-w-[640px] overflow-hidden rounded-sm"
+      className="relative w-full overflow-hidden rounded-sm"
       style={{ aspectRatio, boxShadow: `0 0 32px ${color}14` }}
     >
       {children}
@@ -1140,6 +1145,11 @@ function MediaFrameE({
         style={{ borderColor: `${color}40` }}
       />
     </div>
+  );
+  return tilt ? (
+    <TiltedCard className="mx-auto w-full max-w-[640px]">{frame}</TiltedCard>
+  ) : (
+    <div className="mx-auto w-full max-w-[640px]">{frame}</div>
   );
 }
 
@@ -1239,88 +1249,57 @@ function PodcastDemo() {
 
 function VisualCoreDemo() {
   return (
-    <div className="h-full bg-void-2 border border-neon-violet/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-violet/40 to-transparent" />
-      <div className="flex items-center justify-between font-mono">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-600">Style · cinematic still · 16:9</p>
-        <span className="text-[9px] text-zinc-600">×3 variants</span>
-      </div>
-      <div className="grid grid-cols-3 gap-2 shrink-0">
-        {[0,1,2].map(i => (
-          <div key={i} className="aspect-video rounded-sm relative overflow-hidden" style={{
-            background: i === 0
-              ? 'linear-gradient(135deg, #1a1145 0%, #a78bfa 60%, #f9c97c 100%)'
-              : i === 1
-              ? 'linear-gradient(160deg, #0a0a2a 0%, #4c1d95 50%, #fbbf24 100%)'
-              : 'linear-gradient(120deg, #2d1b4e 0%, #c4b5fd 70%, #fde68a 100%)'
-          }}>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-            <div className="absolute bottom-1.5 left-1.5 w-1.5 h-1.5 rounded-full bg-white/80" />
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono leading-[1.65] flex-1 min-h-0">
-        <span className="text-zinc-600">prompt ›</span> tiny asteroid, forty-four sunsets, loneliness made visible
-      </p>
-      <div className="flex items-center gap-2 pt-1 font-mono">
-        {['Cinematic', 'Watercolor', 'Line drawing', 'Ukiyo-e'].map((s, i) => (
-          <span key={s} className={`text-[9px] px-2 py-0.5 rounded-sm border ${i === 0 ? 'border-neon-violet/40 text-neon-violet bg-neon-violet/10' : 'border-zinc-800 text-zinc-600'}`}>{s}</span>
-        ))}
-      </div>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-violet/20 bg-void-2">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-violet/40 to-transparent z-10" />
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="block h-full w-full object-contain"
+      >
+        <source src="/part03.webm" type="video/webm" />
+        <source src="/part03.mp4" type="video/mp4" />
+      </video>
     </div>
   );
 }
 
 function CineRenderDemo() {
   return (
-    <div className="h-full bg-void-2 border border-neon-red/20 rounded-sm p-4 sm:p-6 space-y-3 sm:space-y-4 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-red/40 to-transparent" />
-      <div className="flex items-center justify-between font-mono">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-600">Ch. 21 · The Fox</p>
-        <span className="text-[9px] text-zinc-600">1080p · 1:24</span>
-      </div>
-      <div className="aspect-video rounded-sm relative overflow-hidden shrink-0" style={{ background: 'radial-gradient(circle at 30% 60%, #fbbf24 0%, #f97316 30%, #1f0f3a 70%, #020202 100%)' }}>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 backdrop-blur-sm border border-white/40 flex items-center justify-center">
-            <div className="w-0 h-0 border-l-[9px] border-l-white border-y-[6px] border-y-transparent ml-0.5" />
-          </div>
-        </div>
-        <p className="absolute bottom-3 left-3 right-3 text-[10px] text-white/80 font-mono leading-snug">"You become responsible, forever, for what you have tamed."</p>
-      </div>
-      <div className="flex gap-1 shrink-0">
-        {[0,1,2,3,4,5].map(i => (
-          <div key={i} className="flex-1 aspect-video rounded-[2px]" style={{
-            background: `linear-gradient(${120 + i*20}deg, #ff003c${i === 2 ? '70' : '20'}, #1a0510)`
-          }} />
-        ))}
-      </div>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-red/20 bg-void-2">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-red/40 to-transparent z-10" />
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="block h-full w-full object-contain"
+      >
+        <source src="/part04.webm" type="video/webm" />
+        <source src="/part04.mp4" type="video/mp4" />
+      </video>
     </div>
   );
 }
 
 function MemLogDemo() {
   return (
-    <div className="h-full bg-void-2 border border-[#34d399]/20 rounded-sm p-4 sm:p-6 space-y-3 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#34d399]/40 to-transparent" />
-      <div className="flex items-center justify-between font-mono">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-600">Notebook · 12 sparks · 4 chapters</p>
-        <span className="text-[9px] text-[#34d399]">Mind map ready</span>
-      </div>
-      <div className="relative flex-1 min-h-0">
-        <div className="absolute top-2 left-1 w-32 sm:w-36 p-3 rounded-sm shadow-md bg-[#fef3c7] rotate-[-3deg] text-[10px] sm:text-[11px] leading-[1.35] text-zinc-800">
-          <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 mb-1">apprivoiser</p>
-          <p>to tame, but with ritual and responsibility</p>
-        </div>
-        <div className="absolute top-9 left-24 sm:left-32 w-36 sm:w-40 p-3 rounded-sm shadow-md bg-[#fce7f3] rotate-[2deg] text-[10px] sm:text-[11px] leading-[1.35] text-zinc-800">
-          <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 mb-1">ch.1 · spark</p>
-          <p>"All grown-ups were once children, but few of them remember it."</p>
-        </div>
-        <div className="absolute bottom-1 left-8 sm:left-16 w-32 sm:w-36 p-3 rounded-sm shadow-md bg-[#d1fae5] rotate-[-1deg] text-[10px] sm:text-[11px] leading-[1.35] text-zinc-800">
-          <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 mb-1">mind map</p>
-          <p>Fox → Rose → Prince · the ritual of taming</p>
-        </div>
-      </div>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-[#34d399]/20 bg-void-2">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#34d399]/40 to-transparent z-10" />
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="block h-full w-full object-contain"
+      >
+        <source src="/part05.webm" type="video/webm" />
+        <source src="/part05.mp4" type="video/mp4" />
+      </video>
     </div>
   );
 }
@@ -1657,7 +1636,8 @@ function FeatureScreenE({
         <div className={`${demoOrder} transition-all duration-700 delay-150 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
           <MediaFrameE
             color={feature.color}
-            aspectRatio={feature.id === 'voice_synth' || feature.id === 'net_cast' ? PART_FILM_FRAME_ASPECT_RATIO : undefined}
+            aspectRatio={PART_FILM_FEATURE_IDS.has(feature.id) ? PART_FILM_FRAME_ASPECT_RATIO : undefined}
+            tilt={PART_FILM_FEATURE_IDS.has(feature.id)}
           >
             {feature.demo}
           </MediaFrameE>
@@ -1688,7 +1668,7 @@ function FeatureScreenF({ feature, index, onEnterApp }: { feature: FeatureE; ind
   const activeStep = FEATURE_STEP_ORDER[stepIndex];
   const demoDurationMs = feature.demoDurationMs ?? FEATURE_STEP_DURATIONS_MS.demo;
   const activeDurationMs = activeStep === 'demo' ? demoDurationMs : FEATURE_STEP_DURATIONS_MS[activeStep];
-  const isPartFilm = feature.id === 'voice_synth' || feature.id === 'net_cast';
+  const isPartFilm = PART_FILM_FEATURE_IDS.has(feature.id);
   const frameAspectRatio = isPartFilm ? PART_FILM_FRAME_ASPECT_RATIO : DEFAULT_LANDING_FRAME_ASPECT_RATIO;
   const frameWidth = isPartFilm
     ? 'min(80vw, calc(80svh * 83 / 54))'
@@ -1876,7 +1856,7 @@ function FeatureScreenG({ feature, index, onEnterApp }: { feature: FeatureE; ind
   const activeStep = FEATURE_STEP_ORDER[stepIndex];
   const demoDurationMs = feature.demoDurationMs ?? FEATURE_STEP_DURATIONS_MS.demo;
   const activeDurationMs = activeStep === 'demo' ? demoDurationMs : FEATURE_STEP_DURATIONS_MS[activeStep];
-  const isPartFilm = feature.id === 'voice_synth' || feature.id === 'net_cast';
+  const isPartFilm = PART_FILM_FEATURE_IDS.has(feature.id);
   const frameAspectRatio = isPartFilm ? PART_FILM_FRAME_ASPECT_RATIO : DEFAULT_LANDING_FRAME_ASPECT_RATIO;
   const frameWidth = isPartFilm
     ? 'min(80vw, calc(80svh * 83 / 54))'

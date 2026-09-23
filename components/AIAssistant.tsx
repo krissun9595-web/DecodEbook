@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle, AlertTriangle } from 'lucide-react';
+import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Zap, Minus, Mic, Square, StopCircle, AlertTriangle, Pencil, Copy, Check, RefreshCw, Share2, Volume2 } from 'lucide-react';
 import { createChatSession, sendMessageToChat, ChatSession } from '../services/gemini';
 import { FileContext } from '../types';
 import { Content } from "@google/genai";
@@ -107,6 +107,13 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   // Voice Input State
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Per-message edit (user) / copy (tutor) state — DeepSeek-style message actions.
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
 
   const historyCache = useRef<Record<string, Message[]>>({});
   const prevBookId = useRef<string | null>(null);
@@ -250,6 +257,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
           }
           setIsLoading(false);
           if (isRecording) {
+            recognitionRef.current?.stop();
             mediaRecorderRef.current?.stop();
             // Tracks are cleaned up in onstop
             setIsRecording(false);
@@ -258,10 +266,46 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   };
 
   const handleRecordToggle = async () => {
+    // Primary: browser Speech-to-Text. Transcribes speech into the input box (editable before
+    // sending) with no extra model call. Falls back to MediaRecorder + Gemini for browsers without it.
+    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
     if (isRecording) {
+        recognitionRef.current?.stop();
         mediaRecorderRef.current?.stop();
         setIsRecording(false);
-    } else {
+        return;
+    }
+
+    if (SR) {
+        try {
+            const rec = new SR();
+            rec.lang = navigator.language || 'en-US';
+            rec.interimResults = true;
+            rec.continuous = false;
+            let settled = input.trim() ? input.trim() + ' ' : '';
+            rec.onresult = (e: any) => {
+                let interim = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const t = e.results[i][0].transcript;
+                    if (e.results[i].isFinal) settled += t; else interim += t;
+                }
+                setInput((settled + interim).replace(/\s+/g, ' ').trimStart());
+                if (creditTier) setCreditTier(null);
+            };
+            rec.onerror = () => { setIsRecording(false); recognitionRef.current = null; };
+            rec.onend = () => { setIsRecording(false); recognitionRef.current = null; };
+            recognitionRef.current = rec;
+            rec.start();
+            setIsRecording(true);
+        } catch (e) {
+            console.error('SpeechRecognition failed', e);
+            setIsRecording(false);
+        }
+        return;
+    }
+
+    {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const recorder = new MediaRecorder(stream);
@@ -358,6 +402,96 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     }
   };
 
+  const startEdit = (idx: number) => {
+    setEditingIndex(idx);
+    setEditText(messages[idx]?.text ?? '');
+  };
+  const cancelEdit = () => { setEditingIndex(null); setEditText(''); };
+
+  // Rebuild the chat session from a truncated prefix and re-ask `userText` — the shared core of
+  // both "edit a message" and "regenerate a reply" (DeepSeek-style: everything after is dropped).
+  const runFromPrefix = async (prefix: Message[], userText: string) => {
+    if (!fileContext) return;
+    const apiHistory: Content[] = prefix.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
+    setMessages([...prefix, { role: 'user', text: userText }]);
+    setIsLoading(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+        const session = await createChatSession(fileContext, apiHistory);
+        setChatSession(session);
+        const response = await sendMessageToChat(session, userText, controller.signal);
+        setMessages(prev => [...prev, { role: 'model', text: response }]);
+    } catch (e: any) {
+        if (isInsufficientCreditsError(e)) {
+            setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+        } else if (controller.signal.aborted) {
+            setMessages(prev => [...prev, { role: 'model', text: "Request cancelled — what can I help you with?" }]);
+        } else {
+            setMessages(prev => [...prev, { role: 'model', text: "Something went wrong. Please try again." }]);
+        }
+    } finally {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+    }
+  };
+
+  // Edit a previous user message and regenerate from that point.
+  const submitEdit = async (idx: number) => {
+    const newText = editText.trim();
+    if (!newText || !fileContext || isLoading) return;
+    const allowed = await checkChatQuota();
+    if (!allowed) return;
+    const prefix = messages.slice(0, idx);
+    setEditingIndex(null);
+    setEditText('');
+    await runFromPrefix(prefix, newText);
+  };
+
+  // Regenerate a tutor reply: re-ask the user message that preceded it.
+  const regenerate = async (modelIdx: number) => {
+    if (!fileContext || isLoading) return;
+    let userIdx = modelIdx - 1;
+    while (userIdx >= 0 && messages[userIdx].role !== 'user') userIdx--;
+    if (userIdx < 0) return;
+    const allowed = await checkChatQuota();
+    if (!allowed) return;
+    await runFromPrefix(messages.slice(0, userIdx), messages[userIdx].text);
+  };
+
+  const handleCopy = async (idx: number, text: string) => {
+    try {
+        await navigator.clipboard.writeText(text);
+        setCopiedIndex(idx);
+        setTimeout(() => setCopiedIndex(c => (c === idx ? null : c)), 1500);
+    } catch { /* clipboard blocked — ignore */ }
+  };
+
+  const handleShare = async (text: string) => {
+    try {
+        if (navigator.share) await navigator.share({ text });
+        else await navigator.clipboard.writeText(text);
+    } catch { /* share cancelled — ignore */ }
+  };
+
+  // Read a tutor reply aloud via the browser's speech synthesis (free, no model call). Toggles.
+  const handleReadAloud = (idx: number, text: string) => {
+    try {
+        const synth = window.speechSynthesis;
+        if (!synth) return;
+        if (speakingIndex === idx) { synth.cancel(); setSpeakingIndex(null); return; }
+        synth.cancel();
+        const utter = new SpeechSynthesisUtterance(text.replace(/[*_`#>]/g, ''));
+        utter.lang = navigator.language || 'en-US';
+        utter.onend = () => setSpeakingIndex(c => (c === idx ? null : c));
+        utter.onerror = () => setSpeakingIndex(c => (c === idx ? null : c));
+        setSpeakingIndex(idx);
+        synth.speak(utter);
+    } catch { /* speech unavailable — ignore */ }
+  };
+
   useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen, isLoading]);
@@ -430,19 +564,72 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/40 relative">
                     <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] z-0 pointer-events-none bg-[length:100%_4px,3px_100%]"></div>
-                    {messages.map((msg, idx) => (
-                        <div key={idx} className={`flex relative z-10 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`
-                                max-w-[85%] p-3 text-[11px] leading-relaxed content-font tracking-wide shadow-lg
-                                ${msg.role === 'user'
-                                    ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/40 rounded-t-lg rounded-bl-lg'
-                                    : 'bg-[#1a1a1c] text-zinc-300 border border-zinc-700 rounded-t-lg rounded-br-lg'
-                                }
-                            `}>
-                                {msg.role === 'model' ? <MarkdownText text={msg.text} /> : msg.text}
+                    {messages.map((msg, idx) => {
+                        const isUser = msg.role === 'user';
+                        const isEditing = editingIndex === idx;
+                        return (
+                        <div key={idx} className={`flex relative z-10 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`flex flex-col max-w-[85%] ${isEditing ? 'w-full' : ''} ${isUser ? 'items-end' : 'items-start'}`}>
+                                {isEditing ? (
+                                    <>
+                                        <div className="w-full p-3 text-[11px] leading-relaxed content-font tracking-wide shadow-lg bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/40 rounded-t-lg rounded-bl-lg">
+                                            <textarea
+                                                ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
+                                                value={editText}
+                                                onChange={(e) => { setEditText(e.target.value); e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit(idx); }
+                                                    if (e.key === 'Escape') { cancelEdit(); }
+                                                }}
+                                                autoFocus
+                                                rows={1}
+                                                className="block w-full bg-transparent text-[11px] leading-relaxed content-font tracking-wide text-neon-cyan resize-none border-0 outline-none focus:outline-none focus:ring-0 overflow-hidden"
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-end gap-3 mt-1 px-1 h-5">
+                                            <button onClick={cancelEdit} className="text-[10px] font-mono text-zinc-400 hover:text-white transition-colors">Cancel</button>
+                                            <button onClick={() => submitEdit(idx)} disabled={!editText.trim() || isLoading} className="text-[10px] font-mono text-neon-cyan hover:text-white transition-colors disabled:opacity-40">Send</button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className={`
+                                            p-3 text-[11px] leading-relaxed content-font tracking-wide shadow-lg
+                                            ${isUser
+                                                ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/40 rounded-t-lg rounded-bl-lg'
+                                                : 'bg-[#1a1a1c] text-zinc-300 border border-zinc-700 rounded-t-lg rounded-br-lg'
+                                            }
+                                        `}>
+                                            {msg.role === 'model' ? <MarkdownText text={msg.text} /> : msg.text}
+                                        </div>
+                                        <div className={`flex items-center gap-3 mt-1 px-1 h-5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                            {isUser ? (
+                                                <button onClick={() => startEdit(idx)} disabled={isLoading} title="Edit" className="text-zinc-500 hover:text-neon-cyan transition-colors disabled:opacity-30">
+                                                    <Pencil size={12} />
+                                                </button>
+                                            ) : (idx !== 0 && (
+                                                <>
+                                                    <button onClick={() => regenerate(idx)} disabled={isLoading} title="Regenerate" className="text-zinc-500 hover:text-neon-cyan transition-colors disabled:opacity-30">
+                                                        <RefreshCw size={12} />
+                                                    </button>
+                                                    <button onClick={() => handleCopy(idx, msg.text)} title="Copy" className="text-zinc-500 hover:text-neon-cyan transition-colors">
+                                                        {copiedIndex === idx ? <Check size={12} /> : <Copy size={12} />}
+                                                    </button>
+                                                    <button onClick={() => handleShare(msg.text)} title="Share" className="text-zinc-500 hover:text-neon-cyan transition-colors">
+                                                        <Share2 size={12} />
+                                                    </button>
+                                                    <button onClick={() => handleReadAloud(idx, msg.text)} title="Read aloud" className={`transition-colors ${speakingIndex === idx ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan'}`}>
+                                                        <Volume2 size={12} />
+                                                    </button>
+                                                </>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                     {isLoading && (
                         <div className="flex justify-start relative z-10">
                             <div className="bg-[#1a1a1c] p-2 rounded rounded-bl-none flex items-center gap-2 border border-zinc-700">
@@ -460,17 +647,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     onMouseDown={handleMouseDown}
                     onTouchStart={handleTouchStart}
                 >
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); handleStop(); }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isLoading ? 'bg-neon-red border-neon-red text-white hover:bg-neon-red/80' : 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed opacity-50'}`}
-                        disabled={!isLoading}
-                        title="Stop Generation"
-                    >
-                        <StopCircle size={16} fill="currentColor" />
-                    </button>
-
-                    <button 
+                    <button
                         onClick={(e) => { e.stopPropagation(); handleRecordToggle(); }}
                         onMouseDown={(e) => e.stopPropagation()}
                         className={`p-2 border rounded-sm transition-all active:scale-95 ${isRecording ? 'bg-neon-red border-neon-red text-white animate-pulse' : 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black'}`}
@@ -500,14 +677,17 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                             disabled={isRecording || isLoading}
                         />
                     </div>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); handleSend(); }}
-                        disabled={isLoading || !input.trim() || isRecording}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); if (isLoading) handleStop(); else handleSend(); }}
+                        disabled={isLoading ? false : (!input.trim() || isRecording)}
                         onMouseDown={(e) => e.stopPropagation()}
-                        aria-label="Send message"
-                        className="p-2 bg-neon-cyan/10 border border-neon-cyan text-neon-cyan rounded-sm hover:bg-neon-cyan hover:text-black disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                        aria-label={isLoading ? "Stop generation" : "Send message"}
+                        title={isLoading ? "Stop Generation" : "Send"}
+                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isLoading
+                            ? 'bg-neon-red border-neon-red text-white hover:bg-neon-red/80'
+                            : 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black disabled:opacity-50 disabled:cursor-not-allowed'}`}
                     >
-                        <Send size={16} />
+                        {isLoading ? <StopCircle size={16} fill="currentColor" /> : <Send size={16} />}
                     </button>
                 </div>
             </div>
