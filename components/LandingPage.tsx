@@ -1110,7 +1110,7 @@ const LANDING_E_PALETTE = {
 const PART_FILM_FRAME_ASPECT_RATIO = '83 / 54';
 const DEFAULT_LANDING_FRAME_ASPECT_RATIO = '16 / 9';
 // Features whose demo is a native-ratio part-film video (framed at PART_FILM_FRAME_ASPECT_RATIO).
-const PART_FILM_FEATURE_IDS = new Set(['voice_synth', 'net_cast', 'visual_core', 'cine_render', 'mem_log']);
+const PART_FILM_FEATURE_IDS = new Set(['voice_synth', 'net_cast', 'visual_core', 'cine_render', 'mem_log', 'neural_assistant']);
 
 const LANDING_E_LEARNING_BLOCKS = [
   { label: 'Read', color: LANDING_E_PALETTE.cyan },
@@ -1134,16 +1134,16 @@ function MediaFrameE({
   aspectRatio?: string;
   tilt?: boolean;
 }) {
+  // Inject the frame color into the demo so its inner accent (video border + top line) matches exactly.
+  const themedChild = React.isValidElement(children)
+    ? React.cloneElement(children as React.ReactElement<{ color?: string }>, { color })
+    : children;
   const frame = (
     <div
       className="relative w-full overflow-hidden rounded-sm"
-      style={{ aspectRatio, boxShadow: `0 0 32px ${color}14` }}
+      style={{ aspectRatio, boxShadow: `0 0 32px ${color}22` }}
     >
-      {children}
-      <div
-        className="pointer-events-none absolute inset-0 rounded-sm border"
-        style={{ borderColor: `${color}40` }}
-      />
+      {themedChild}
     </div>
   );
   return tilt ? (
@@ -1209,10 +1209,12 @@ function HeroLearningBlocksVelocity({ isVersionE = false }: { isVersionE?: boole
   );
 }
 
-function VoiceSynthDemo() {
+// Single video demo for all "part film" features. Its accent color (frame border + top line) is
+// injected by MediaFrameE from the feature's color, so every colored element in a part matches exactly.
+function PartFilmDemo({ src, color = '#00f3ff' }: { src: string; color?: string }) {
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-cyan/20 bg-void-2">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-cyan/40 to-transparent z-10" />
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border bg-void-2" style={{ borderColor: `${color}33` }}>
+      <div className="absolute top-0 left-0 right-0 z-10 h-[1px]" style={{ background: `linear-gradient(to right, transparent, ${color}66, transparent)` }} />
       <video
         autoPlay
         muted
@@ -1221,84 +1223,8 @@ function VoiceSynthDemo() {
         preload="metadata"
         className="block h-full w-full object-contain"
       >
-        <source src="/01part_1.webm" type="video/webm" />
-        <source src="/01part_1.mp4" type="video/mp4" />
-      </video>
-    </div>
-  );
-}
-
-function PodcastDemo() {
-  return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-amber/20 bg-void-2">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-amber/40 to-transparent" />
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        className="block h-full w-full object-contain"
-      >
-        <source src="/part02.webm" type="video/webm" />
-        <source src="/part02.mp4" type="video/mp4" />
-      </video>
-    </div>
-  );
-}
-
-function VisualCoreDemo() {
-  return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-violet/20 bg-void-2">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-violet/40 to-transparent z-10" />
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        className="block h-full w-full object-contain"
-      >
-        <source src="/part03.webm" type="video/webm" />
-        <source src="/part03.mp4" type="video/mp4" />
-      </video>
-    </div>
-  );
-}
-
-function CineRenderDemo() {
-  return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-neon-red/20 bg-void-2">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-red/40 to-transparent z-10" />
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        className="block h-full w-full object-contain"
-      >
-        <source src="/part04.webm" type="video/webm" />
-        <source src="/part04.mp4" type="video/mp4" />
-      </video>
-    </div>
-  );
-}
-
-function MemLogDemo() {
-  return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border border-[#34d399]/20 bg-void-2">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#34d399]/40 to-transparent z-10" />
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        className="block h-full w-full object-contain"
-      >
-        <source src="/part05.webm" type="video/webm" />
-        <source src="/part05.mp4" type="video/mp4" />
+        <source src={`${src}.webm`} type="video/webm" />
+        <source src={`${src}.mp4`} type="video/mp4" />
       </video>
     </div>
   );
@@ -1334,46 +1260,6 @@ function GenFilesDemo() {
   );
 }
 
-function AiTutorDemo() {
-  return (
-    <div className="h-full bg-void-2 border border-neon-pink/20 rounded-sm p-4 sm:p-6 font-mono text-[10px] sm:text-[11px] space-y-3 relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neon-pink/40 to-transparent" />
-      <div className="flex items-center justify-between">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-600">Tutor · Le Petit Prince · Ch. 21</p>
-        <span className="text-[9px] text-neon-pink">● online</span>
-      </div>
-      <div className="space-y-2.5 sm:space-y-3 pt-1 flex-1 min-h-0">
-        <div className="flex justify-end">
-          <div className="max-w-[85%] bg-zinc-900/80 border border-zinc-800 rounded-lg rounded-tr-sm px-3 py-2 text-zinc-300 leading-[1.55]">
-            Why does the fox suddenly say "tu" instead of "vous"?
-          </div>
-        </div>
-        <div className="flex">
-          <div className="max-w-[85%] bg-neon-pink/10 border border-neon-pink/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] space-y-1.5">
-            <p>French has two "you" forms — <em className="text-zinc-200 not-italic">vous</em> (formal, distant) and <em className="text-zinc-200 not-italic">tu</em> (intimate, between friends).</p>
-            <p>Saint-Exupery shifts to <em className="text-neon-pink not-italic">tu</em> when the fox accepts the prince's friendship. The pronoun makes the bond visible.</p>
-          </div>
-        </div>
-        <div className="flex justify-end">
-          <div className="max-w-[85%] bg-zinc-900/80 border border-zinc-800 rounded-lg rounded-tr-sm px-3 py-2 text-zinc-300 leading-[1.55]">
-            Does he ever switch back?
-          </div>
-        </div>
-        <div className="flex">
-          <div className="max-w-[80%] bg-neon-pink/10 border border-neon-pink/25 rounded-lg rounded-tl-sm px-3 py-2.5 text-zinc-300 leading-[1.55] flex items-center gap-2">
-            <span className="inline-flex gap-0.5">
-              <span className="w-1 h-1 rounded-full bg-neon-pink animate-pulse" />
-              <span className="w-1 h-1 rounded-full bg-neon-pink animate-pulse" style={{ animationDelay: '0.2s' }} />
-              <span className="w-1 h-1 rounded-full bg-neon-pink animate-pulse" style={{ animationDelay: '0.4s' }} />
-            </span>
-            <span className="text-zinc-500">tutor is reading…</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const FEATURES_E: FeatureE[] = [
   {
     id: 'voice_synth', num: '01', codename: 'VOICE_SYNTH', label: 'Read & Listen', side: 'left', color: LANDING_E_PALETTE.cyan,
@@ -1382,7 +1268,7 @@ const FEATURES_E: FeatureE[] = [
     after: 'Now the original, translation, and narration stay synced, with contextual meaning on tap.',
     afterHighlight: 'synced',
     cta: 'Open the reader',
-    demo: <VoiceSynthDemo />,
+    demo: <PartFilmDemo src="/01part_1" color={LANDING_E_PALETTE.cyan} />,
   },
   {
     id: 'net_cast', num: '02', codename: 'NET_CAST', label: 'Follow The Discussion', side: 'right', color: LANDING_E_PALETTE.amber,
@@ -1391,7 +1277,7 @@ const FEATURES_E: FeatureE[] = [
     after: 'Now two hosts unpack the chapter in the tone and language you choose. Listen anywhere.',
     afterHighlight: 'unpack',
     cta: 'Create a podcast',
-    demo: <PodcastDemo />,
+    demo: <PartFilmDemo src="/part02" color={LANDING_E_PALETTE.amber} />,
   },
   {
     id: 'visual_core', num: '03', codename: 'VISUAL_CORE', label: 'Visualize The Concept', side: 'left', color: LANDING_E_PALETTE.violet,
@@ -1400,17 +1286,16 @@ const FEATURES_E: FeatureE[] = [
     after: 'Now key concepts become reference images in the style and ratio you choose.',
     afterHighlight: 'reference images',
     cta: 'Generate visuals',
-    demo: <VisualCoreDemo />,
+    demo: <PartFilmDemo src="/part03" color={LANDING_E_PALETTE.violet} />,
   },
   {
     id: 'cine_render', num: '04', codename: 'CINE_RENDER', label: 'Summarize With Scenes', side: 'right', color: LANDING_E_PALETTE.rose,
-    patternBreak: true,
     before: 'Some chapters stay with you.',
     beforeHighlights: ['chapters'],
     after: 'Now more of them can: short summary videos give each chapter a memorable shape.',
     afterHighlight: 'memorable',
     cta: 'Make a video',
-    demo: <CineRenderDemo />,
+    demo: <PartFilmDemo src="/part04" color={LANDING_E_PALETTE.rose} />,
   },
   {
     id: 'mem_log', num: '05', codename: 'MEM_LOG', label: 'Share Your Thoughts', side: 'left', color: LANDING_E_PALETTE.emerald,
@@ -1419,7 +1304,7 @@ const FEATURES_E: FeatureE[] = [
     after: 'Now share a card with your thought or a mindmap with your thinking path.',
     afterHighlight: 'thinking path',
     cta: 'Open the notebook',
-    demo: <MemLogDemo />,
+    demo: <PartFilmDemo src="/part05" color={LANDING_E_PALETTE.emerald} />,
   },
   {
     id: 'gen_files', num: '06', codename: 'GEN_FILES', label: 'Keep In Order', side: 'right', color: '#38bdf8',
@@ -1436,7 +1321,7 @@ const FEATURES_E: FeatureE[] = [
     after: 'Now you ask about grammar, nuance, and context, and get answers grounded in the chapter.',
     afterHighlight: 'get answers',
     cta: 'Ask the expert',
-    demo: <AiTutorDemo />,
+    demo: <PartFilmDemo src="/part06" color={LANDING_E_PALETTE.pink} />,
   },
 ];
 
