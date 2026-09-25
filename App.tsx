@@ -7498,7 +7498,7 @@ const App: React.FC = () => {
 
   if (!configReady) {
     return (
-      <div className="min-h-screen bg-void-0 flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-void-0 flex items-center justify-center">
         <div className="text-neon-cyan font-tech text-xs tracking-[0.3em] animate-pulse uppercase">Initializing_System...</div>
       </div>
     );
@@ -7546,7 +7546,7 @@ const App: React.FC = () => {
 
   if (view === AppView.UPLOAD) {
     return (
-      <div className="min-h-screen bg-void-0 bg-grid flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-tech text-left">
+      <div className="min-h-[100dvh] bg-void-0 bg-grid flex flex-col items-center justify-center p-4 md:p-6 relative overflow-hidden font-tech text-left">
         <div className="absolute top-8 left-8 w-24 h-24 border-l border-t border-zinc-800 rounded-tl-lg pointer-events-none hidden md:block"></div>
         <div className="absolute bottom-8 right-8 w-24 h-24 border-r border-b border-zinc-800 rounded-br-lg pointer-events-none hidden md:block"></div>
 
@@ -7659,7 +7659,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-void-0 bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
+    <div className="flex h-[100dvh] bg-void-0 bg-grid text-zinc-300 overflow-hidden font-sans relative text-left" style={{ '--content-font': settings.font ? `"${settings.font}", sans-serif` : 'inherit' } as React.CSSProperties}>
       <GlobalContextLayer onAddToNotebook={handleAddToNotebook} activeLanguage={settings.targetLanguage} />
       <AIAssistant
         fileContext={activeFileContext}
@@ -8029,7 +8029,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex md:hidden overflow-x-auto border-t border-zinc-900/50 bg-black/80">
+          <div className="flex md:hidden overflow-x-auto border-t border-zinc-900/50 bg-black/80 pb-[env(safe-area-inset-bottom)]">
             {[
               { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE" },
               { id: Tab.PODCAST, icon: Mic2, label: "CAST" },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Languages, Headphones, Brain, Film, Mic2, ChevronDown, Zap, Crown, ArrowRight, Sparkles, MessageSquare, Map, Image as ImageIcon, Upload } from 'lucide-react';
+import { BookOpen, Languages, Headphones, Brain, Film, Mic2, ChevronDown, Zap, Crown, ArrowRight, Sparkles, MessageSquare, Map, Image as ImageIcon, Upload, Play } from 'lucide-react';
 import { Pro } from './ui/glyphs';
 import ScrollVelocity from './ui/ScrollVelocity';
 import StarBorder from './ui/StarBorder';
@@ -1212,20 +1212,51 @@ function HeroLearningBlocksVelocity({ isVersionE = false }: { isVersionE?: boole
 // Single video demo for all "part film" features. Its accent color (frame border + top line) is
 // injected by MediaFrameE from the feature's color, so every colored element in a part matches exactly.
 function PartFilmDemo({ src, color = '#00f3ff' }: { src: string; color?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  // If autoplay is blocked (e.g. iOS Low Power Mode), the poster shows and we surface a play button
+  // so the demo isn't a dead black box. Tapping the frame toggles play/pause.
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const p = v.play();
+    if (p && typeof p.catch === 'function') p.catch(() => setPaused(true));
+  }, []);
+  const toggle = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {}); else v.pause();
+  };
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border bg-void-2" style={{ borderColor: `${color}33` }}>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-sm border bg-void-2" style={{ borderColor: `${color}33` }} onClick={toggle}>
       <div className="absolute top-0 left-0 right-0 z-10 h-[1px]" style={{ background: `linear-gradient(to right, transparent, ${color}66, transparent)` }} />
       <video
+        ref={videoRef}
         autoPlay
         muted
         loop
         playsInline
         preload="metadata"
+        poster={`${src}-poster.jpg`}
+        onPlay={() => setPaused(false)}
+        onPause={() => setPaused(true)}
         className="block h-full w-full object-contain"
       >
         <source src={`${src}.webm`} type="video/webm" />
         <source src={`${src}.mp4`} type="video/mp4" />
       </video>
+      {paused && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); toggle(); }}
+          aria-label="Play demo"
+          className="absolute inset-0 z-20 flex items-center justify-center"
+        >
+          <span className="flex h-14 w-14 items-center justify-center rounded-full border bg-black/50 backdrop-blur-sm" style={{ borderColor: `${color}80` }}>
+            <Play size={22} style={{ color }} fill="currentColor" />
+          </span>
+        </button>
+      )}
     </div>
   );
 }
@@ -1388,7 +1419,7 @@ const FEATURE_STEP_LABELS: Record<FeatureStepE, string> = {
 
 function FeatureTitleE({ feature }: { feature: FeatureE }) {
   return (
-    <div className="flex items-baseline gap-3 flex-wrap">
+    <div className="flex items-baseline gap-3 flex-wrap justify-center sm:justify-start">
       <span className="text-[10px] sm:text-xs font-mono tracking-[0.25em] text-zinc-600">{feature.num}</span>
       <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.25em]" style={{ color: feature.color }}>{feature.codename}</span>
       <span className="text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-zinc-500">· {feature.label}</span>
@@ -1470,7 +1501,7 @@ function FeatureScreenE({
   return (
     <section
       ref={sectionRef}
-      className="relative flex h-[100svh] scroll-mt-0 snap-start snap-always items-center justify-center overflow-hidden border-t border-zinc-900/50 px-4 py-16 sm:px-6 sm:py-20 md:px-10"
+      className="relative flex flex-col min-h-[calc(100svh-56px)] sm:min-h-[100svh] scroll-mt-[56px] sm:scroll-mt-0 snap-start snap-always overflow-hidden sm:border-t sm:border-zinc-900/50 px-4 pt-0 pb-6 sm:px-6 sm:py-20 md:px-10"
       id={`e-feature-${feature.id}`}
     >
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
@@ -1489,9 +1520,9 @@ function FeatureScreenE({
         />
       </div>
 
-      <div className="relative z-10 mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 sm:gap-14 md:grid-cols-2 md:gap-20">
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 content-center items-center gap-8 sm:gap-14 md:grid-cols-2 md:gap-20">
         <div
-          className={`space-y-5 sm:space-y-6 ${textOrder} transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
+          className={`text-center sm:text-left space-y-3 sm:space-y-6 ${textOrder} transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
           style={{ transitionDelay: `${index * 30}ms` }}
         >
           <FeatureTitleE feature={feature} />
@@ -1501,7 +1532,7 @@ function FeatureScreenE({
             <ArrowRight size={11} style={{ color: feature.color }} strokeWidth={2} />
             <div className="flex-1 h-[1px]" style={{ background: `linear-gradient(to right, transparent, ${feature.color}66, transparent)` }} />
           </div>
-          <h2 className="text-[1.65rem] sm:text-3xl md:text-[2.5rem] font-semibold tracking-normal text-white leading-[1.16] max-w-[34rem]">
+          <h2 className="text-[1.4rem] sm:text-3xl md:text-[2.5rem] font-semibold tracking-normal text-white leading-[1.25] sm:leading-[1.16] max-w-[34rem]">
             {afterHighlightStart >= 0 && feature.afterHighlight ? (
               <>
                 {feature.after.slice(0, afterHighlightStart)}
@@ -1532,7 +1563,7 @@ function FeatureScreenE({
       <button
         type="button"
         onClick={onNext}
-        className="absolute bottom-5 left-0 right-0 z-20 mx-auto w-fit opacity-[0.55] transition-[opacity,filter] hover:opacity-100 sm:bottom-7 animate-bounce"
+        className="relative z-20 mx-auto flex h-12 w-fit shrink-0 items-center justify-center opacity-[0.55] transition-[opacity,filter] hover:opacity-100 animate-bounce sm:absolute sm:inset-x-0 sm:bottom-7 sm:h-auto"
         style={{
           color: feature.color,
           filter: `drop-shadow(0 0 8px ${feature.color}80)`,
@@ -1986,6 +2017,17 @@ function TransformationLanding({
   const heroCtaRef = useRef<HTMLElement | null>(null);
   const [finalTaglineTop, setFinalTaglineTop] = useState<number | null>(null);
   const [finalCreditsBottom, setFinalCreditsBottom] = useState<number | null>(null);
+  // The Version-E final CTA is an absolute layout tuned to desktop viewport height (it mirrors the
+  // hero). On phones those layers collide, so below `sm` we render the CTA in normal flow instead.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     if (!isVersionE) return;
@@ -2043,25 +2085,20 @@ function TransformationLanding({
     let frame = 0;
     const updateActiveScreen = () => {
       frame = 0;
-      const viewportCenter = window.innerHeight * 0.5;
+      // Active section = the last one whose top has scrolled above an activation line ~1/3 down
+      // the viewport. Robust to sections taller OR shorter than the viewport (min-h-[100svh] allows
+      // both); the old section-center-vs-viewport-center test lagged once a section grew past 100svh.
+      const activationLine = window.innerHeight * 0.35;
       let nextScreen = 0;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-
-      sectionIds.forEach((id, index) => {
-        const element = document.getElementById(id);
-        if (!element) return;
-        const rect = element.getBoundingClientRect();
-        if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
+      for (let index = 0; index < sectionIds.length; index++) {
+        const element = document.getElementById(sectionIds[index]);
+        if (!element) continue;
+        if (element.getBoundingClientRect().top - activationLine <= 1) {
           nextScreen = index;
-          nearestDistance = 0;
-          return;
+        } else {
+          break;
         }
-        const distance = Math.abs(rect.top + rect.height / 2 - viewportCenter);
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nextScreen = index;
-        }
-      });
+      }
 
       setScreen(current => current === nextScreen ? current : nextScreen);
     };
@@ -2189,11 +2226,45 @@ function TransformationLanding({
       if (handled) event.preventDefault();
     };
 
+    // Touch: a swipe past a small threshold advances exactly one section (like Page Up/Down).
+    // Native free-scroll is blocked so the page always rests on a whole section, regardless of
+    // how far the finger travels.
+    let touchStartY = 0;
+    let touchActive = false;
+    const onTouchStart = (event: TouchEvent) => {
+      touchActive = event.touches.length === 1;
+      if (touchActive) touchStartY = event.touches[0].clientY;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (!touchActive || event.touches.length !== 1) return;
+      event.preventDefault();
+      if (snapLocked) { releaseSnapAfterGesture(); return; }
+      const delta = touchStartY - event.touches[0].clientY;
+      if (Math.abs(delta) < 44) return;
+      const direction = delta > 0 ? 1 : -1;
+      const currentIndex = nearestScreenIndex();
+      const nextIndex = Math.max(0, Math.min(totalScreens - 1, currentIndex + direction));
+      touchStartY = event.touches[0].clientY;
+      if (nextIndex === currentIndex) return;
+      snapLocked = true;
+      scrollToScreen(nextIndex);
+      releaseSnapAfterGesture();
+    };
+    const onTouchEnd = () => { touchActive = false; };
+
     window.addEventListener('wheel', handleWheel, { passive: false });
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
     return () => {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
       window.clearTimeout(resetAccumulatorTimer);
       window.clearTimeout(releaseSnapTimer);
     };
@@ -2221,8 +2292,8 @@ function TransformationLanding({
             />
           </span>
           <div className="flex items-center gap-3 sm:gap-4">
-            <button onClick={onSignUp} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign Up</button>
-            <button onClick={onSignIn} className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
+            <button onClick={onSignUp} className="min-h-0 py-2 -my-2 text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign Up</button>
+            <button onClick={onSignIn} className="min-h-0 py-2 -my-2 text-[10px] font-mono uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Sign In</button>
           </div>
         </div>
       </nav>
@@ -2244,26 +2315,20 @@ function TransformationLanding({
           />
         ))}
       </div>
-      <div className="sm:hidden fixed left-0 right-0 top-[49px] z-50 h-[2px] bg-zinc-900/80">
-        <div
-          className="h-full transition-all duration-300"
-          style={{ width: `${progressPercent}%`, backgroundColor: activeAccent, boxShadow: `0 0 12px ${activeAccent}99` }}
-        />
-      </div>
 
       {/* Screen 1 — Hero */}
-      <section ref={heroSectionRef} id={heroId} className={`min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden ${isCyber ? 'landing-g-hero' : ''} ${isVersionE ? 'h-[100svh] scroll-mt-0 landing-e-hero snap-start snap-always' : ''}`}>
+      <section ref={heroSectionRef} id={heroId} className={`min-h-[100svh] flex flex-col items-center justify-center px-4 sm:px-6 relative overflow-hidden ${isCyber ? 'landing-g-hero' : ''} ${isVersionE ? 'scroll-mt-0 landing-e-hero snap-start snap-always' : ''}`}>
         <div className="absolute inset-0 bg-grid opacity-20" />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,243,255,0.07) 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-4xl space-y-7 sm:space-y-9">
           {!isVersionE && (
             <p className="text-[10px] sm:text-xs font-mono tracking-[0.2em] text-zinc-500 animate-fade-in">One Book, Multiple Ways to Learn.</p>
           )}
-          <h1 ref={heroHeadlineRef} className="text-[2.3rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
+          <h1 ref={heroHeadlineRef} className="text-balance text-[2rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.12] sm:leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
             Read the original.<br />
             <span className="text-neon-cyan drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
           </h1>
-          <p className={`${isVersionE ? 'max-w-[46rem]' : 'max-w-[34rem]'} mx-auto text-sm leading-[1.75] text-zinc-500 animate-fade-in sm:text-base`} style={{ animationDelay: '0.2s' }}>
+          <p className={`${isVersionE ? 'max-w-[46rem]' : 'max-w-[34rem]'} mx-auto px-3 sm:px-0 text-[13px] leading-[1.85] text-zinc-500 animate-fade-in sm:text-base sm:leading-[1.75]`} style={{ animationDelay: '0.2s' }}>
             {isVersionE ? (
               <>
                 <span className="sm:block">Upload a file, DecodEbook turns it into a bilingual reader with playable audio,</span>{' '}
@@ -2325,13 +2390,13 @@ function TransformationLanding({
       {/* Final CTA */}
       <section
         id={ctaId}
-        className={`flex flex-col items-center justify-center px-4 sm:px-6 relative border-t border-zinc-900/50 overflow-hidden ${isVersionE ? 'h-[100svh] scroll-mt-0 snap-start snap-always' : 'min-h-[100svh] scroll-mt-16'}`}
+        className={`flex flex-col items-center justify-center px-4 pb-20 sm:px-6 sm:pb-0 relative overflow-hidden sm:border-t sm:border-zinc-900/50 ${isVersionE ? 'min-h-[calc(100svh-56px)] sm:min-h-[100svh] scroll-mt-[56px] sm:scroll-mt-0 snap-start snap-always' : 'min-h-[100svh] border-t border-zinc-900/50 scroll-mt-16'}`}
       >
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 70%, rgba(0,243,255,0.06) 0%, transparent 60%)' }} />
         {isVersionE && (
           <div
-            className="absolute inset-x-0 z-10 px-4 text-center sm:px-6 md:px-10"
-            style={{ top: finalTaglineTop === null ? '28.33%' : `${finalTaglineTop}px` }}
+            className="relative z-10 px-4 text-center sm:absolute sm:inset-x-0 sm:px-6 md:px-10"
+            style={{ top: isMobile ? undefined : (finalTaglineTop === null ? '28.33%' : `${finalTaglineTop}px`) }}
           >
             <div className="mx-auto max-w-4xl">
               <p className="mb-5 font-mono text-xs tracking-[0.2em] text-zinc-500 sm:mb-7 sm:text-sm">
@@ -2344,7 +2409,7 @@ function TransformationLanding({
           </div>
         )}
         <div className={isVersionE
-          ? 'absolute left-1/2 top-[calc(40%+2rem)] z-10 w-full max-w-5xl -translate-x-1/2 space-y-8 px-4 text-center sm:space-y-10'
+          ? 'relative z-10 mx-auto mt-10 w-full max-w-5xl space-y-8 px-4 text-center sm:absolute sm:left-1/2 sm:top-[calc(40%+2rem)] sm:mt-0 sm:-translate-x-1/2 sm:space-y-10'
           : 'relative z-10 max-w-3xl space-y-8 text-center sm:space-y-10'}>
           <h2 className={isVersionE
             ? 'text-[clamp(1.7rem,5.2vw,3.75rem)] font-semibold tracking-normal leading-[1.08] text-white'
@@ -2386,8 +2451,8 @@ function TransformationLanding({
         </div>
         {isVersionE && (
           <p
-            className="absolute inset-x-4 z-10 mx-auto w-fit -translate-y-full text-center font-mono text-sm font-semibold uppercase tracking-[0.14em] text-neon-cyan sm:text-base"
-            style={{ top: finalCreditsBottom === null ? '73%' : `${finalCreditsBottom}px` }}
+            className="relative z-10 mx-auto mt-10 w-fit text-center font-mono text-sm font-semibold uppercase tracking-[0.14em] text-neon-cyan sm:absolute sm:inset-x-4 sm:mt-0 sm:-translate-y-full sm:text-base"
+            style={{ top: isMobile ? undefined : (finalCreditsBottom === null ? '73%' : `${finalCreditsBottom}px`) }}
           >
             <TextType
               as="span"
@@ -2402,7 +2467,7 @@ function TransformationLanding({
             />
           </p>
         )}
-        <footer className="absolute bottom-6 left-0 right-0">
+        <footer className="absolute bottom-4 left-0 right-0 z-10 sm:bottom-6">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4 px-4 sm:px-6 md:px-10">
             <span className="font-mono text-[10px] text-zinc-600">DecodEbook &copy; {new Date().getFullYear()}</span>
             <div className="flex items-center gap-4 sm:gap-6">

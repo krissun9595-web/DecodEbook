@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion, useMotionValue, useSpring } from 'motion/react';
 
 const springValues = {
@@ -30,6 +30,15 @@ export default function TiltedCard({
   const rotateY = useSpring(useMotionValue(0), springValues);
   const scale = useSpring(1, springValues);
 
+  // Only tilt on hover-capable, fine-pointer devices. On touch, mobile browsers synthesize
+  // mousemove from taps/scroll — the tilt would fire and never reset (stuck tilted/scaled) and
+  // the 3D transform can overflow horizontally. There we render a plain, static frame.
+  const [canHover, setCanHover] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    setCanHover(window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  }, []);
+
   function handleMouse(e: React.MouseEvent) {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
@@ -47,6 +56,10 @@ export default function TiltedCard({
     scale.set(1);
     rotateX.set(0);
     rotateY.set(0);
+  }
+
+  if (!canHover) {
+    return <div className={className} style={style}>{children}</div>;
   }
 
   return (

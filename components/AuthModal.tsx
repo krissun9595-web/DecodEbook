@@ -128,7 +128,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, initialMode = 
                   className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono"
                   onKeyDown={e => e.key === 'Enter' && handleAuth()}
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="!min-h-0 p-1 -my-1 text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
                   {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
@@ -137,7 +137,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, initialMode = 
             {/* Fixed-height slot so the submit button below holds the same position whether
                 this row shows the login "Forgot Password?" link or the signup terms checkbox.
                 !mt-3 keeps the password->button region tighter than the rest (space-y-4). */}
-            <div className="min-h-[1.25rem] flex items-center !mt-3">
+            <div className="min-h-[2.75rem] sm:min-h-[1.25rem] flex items-center !mt-3">
               {mode === 'login' && (
                 <div className="w-full flex justify-end">
                   <button onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">
@@ -159,7 +159,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, initialMode = 
               )}
             </div>
 
-            <button onClick={handleAuth} disabled={loading || (mode === 'signup' && !agreedToTerms)} className="w-full py-2.5 bg-neon-cyan text-black font-bold rounded text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 !mt-3">
+            <button onClick={handleAuth} disabled={loading || (mode === 'signup' && !agreedToTerms)} className="w-full min-h-[2.75rem] py-2.5 bg-neon-cyan text-black font-bold rounded text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all disabled:opacity-50 flex items-center justify-center gap-2 !mt-3">
               {loading ? <Loader2 size={14} className="animate-spin" /> : mode === 'login' ? <LogIn size={14} /> : <UserPlus size={14} />}
               {mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>

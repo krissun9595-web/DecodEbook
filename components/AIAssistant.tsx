@@ -163,6 +163,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const prevBookId = useRef<string | null>(null);
 
   const sphereRef = useRef<HTMLDivElement>(null);
@@ -216,12 +217,13 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     const clampPosition = (clientX: number, clientY: number) => {
       let newX = clientX - dragOffset.x;
       let newY = clientY - dragOffset.y;
-      const currentWidth = isOpen ? EXPANDED_WIDTH : SPHERE_SIZE;
-      const currentHeight = isOpen ? EXPANDED_HEIGHT : SPHERE_SIZE;
+      // Match the rendered caps: the panel never exceeds viewport-24px.
+      const curW = isOpen ? Math.min(EXPANDED_WIDTH, window.innerWidth - 24) : SPHERE_SIZE;
+      const curH = isOpen ? Math.min(EXPANDED_HEIGHT, window.innerHeight - 24) : SPHERE_SIZE;
       if (newX < 0) newX = 0;
       if (newY < 0) newY = 0;
-      if (newX + currentWidth > window.innerWidth) newX = window.innerWidth - currentWidth;
-      if (newY + currentHeight > window.innerHeight) newY = window.innerHeight - currentHeight;
+      if (newX + curW > window.innerWidth) newX = window.innerWidth - curW;
+      if (newY + curH > window.innerHeight) newY = window.innerHeight - curH;
       return { x: newX, y: newY };
     };
 
@@ -252,6 +254,43 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
       window.removeEventListener('touchcancel', handleEnd);
     };
   }, [isDragging, dragOffset, isOpen, isFullScreen]);
+
+  // Track small viewports so the widget can adapt (full-screen default, history overlay).
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 640px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // On phones the floating 24rem panel is the wrong mode — open straight into full-screen.
+  useEffect(() => {
+    if (isOpen && isMobile) setIsFullScreen(true);
+  }, [isOpen, isMobile]);
+
+  // Keep the widget fully on-screen when it opens, the viewport resizes, or the device rotates —
+  // the drag clamp only runs mid-drag, so without this an expanded panel could sit partly offscreen
+  // (unreachable header/close) on small phones.
+  useEffect(() => {
+    if (isFullScreen) return;
+    const reclamp = () => {
+      const effW = isOpen ? Math.min(EXPANDED_WIDTH, window.innerWidth - 24) : SPHERE_SIZE;
+      const effH = isOpen ? Math.min(EXPANDED_HEIGHT, window.innerHeight - 24) : SPHERE_SIZE;
+      setPosition(p => ({
+        x: Math.max(0, Math.min(p.x, window.innerWidth - effW)),
+        y: Math.max(0, Math.min(p.y, window.innerHeight - effH)),
+      }));
+    };
+    reclamp();
+    window.addEventListener('resize', reclamp);
+    window.addEventListener('orientationchange', reclamp);
+    return () => {
+      window.removeEventListener('resize', reclamp);
+      window.removeEventListener('orientationchange', reclamp);
+    };
+  }, [isOpen, isFullScreen]);
 
   const startDrag = (clientX: number, clientY: number) => {
     if (isFullScreen) return;
@@ -604,8 +643,8 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   // Use fixed layouts for specific states to avoid transitions
   const currentLeft = isFullScreen ? '20px' : `${position.x}px`;
   const currentTop = isFullScreen ? '20px' : `${position.y}px`;
-  const currentWidth = isFullScreen ? 'calc(100vw - 40px)' : (isOpen ? '24rem' : '4rem');
-  const currentHeight = isFullScreen ? 'calc(100vh - 40px)' : (isOpen ? `${EXPANDED_HEIGHT}px` : '4rem');
+  const currentWidth = isFullScreen ? 'calc(100vw - 40px)' : (isOpen ? 'min(24rem, calc(100vw - 24px))' : '4rem');
+  const currentHeight = isFullScreen ? 'calc(100dvh - 40px)' : (isOpen ? `min(${EXPANDED_HEIGHT}px, calc(100dvh - 24px))` : '4rem');
 
   return (
     <div 
@@ -645,7 +684,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         <button
                             onClick={(e) => { e.stopPropagation(); setShowHistory(v => !v); }}
                             onMouseDown={(e) => e.stopPropagation()}
-                            className={`p-1 rounded transition-colors ${showHistory ? 'text-neon-cyan bg-neon-cyan/10' : 'text-zinc-500 hover:text-neon-cyan hover:bg-neon-cyan/10'}`}
+                            className={`p-2 rounded transition-colors ${showHistory ? 'text-neon-cyan bg-neon-cyan/10' : 'text-zinc-500 hover:text-neon-cyan hover:bg-neon-cyan/10'}`}
                             title="Chat history"
                         >
                             <Clock size={14} />
@@ -655,7 +694,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         <button
                             onClick={(e) => { e.stopPropagation(); newChat(); }}
                             onMouseDown={(e) => e.stopPropagation()}
-                            className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
+                            className="p-2 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
                             title="New chat"
                         >
                             <MessageSquarePlus size={14} />
@@ -663,14 +702,14 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         <button
                             onClick={(e) => { e.stopPropagation(); setIsFullScreen(!isFullScreen); }}
                             onMouseDown={(e) => e.stopPropagation()}
-                            className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
+                            className={`p-2 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded ${isMobile ? 'hidden' : ''}`}
                             title={isFullScreen ? "Exit Full Window" : "Full Window View"}
                         >
                             {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>
                         <button 
                             onClick={() => { setIsOpen(false); setIsFullScreen(false); }}
-                            className="p-1 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
+                            className="p-2 hover:bg-neon-cyan/10 text-zinc-500 hover:text-neon-cyan transition-colors rounded"
                             title="Minimize to Sphere"
                             onMouseDown={(e) => e.stopPropagation()} 
                         >
@@ -683,12 +722,14 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 {menuOpenId && <div className="absolute inset-0 z-20" onMouseDown={(e) => { e.stopPropagation(); setMenuOpenId(null); }} />}
                 {/* History sidebar (DeepSeek-style) — narrows the chat column while open */}
                 {showHistory && (
-                    <div className="flex w-2/5 max-w-[220px] shrink-0 flex-col border-r border-neon-cyan/20 bg-zinc-900/70">
+                    <div className={`flex flex-col border-neon-cyan/20 bg-zinc-900/70 ${isMobile ? 'absolute inset-0 z-30 w-full' : 'w-2/5 max-w-[220px] shrink-0 border-r'}`}>
                         <div className="shrink-0 border-b border-zinc-800 px-2 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">History</div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             {sessions.length === 0 ? (
                                 <div className="p-2 font-mono text-[10px] text-zinc-600">No chats yet</div>
-                            ) : [...sessions].sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt)).map(s => (
+                            ) : [...sessions].sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt)).map((s, i, arr) => {
+                                const nearBottom = arr.length > 3 && i >= arr.length - 2;
+                                return (
                                 <div key={s.id} className={`group relative ${menuOpenId === s.id ? 'z-30' : ''}`}>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); openSession(s.id); }}
@@ -711,14 +752,15 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                         <MoreHorizontal size={13} />
                                     </button>
                                     {menuOpenId === s.id && (
-                                        <div className="absolute right-1 top-7 z-30 w-max rounded-sm border border-zinc-700 bg-zinc-900 py-1 shadow-lg" onMouseDown={(e) => e.stopPropagation()}>
+                                        <div className={`absolute right-1 z-30 w-max rounded-sm border border-zinc-700 bg-zinc-900 py-1 shadow-lg ${nearBottom ? 'bottom-7' : 'top-7'}`} onMouseDown={(e) => e.stopPropagation()}>
                                             <button onClick={(e) => { e.stopPropagation(); shareSession(s); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Share2 size={11} /> Share</button>
                                             <button onClick={(e) => { e.stopPropagation(); togglePin(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Pin size={11} /> {s.pinned ? 'Unpin' : 'Pin'}</button>
                                             <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-neon-red hover:bg-neon-red/10"><Trash2 size={11} /> Delete</button>
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -748,7 +790,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                                 className="block w-full bg-transparent text-[11px] leading-relaxed content-font tracking-wide text-neon-cyan resize-none border-0 outline-none focus:outline-none focus:ring-0 overflow-hidden"
                                             />
                                         </div>
-                                        <div className="flex items-center justify-end gap-3 mt-1 px-1 h-5">
+                                        <div className="flex items-center justify-end gap-3 mt-1 px-1 h-7">
                                             <button onClick={cancelEdit} className="text-[10px] font-mono text-zinc-400 hover:text-white transition-colors">Cancel</button>
                                             <button onClick={() => submitEdit(idx)} disabled={!editText.trim() || isLoading} className="text-[10px] font-mono text-neon-cyan hover:text-white transition-colors disabled:opacity-40">Send</button>
                                         </div>
@@ -764,23 +806,23 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                         `}>
                                             {msg.role === 'model' ? <MarkdownText text={msg.text} /> : msg.text}
                                         </div>
-                                        <div className={`flex items-center gap-3 mt-1 px-1 h-5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`flex items-center gap-3 mt-1 px-1 h-7 ${isUser ? 'justify-end' : 'justify-start'}`}>
                                             {isUser ? (
-                                                <button onClick={() => startEdit(idx)} disabled={isLoading} title="Edit" className="text-zinc-500 hover:text-neon-cyan transition-colors disabled:opacity-30">
+                                                <button onClick={() => startEdit(idx)} disabled={isLoading} title="Edit" className="p-1.5 text-zinc-500 hover:text-neon-cyan transition-colors disabled:opacity-30">
                                                     <Pencil size={12} />
                                                 </button>
                                             ) : (idx !== 0 && (
                                                 <>
-                                                    <button onClick={() => regenerate(idx)} disabled={isLoading} title="Regenerate" className="text-zinc-500 hover:text-neon-cyan transition-colors disabled:opacity-30">
+                                                    <button onClick={() => regenerate(idx)} disabled={isLoading} title="Regenerate" className="p-1.5 text-zinc-500 hover:text-neon-cyan transition-colors disabled:opacity-30">
                                                         <RefreshCw size={12} />
                                                     </button>
-                                                    <button onClick={() => handleCopy(idx, msg.text)} title="Copy" className="text-zinc-500 hover:text-neon-cyan transition-colors">
+                                                    <button onClick={() => handleCopy(idx, msg.text)} title="Copy" className="p-1.5 text-zinc-500 hover:text-neon-cyan transition-colors">
                                                         {copiedIndex === idx ? <Check size={12} /> : <Copy size={12} />}
                                                     </button>
-                                                    <button onClick={() => handleShare(msg.text)} title="Share" className="text-zinc-500 hover:text-neon-cyan transition-colors">
+                                                    <button onClick={() => handleShare(msg.text)} title="Share" className="p-1.5 text-zinc-500 hover:text-neon-cyan transition-colors">
                                                         <Share2 size={12} />
                                                     </button>
-                                                    <button onClick={() => handleReadAloud(idx, msg.text)} title="Read aloud" className={`transition-colors ${speakingIndex === idx ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan'}`}>
+                                                    <button onClick={() => handleReadAloud(idx, msg.text)} title="Read aloud" className={`p-1.5 transition-colors ${speakingIndex === idx ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan'}`}>
                                                         <Volume2 size={12} />
                                                     </button>
                                                 </>
@@ -803,12 +845,8 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Input Area */}
-                <div 
-                    className={`p-3 bg-zinc-900/90 border-t border-neon-cyan/20 flex gap-2 shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
-                    onMouseDown={handleMouseDown}
-                    onTouchStart={handleTouchStart}
-                >
+                {/* Input Area — not a drag handle (dragging is header-only) so touch typing works */}
+                <div className="p-3 bg-zinc-900/90 border-t border-neon-cyan/20 flex gap-2 shrink-0">
                     <button
                         onClick={(e) => { e.stopPropagation(); handleRecordToggle(); }}
                         onMouseDown={(e) => e.stopPropagation()}

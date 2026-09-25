@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet, Trash2 } from 'lucide-react';
 import { CloseButton } from './ui/CloseButton';
 import { Privacy, Pro } from './ui/glyphs';
@@ -257,20 +257,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
     setSuccess('');
   };
 
-  // TEMP: measure every MY_ACCOUNT panel height + the two title→table-header gaps for layout tuning.
-  useLayoutEffect(() => {
-    if (!isOpen) return;
-    requestAnimationFrame(() => {
-      document.querySelectorAll<HTMLElement>('[data-acct-panel]').forEach(el =>
-        console.log('[MY_ACCOUNT panel]', el.dataset.acctPanel, '=', el.offsetHeight, 'px'));
-      const gap = (a: string, b: string) => {
-        const ea = document.querySelector(`[data-gap="${a}"]`), eb = document.querySelector(`[data-gap="${b}"]`);
-        return ea && eb ? Math.round((eb.getBoundingClientRect().top - ea.getBoundingClientRect().bottom) * 10) / 10 : null;
-      };
-      console.log('[gap] Active_Mode desc→header =', gap('am-desc', 'am-hd'), 'px  |  Credit_History title→header =', gap('ch-title', 'ch-hd'), 'px');
-    });
-  });
-
   if (!isOpen) return null;
 
   const currentTier = tierInfo?.tier || 'free';
@@ -321,7 +307,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
-      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl max-h-[90dvh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
         <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
@@ -351,7 +337,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
           </div>
         </div>
 
-        <div className="h-[calc(70vh+69px)] overflow-y-auto custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {user ? (
             <div className="p-6 space-y-[1.6rem]">
 
@@ -421,8 +407,9 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <p data-gap="am-desc" className="text-[10px] mb-[6.5px]">{genMode === 'premium'
                       ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
                       : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
-                    <div className="text-[9px]">
-                      <div data-gap="am-hd" className="flex items-center gap-3 text-[8px] uppercase tracking-widest text-zinc-600 pb-1 border-b border-zinc-800/60">
+                    <div className="text-[9px] overflow-x-auto">
+                      <div className="min-w-[300px]">
+                      <div data-gap="am-hd" className="flex items-center gap-3 text-[9px] uppercase tracking-widest text-zinc-600 pb-1 border-b border-zinc-800/60">
                         <span className="flex-[1.15]">Module</span>
                         <span className="flex-1">Function</span>
                         <span className={`flex-[1.5] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
@@ -436,6 +423,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.p}</span>
                         </div>
                       ))}
+                      </div>
                     </div>
                     <p className="text-[9px]">Actual cost scales with length; No charge for saved result re-open; Other functions costs will be recorded in Credit history table.</p>
                   </div>
@@ -511,7 +499,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Loader2 size={16} className="animate-spin text-zinc-500" />
                   </div>
                 ) : tierInfo ? (
-                  <div data-acct-panel="Credit_Balance" className="content-panel rounded-sm p-4 flex flex-col gap-2 h-[262px]">
+                  <div data-acct-panel="Credit_Balance" className="content-panel rounded-sm p-4 flex flex-col gap-2 min-h-[262px]">
                     {(
                       <>
                         <div className="flex items-center justify-between text-xs">
@@ -565,7 +553,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Gift size={18} />
                     <label className="text-xs font-bold uppercase tracking-widest font-mono">Earn_Free_Credits</label>
                   </div>
-                  <div data-acct-panel="Earn_Free_Credits" className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 flex flex-col h-[262px]">
+                  <div data-acct-panel="Earn_Free_Credits" className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 flex flex-col min-h-[262px]">
                     {/* Share link */}
                     <div className="space-y-2">
                       <p className="text-xs text-neon-cyan font-mono font-bold">Limited Time Offer</p>
