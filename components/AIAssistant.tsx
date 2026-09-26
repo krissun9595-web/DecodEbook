@@ -722,7 +722,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 {menuOpenId && <div className="absolute inset-0 z-20" onMouseDown={(e) => { e.stopPropagation(); setMenuOpenId(null); }} />}
                 {/* History sidebar (DeepSeek-style) — narrows the chat column while open */}
                 {showHistory && (
-                    <div className={`flex flex-col border-neon-cyan/20 bg-zinc-900/70 ${isMobile ? 'absolute inset-0 z-30 w-full' : 'w-2/5 max-w-[220px] shrink-0 border-r'}`}>
+                    <div className={`flex flex-col border-neon-cyan/20 ${isMobile ? 'absolute inset-0 z-30 w-full bg-zinc-950' : 'w-2/5 max-w-[220px] shrink-0 border-r bg-zinc-900/70'}`}>
                         <div className="shrink-0 border-b border-zinc-800 px-2 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">History</div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             {sessions.length === 0 ? (
@@ -846,11 +846,11 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 </div>
 
                 {/* Input Area — not a drag handle (dragging is header-only) so touch typing works */}
-                <div className="p-3 bg-zinc-900/90 border-t border-neon-cyan/20 flex gap-2 shrink-0">
+                <div className="p-3 bg-zinc-900/90 border-t border-neon-cyan/20 flex items-center gap-2 shrink-0">
                     <button
                         onClick={(e) => { e.stopPropagation(); handleRecordToggle(); }}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isRecording ? 'bg-neon-red border-neon-red text-white animate-pulse' : 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black'}`}
+                        className={`p-2 !min-h-0 aspect-square border rounded-sm transition-all active:scale-95 ${isRecording ? 'bg-neon-red border-neon-red text-white animate-pulse' : 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black'}`}
                         title={isRecording ? "Stop Recording" : "Voice Input"}
                     >
                         {isRecording ? <Square size={16} fill="currentColor" /> : <Mic size={16} />}
@@ -882,7 +882,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                         onMouseDown={(e) => e.stopPropagation()}
                         aria-label={isLoading ? "Stop generation" : "Send message"}
                         title={isLoading ? "Stop Generation" : "Send"}
-                        className={`p-2 border rounded-sm transition-all active:scale-95 ${isLoading
+                        className={`p-2 !min-h-0 aspect-square border rounded-sm transition-all active:scale-95 ${isLoading
                             ? 'bg-neon-red border-neon-red text-white hover:bg-neon-red/80'
                             : 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black disabled:opacity-50 disabled:cursor-not-allowed'}`}
                     >

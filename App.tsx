@@ -7724,7 +7724,7 @@ const App: React.FC = () => {
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-64' : 'md:w-0'} bg-void-1 flex flex-col overflow-hidden border-r border-zinc-900`}
+        className={`fixed inset-y-0 left-0 z-40 w-1/2 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-20 md:translate-x-0 md:transition-all ${isSidebarOpen ? 'md:w-64' : 'md:w-0'} bg-void-1 flex flex-col overflow-hidden border-r border-zinc-900`}
       >
         <div className="shrink-0 bg-black/80 backdrop-blur-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-neon-cyan opacity-20"></div>
@@ -7766,8 +7766,8 @@ const App: React.FC = () => {
             </div>
             {/* Active-book info block — plain, function-less (the >_ owns the toggle now). */}
             {!showLibraryList && activeBook && (
-                <div className="px-4 py-2">
-                    <div className="h-[52px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border cursor-default">
+                <div className="px-4 pt-2">
+                    <div className="h-[42px] md:h-[50px] px-2 flex flex-col justify-center border border-zinc-800 bg-zinc-900/20 rounded-sm hud-border cursor-default">
                         <h1 className="font-bold text-xs text-white truncate leading-tight mb-0.5 font-tech uppercase tracking-wide">{activeBook.title}</h1>
                         <p className="text-[9px] text-zinc-500 truncate font-mono uppercase">{activeBook.author}</p>
                     </div>
@@ -7823,15 +7823,15 @@ const App: React.FC = () => {
           ) : (
              <div className="flex-1 min-h-0 flex flex-col">
                 {/* Full-text search */}
-                <div className="shrink-0 px-4 mt-[15px]">
-                  <div className="relative flex items-center">
+                <div className="shrink-0 px-4 mt-1.5 md:mt-2 h-[42px] md:h-[50px] flex items-center">
+                  <div className="relative flex items-center w-full">
                     <Search size={12} className="absolute left-2 text-zinc-600 pointer-events-none" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="SEARCH_FULLTEXT"
-                      className={`w-full bg-zinc-900/60 border ${searchActive ? 'border-neon-cyan' : 'border-zinc-800'} focus:border-neon-cyan rounded-sm pl-7 pr-7 py-1 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus-visible:shadow-none tracking-wide`}
+                      className={`w-full bg-zinc-900/60 border ${searchActive ? 'border-neon-cyan' : 'border-zinc-800'} focus:border-neon-cyan rounded-sm pl-7 pr-7 h-[42px] text-[9px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus-visible:shadow-none tracking-wide`}
                     />
                     {searchQuery && (
                       <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-neon-red transition-colors" title="Clear search">
@@ -7880,7 +7880,7 @@ const App: React.FC = () => {
                   </div>
                 )}
                 {/* Chapter list (TOC) */}
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2 mt-[21px] border-t border-zinc-900">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2 mt-1.5 md:mt-2 border-t border-zinc-900">
                 {(() => {
                   const chaptersArr = activeBook?.chapters ?? [];
                   // A Part is any chapter that other chapters point at as parent; a hierarchical book
@@ -7896,11 +7896,11 @@ const App: React.FC = () => {
                     const isPart = parentIds.has(chapter.id);
                     const collapsed = collapsedParts.has(chapter.id);
                     return (
-                        <div key={chapter.id} ref={activeChapterId === chapter.id ? activeChapterItemRef : undefined} className="relative group flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
+                        <div key={chapter.id} ref={activeChapterId === chapter.id ? activeChapterItemRef : undefined} className="relative group flex items-center justify-between px-4 h-[43px] hover:bg-zinc-900/50">
                             <button
                                 title={chapter.title}
                                 onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterPageTarget('first'); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
-                                className={`flex-1 text-left flex items-center gap-2 border-l-2 py-1 transition-all min-w-0 pr-2 ${level > 0 ? 'pl-5' : ''} ${
+                                className={`flex-1 text-left flex items-center gap-2 border-l-2 h-full transition-all min-w-0 pr-2 ${level > 0 ? 'pl-5' : ''} ${
                                     activeChapterId === chapter.id
                                     ? 'border-neon-cyan'
                                     : 'border-transparent'
@@ -7983,25 +7983,52 @@ const App: React.FC = () => {
 
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
         <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
-          <div className="h-12 md:h-14 flex items-center justify-between px-3 md:px-4">
-            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+          <div className="h-12 md:h-14 flex items-center justify-between px-2 md:px-4 gap-2">
+            <div className="flex items-center gap-1.5 md:gap-4 min-w-0 shrink-0">
               <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-neon-cyan transition-colors shrink-0">
                 {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
-              <div className="h-4 w-[1px] bg-zinc-800 shrink-0"></div>
+              <div className="h-4 w-[1px] bg-zinc-800 shrink-0 hidden md:block"></div>
               {activeChapterId ? (
                   <div className="flex items-center gap-1.5 md:gap-2 min-w-0">
                       <span className="text-[8px] md:text-[9px] font-mono text-zinc-600 bg-zinc-900 border border-zinc-800 px-1 md:px-1.5 py-0.5 shrink-0">
                           SEC.{String(activeChapterId || 0).padStart(2, '0')}
                       </span>
-                      <ChevronRight size={10} className="text-zinc-500 shrink-0 hidden sm:block" />
-                      <span className="text-[10px] md:text-xs font-bold text-neon-cyan font-tech tracking-wide truncate">
+                      <ChevronRight size={10} className="text-zinc-500 shrink-0 hidden md:block" />
+                      <span className="text-[10px] md:text-xs font-bold text-neon-cyan font-tech tracking-wide truncate hidden md:inline">
                           {activeChapter?.title.toUpperCase()}
                       </span>
                   </div>
               ) : (
-                  <span className="text-[10px] md:text-xs font-tech text-zinc-500 tracking-widest">AWAITING_INPUT</span>
+                  <span className="text-[10px] md:text-xs font-tech text-zinc-500 tracking-widest hidden md:inline">AWAITING_INPUT</span>
               )}
+            </div>
+
+            {/* Mobile: the 5 module tabs live IN the header bar (no separate row) so the main
+                column's single top band lines up with the sidebar brand block and everything
+                below aligns 1:1 (book-info↔INITIATE, search↔speed, catalog↔PG). flex-1 gives each
+                icon an equal share of the space left of the hamburger + SEC chip. */}
+            <div className="flex md:hidden flex-1 items-center gap-0.5 overflow-x-auto">
+              {[
+                { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE" },
+                { id: Tab.PODCAST, icon: Mic2, label: "CAST" },
+                { id: Tab.CONCEPTS, icon: ImageIcon, label: "IMAGE" },
+                { id: Tab.ANIMATION, icon: Film, label: "VIDEO" },
+                { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "NOTES" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { switchTab(tab.id as Tab); }}
+                  className={`flex flex-col items-center justify-center flex-1 min-w-[48px] gap-0.5 rounded-sm transition-all active:scale-95 ${
+                    activeTab === tab.id
+                      ? 'text-neon-cyan bg-neon-cyan/10'
+                      : 'text-zinc-600'
+                  }`}
+                >
+                  <tab.icon size={14} className={activeTab === tab.id ? 'text-neon-cyan' : ''} />
+                  <span className="text-[7px] font-bold font-tech tracking-wide">{tab.label}</span>
+                </button>
+              ))}
             </div>
 
             <div className="hidden md:flex items-center bg-zinc-950 border border-zinc-900 p-0.5 rounded-sm">
@@ -8027,29 +8054,6 @@ const App: React.FC = () => {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="flex md:hidden overflow-x-auto border-t border-zinc-900/50 bg-black/80 pb-[env(safe-area-inset-bottom)]">
-            {[
-              { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE" },
-              { id: Tab.PODCAST, icon: Mic2, label: "CAST" },
-              { id: Tab.CONCEPTS, icon: ImageIcon, label: "IMAGE" },
-              { id: Tab.ANIMATION, icon: Film, label: "VIDEO" },
-              { id: Tab.NOTEBOOK, icon: NotebookIcon, label: "NOTES" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => { switchTab(tab.id as Tab); }}
-                className={`flex flex-col items-center justify-center flex-1 min-w-[52px] py-1.5 gap-0.5 transition-all active:scale-95 ${
-                  activeTab === tab.id
-                    ? 'text-neon-cyan bg-neon-cyan/10 border-b-2 border-neon-cyan'
-                    : 'text-zinc-600 border-b-2 border-transparent'
-                }`}
-              >
-                <tab.icon size={14} className={activeTab === tab.id ? 'text-neon-cyan' : ''} />
-                <span className="text-[7px] font-bold font-tech tracking-wide">{tab.label}</span>
-              </button>
-            ))}
           </div>
         </header>
 

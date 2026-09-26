@@ -331,12 +331,17 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
     };
   }, [menu.visible, definition.visible, commentComposer.visible]);
 
-  // Mobile: selection change detection
+  // Mobile: selection change detection.
+  // NOTE: this layer mounts once at the app root, BEFORE the first touch, so `isMobile()`
+  // (lastInputWasTouch) is still false at mount. Gating the effect's registration on it left the
+  // touch listeners permanently unattached on phones — the app's selection bar never appeared and
+  // only iOS's native menu showed. Register the listeners unconditionally and evaluate isMobile()
+  // at EVENT time instead (selectionchange fires for mouse selection too, so it must still ignore
+  // desktop; touchend/touchstart only fire on touch devices).
   useEffect(() => {
-    if (!isMobile()) return;
-
     let checkTimer: ReturnType<typeof setTimeout>;
     const handleSelectionChange = () => {
+      if (!isMobile()) return;
       clearTimeout(checkTimer);
       checkTimer = setTimeout(() => {
         const selection = window.getSelection();
@@ -354,6 +359,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
     };
 
     const handleTouchEnd = () => {
+      if (!isMobile()) return;
       clearTimeout(checkTimer);
       checkTimer = setTimeout(() => {
         const selection = window.getSelection();
@@ -370,7 +376,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 
     const handleTouchStart = (e: TouchEvent) => {
       if (mobileBarRef.current && !mobileBarRef.current.contains(e.target as Node) &&
-          defRef.current && !defRef.current.contains(e.target as Node)) {
+          (!defRef.current || !defRef.current.contains(e.target as Node)) &&
+          (!commentRef.current || !commentRef.current.contains(e.target as Node))) {
         setMobileBar(prev => prev.visible ? { ...prev, visible: false } : prev);
       }
       if (defRef.current && !defRef.current.contains(e.target as Node)) {
@@ -423,7 +430,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
     const text = fromMobile ? mobileBar.text : menu.text;
     const source = fromMobile ? mobileBar.source : menu.source;
 
-    const POPUP_WIDTH = isMobile() ? Math.min(320, window.innerWidth - 32) : 320;
+    const POPUP_WIDTH = isMobile() ? window.innerWidth - 32 : 320;
     const MAX_HEIGHT = 400;
     const MARGIN = 16;
 
@@ -577,7 +584,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
      const startOffset = fromMobile ? mobileBar.startOffset : menu.startOffset;
      const srcX = fromMobile ? mobileBar.x : menu.x;
      const srcY = fromMobile ? mobileBar.y : menu.y;
-     const width = isMobile() ? Math.min(320, window.innerWidth - 32) : 300;
+     const width = isMobile() ? window.innerWidth - 32 : 300;
      const margin = 16;
      let x = srcX;
      let y = srcY;
@@ -667,7 +674,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                     value={commentComposer.draft}
                     onChange={(e) => setCommentComposer(prev => ({ ...prev, draft: e.target.value }))}
                     placeholder="Add neural annotations..."
-                    className="w-full min-h-[90px] bg-void-0 border border-zinc-800 rounded-sm p-2 text-xs text-zinc-300 focus:border-neon-cyan focus:outline-none transition-colors font-mono resize-none"
+                    className="w-full min-h-[90px] bg-void-0 border border-zinc-800 rounded-sm p-2 text-[16px] md:text-xs text-zinc-300 focus:border-neon-cyan focus:outline-none transition-colors font-mono resize-none"
                 />
                 <div className="flex items-center justify-end gap-2 mt-3">
                     <button onClick={() => setCommentComposer(prev => ({ ...prev, visible: false }))} className="px-3 py-2 text-[10px] font-mono uppercase text-zinc-600 hover:text-zinc-300 transition-colors">Cancel</button>

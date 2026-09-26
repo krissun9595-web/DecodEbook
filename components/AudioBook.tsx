@@ -3548,8 +3548,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         }
       }
     } catch (err) {
-      console.warn("Playback interrupted:", err);
+      // A rejected play() was previously swallowed as a warning, so a real mobile playback
+      // failure (a revoked/stale blob, an unsupported source, an iOS Web-Audio route error)
+      // looked like "the button does nothing". Surface it so the user sees why and can Retry.
+      const e = err as { name?: string; message?: string };
+      console.error("Playback failed:", e?.name, e?.message, err);
       setIsPlaying(false);
+      setAudioError(`Playback failed (${e?.name || 'error'}). Tap Retry to regenerate this page's audio.`);
     }
   };
 
@@ -4932,7 +4937,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   };
 
   return (
-    <div className="h-full flex flex-col gap-2 animate-fade-in relative font-sans text-zinc-100 text-left overflow-hidden">
+    <div className="h-full flex flex-col gap-1.5 md:gap-2 animate-fade-in relative font-sans text-zinc-100 text-left overflow-hidden">
       <audio 
         ref={audioRef} 
         src={audioSrc || undefined} 
@@ -4956,7 +4961,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       />
 
       {/* Controller Toolbar */}
-      <div className="hud-panel flex items-center justify-between shrink-0 w-full flex-wrap gap-2 z-20">
+      <div className="hud-panel !p-1 md:!p-2 flex items-center justify-between shrink-0 w-full gap-2 z-20">
           <div className="hidden md:flex items-center gap-4">
               <div className="flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
                  <Headphones size={16} className="text-neon-cyan" />
@@ -4977,7 +4982,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               </div>
               <button
                 onClick={handleInitiateToggle}
-                className={`btn-action ${isGenerating ? 'btn-stop' : 'btn-go'}`}
+                className={`btn-action !min-h-0 ${isGenerating ? 'btn-stop' : 'btn-go'}`}
               >
                  {isGenerating ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
                  {isGenerating ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
@@ -4986,7 +4991,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       </div>
 
       {/* Advanced Visualizer Module */}
-      <div className={`content-panel rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isModuleMinimized ? 'h-auto' : 'h-[277px]'}`}>
+      <div className={`content-panel rounded-lg p-0 relative overflow-hidden shrink-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out ${isModuleMinimized ? 'h-[42px] md:h-[50px]' : 'aspect-[2/1] md:aspect-auto md:h-[277px]'}`}>
           {!isModuleMinimized && (
               <div className="flex-1 bg-[#010102] w-full flex items-center justify-center overflow-hidden relative group border-b border-zinc-900">
                  <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
@@ -5014,14 +5019,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         <span>AWAITING_HOLOGRAPHIC_DATA</span>
                     </div>
                  )}
-                 <div className="absolute bottom-0 left-0 w-full h-1 bg-zinc-900 z-30 group cursor-pointer">
+                 <div className="absolute bottom-0 left-0 w-full h-0.5 md:h-1 bg-zinc-900 z-30 group cursor-pointer">
                     <input type="range" min="0" max="100" step="0.01" value={playbackProgress} onChange={handleSeek} disabled={!audioSrc} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-40" />
                     <div className="h-full bg-neon-cyan relative transition-none shadow-[0_0_10px_#00f3ff]" style={{ width: `${playbackProgress}%` }} />
                  </div>
               </div>
           )}
 
-          <div className="bg-void-0 p-1.5 md:p-2 flex items-center gap-1 overflow-hidden min-w-0">
+          <div className={`bg-void-0 p-1 md:p-2 ${isModuleMinimized ? 'h-full' : 'h-[42px] md:h-[50px]'} flex items-center gap-1 overflow-hidden min-w-0`}>
               <div className="flex-1 flex items-center gap-1 min-w-0">
                   <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
                   <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
@@ -5032,16 +5037,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                   </div>
               </div>
               <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
-                  <button aria-label="Rewind 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition hover:bg-zinc-900 rounded-full disabled:opacity-30 active:scale-90"><RotateCcw size={14} /></button>
-                  <button aria-label="Play or pause" onClick={togglePlay} disabled={!audioSrc} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 transition-transform active:scale-95 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
+                  <button aria-label="Rewind 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 !min-h-0 aspect-square text-zinc-500 hover:text-cyan-400 transition hover:bg-zinc-900 rounded-full disabled:opacity-30 active:scale-90"><RotateCcw size={14} /></button>
+                  <button aria-label="Play or pause" onClick={togglePlay} disabled={!audioSrc} className={`w-7 h-7 md:w-8 md:h-8 !min-h-0 rounded-full flex items-center justify-center border-2 shrink-0 transition-transform active:scale-95 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
                     {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                   </button>
-                  <button aria-label="Forward 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 text-zinc-500 hover:text-cyan-400 transition hover:bg-zinc-900 rounded-full disabled:opacity-30 active:scale-90"><RotateCw size={14} /></button>
+                  <button aria-label="Forward 15 seconds" onClick={() => { if(audioRef.current) audioRef.current.currentTime += 15; }} disabled={!audioSrc} className="p-1 md:p-1.5 !min-h-0 aspect-square text-zinc-500 hover:text-cyan-400 transition hover:bg-zinc-900 rounded-full disabled:opacity-30 active:scale-90"><RotateCw size={14} /></button>
               </div>
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                  <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-${chapterFileLabel(chapter, allChapters)}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                  <a aria-label="Download audio" href={audioSrc || '#'} download={`voice-ch${chapter.id}-pg${currentPage + 1}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `voice-${chapterFileLabel(chapter, allChapters)}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                   <button aria-label="Minimize or maximize player" onClick={() => {
                     const nextMinimized = !isModuleMinimized;
                     setIsModuleMinimized(nextMinimized);
@@ -5066,12 +5071,12 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
            <div className="flex shrink-0 border border-zinc-800 bg-void-2/90 backdrop-blur-md rounded-sm z-10 w-full flex-col overflow-hidden">
               <div className="flex items-center justify-between p-1.5 md:p-2 gap-1">
                    <div className="flex items-center gap-1 md:gap-2">
-                      <button aria-label="Previous page" onClick={() => changePage(false)} disabled={!canGoPrevious} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-neon-cyan text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
+                      <button aria-label="Previous page" onClick={() => changePage(false)} disabled={!canGoPrevious} className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 !min-h-0 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-neon-cyan text-zinc-400 disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
                       <h3 className="text-[9px] md:text-[10px] font-bold text-neon-cyan font-tech uppercase tracking-widest px-2 md:px-4 flex items-center gap-2">
                         <span>PG.{String(currentPage + 1).padStart(2,'0')}</span>
                         {currentReaderPage?.label && <span className="hidden sm:inline text-zinc-600">{currentReaderPage.label}</span>}
                       </h3>
-                      <button aria-label="Next page" onClick={() => changePage(true)} disabled={!canGoNext} className="flex items-center justify-center w-8 md:w-10 py-1 md:py-1.5 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-neon-cyan text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
+                      <button aria-label="Next page" onClick={() => changePage(true)} disabled={!canGoNext} className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 !min-h-0 rounded-sm bg-zinc-900 border border-zinc-800 hover:border-neon-cyan text-zinc-400 disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
                   </div>
                   <div className="flex items-center gap-1 md:gap-2">
                       <button onClick={() => {
@@ -5079,19 +5084,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         setViewMode(nextMode);
                         lastViewMode = nextMode;
                         writeStoredValue('audiobook_view_mode', nextMode);
-                      }} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${viewMode === 'split' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> <span className="hidden sm:inline">SPLIT</span></button>
+                      }} className={`flex items-center gap-1 md:gap-2 w-7 h-7 sm:w-auto sm:h-auto !min-h-0 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${viewMode === 'split' ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Columns size={12} /> <span className="hidden sm:inline">SPLIT</span></button>
                       <button onClick={() => {
                         const nextAutoScroll = !autoScroll;
                         setAutoScroll(nextAutoScroll);
                         lastAutoScroll = nextAutoScroll;
                         writeStoredValue('audiobook_auto_scroll', String(nextAutoScroll));
-                      }} className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC</span></button>
+                      }} className={`flex items-center gap-1 md:gap-2 w-7 h-7 sm:w-auto sm:h-auto !min-h-0 px-2 md:px-4 py-1 md:py-1.5 rounded-sm text-[9px] md:text-[10px] font-bold font-mono uppercase transition-all justify-center ${autoScroll ? 'text-neon-cyan bg-neon-cyan/5' : 'text-zinc-500 hover:text-zinc-300'}`}><Eye size={12} /> <span className="hidden sm:inline">SYNC</span></button>
                    </div>
               </div>
           </div>
 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-void-1 relative flex flex-col hud-border text-left">
-             <div ref={readerScrollRef} data-reader-zone="" className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font">
+             <div ref={readerScrollRef} data-reader-zone="" className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font select-text [-webkit-user-select:text] [-webkit-touch-callout:none]">
                 {/* Zero-height, always-present probe with the EXACT text-column width + font — computePageTargetSize
                     measures THIS instead of the per-line divs, which are absent before render and can be a
                     transient narrow width mid-render (→ a broken 160-page count that then sticks). */}

@@ -12,7 +12,10 @@
 @layer components {
   /* Module controller toolbar surface (cyan-edged interactive panel + ambient halo). */
   .hud-panel {
-    @apply bg-zinc-950/80 p-1.5 md:p-2 rounded-lg border border-cyan-900/40 shadow-glow-ambient;
+    /* App-wide INITIATE/toolbar bar height: pinned to 40px (mobile) / 50px (desktop) so every
+       module's toolbar matches the minimized player bar. overflow-hidden keeps it exactly that
+       height; the 28px controls (.btn-action, .select-group, round buttons) fit with room. */
+    @apply bg-zinc-950/80 h-[42px] md:h-[50px] overflow-hidden p-1.5 md:p-2 rounded-lg border border-cyan-900/40 shadow-glow-ambient;
   }
   /* Content card/panel surface (zinc counterpart to .hud-panel) — player/visualizer
      containers, file rows, module content panels. Radius stays inline (sm chips vs lg cards). */
@@ -25,7 +28,11 @@
      shifting the toolbar and making the dropdowns look mismatched). Content is
      centered, so shorter labels just get symmetric padding. */
   .btn-action {
-    @apply flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center active:scale-[0.97] min-w-[104px] md:min-w-[122px];
+    @apply flex items-center gap-1.5 md:gap-2 h-7 md:h-8 px-2.5 md:px-3.5 rounded-sm text-[10px] md:text-[11px] font-bold font-mono uppercase transition-all justify-center active:scale-[0.97] min-w-[104px] md:min-w-[122px];
+    /* Opt out of the global 44px touch-min (@media pointer:coarse below) so the
+       INITIATE / REGENERATE pill keeps its compact h-6/h-7 height and every module's
+       action bar lines up with the player bar. !important beats the unlayered touch rule. */
+    min-height: 0 !important;
   }
   .btn-go {
     @apply bg-neon-cyan text-black hover:bg-[#00c2cc] shadow-glow-sm;
@@ -35,7 +42,11 @@
   }
   /* Inline selector cluster (voice / tone / style / language). */
   .select-group {
-    @apply flex items-center gap-1 md:gap-1.5 bg-black/50 p-1 rounded-sm border border-zinc-800;
+    /* Cap to the shared control height (h-7/h-8 = 28/32px) — same as .btn-action and the
+       round player buttons — so a toolbar's native-select cluster does NOT make its FRAME
+       (border-box) taller than the player module's frame. Both frames then = border + bar
+       padding + 28px control. px-only: the fixed height vertically centers the selects. */
+    @apply flex items-center gap-1 md:gap-1.5 h-7 md:h-8 bg-black/50 px-1 rounded-sm border border-zinc-800;
   }
   /* Root-cause fix for uneven module dropdowns: a native <select> sizes to its
      longest option and ignores the CSS width (and, as a flex child, min-width:auto

@@ -170,8 +170,12 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
         }
       }
     } catch (err) {
-      console.warn("Playback interrupted or failed:", err);
+      // Don't swallow the failure — surface it so a real playback problem (unsupported codec/
+      // container on iOS, a stale blob) is visible instead of looking like a dead button.
+      const e2 = err as { name?: string; message?: string };
+      console.error("Video playback failed:", e2?.name, e2?.message, err);
       setIsPlaying(false);
+      setError(`Playback failed (${e2?.name || 'error'}) — the generated video may be in a format this browser can't play.`);
     }
   };
 
@@ -330,7 +334,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
             </div>
 
             <div className={`w-full bg-void-0 relative z-40 shrink-0 transition-all duration-500 ${videoUrl && controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'}`}>
-                <div className="absolute top-0 left-0 w-full h-1 bg-zinc-800 hover:h-2 transition-all cursor-pointer z-50 group/progress">
+                <div className="absolute top-0 left-0 w-full h-0.5 md:h-1 bg-zinc-800 hover:h-2 transition-all cursor-pointer z-50 group/progress">
                     <input 
                         type="range" 
                         min="0" max="100" step="0.1" 
@@ -361,23 +365,23 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
                     </div>
 
                     <div className="flex items-center justify-center gap-2 md:gap-5 shrink-0">
-                        <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition active:scale-90"><RotateCcw size={14} /></button>
-                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 border-2 active:scale-95 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
+                        <button aria-label="Rewind 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime -= 5; }} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-500 hover:text-cyan-400 transition active:scale-90"><RotateCcw size={14} /></button>
+                        <button aria-label={isPlaying ? "Pause" : "Play"} onClick={togglePlay} className={`w-7 h-7 md:w-8 md:h-8 !min-h-0 rounded-full flex items-center justify-center transition-all shrink-0 border-2 active:scale-95 ${isPlaying ? 'bg-transparent border-neon-cyan text-neon-cyan shadow-glow-cyan' : 'bg-neon-cyan border-neon-cyan text-black shadow-glow-press hover:scale-105'}`}>
                             {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
                         </button>
-                        <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 text-zinc-500 hover:text-cyan-400 transition active:scale-90"><RotateCw size={14} /></button>
+                        <button aria-label="Forward 5 seconds" onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.currentTime += 5; }} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-500 hover:text-cyan-400 transition active:scale-90"><RotateCw size={14} /></button>
                     </div>
 
                     <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                         <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                        <button aria-label={isMuted ? "Unmute" : "Mute"} onClick={toggleMute} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
+                        <button aria-label={isMuted ? "Unmute" : "Mute"} onClick={toggleMute} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
                             {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                         </button>
-                        <a aria-label="Download video" href={videoUrl || '#'} download={`video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
+                        <a aria-label="Download video" href={videoUrl || '#'} download={`video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
                             <Download size={14} />
                         </a>
-                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90" title="Share"><Share2 size={14} /></button>
-                        <button aria-label={isFullScreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullScreen} className="p-1 md:p-0 text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
+                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90" title="Share"><Share2 size={14} /></button>
+                        <button aria-label={isFullScreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullScreen} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
                             {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>
                     </div>
