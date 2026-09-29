@@ -146,7 +146,7 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
 
   const shown = buildDisplayRows(all.filter(e => monthKey(new Date(e.created_at)) === selKey));
 
-  const btn = 'p-1 text-zinc-500 hover:text-neon-cyan transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none';
+  const btn = 'p-1 !min-h-0 aspect-square flex items-center justify-center text-zinc-500 hover:text-neon-cyan transition active:scale-90 disabled:opacity-30 disabled:pointer-events-none';
   const col = {
     time: 'w-[118px] shrink-0',
     action: 'flex-[3] min-w-0',
@@ -156,7 +156,7 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
   };
 
   return (
-    <div className="flex flex-col min-h-0 flex-1">
+    <div className="flex flex-col min-h-0 flex-1 max-h-[300px]">
       {/* header line with month navigation */}
       <div className="flex items-center justify-between mb-1">
         <p data-gap="ch-title" className="text-[10px] text-zinc-600 font-mono">Credit History · <span className="text-zinc-500">{monthLabel}</span></p>
@@ -166,8 +166,8 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
         </div>
       </div>
 
-      {/* column headers (pr-2 keeps them aligned with the scrollable rows below) */}
-      <div data-gap="ch-hd" className="flex items-center gap-3 text-[8px] text-zinc-600 font-mono uppercase tracking-widest pb-1 border-b border-zinc-900 pr-2">
+      {/* column headers — desktop 5-col table only; mobile rows are stacked 2-line cards */}
+      <div data-gap="ch-hd" className="hidden sm:flex items-center gap-3 text-[8px] text-zinc-600 font-mono uppercase tracking-widest pb-1 border-b border-zinc-900 pr-2">
         <span className={col.time}>Time</span>
         <span className={col.action}>Action</span>
         <span className={col.mode}>Mode</span>
@@ -182,12 +182,27 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-zinc-900/60 pr-2">
           {shown.map((e, i) => (
-            <div key={i} className="flex items-center gap-3 text-[9px] font-mono py-[3px]">
-              <span className={`${col.time} text-zinc-600`}>{fmtTimestamp(e.created_at)}</span>
-              <span className={`${col.action} truncate ${e.type === 'renewal' ? 'text-zinc-600' : 'text-zinc-500'}`}>{e.label}</span>
-              <span className={`${col.mode} truncate ${e.mode === 'Premium' ? 'text-neon-cyan' : 'text-zinc-600'}`}>{e.mode || '—'}</span>
-              <span className={`${col.source} text-zinc-600 truncate`}>{e.book || '—'}</span>
-              <span className={`${col.credits} ${e.delta >= 0 ? 'text-neon-cyan' : 'text-zinc-500'}`}>{e.delta >= 0 ? '+' : ''}{e.delta}</span>
+            <div key={i} className="py-[3px] text-[9px] font-mono">
+              {/* desktop: single 5-column row */}
+              <div className="hidden sm:flex items-center gap-3">
+                <span className={`${col.time} text-zinc-600`}>{fmtTimestamp(e.created_at)}</span>
+                <span className={`${col.action} truncate ${e.type === 'renewal' ? 'text-zinc-600' : 'text-zinc-500'}`}>{e.label}</span>
+                <span className={`${col.mode} truncate ${e.mode === 'Premium' ? 'text-neon-cyan' : 'text-zinc-600'}`}>{e.mode || '—'}</span>
+                <span className={`${col.source} text-zinc-600 truncate`}>{e.book || '—'}</span>
+                <span className={`${col.credits} ${e.delta >= 0 ? 'text-neon-cyan' : 'text-zinc-500'}`}>{e.delta >= 0 ? '+' : ''}{e.delta}</span>
+              </div>
+              {/* mobile: line 1 = action + credits, line 2 = time · mode · source */}
+              <div className="sm:hidden py-0.5">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <span className={`truncate min-w-0 ${e.type === 'renewal' ? 'text-zinc-500' : 'text-zinc-300'}`}>{e.label}</span>
+                  <span className={`shrink-0 ${e.delta >= 0 ? 'text-neon-cyan' : 'text-zinc-500'}`}>{e.delta >= 0 ? '+' : ''}{e.delta}</span>
+                </div>
+                <div className="flex items-center gap-2 min-w-0 mt-0.5 text-[8px] text-zinc-600">
+                  <span className="shrink-0">{fmtTimestamp(e.created_at)}</span>
+                  <span className={`shrink-0 ${e.mode === 'Premium' ? 'text-neon-cyan' : ''}`}>{e.mode || '—'}</span>
+                  <span className="truncate min-w-0">{e.book || '—'}</span>
+                </div>
+              </div>
             </div>
           ))}
         </div>

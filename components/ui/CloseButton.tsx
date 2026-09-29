@@ -20,7 +20,7 @@ export function CloseButton({
     <button
       onClick={onClick}
       aria-label={label}
-      className={`text-zinc-500 hover:text-white transition-colors active:scale-90 ${className}`}
+      className={`text-zinc-500 hover:text-white transition-colors active:scale-90 !min-h-0 aspect-square flex items-center justify-center ${className}`}
     >
       <X size={size} />
     </button>

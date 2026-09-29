@@ -23,7 +23,7 @@ export const InfoTooltip: React.FC<{ children: React.ReactNode; label?: string }
         aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        className={`transition-colors focus:outline-none ${open ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan focus:text-neon-cyan'}`}
+        className={`transition-colors focus:outline-none !min-h-0 aspect-square flex items-center justify-center ${open ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan focus:text-neon-cyan'}`}
       >
         <Info size={20} />
       </button>

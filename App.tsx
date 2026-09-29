@@ -7684,9 +7684,9 @@ const App: React.FC = () => {
       />
       {isFilesOpen && (
         <div role="dialog" aria-modal="true" aria-label="Generated Files" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans" onClick={() => setIsFilesOpen(false)}>
-          <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl h-[90dvh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={(e) => e.stopPropagation()}>
             <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
-            <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
+            <div className="px-5 md:px-6 py-[14px] md:py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
               <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">Gen_Files</h2>
               <div className="flex items-center gap-3">
                 <InfoTooltip label="About Gen_Files & storage">
@@ -7710,7 +7710,7 @@ const App: React.FC = () => {
                 <CloseButton onClick={() => setIsFilesOpen(false)} />
               </div>
             </div>
-            <div className="h-[calc(70vh+69px)] flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col">
               <ErrorBoundary>
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
                   <GeneratedFilesPanel library={library} />

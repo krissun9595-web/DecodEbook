@@ -114,16 +114,16 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Settings" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in font-sans" onClick={onClose}>
-      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl h-[90dvh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
-        <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
+        <div className="px-5 md:px-6 py-[14px] md:py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">System_Config</h2>
           <CloseButton onClick={onClose} />
         </div>
 
-        <div className="h-[calc(70vh+69px)] flex flex-col">
-        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-[1.6rem] custom-scrollbar">
+        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-6 py-6 space-y-[1.6rem] custom-scrollbar">
           {/* LLM engines are admin-set per function in services/gemini.ts (FUNCTION_MODELS)
               + the media model defaults; users don't choose them. */}
 
@@ -136,7 +136,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
             <select
               value={settings.targetLanguage}
               onChange={(e) => onUpdate({ ...settings, targetLanguage: e.target.value })}
-              className="block w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+              className="block w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 min-h-[42px] transition-all cursor-pointer"
             >
               {LANGUAGES.map((lang) => (
                 <option key={lang} value={lang}>{lang}</option>
@@ -150,12 +150,12 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
               <Highlighter size={18} />
               <label className="text-xs font-bold uppercase tracking-widest font-mono">Highlight_Hue</label>
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-2 md:gap-4">
               {COLORS.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => onUpdate({ ...settings, highlightColor: c.id })}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${c.class} ${
+                  className={`w-8 h-8 !min-h-0 aspect-square rounded-full flex items-center justify-center transition-all ${c.class} ${
                     settings.highlightColor === c.id ? 'ring-2 ring-white scale-110 shadow-[0_0_15px_currentColor]' : 'opacity-40 hover:opacity-100'
                   }`}
                   title={c.label}
@@ -175,7 +175,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                 <button
                   key={line.id}
                   onClick={() => onUpdate({ ...settings, inkLine: line.id })}
-                  className={`flex-1 px-3 py-2 rounded-sm border text-[10px] font-mono uppercase tracking-wider transition-all ${
+                  className={`flex-1 !min-h-0 px-3 py-2 rounded-sm border text-[10px] font-mono uppercase tracking-wider transition-all ${
                     (settings.inkLine || 'full') === line.id
                       ? 'border-neon-cyan text-white bg-neon-cyan/10'
                       : 'border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
@@ -207,7 +207,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                  <select
                     value={settings.font || 'Inter'}
                     onChange={(e) => onUpdate({ ...settings, font: e.target.value as any })}
-                    className="w-full bg-void-1 border border-zinc-800 text-zinc-300 font-mono text-xs focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+                    className="w-full bg-void-1 border border-zinc-800 text-zinc-300 font-mono text-xs focus:border-neon-cyan outline-none rounded-sm px-3 py-2 min-h-[42px] transition-all cursor-pointer"
                  >
                     {FONTS.map(f => (
                         <option key={f} value={f}>{f}</option>
@@ -226,7 +226,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     <button
                     key={size}
                     onClick={() => onUpdate({ ...settings, textSize: size })}
-                    className={`flex-1 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    className={`flex-1 !min-h-0 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
                         settings.textSize === size ? 'bg-zinc-800 text-neon-cyan shadow' : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                     >
@@ -247,7 +247,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     <button
                     key={lh}
                     onClick={() => onUpdate({ ...settings, lineHeight: lh })}
-                    className={`flex-1 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    className={`flex-1 !min-h-0 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
                         settings.lineHeight === lh ? 'bg-zinc-800 text-neon-cyan shadow' : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                     >
@@ -268,7 +268,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     <button
                     key={ls}
                     onClick={() => onUpdate({ ...settings, letterSpacing: ls })}
-                    className={`flex-1 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    className={`flex-1 !min-h-0 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
                         settings.letterSpacing === ls ? 'bg-zinc-800 text-neon-cyan shadow' : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                     >
@@ -290,7 +290,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     key={al}
                     onClick={() => onUpdate({ ...settings, textAlign: al })}
                     title={al === 'auto' ? 'Mirror the source (justify + hyphenation when the book is justified)' : al === 'justify' ? 'Justify with hyphenation' : 'Left-aligned (ragged right)'}
-                    className={`flex-1 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    className={`flex-1 !min-h-0 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
                         (settings.textAlign ?? 'auto') === al ? 'bg-zinc-800 text-neon-cyan shadow' : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                     >
@@ -302,7 +302,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
           </div>
         </div>
 
-        <div className="px-6 py-4 bg-zinc-900 border-t border-zinc-800 flex justify-end shrink-0">
+        <div className="px-5 md:px-6 py-4 bg-zinc-900 border-t border-zinc-800 flex justify-end shrink-0">
            <button
              onClick={onClose}
              className="btn-action btn-go"

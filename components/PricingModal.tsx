@@ -307,10 +307,10 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
-      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl max-h-[90dvh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
+      <div className="bg-void-1 border border-zinc-800 rounded-lg w-full max-w-2xl h-[90dvh] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden animate-fade-in-up scale-in relative" onClick={e => e.stopPropagation()}>
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-neon-cyan to-neon-red"></div>
 
-        <div className="px-6 py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
+        <div className="px-5 md:px-6 py-[14px] md:py-[19px] border-b border-zinc-800 flex items-center justify-between shrink-0">
           <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">My_Account</h2>
           <div className="flex items-center gap-3">
             <InfoTooltip label="About My_Account">
@@ -339,7 +339,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {user ? (
-            <div className="p-6 space-y-[1.6rem]">
+            <div className="px-5 md:px-6 py-6 space-y-[1.6rem]">
 
               {/* ── Account Info ── */}
               <div className="space-y-3">
@@ -347,7 +347,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <Privacy size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Account_Info</label>
                 </div>
-                <div data-acct-panel="Account_Info" className="content-panel rounded-sm p-4 space-y-1 min-h-[175px]">
+                <div className="content-panel rounded-sm p-4 space-y-1 h-[185px] sm:h-[175px] overflow-hidden flex flex-col">
                   <div className="relative">
                     {/* credits figure absolutely positioned so it doesn't inflate the name row.
                         NOTE: keep spacing OFF this wrapper's `space-y-*` — an out-of-flow first
@@ -360,7 +360,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <p className="mt-2 text-[10px] text-zinc-500 font-mono break-all pr-28">Email: {user.email}&nbsp;&nbsp;ID: {user.id}</p>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex-1 flex flex-col min-h-0">
                     <div className="space-y-1.5">
                       <p className="text-[9px] text-zinc-600 font-mono">Binded accounts:</p>
                       <div className="grid grid-cols-4 gap-2">
@@ -369,7 +369,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           return (
                             <button key={p.key} onClick={() => handleToggleBind(p)} disabled={linkingProvider === p.key}
                               title={linked ? `Unbind ${p.label}` : `Bind ${p.label}`}
-                              className={`py-2 rounded-sm border transition active:scale-[0.98] flex items-center justify-center ${linked ? 'border-neon-cyan/40 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10' : 'border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-700'}`}>
+                              className={`py-2 !min-h-0 rounded-sm border transition active:scale-[0.98] flex items-center justify-center ${linked ? 'border-neon-cyan/40 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10' : 'border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-700'}`}>
                               {linkingProvider === p.key ? <Loader2 size={12} className="animate-spin" /> : p.icon}
                             </button>
                           );
@@ -377,7 +377,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       </div>
                       {bindMsg && <p className="text-[9px] text-zinc-500 font-mono">{bindMsg}</p>}
                     </div>
-                    <button onClick={handleSignOut} className="w-full py-2 bg-zinc-900 hover:bg-rose-950/30 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-1.5">
+                    <button onClick={handleSignOut} className="w-full !mt-auto py-2 !min-h-0 bg-zinc-900 hover:bg-rose-950/30 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-1.5">
                       <LogOut size={10} /> Sign Out
                     </button>
                   </div>
@@ -390,7 +390,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <Zap size={18} />
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">Active_Mode</label>
                 </div>
-                <div data-acct-panel="Active_Mode" className="content-panel rounded-sm p-4 min-h-[262px] flex flex-col">
+                <div className="content-panel rounded-sm p-4 h-[275px] sm:h-[262px] overflow-hidden flex flex-col">
                   {/* Toggle row height = the text line (h-4 switch), so "Balanced" sits at the same
                       top as the account name, and the mt-2 below matches the name→email gap. */}
                   <div className="flex items-center justify-between">
@@ -398,12 +398,12 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <button
                       role="switch" aria-checked={genMode === 'premium'} aria-label="Toggle generation mode"
                       onClick={handleToggleMode}
-                      className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
+                      className={`relative w-8 h-4 !min-h-0 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
                     >
                       <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-4' : ''}`} />
                     </button>
                   </div>
-                  <div className="mt-2 text-zinc-600 font-mono">
+                  <div className="mt-2 text-zinc-600 font-mono flex flex-col flex-1 min-h-0">
                     <p data-gap="am-desc" className="text-[10px] mb-[6.5px]">{genMode === 'premium'
                       ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
                       : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
@@ -416,16 +416,16 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <span className={`flex-[1.5] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
                       </div>
                       {modeRows.map(r => (
-                        <div key={r.fn} className="flex items-center gap-3 py-[3px]">
+                        <div key={r.fn} className="flex items-center gap-3 py-[2px] sm:py-[3px]">
                           <span className="flex-[1.15] text-zinc-600 truncate">{r.module}</span>
                           <span className="flex-1 text-zinc-600 truncate">{r.fn}</span>
-                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.b}</span>
-                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}>{r.p}</span>
+                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.b.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.b}</span></span>
+                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.p.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.p}</span></span>
                         </div>
                       ))}
                       </div>
                     </div>
-                    <p className="text-[9px]">Actual cost scales with length; No charge for saved result re-open; Other functions costs will be recorded in Credit history table.</p>
+                    <p className="text-[9px] mt-auto">Actual cost scales with length; No charge for saved result re-open; Other functions costs will be recorded in Credit history table.</p>
                   </div>
                 </div>
               </div>
@@ -437,20 +437,20 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <label className="text-xs font-bold uppercase tracking-widest font-mono">{currentTier === 'pro' ? 'Credit_Packs' : 'Upgrade_to_Pro'}</label>
                 </div>
                 {currentTier === 'pro' ? (
-                  <div data-acct-panel="Credit_Packs" className="space-y-3 min-h-[175px]">
+                  <div className="space-y-3 h-[185px] sm:h-[175px] overflow-hidden">
                     <div className="flex items-center justify-between">
-                      <p className="text-[9px] text-zinc-600 font-mono">Credit packs are used only after your monthly credits run out, and never expire.</p>
-                      <button onClick={handleManage} disabled={portalLoading} className="text-[9px] font-mono uppercase tracking-widest text-zinc-500 hover:text-neon-cyan transition flex items-center gap-1">
+                      <p className="text-[10px] text-zinc-600 font-mono">Credit packs are used only after your monthly credits run out, and never expire.</p>
+                      <button onClick={handleManage} disabled={portalLoading} className="text-[9px] !min-h-0 font-mono uppercase tracking-widest text-zinc-500 hover:text-neon-cyan transition flex items-center gap-1">
                         {portalLoading ? <Loader2 size={10} className="animate-spin" /> : <><ExternalLink size={9} /> Manage</>}
                       </button>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       {PACKS.map(pack => (
-                        <div key={pack.type} className="content-panel rounded-sm p-3 text-center space-y-2">
+                        <div key={pack.type} className="content-panel rounded-sm p-3 text-center space-y-1.5 sm:space-y-2">
                           <p className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</p>
                           <p className="text-[9px] text-zinc-500 font-mono uppercase">credits</p>
                           <p className="text-sm font-bold text-neon-cyan">{pack.price}</p>
-                          <button onClick={() => handleBuyPack(pack.storageKey, pack.type)} disabled={!!buyingPack} aria-busy={buyingPack === pack.type} className="w-full min-h-[28px] py-1.5 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1">
+                          <button onClick={() => handleBuyPack(pack.storageKey, pack.type)} disabled={!!buyingPack} aria-busy={buyingPack === pack.type} className="w-full py-2 !min-h-0 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1">
                             {buyingPack === pack.type ? <Loader2 size={10} className="animate-spin" /> : 'Buy'}
                           </button>
                         </div>
@@ -458,7 +458,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </div>
                   </div>
                 ) : currentTier === 'free' ? (
-                  <div className={`bg-void-2 border rounded-sm overflow-hidden min-h-[175px] ${billingError ? 'border-neon-red/40' : 'border-zinc-800'}`}>
+                  <div className={`bg-void-2 border rounded-sm overflow-hidden h-[185px] sm:h-[175px] ${billingError ? 'border-neon-red/40' : 'border-zinc-800'}`}>
                     <div className="p-4 relative">
                       {/* $9.99 is absolutely positioned so it doesn't inflate the "Pro" row height */}
                       <div className="absolute top-4 right-4 text-right">
@@ -470,7 +470,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <div>
                         <p className="font-mono text-xs font-bold text-neon-cyan">Pro</p>
                         <p className="mt-2 text-[10px] text-zinc-600 font-mono">Auto-renewing · cancel anytime · secure payments via Stripe</p>
-                        <button onClick={() => handleUpgrade('pro')} disabled={!!upgrading} className="mt-2 w-full py-2 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
+                        <button onClick={() => handleUpgrade('pro')} disabled={!!upgrading} className="mt-2 w-full py-2 !min-h-0 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
                           {upgrading === 'pro' ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade to Pro'}
                         </button>
                         <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono list-disc list-inside">
@@ -499,7 +499,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Loader2 size={16} className="animate-spin text-zinc-500" />
                   </div>
                 ) : tierInfo ? (
-                  <div data-acct-panel="Credit_Balance" className="content-panel rounded-sm p-4 flex flex-col gap-2 min-h-[262px]">
+                  <div className="content-panel rounded-sm p-4 flex flex-col gap-2 h-[275px] sm:h-[262px]">
                     {(
                       <>
                         <div className="flex items-center justify-between text-xs">
@@ -553,7 +553,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <Gift size={18} />
                     <label className="text-xs font-bold uppercase tracking-widest font-mono">Earn_Free_Credits</label>
                   </div>
-                  <div data-acct-panel="Earn_Free_Credits" className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 flex flex-col min-h-[262px]">
+                  <div className="bg-void-2 border border-zinc-800 rounded-sm p-4 space-y-2 flex flex-col h-[275px] sm:h-[262px]">
                     {/* Share link */}
                     <div className="space-y-2">
                       <p className="text-xs text-neon-cyan font-mono font-bold">Limited Time Offer</p>
@@ -565,17 +565,17 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <button
                           onClick={() => { navigator.clipboard.writeText(getShareUrl(refCode)); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                           aria-label="Copy referral link"
-                          className="shrink-0 p-1.5 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-90"
+                          className="shrink-0 p-1.5 !min-h-0 aspect-square flex items-center justify-center border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-90"
                         >
                           {copied ? <Check size={12} className="text-neon-cyan" /> : <Copy size={12} />}
                         </button>
                       </div>
                       <p className="text-[9px] text-zinc-600 font-mono">Send the URL to friends directly; Quick sharing buttons below copies the caption to your clipboard automatically - paste it into the post that opens.</p>
                       <div className="grid grid-cols-4 gap-2">
-                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><span className="text-[11px] leading-none">𝕏</span> Twitter</button>
-                        <button onClick={() => shareOnFacebook(refCode)} title="Copies the caption, then opens Facebook" className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><Facebook size={11} /> Facebook</button>
-                        <button onClick={() => shareOnLinkedIn(refCode)} title="Copies the caption, then opens LinkedIn" className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><Linkedin size={11} /> LinkedIn</button>
-                        <button onClick={() => shareOnInstagram(refCode)} title="Copies the caption, then opens Instagram" className="text-[9px] font-mono uppercase tracking-widest py-2 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center gap-1.5"><Instagram size={11} /> Instagram</button>
+                        <button onClick={() => shareOnTwitter(refCode)} className="text-[9px] font-mono uppercase tracking-widest py-2 !min-h-0 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center"><span className="text-[13px] leading-none">𝕏</span></button>
+                        <button onClick={() => shareOnFacebook(refCode)} title="Copies the caption, then opens Facebook" className="text-[9px] font-mono uppercase tracking-widest py-2 !min-h-0 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center"><Facebook size={14} /></button>
+                        <button onClick={() => shareOnLinkedIn(refCode)} title="Copies the caption, then opens LinkedIn" className="text-[9px] font-mono uppercase tracking-widest py-2 !min-h-0 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center"><Linkedin size={14} /></button>
+                        <button onClick={() => shareOnInstagram(refCode)} title="Copies the caption, then opens Instagram" className="text-[9px] font-mono uppercase tracking-widest py-2 !min-h-0 border border-zinc-800 rounded-sm text-zinc-500 hover:text-neon-cyan hover:border-neon-cyan/30 transition active:scale-95 flex items-center justify-center"><Instagram size={14} /></button>
                       </div>
                     </div>
 
@@ -583,7 +583,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     {/* Program terms — always shown; the list scrolls within the remaining space, like the Credit History table area. */}
                     <div className="flex flex-col min-h-0 flex-1">
                       <p className="text-[10px] font-mono text-zinc-600">Program terms</p>
-                      <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono leading-relaxed list-disc list-inside overflow-y-auto custom-scrollbar min-h-0 flex-1 pr-2">
+                      <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono leading-relaxed list-disc list-inside overflow-y-auto custom-scrollbar min-h-0 flex-1 max-h-[220px] pr-2">
                         <li>Bonus credits are promotional store credit for use within DecodEbook only — they have no cash value and are not redeemable, transferable, or refundable.</li>
                         <li>Credits earned never expire. They are applied after your monthly credits and before any purchased packs.</li>
                         <li>Rewards: 100 credits when a new user you referred signs up, verifies their email, and starts using their free credits (up to 1,000 credits total).</li>
@@ -601,7 +601,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
               <div>
                 {!confirmingDelete ? (
                   <div className="text-center">
-                    <button onClick={() => { setConfirmingDelete(true); setError(''); }} className="text-[9px] font-mono uppercase tracking-widest text-zinc-600 hover:text-neon-red transition-colors">
+                    <button onClick={() => { setConfirmingDelete(true); setError(''); }} className="text-[9px] !min-h-0 font-mono uppercase tracking-widest text-zinc-600 hover:text-neon-red transition-colors">
                       Delete Account
                     </button>
                   </div>
@@ -609,10 +609,10 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                   <div className="space-y-2">
                     <p className="text-[10px] text-neon-red font-mono leading-relaxed text-center">This cannot be undone, remaining credit balance cannot be refunded, still Delete?</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <button onClick={handleDeleteAccount} disabled={deleting} className="py-2 rounded-sm border border-neon-red/50 bg-neon-red/10 text-neon-red hover:bg-neon-red/20 text-[10px] font-mono uppercase tracking-widest transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-1.5">
+                      <button onClick={handleDeleteAccount} disabled={deleting} className="py-2 !min-h-0 rounded-sm border border-neon-red/50 bg-neon-red/10 text-neon-red hover:bg-neon-red/20 text-[10px] font-mono uppercase tracking-widest transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-1.5">
                         {deleting ? <Loader2 size={11} className="animate-spin" /> : null}Delete
                       </button>
-                      <button onClick={() => setConfirmingDelete(false)} disabled={deleting} className="py-2 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 text-[10px] font-mono uppercase tracking-widest transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center">
+                      <button onClick={() => setConfirmingDelete(false)} disabled={deleting} className="py-2 !min-h-0 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 text-[10px] font-mono uppercase tracking-widest transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center">
                         Cancel
                       </button>
                     </div>
@@ -623,7 +623,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
             </div>
           ) : (
             /* ── Auth View ── */
-            <div className="p-6 space-y-6">
+            <div className="px-5 md:px-6 py-6 space-y-6">
               {error && <div className="py-1"><StatusMessage variant="error" title={error} inline /></div>}
               {success && <div className="py-1"><StatusMessage variant="success" title={success} inline /></div>}
 
@@ -652,7 +652,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <div className="flex items-center gap-2 content-panel rounded-sm px-3 py-2.5">
                       <KeyIcon size={14} className="text-zinc-600 shrink-0" />
                       <input id="acct-auth-password" name="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? 'text' : 'password'} placeholder="password" className="bg-transparent text-xs text-zinc-300 outline-none w-full font-mono" onKeyDown={e => e.key === 'Enter' && handleAuth()} />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0">
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0 !min-h-0 aspect-square flex items-center justify-center">
                         {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>

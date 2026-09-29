@@ -400,7 +400,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
     <div className="relative h-full min-h-0 flex flex-col animate-fade-in font-sans text-left overflow-hidden">
       {/* Scrolling content is padded (px-6 pt-6); NO bottom padding so the list runs flush to the
           full-bleed footer (a pb here left a black band that clipped the last file frame). */}
-      <div className="flex-1 min-h-0 flex flex-col px-6 pt-6 pb-1">
+      <div className="flex-1 min-h-0 flex flex-col px-5 md:px-6 pt-6 pb-1">
       {/* FILE_STORAGE — local device cache + cloud sync usage, each against its 1 GB quota. Bars mirror
           the MY_ACCOUNT credit bars (same fill + red/amber/cyan colour thresholds). */}
       <div className="shrink-0 space-y-3 mb-[1.6rem]">
@@ -416,7 +416,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             <button
               role="switch" aria-checked={mode === 'cloud'} aria-label="Toggle local / cloud storage"
               onClick={() => setMode(m => m === 'cloud' ? 'local' : 'cloud')}
-              className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${mode === 'cloud' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
+              className={`relative w-8 h-4 !min-h-0 rounded-full transition-colors shrink-0 ${mode === 'cloud' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
             >
               <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-neon-cyan transition-transform ${mode === 'cloud' ? 'translate-x-4' : ''}`} />
             </button>
@@ -460,7 +460,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             <select
               value={filterBook}
               onChange={(e) => setFilterBook(e.target.value)}
-              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 min-h-[42px] transition-all cursor-pointer"
             >
               <option value="all">ALL BOOKS</option>
               {library.map(item => (
@@ -476,7 +476,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as FilterType)}
-              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 transition-all cursor-pointer"
+              className="w-full bg-void-1 border border-zinc-800 text-neon-cyan font-mono text-xs uppercase focus:border-neon-cyan outline-none rounded-sm px-3 py-2 min-h-[42px] transition-all cursor-pointer"
             >
               {FILTER_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -528,7 +528,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                 {/* Checkbox — OUTSIDE the item frame so it aligns under the select-all checkbox */}
                 <button
                   onClick={() => toggleOne(file.key)}
-                  className={`w-[13px] h-[13px] rounded-sm border flex items-center justify-center shrink-0 transition-colors ${selected.has(file.key) ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan' : 'border-zinc-700 hover:border-zinc-500'}`}
+                  className={`w-[13px] h-[13px] !min-h-0 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${selected.has(file.key) ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan' : 'border-zinc-700 hover:border-zinc-500'}`}
                   title={selected.has(file.key) ? 'Deselect' : 'Select'}
                   aria-label={selected.has(file.key) ? 'Deselect file' : 'Select file'}
                 >
@@ -566,7 +566,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     <button
                       onClick={() => syncOne(file)}
                       disabled={busy && !syncing.has(file.key)}
-                      className={`p-1.5 md:p-2 hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent ${onOtherSide(file.key) ? 'text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan'}`}
+                      className={`p-1.5 md:p-2 !min-h-0 aspect-square hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent ${onOtherSide(file.key) ? 'text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan'}`}
                       title={onOtherSide(file.key) ? 'On cloud — click to re-sync (refresh). To remove, use Cloud mode.' : 'Local only — click to sync to cloud'}
                     >
                       {syncing.has(file.key) ? <RefreshCw size={14} className="animate-spin" /> : <Cloud size={14} />}
@@ -575,7 +575,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     <button
                       onClick={() => downloadOne(file)}
                       disabled={(busy && !syncing.has(file.key)) || onOtherSide(file.key)}
-                      className={`p-1.5 md:p-2 hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent ${onOtherSide(file.key) ? 'text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan'}`}
+                      className={`p-1.5 md:p-2 !min-h-0 aspect-square hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent ${onOtherSide(file.key) ? 'text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan'}`}
                       title={onOtherSide(file.key) ? 'Also on this device' : 'Cloud only — click to download to this device'}
                     >
                       {syncing.has(file.key) ? <RefreshCw size={14} className="animate-spin" /> : <CloudDownload size={14} />}
@@ -583,14 +583,14 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   )}
                   <button
                     onClick={() => handleDownload(file)}
-                    className="p-1.5 md:p-2 text-zinc-600 hover:text-neon-cyan hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 !min-h-0 aspect-square text-zinc-600 hover:text-neon-cyan hover:bg-zinc-900 rounded-sm transition-all"
                     title="Export to your file system"
                   >
                     <Save size={14} />
                   </button>
                   <button
                     onClick={async () => { const blob = await getBlob(file); if (blob) shareFile(blob, file.filename, file.filename); }}
-                    className="p-1.5 md:p-2 text-zinc-600 hover:text-neon-cyan hover:bg-zinc-900 rounded-sm transition-all"
+                    className="p-1.5 md:p-2 !min-h-0 aspect-square text-zinc-600 hover:text-neon-cyan hover:bg-zinc-900 rounded-sm transition-all"
                     title="Share"
                   >
                     <Share2 size={14} />
@@ -598,7 +598,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                   <button
                     onClick={() => handleDelete(file)}
                     disabled={busy}
-                    className="p-1.5 md:p-2 text-zinc-600 hover:text-neon-red hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="p-1.5 md:p-2 !min-h-0 aspect-square text-zinc-600 hover:text-neon-red hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent"
                     title={mode === 'cloud' ? 'Remove from cloud' : 'Delete from this device'}
                   >
                     <Trash2 size={14} />
@@ -614,7 +614,7 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
 
       {/* Action footer — ALWAYS shown at the bottom (full-bleed bg-zinc-900 bar, same as the SYS_CONFIG
           Apply bar); the buttons are only enabled for a multi-selection (showBatch). */}
-      <div className="shrink-0 flex items-center justify-end gap-2 px-6 py-4 bg-zinc-900 border-t border-zinc-800">
+      <div className="shrink-0 flex items-center justify-end gap-2 px-5 md:px-6 py-4 bg-zinc-900 border-t border-zinc-800">
         {mode === 'local' ? (
           <button
             onClick={handleSyncSelected}
