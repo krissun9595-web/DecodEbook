@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HardDrive, Headphones, Mic2, Film, Image as ImageIcon, Download, Trash2, AlertTriangle, FileText, Notebook as NotebookIcon, Map, FileDown, Save, Share2, Languages, File as FileIcon, Check, Minus, Archive, Cloud, RefreshCw, Database, CloudDownload, Filter, BookOpen, Folders } from 'lucide-react';
 import { CachedFileMetadata, LibraryItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
@@ -8,6 +8,7 @@ import { uploadGenFileToCloud, removeGenFileFromCloud, fetchGenFileFromCloud, li
 import { syncSidecarFor } from '../services/figureSync';
 import { shareFile } from '../utils/share';
 import { titleCase, formatDateTime } from '../utils/filename';
+import SwipeRow from './SwipeRow';
 import JSZip from 'jszip';
 
 interface Props {
@@ -258,6 +259,55 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
     try { await removeFromCurrentSide(file); await loadFiles(); }
     catch (e) { console.error('Delete failed:', e); }
   };
+
+  // ── Mobile swipe rows: swipe-to-reveal actions + full-swipe delete with a 5s Undo toast ──
+  // Only the phone breakpoint swaps the per-row icon buttons for a SwipeRow; desktop keeps them.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const on = () => setIsMobile(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  // Delete = 2-click confirm (no full-swipe / no undo timer): first tap on the drawer's Delete arms it
+  // (label → Confirm, drawer stays open); a second tap within 3s runs the real delete.
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(confirmTimer.current), []);
+  const confirmDelete = (file: CachedFileMetadata) => {
+    if (confirmKey !== file.key) {
+      setConfirmKey(file.key);
+      clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmKey(null), 3000);
+      return;
+    }
+    clearTimeout(confirmTimer.current);
+    setConfirmKey(null);
+    handleDelete(file); // removeFromCurrentSide + loadFiles → the row unmounts (drawer goes with it)
+  };
+
+  // Per-file swipe actions (index 0 = primary/red block = destructive; needs the 2-click confirm).
+  // Mode-dependent; mirrors the desktop per-row buttons — 4 actions each side. Sync/Download keep the
+  // drawer open (keepOpen) so their spinner shows on the icon itself.
+  const swipeActions = (file: CachedFileMetadata) => {
+    const armed = confirmKey === file.key;
+    const busyIcon = syncing.has(file.key);
+    const del = {
+      id: 'delete', confirm: true, keepOpen: true,
+      label: armed ? 'Confirm' : (mode === 'cloud' ? 'Remove' : 'Delete'),
+      icon: armed ? <AlertTriangle size={20} /> : <Trash2 size={20} />,
+      onSelect: () => confirmDelete(file)
+    };
+    const share = { id: 'share', label: 'Share', icon: <Share2 size={20} />, onSelect: async () => { const b = await getBlob(file); if (b) shareFile(b, file.filename, file.filename); } };
+    const exportF = { id: 'export', label: 'Export', icon: <Save size={20} />, onSelect: () => handleDownload(file) };
+    const onOther = onOtherSide(file.key); // synced to the other side → cyan icon, like the desktop row
+    if (mode === 'cloud') {
+      return [del, share, exportF, { id: 'download', label: 'Download', keepOpen: true, icon: busyIcon ? <RefreshCw size={20} className="animate-spin" /> : <CloudDownload size={20} className={onOther ? 'text-neon-cyan' : ''} />, onSelect: () => downloadOne(file) }];
+    }
+    return [del, share, exportF, { id: 'sync', label: 'Sync', keepOpen: true, icon: busyIcon ? <RefreshCw size={20} className="animate-spin" /> : <Cloud size={20} className={onOther ? 'text-neon-cyan' : ''} />, onSelect: () => syncOne(file) }];
+  };
+  const visibleFiles = filteredFiles;
 
   // DELETE the CHECKED files (2-click confirm). Only touches selectedFiles (⊆ current view), on the
   // current side only.
@@ -518,32 +568,17 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
       {/* File List — scrolls independently; FILES_SCOPE + FILE_LIST header + batch bar stay fixed above.
           px-1 matches the batch bar so each row's checkbox aligns under the select-all checkbox. */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2 custom-scrollbar px-1">
-        {filteredFiles.length === 0 ? (
+        {visibleFiles.length === 0 ? (
           <EmptyState icon={mode === 'cloud' ? Cloud : HardDrive} label={mode === 'cloud' ? 'Cloud_Empty' : 'Cache_Empty'} sublabel={mode === 'cloud' ? 'Synced files will appear here — sync from Local to add them' : 'Generated files will appear here after creation'} className="h-full" />
         ) : (
-          filteredFiles.map((file, i) => {
+          visibleFiles.map((file, i) => {
             const config = FILE_TYPE_CONFIG[file.fileType] || DEFAULT_FILE_CONFIG;
-            return (
-              <div key={file.key} style={{ animationDelay: `${Math.min(i * 12, 120)}ms` }} className="flex items-center gap-2 animate-fade-in-up">
-                {/* Checkbox — OUTSIDE the item frame so it aligns under the select-all checkbox */}
-                <button
-                  onClick={() => toggleOne(file.key)}
-                  className={`w-[13px] h-[13px] !min-h-0 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${selected.has(file.key) ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan' : 'border-zinc-700 hover:border-zinc-500'}`}
-                  title={selected.has(file.key) ? 'Deselect' : 'Select'}
-                  aria-label={selected.has(file.key) ? 'Deselect file' : 'Select file'}
-                >
-                  {selected.has(file.key) ? <Check size={9} /> : null}
-                </button>
-
-                <div
-                  className={`flex-1 min-w-0 content-panel rounded-sm px-4 py-2 flex items-center gap-3 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group ${selected.has(file.key) ? 'border-neon-cyan/40 bg-neon-cyan/[0.03]' : ''}`}
-                >
-                {/* Icon */}
+            // icon + info — shared by the mobile SwipeRow surface and the desktop inline card
+            const rowBody = (
+              <>
                 <div className={`w-7 h-7 rounded-sm bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 ${config.color}`}>
                   {config.icon}
                 </div>
-
-                {/* File Info — filename on top (truncates), then a SINGLE metadata line (book | date | size). */}
                 <div className="flex-1 min-w-0">
                   <div className="mb-0.5">
                     <span title={file.filename} className="text-xs text-zinc-200 font-medium truncate block">{file.filename}</span>
@@ -556,6 +591,42 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     <span className="shrink-0">{formatFileSize(file.size)}</span>
                   </div>
                 </div>
+              </>
+            );
+            return (
+              <div key={file.key} style={{ animationDelay: `${Math.min(i * 12, 120)}ms` }} className="flex items-center gap-2 animate-fade-in-up">
+                {/* Checkbox — OUTSIDE the item frame so it aligns under the select-all checkbox */}
+                <button
+                  onClick={() => toggleOne(file.key)}
+                  className={`w-[13px] h-[13px] !min-h-0 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${selected.has(file.key) ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan' : 'border-zinc-700 hover:border-zinc-500'}`}
+                  title={selected.has(file.key) ? 'Deselect' : 'Select'}
+                  aria-label={selected.has(file.key) ? 'Deselect file' : 'Select file'}
+                >
+                  {selected.has(file.key) ? <Check size={9} /> : null}
+                </button>
+
+                {isMobile ? (
+                  /* Mobile: swipe left to reveal actions; full-swipe = delete (with Undo toast). Frees the row for the title. */
+                  <SwipeRow
+                    className="flex-1 min-w-0"
+                    label={file.filename}
+                    height={52}
+                    radius={6}
+                    actionWidth={56}
+                    fullSwipe={false}
+                    rowColor="#18181b"
+                    drawerColor="#27272a"
+                    actionColor="#e5484d"
+                    textColor="#f5f5f5"
+                    actions={swipeActions(file)}
+                  >
+                    {rowBody}
+                  </SwipeRow>
+                ) : (
+                <div
+                  className={`flex-1 min-w-0 content-panel rounded-sm px-4 py-2 flex items-center gap-3 hover:border-zinc-700 hover:bg-zinc-900/40 active:border-zinc-600 transition-all group ${selected.has(file.key) ? 'border-neon-cyan/40 bg-neon-cyan/[0.03]' : ''}`}
+                >
+                {rowBody}
 
                 {/* Actions. The first icon is the CROSS-SIDE presence indicator: in LOCAL mode a cloud icon
                     (cyan = also on cloud; click pushes/refreshes to cloud, never removes); in CLOUD mode a
@@ -596,15 +667,16 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     <Share2 size={14} />
                   </button>
                   <button
-                    onClick={() => handleDelete(file)}
+                    onClick={() => confirmDelete(file)}
                     disabled={busy}
-                    className="p-1.5 md:p-2 !min-h-0 aspect-square text-zinc-600 hover:text-neon-red hover:bg-zinc-900 rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent"
-                    title={mode === 'cloud' ? 'Remove from cloud' : 'Delete from this device'}
+                    className={`p-1.5 md:p-2 !min-h-0 aspect-square rounded-sm transition-all disabled:opacity-40 disabled:hover:bg-transparent ${confirmKey === file.key ? 'text-neon-red bg-neon-red/10 animate-pulse' : 'text-zinc-600 hover:text-neon-red hover:bg-zinc-900'}`}
+                    title={confirmKey === file.key ? 'Click again to confirm' : (mode === 'cloud' ? 'Remove from cloud' : 'Delete from this device')}
                   >
-                    <Trash2 size={14} />
+                    {confirmKey === file.key ? <AlertTriangle size={14} /> : <Trash2 size={14} />}
                   </button>
                 </div>
                 </div>
+                )}
               </div>
             );
           })
