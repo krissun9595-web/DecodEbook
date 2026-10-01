@@ -989,7 +989,7 @@ async function handleStripeCheckout(request: Request, env: Env): Promise<Respons
   const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`,
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia',
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams(params).toString(),
@@ -1013,7 +1013,7 @@ async function handleStripePortal(request: Request, env: Env): Promise<Response>
   const portalRes = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`,
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia',
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
@@ -1070,7 +1070,7 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
   const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`,
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia',
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams(params).toString(),
@@ -1190,7 +1190,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
       if (!userId || !subscriptionId) break;
 
       const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
-        headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}` },
+        headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia' },
       });
       const sub = await subRes.json() as any;
       const item = sub.items?.data?.[0];
@@ -1244,7 +1244,10 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     }
 
     case 'invoice.payment_failed': {
-      const subscriptionId = event.data.object.subscription;
+      // Stripe 2025+/dahlia removed invoice.subscription → read the new locations too.
+      const inv: any = event.data.object;
+      const subscriptionId = inv.subscription ?? inv.parent?.subscription_details?.subscription
+        ?? inv.lines?.data?.[0]?.subscription ?? inv.lines?.data?.[0]?.parent?.subscription_item_details?.subscription;
       if (subscriptionId) {
         await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${subscriptionId}`, {
           method: 'PATCH',
@@ -1255,10 +1258,13 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     }
 
     case 'invoice.payment_succeeded': {
-      const subscriptionId = event.data.object.subscription;
+      // Stripe 2025+/dahlia removed invoice.subscription → read the new locations too.
+      const inv: any = event.data.object;
+      const subscriptionId = inv.subscription ?? inv.parent?.subscription_details?.subscription
+        ?? inv.lines?.data?.[0]?.subscription ?? inv.lines?.data?.[0]?.parent?.subscription_item_details?.subscription;
       if (subscriptionId) {
         const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
-          headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}` },
+          headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia' },
         });
         const sub = await subRes.json() as any;
         const invItem = sub.items?.data?.[0];
