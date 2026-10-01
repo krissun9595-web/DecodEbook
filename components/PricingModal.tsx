@@ -504,7 +504,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <>
                         <div className="flex items-center justify-between text-xs">
                           <span className="flex items-center gap-1.5">
-                            <span className="text-neon-cyan font-mono font-bold">Monthly credits</span>
+                            <span className="text-neon-cyan font-mono font-bold">{currentTier === 'free' ? 'Free credits' : 'Monthly credits'}</span>
                             {(tierInfo.bonus_credits || 0) > 0 && (
                               <span className="text-[9px] text-neon-amber font-mono border border-neon-amber/30 rounded-sm px-1 py-px leading-none" title="Temporary bonus credits — used after your monthly credits, before packs">
                                 +{tierInfo.bonus_credits} bonus
