@@ -296,16 +296,16 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
     const del = {
       id: 'delete', confirm: true, keepOpen: true,
       label: armed ? 'Confirm' : (mode === 'cloud' ? 'Remove' : 'Delete'),
-      icon: armed ? <AlertTriangle size={20} /> : <Trash2 size={20} />,
+      icon: armed ? <AlertTriangle size={16} /> : <Trash2 size={16} />,
       onSelect: () => confirmDelete(file)
     };
-    const share = { id: 'share', label: 'Share', icon: <Share2 size={20} />, onSelect: async () => { const b = await getBlob(file); if (b) shareFile(b, file.filename, file.filename); } };
-    const exportF = { id: 'export', label: 'Export', icon: <Save size={20} />, onSelect: () => handleDownload(file) };
+    const share = { id: 'share', label: 'Share', icon: <Share2 size={16} />, onSelect: async () => { const b = await getBlob(file); if (b) shareFile(b, file.filename, file.filename); } };
+    const exportF = { id: 'export', label: 'Export', icon: <Save size={16} />, onSelect: () => handleDownload(file) };
     const onOther = onOtherSide(file.key); // synced to the other side → cyan icon, like the desktop row
     if (mode === 'cloud') {
-      return [del, share, exportF, { id: 'download', label: 'Download', keepOpen: true, icon: busyIcon ? <RefreshCw size={20} className="animate-spin" /> : <CloudDownload size={20} className={onOther ? 'text-neon-cyan' : ''} />, onSelect: () => downloadOne(file) }];
+      return [del, share, exportF, { id: 'download', label: 'Download', keepOpen: true, icon: busyIcon ? <RefreshCw size={16} className="animate-spin" /> : <CloudDownload size={16} className={onOther ? 'text-neon-cyan' : ''} />, onSelect: () => downloadOne(file) }];
     }
-    return [del, share, exportF, { id: 'sync', label: 'Sync', keepOpen: true, icon: busyIcon ? <RefreshCw size={20} className="animate-spin" /> : <Cloud size={20} className={onOther ? 'text-neon-cyan' : ''} />, onSelect: () => syncOne(file) }];
+    return [del, share, exportF, { id: 'sync', label: 'Sync', keepOpen: true, icon: busyIcon ? <RefreshCw size={16} className="animate-spin" /> : <Cloud size={16} className={onOther ? 'text-neon-cyan' : ''} />, onSelect: () => syncOne(file) }];
   };
   const visibleFiles = filteredFiles;
 
