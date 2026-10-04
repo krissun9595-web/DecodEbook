@@ -1199,6 +1199,35 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
       const periodStart = sub.current_period_start || item?.current_period_start || sub.start_date;
       const periodEnd = sub.current_period_end || item?.current_period_end;
 
+      // Free→Pro carry-over: when a FREE user upgrades, move their UNUSED free credits into the
+      // PERMANENT bonus balance so upgrading never forfeits them (Pro's 1000 then stacks on top).
+      // Runs ONCE — guarded on (a) no existing Pro subscription row yet AND (b) get_user_credits still
+      // reporting the free tier — so a redelivered webhook / renewal / re-subscribe can't re-grant.
+      if (tier === 'pro') {
+        const existingPro = await supabaseAdmin(env, `/subscriptions?user_id=eq.${userId}&tier=eq.pro&limit=1`, { method: 'GET' })
+          .then(r => (r.ok ? r.json() : [])).catch(() => []) as any[];
+        if (Array.isArray(existingPro) && existingPro.length === 0) {
+          const credRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_credits`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({ p_user_id: userId }),
+          }).catch(() => null);
+          if (credRes && credRes.ok) {
+            const cred = await credRes.json().catch(() => null) as any;
+            const freeTotal = TIER_CREDITS.free;
+            if (cred && (cred.tier || 'free') === 'free' && isFinite(freeTotal)) {
+              const freeRemaining = Math.max(0, freeTotal - (cred.credits_used || 0));
+              if (freeRemaining > 0) {
+                await supabaseAdmin(env, '/rpc/add_bonus_credits', {
+                  method: 'POST',
+                  body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining }),
+                }).catch(() => {});
+              }
+            }
+          }
+        }
+      }
+
       await supabaseAdmin(env, '/subscriptions', {
         method: 'POST',
         headers: { 'Prefer': 'resolution=merge-duplicates' },

@@ -485,7 +485,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           <p className="text-[9px] text-zinc-500 font-mono uppercase">credits</p>
                           <p className="text-sm font-bold text-neon-cyan">{pack.price}</p>
                           <button onClick={() => handleBuyPack(pack.storageKey, pack.type)} disabled={!!buyingPack} aria-busy={buyingPack === pack.type} className="w-full py-2 !min-h-0 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1">
-                            {buyingPack === pack.type ? <Loader2 size={10} className="animate-spin" /> : 'Buy'}
+                            {buyingPack === pack.type ? <><Loader2 size={10} className="animate-spin" /> Buying…</> : 'Buy'}
                           </button>
                         </div>
                       ))}
@@ -505,7 +505,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         <p className="font-mono text-xs font-bold text-neon-cyan">Pro</p>
                         <p className="mt-2 text-[10px] text-zinc-600 font-mono">Auto-renewing · cancel anytime · secure payments via Stripe</p>
                         <button onClick={() => handleUpgrade('pro')} disabled={!!upgrading} className="mt-2 w-full py-2 !min-h-0 text-[10px] font-mono uppercase tracking-widest bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 rounded-sm transition active:scale-[0.98] flex items-center justify-center gap-1.5">
-                          {upgrading === 'pro' ? <Loader2 size={12} className="animate-spin" /> : 'Upgrade to Pro'}
+                          {upgrading === 'pro' ? <><Loader2 size={12} className="animate-spin" /> Processing…</> : 'Upgrade to Pro'}
                         </button>
                         <ul className="mt-2 space-y-1 text-[9px] text-zinc-500 font-mono list-disc list-inside">
                           <li>1,000 credits/month</li>

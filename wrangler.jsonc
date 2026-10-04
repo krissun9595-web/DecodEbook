@@ -25,6 +25,16 @@
   "kv_namespaces": [
     { "binding": "RATE_LIMIT", "id": "48a66e5ac6d246449e07c02fc2b3f51c" }
   ],
+  // Stripe LIVE price IDs — PUBLIC (also surfaced via /api/config), so plain vars (not secrets). Keep
+  // them here so a `wrangler deploy` (production) doesn't wipe the dashboard-set vars. The SECRET key
+  // and WEBHOOK secret stay as encrypted Worker secrets (never put those here). Named envs (staging)
+  // do NOT inherit these — staging keeps its own test price IDs.
+  "vars": {
+    "STRIPE_PRO_PRICE_ID": "price_1UMKhHC4Xp42vcb2L9Ja1erD",
+    "STRIPE_PACK_S_PRICE_ID": "price_1UMKhIC4Xp42vcb26QnZKWi2",
+    "STRIPE_PACK_M_PRICE_ID": "price_1UMKhIC4Xp42vcb22jxyN9aY",
+    "STRIPE_PACK_L_PRICE_ID": "price_1UMKhIC4Xp42vcb2NHsf4FKv"
+  },
   "env": {
     "staging": {
       "workers_dev": true,
