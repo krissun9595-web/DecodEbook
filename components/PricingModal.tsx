@@ -661,20 +661,25 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     </div>
                   </div>
 
-                  {authMode === 'login' && (
-                    <div className="flex justify-end">
-                      <button onClick={() => { setAuthMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">Forgot Password?</button>
-                    </div>
-                  )}
-
-                  {authMode === 'signup' && (
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input id="acct-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-neon-cyan" />
-                      <span className="text-[10px] text-zinc-500 font-mono leading-relaxed">
-                        I agree to the <a href="/terms" target="_blank" className="text-neon-cyan hover:underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-neon-cyan hover:underline">Privacy Policy</a>
-                      </span>
-                    </label>
-                  )}
+                  {/* Fixed-height slot (reuses the AuthGate fix) so the Sign In / Create Account button
+                      below keeps the same position whether this row shows the login "Forgot Password?"
+                      link or the taller signup terms checkbox — otherwise the button jumps/shrinks
+                      between modes. !mt-3 tightens the password→slot gap against space-y-4. */}
+                  <div className="min-h-[2.75rem] sm:min-h-[1.25rem] flex items-center !mt-3">
+                    {authMode === 'login' && (
+                      <div className="w-full flex justify-end">
+                        <button onClick={() => { setAuthMode('forgot'); setError(''); setSuccess(''); }} className="text-[10px] text-zinc-500 hover:text-neon-cyan font-mono uppercase tracking-widest transition-colors">Forgot Password?</button>
+                      </div>
+                    )}
+                    {authMode === 'signup' && (
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input id="acct-agree-terms" name="agree-terms" type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 accent-neon-cyan" />
+                        <span className="text-[10px] text-zinc-500 font-mono leading-relaxed">
+                          I agree to the <a href="/terms" target="_blank" className="text-neon-cyan hover:underline">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-neon-cyan hover:underline">Privacy Policy</a>
+                        </span>
+                      </label>
+                    )}
+                  </div>
 
                   <button onClick={handleAuth} disabled={authLoading || (authMode === 'signup' && !agreedToTerms)} className="w-full min-h-[2.75rem] py-2.5 bg-neon-cyan text-black font-bold rounded-sm text-xs font-mono uppercase tracking-widest hover:bg-[#00c2cc] transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-glow-cyan">
                     {authLoading ? <Loader2 size={14} className="animate-spin" /> : authMode === 'login' ? <LogIn size={14} /> : <UserPlus size={14} />}
