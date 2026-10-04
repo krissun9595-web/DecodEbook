@@ -357,7 +357,10 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <span className="text-zinc-500 text-xs ml-0.5">{currentTier === 'free' ? 'Free credits' : 'credits'}</span>
                     </div>
                     <p className="text-xs text-neon-cyan font-mono font-bold truncate pr-28">{accountName}</p>
-                    <p className="mt-2 text-[10px] text-zinc-500 font-mono break-all pr-28">Email: {user.email}&nbsp;&nbsp;ID: {user.id}</p>
+                    <div className="mt-2 text-[10px] text-zinc-500 font-mono space-y-0.5">
+                      <p className="truncate pr-28" title={user.email ?? ''}>Email: {user.email}</p>
+                      <p className="truncate" title={user.id}>ID: {user.id}</p>
+                    </div>
                   </div>
 
                   <div className="space-y-2 flex-1 flex flex-col min-h-0">

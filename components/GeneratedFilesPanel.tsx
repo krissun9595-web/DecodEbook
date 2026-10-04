@@ -610,10 +610,10 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                 {isMobile ? (
                   /* Mobile: swipe left to reveal actions; full-swipe = delete (with Undo toast). Frees the row for the title. */
                   <SwipeRow
-                    className="flex-1 min-w-0"
+                    className="flex-1 min-w-0 rounded-sm border border-zinc-800"
                     label={file.filename}
                     height={52}
-                    radius={6}
+                    radius={2}
                     actionWidth={56}
                     fullSwipe={false}
                     rowColor="#0a0a0c"
