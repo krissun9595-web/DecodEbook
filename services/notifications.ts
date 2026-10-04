@@ -13,6 +13,13 @@ export interface NotifView extends Notif { read: boolean; }
 // ── App updates (edit here, then deploy, to post one). Keep ids unique + stable. ──
 export const ANNOUNCEMENTS: Notif[] = [
   {
+    id: 'u-2026-10-05-toast-center-2',
+    type: 'update',
+    title: 'Toast position test #2',
+    preview: 'Re-checking that the push toast centers on the reading area when the sidebar is open, so it feels balanced. Tap "View" to open My_Inbox.',
+    ts: Date.parse('2026-10-05T04:30:00Z'),
+  },
+  {
     id: 'u-2026-10-03-chat-mobile',
     type: 'update',
     title: 'Chat tuned for mobile',
@@ -74,8 +81,8 @@ export function syncDerivedNotifs(tier: UserTier | null): Notif[] {
   if (prevBonus !== null) {
     const delta = curBonus - Number(prevBonus);
     if (delta > 0) {
-      const n: Notif = { id: `bonus-${now}`, type: 'bonus', title: 'Bonus credits granted',
-        preview: `You received ${delta} bonus credits — used after your monthly credits, and they never expire.`, ts: now };
+      const n: Notif = { id: `bonus-${now}`, type: 'bonus', title: 'Bonus credits added',
+        preview: `${delta} bonus credits were added to your account (e.g. carried over from your free credits when you upgraded, or a referral reward). They're used after your monthly credits and never expire.`, ts: now };
       list.push(n); fresh.push(n);
     }
   }

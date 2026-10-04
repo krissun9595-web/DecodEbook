@@ -7711,7 +7711,7 @@ const App: React.FC = () => {
         return (
           <button
             onClick={() => { setIsNotifOpen(true); setNotifToast(null); }}
-            className={`fixed bottom-6 inset-x-0 mx-auto w-fit z-[10000] max-w-[calc(100%-2rem)] flex items-center gap-3 bg-zinc-900 border ${cfg.border} rounded-md px-4 py-3 shadow-2xl animate-fade-in-up text-left`}
+            className={`fixed bottom-6 inset-x-0 ${isSidebarOpen ? 'md:left-64' : ''} mx-auto w-fit z-[10000] max-w-[calc(100%-2rem)] flex items-center gap-3 bg-zinc-900 border ${cfg.border} rounded-md px-4 py-3 shadow-2xl animate-fade-in-up text-left`}
           >
             <cfg.Icon size={16} className={`shrink-0 ${cfg.text}`} />
             <span className="min-w-0">

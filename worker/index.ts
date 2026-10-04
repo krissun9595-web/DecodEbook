@@ -1218,10 +1218,19 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
             if (cred && (cred.tier || 'free') === 'free' && isFinite(freeTotal)) {
               const freeRemaining = Math.max(0, freeTotal - (cred.credits_used || 0));
               if (freeRemaining > 0) {
-                await supabaseAdmin(env, '/rpc/add_bonus_credits', {
+                // Prefer the reason-tagged grant so the ledger/history reads "Free credits carried over"
+                // (not the generic "Referral / bonus credits"); fall back to the plain bonus grant if
+                // that RPC isn't deployed yet, so carry-over still works pre-migration.
+                const tagged = await supabaseAdmin(env, '/rpc/add_bonus_credits_reason', {
                   method: 'POST',
-                  body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining }),
-                }).catch(() => {});
+                  body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining, p_reason: 'Free credits carried over' }),
+                }).then(r => r.ok).catch(() => false);
+                if (!tagged) {
+                  await supabaseAdmin(env, '/rpc/add_bonus_credits', {
+                    method: 'POST',
+                    body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining }),
+                  }).catch(() => {});
+                }
               }
             }
           }
