@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search, Bell } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -16,6 +16,8 @@ import { LandingPage } from './components/LandingPage';
 import BrandMark from './components/ui/BrandMark';
 import { CloseButton } from './components/ui/CloseButton';
 import { fetchUserTier, UserTier } from './services/stripe';
+import { NotificationsPanel } from './components/NotificationsPanel';
+import { syncDerivedNotifs, unreadCount, Notif } from './services/notifications';
 import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
 import { CreditNotice } from './components/ui/CreditNotice';
 import { StatusMessage } from './components/ui/StatusMessage';
@@ -445,10 +447,25 @@ const App: React.FC = () => {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [genMode, setGenMode] = useState<GenMode>(getGenerationMode());
   const [isFilesOpen, setIsFilesOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notifUnread, setNotifUnread] = useState(() => { try { return unreadCount(); } catch { return 0; } });
+  const [notifToast, setNotifToast] = useState<Notif | null>(null);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   // Keep the credits helper's cache in sync so any module's pre-check sees the
   // current balance without threading the tier through every component.
   const applyUserTier = (t: UserTier) => { setUserTier(t); setCachedTier(t); };
+  // Fold live tier state into notifications (bonus grant / 90% usage) whenever it changes; a freshly
+  // generated one pops a toast. Also refresh the sidebar unread badge.
+  useEffect(() => {
+    const fresh = syncDerivedNotifs(userTier);
+    if (fresh.length) setNotifToast(fresh[fresh.length - 1]);
+    setNotifUnread(unreadCount());
+  }, [userTier]);
+  useEffect(() => {
+    if (!notifToast) return;
+    const t = setTimeout(() => setNotifToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [notifToast]);
   // A blocked action's "Upgrade / Buy Credits" CTA fires this; open MY_ACCOUNT
   // (which already shows Upgrade for free tiers and Credit_Packs for pro).
   React.useEffect(() => {
@@ -7423,6 +7440,7 @@ const App: React.FC = () => {
                 activeChapter={activeChapter}
                 bookTitle={activeBook?.title}
                 bookId={activeBookId || undefined}
+                chapterOrder={activeBook?.chapters.map(c => c.title)}
             />
         );
     }
@@ -7672,6 +7690,25 @@ const App: React.FC = () => {
         settings={settings}
         onUpdate={setSettings}
       />
+      <NotificationsPanel
+        isOpen={isNotifOpen}
+        onClose={() => setIsNotifOpen(false)}
+        onChange={() => setNotifUnread(unreadCount())}
+      />
+      {/* Transient toast for a freshly generated time-sensitive notification (90% usage / bonus). */}
+      {notifToast && (
+        <button
+          onClick={() => { setIsNotifOpen(true); setNotifToast(null); }}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-[calc(100%-2rem)] flex items-center gap-3 bg-zinc-900 border border-neon-cyan/40 rounded-md px-4 py-3 shadow-2xl animate-fade-in-up text-left"
+        >
+          <Bell size={16} className={`shrink-0 ${notifToast.type === 'usage' ? 'text-neon-red' : 'text-neon-amber'}`} />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium text-zinc-100 truncate">{notifToast.title}</span>
+            <span className="block text-[10px] text-zinc-500 line-clamp-1">{notifToast.preview}</span>
+          </span>
+          <span className="shrink-0 text-[9px] font-mono uppercase tracking-widest text-neon-cyan">View</span>
+        </button>
+      )}
       <AccountPanel
         isOpen={isAccountOpen}
         onClose={() => setIsAccountOpen(false)}
@@ -7831,7 +7868,7 @@ const App: React.FC = () => {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="SEARCH_FULLTEXT"
-                      className={`w-full bg-zinc-900/60 border ${searchActive ? 'border-neon-cyan' : 'border-zinc-800'} focus:border-neon-cyan rounded-sm pl-7 pr-7 h-[42px] text-[9px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus-visible:shadow-none tracking-wide`}
+                      className={`w-full bg-zinc-900/60 border ${searchActive ? 'border-neon-cyan' : 'border-zinc-800'} focus:border-neon-cyan rounded-sm pl-7 pr-7 h-[34px] md:h-[42px] text-[9px] md:text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus-visible:shadow-none tracking-wide`}
                     />
                     {searchQuery && (
                       <button onClick={clearSearch} className="absolute right-2 text-zinc-600 hover:text-neon-red transition-colors" title="Clear search">
@@ -7960,6 +7997,16 @@ const App: React.FC = () => {
             <span>GEN_FILES</span>
           </button>
           <button
+            onClick={() => setIsNotifOpen(true)}
+            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+          >
+            <Bell size={14} />
+            <span>MY_INBOX</span>
+            {notifUnread > 0 && (
+              <span className="ml-auto w-2 h-2 rounded-full bg-neon-cyan shrink-0" aria-label="Unread" />
+            )}
+          </button>
+          <button
             onClick={() => setIsAccountOpen(true)}
             className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-neon-cyan hover:text-white' : 'text-zinc-500 hover:text-neon-cyan'}`}
           >
@@ -7985,8 +8032,9 @@ const App: React.FC = () => {
         <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
           <div className="h-12 md:h-14 flex items-center justify-between px-2 md:px-4 gap-2">
             <div className="flex items-center gap-1.5 md:gap-4 min-w-0 shrink-0">
-              <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-zinc-500 hover:text-neon-cyan transition-colors shrink-0">
+              <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="relative flex items-center !min-h-0 text-zinc-500 hover:text-neon-cyan transition-colors shrink-0">
                 {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+                {notifUnread > 0 && !isSidebarOpen && <span className="absolute bottom-0 -right-0.5 w-2 h-2 rounded-full bg-neon-cyan ring-2 ring-black" aria-hidden />}
               </button>
               <div className="h-4 w-[1px] bg-zinc-800 shrink-0 hidden md:block"></div>
               {activeChapterId ? (

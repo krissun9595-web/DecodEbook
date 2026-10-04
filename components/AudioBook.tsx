@@ -1937,8 +1937,8 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
         // Split view: each half mirrors the text pane's padding (pr-6 / pl-6) and sizes the figure at
         // its book proportion, centred — so it matches the text measure instead of filling the half.
         ? <div className="w-full flex items-start">
-            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}{texts(captionOrig, attribOrig)}</div></div>
-            <div className="w-1/2 min-w-0 pr-2 md:pr-6 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}{texts(captionTrans, attribTrans)}</div></div>
+            <div className="w-1/2 min-w-0 pr-3 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}{texts(captionOrig, attribOrig)}</div></div>
+            <div className="w-1/2 min-w-0 pl-3 flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{trPane}{texts(captionTrans, attribTrans)}</div></div>
           </div>
         // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
         // centred within at its book proportion.
@@ -4003,7 +4003,9 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // guesses for EPUB and let E028 own the spacing — genuine EPUB set-off quotes come through structurally
   // (blockQuote/extract → E028, headings → heading role), so nothing set-off loses its gap.
   const isEpubSource = fileContext.sourceKind === 'epub';
-  const bodyParagraphStyle: React.CSSProperties = { textIndent: `${firstLineIndentEm}em`, paddingLeft: 0, marginLeft: 0 };
+  // NB: no `paddingLeft: 0` here — it would be an inline style that overrides the split view's `pl-3`
+  // gutter class on indented paragraphs (padding-left is already 0 by default everywhere else).
+  const bodyParagraphStyle: React.CSSProperties = { textIndent: `${firstLineIndentEm}em`, marginLeft: 0 };
   // Per-type hanging-indent magnitudes measured from the source (em, size-invariant), falling back to the
   // reader's original constants when the book gave too few samples to measure a given list type.
   const bulletHangEm = fileContext.sourceHangs?.bullet ?? 1;
@@ -4851,13 +4853,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
             return (
               <div key={`${currentTranslationIdentity}-structured-p-${idx}-line-${lineIdx}`} className={`w-full ${spacingClass} ${viewMode === 'split' ? 'flex items-start' : ''}`}>
                 <p
-                  className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-300 font-medium text-left m-0 break-words min-w-0`}
+                  className={`${viewMode === 'split' ? 'w-1/2 pr-3 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-300 font-medium text-left m-0 break-words min-w-0`}
                   style={structuredParagraphStyleFor(line)}
                 >
                   {renderOriginalRuns(runs)}
                 </p>
                 {viewMode === 'split' && (
-                  <p className={`w-1/2 pr-2 md:pr-6 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={structuredParagraphStyleFor(line)}>
+                  <p className={`w-1/2 pl-3 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={structuredParagraphStyleFor(line)}>
                     {renderTranslatedRuns(runs)}
                   </p>
                 )}
@@ -4897,13 +4899,13 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
       <article key={`${currentTranslationIdentity}-topic-${block.number}-${index}`} className="space-y-3">
         <header className={`w-full ${viewMode === 'split' ? 'flex items-start' : 'space-y-1'}`}>
           <h4
-            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-100 font-bold text-left m-0 break-words min-w-0`}
+            className={`${viewMode === 'split' ? 'w-1/2 pr-3 border-r border-zinc-800/20' : 'w-full p-0'} ${readerTextClass} text-zinc-100 font-bold text-left m-0 break-words min-w-0`}
             style={viewMode === 'split' ? noTextIndentStyle : noIndentStyle}
           >
             {renderOriginalRuns(titleRuns, 'text-zinc-100')}
           </h4>
           {viewMode === 'split' && (
-            <div className={`w-1/2 pr-2 md:pr-6 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={noTextIndentStyle}>
+            <div className={`w-1/2 pl-3 ${readerTextClass} text-zinc-300 font-medium text-left m-0`} style={noTextIndentStyle}>
               {renderTranslatedRuns(titleRuns)}
             </div>
           )}
@@ -4938,7 +4940,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
   return (
     <div className="h-full flex flex-col gap-1.5 md:gap-2 animate-fade-in relative font-sans text-zinc-100 text-left overflow-hidden">
-      <audio 
+      <audio
         ref={audioRef} 
         src={audioSrc || undefined} 
         onEnded={() => setIsPlaying(false)} 
@@ -5221,8 +5223,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     // that scales to the text-column width, not a fixed length.
                     return viewMode === 'split' ? (
                       <div key={`div-${pIdx}`} className={`w-full flex ${dm} items-center`}>
-                        <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20"><span className={ruleCls()} /></div>
-                        <div className="w-1/2 pr-2 md:pr-6"><span className={ruleCls()} /></div>
+                        <div className="w-1/2 pr-3 border-r border-zinc-800/20"><span className={ruleCls()} /></div>
+                        <div className="w-1/2 pl-3"><span className={ruleCls()} /></div>
                       </div>
                     ) : (
                       <div key={`div-${pIdx}`} className={`w-full flex justify-center ${dm}`}><span className={ruleCls('max-w-3xl')} /></div>
@@ -5277,8 +5279,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     if (viewMode === 'split') {
                       return (
                         <div key={`lct-${pIdx}`} className="w-full flex items-start my-4">
-                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{lcGrid(false)}</div>
-                          <div className="w-1/2 pr-2 md:pr-6">{lcGrid(true)}</div>
+                          <div className="w-1/2 pr-3 border-r border-zinc-800/20">{lcGrid(false)}</div>
+                          <div className="w-1/2 pl-3">{lcGrid(true)}</div>
                         </div>
                       );
                     }
@@ -5350,8 +5352,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       const _ctr = gt.centered ? 'flex justify-center' : '';
                       return (
                         <div key={`gt-${pIdx}`} className={`w-full flex items-start ${marginCls}`}>
-                          <div className={`w-1/2 min-w-0 pr-2 md:pr-6 border-r border-zinc-800/20 overflow-x-auto ${_ctr}`}>{tableEl(false)}</div>
-                          <div className={`w-1/2 min-w-0 pr-2 md:pr-6 overflow-x-auto ${_ctr}`}>{tableEl(true)}</div>
+                          <div className={`w-1/2 min-w-0 pr-3 border-r border-zinc-800/20 overflow-x-auto ${_ctr}`}>{tableEl(false)}</div>
+                          <div className={`w-1/2 min-w-0 pl-3 overflow-x-auto ${_ctr}`}>{tableEl(true)}</div>
                         </div>
                       );
                     }
@@ -5370,8 +5372,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       const codeTrans = (para.codeGi != null ? translationByIndex.get(para.codeGi) : '') || '';
                       return (
                         <div key={`code-${pIdx}`} className="w-full flex items-start my-4">
-                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{codeBox(para.code!)}</div>
-                          <div className="w-1/2 pr-2 md:pr-6">{codeBox(codeTrans || para.code!)}</div>
+                          <div className="w-1/2 pr-3 border-r border-zinc-800/20">{codeBox(para.code!)}</div>
+                          <div className="w-1/2 pl-3">{codeBox(codeTrans || para.code!)}</div>
                         </div>
                       );
                     }
@@ -5415,8 +5417,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     if (viewMode === 'split') {
                       return (
                         <div key={`tbl-${pIdx}`} className={`w-full flex items-start ${marginCls}`}>
-                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{tableGrid(false)}</div>
-                          <div className="w-1/2 pr-2 md:pr-6">{tableGrid(true)}</div>
+                          <div className="w-1/2 pr-3 border-r border-zinc-800/20">{tableGrid(false)}</div>
+                          <div className="w-1/2 pl-3">{tableGrid(true)}</div>
                         </div>
                       );
                     }
@@ -6017,7 +6019,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           <div
                             lang={justifyBody ? 'en' : undefined}
                             data-reader-text=""
-                            className={`${viewMode === 'split' ? 'w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} ${para.dropCap && lineIdx === 0 ? 'epub-drop-cap' : ''} break-words min-w-0`}
+                            className={`${viewMode === 'split' ? 'w-1/2 pr-3 border-r border-zinc-800/20' : isIndexChapter ? 'w-full' : 'w-full max-w-3xl'} ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} ${para.dropCap && lineIdx === 0 ? 'epub-drop-cap' : ''} break-words min-w-0`}
                             style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(para.accentColor ? { color: para.accentColor } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                           >
                             {line.map(({ sentence, sIdx, globalIndex }, sentInLine) => {
@@ -6071,11 +6073,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                           </div>
                           {viewMode === 'split' && (
                             <div
-                              className={`w-1/2 pr-2 md:pr-6 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
+                              className={`w-1/2 pl-3 ${isAttrLine ? 'text-right' : ''} ${TEXT_SIZES[settings.textSize]} ${nextIsDivider ? '[&_span.block]:!mb-0 [&_span.block]:!mt-0 ' : ''}${isAttrLine && nextIsDivider ? 'leading-tight' : LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]} ${paragraphTextClass} break-words min-w-0`}
                               /* Translation INHERITS the original's paragraph formatting (size tier, italic, block
                                  indent + hanging, alignment) so the same entry matches height/indent in split view —
                                  no vertical gap when the original is a heading/sized/indented paragraph. */
-                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(para.accentColor ? { color: para.accentColor } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
+                              style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(para.accentColor ? { color: para.accentColor } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
                                 <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
@@ -6186,8 +6188,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                       const _runs = runsForParagraph(pIdx);
                       return (
                         <div key={`callout-${pIdx}`} className="w-full flex items-stretch my-4">
-                          <div className="w-1/2 pr-2 md:pr-6 border-r border-zinc-800/20">{_calloutBox(<div className="w-full space-y-0">{renderOriginalRuns(_runs)}</div>)}</div>
-                          <div className="w-1/2 pr-2 md:pr-6">{_calloutBox(<div className="w-full space-y-0">{renderTranslatedRuns(_runs)}</div>)}</div>
+                          <div className="w-1/2 pr-3 border-r border-zinc-800/20">{_calloutBox(<div className="w-full space-y-0">{renderOriginalRuns(_runs)}</div>)}</div>
+                          <div className="w-1/2 pl-3">{_calloutBox(<div className="w-full space-y-0">{renderTranslatedRuns(_runs)}</div>)}</div>
                         </div>
                       );
                     }

@@ -39,6 +39,8 @@ interface Props {
   activeChapter?: Chapter | null;
   bookTitle?: string;
   bookId?: string;
+  /** Chapter titles in CATALOGUE (table-of-contents) order — drives the chapter dropdown ordering. */
+  chapterOrder?: string[];
 }
 
 type FilterType = 'all' | 'word' | 'phrase' | 'sentence';
@@ -76,13 +78,31 @@ interface LayoutLink {
     depth: number;
 }
 
-export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle, bookId }) => {
+export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle, bookId, chapterOrder }) => {
   const fontStyle = {}; // Font now applied globally via CSS --content-font variable
   const [playingId, setPlayingId] = useState<string | null>(null);
   const pronunciationPrefetchTimer = useRef<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [activeBookFilter, setActiveBookFilter] = useState<string>('all');
-  const bookTitles = useMemo(() => [...new Set(items.map(i => i.bookTitle).filter(Boolean) as string[])], [items]);
+  const [activeChapterFilter, setActiveChapterFilter] = useState<string>('all');
+  // This app is about ONE book, so the scope selector is by CHAPTER within the active book. List only
+  // chapters that HAVE notes, but ordered by the book's CATALOGUE (table of contents) — never
+  // alphabetical or note-insertion order.
+  const chapterTitles = useMemo(() => {
+    const present = new Set(
+      items.filter(i => !bookTitle || i.bookTitle === bookTitle).map(i => i.sourceChapter).filter(Boolean) as string[],
+    );
+    if (chapterOrder && chapterOrder.length) {
+      const seen = new Set<string>();
+      const ordered: string[] = [];
+      for (const t of chapterOrder) {
+        if (present.has(t) && !seen.has(t)) { seen.add(t); ordered.push(t); }
+      }
+      // Any note whose chapter isn't in the catalogue (shouldn't normally happen) trails at the end.
+      const extras = [...present].filter(t => !seen.has(t));
+      return [...ordered, ...extras];
+    }
+    return [...present];
+  }, [items, bookTitle, chapterOrder]);
   
   // Mind Map State
   const [isMindMapMode, setIsMindMapMode] = useState(false);
@@ -105,15 +125,20 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
 
   const filteredItems = useMemo(() => {
       let result = [...items];
-      if (activeBookFilter !== 'all') {
-          result = result.filter(item => item.bookTitle === activeBookFilter);
+      // Single-book app: never show cross-book notes — limit to the active book, then narrow by
+      // chapter and item type.
+      if (bookTitle) {
+          result = result.filter(item => item.bookTitle === bookTitle);
+      }
+      if (activeChapterFilter !== 'all') {
+          result = result.filter(item => item.sourceChapter === activeChapterFilter);
       }
       if (activeFilter !== 'all') {
           result = result.filter(item => item.type === activeFilter);
       }
       result.sort((a, b) => b.timestamp - a.timestamp);
       return result;
-  }, [items, activeFilter, activeBookFilter]);
+  }, [items, activeFilter, activeChapterFilter, bookTitle]);
 
   useEffect(() => () => {
     if (pronunciationPrefetchTimer.current !== null) window.clearTimeout(pronunciationPrefetchTimer.current);
@@ -356,17 +381,18 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                 id: `${item.id}-note`,
                 label: item.comment,
                 note: null as any,
-                type: 'detail',
+                type: 'note',
                 children: [] // Leaf
             }];
         };
 
-        // Depth 3: Definition Node (4th Layer)
+        // Definition node (yellow card). Semantic type drives the badge/card — NOT depth, which shifts
+        // by one in multi-book maps (extra "book" level) and mislabelled every card.
         const createDefinitionNode = (item: NotebookItem): MindMapNode => ({
             id: `${item.id}-def`,
             label: item.definition || "Analysis Pending...", // Body
-            note: null as any, 
-            type: 'detail',
+            note: null as any,
+            type: 'definition',
             children: createNoteNode(item) // Nest note here as child
         });
         
@@ -451,6 +477,12 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     const GAP_X = 280;
     const GAP_Y = 40;
 
+    // Exact text width via canvas measureText with the ACTUAL render font (13px sans-serif). A flat
+    // per-char estimate over-counted spaces/narrow glyphs and broke lines ~20% early (big right gap).
+    const _mc = (typeof document !== 'undefined') ? document.createElement('canvas').getContext('2d') : null;
+    if (_mc) _mc.font = '13px sans-serif';
+    const measureW = (str) => _mc ? _mc.measureText(str).width : str.length * 7;
+
     // 1. Measure phase
     const measure = (node: MindMapNode, depth: number): any => {
         const fontSize = Math.max(10, 16 - depth * 1.5);
@@ -460,37 +492,47 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         let height = 0;
         let lines: string[] = [];
         
-        const isContainer = depth >= 2;
+        // Card vs. text node is driven by the node's SEMANTIC TYPE, not depth — in a multi-book map the
+        // extra "book" level shifts depths by one, which mislabelled every card.
+        const isContainer = node.type === 'item' || node.type === 'definition' || node.type === 'note';
         const text = node.label || '';
 
         if (isContainer) {
              const maxWidth = 320; 
              
-             // Estimation for Wrapping including CJK support
-             let currentLine = '';
-             let currentLineWidth = 0;
-             lines = [];
-             
-             for (let i = 0; i < text.length; i++) {
-                 const char = text[i];
-                 // CJK chars are roughly 1em wide, latin roughly 0.6em
-                 const charW = /[^\u0000-\u00ff]/.test(char) ? fontSize : fontSize * 0.6;
-                 
-                 if (currentLineWidth + charW > maxWidth - padding * 2) {
-                     lines.push(currentLine);
-                     currentLine = char;
-                     currentLineWidth = charW;
-                 } else {
-                     currentLine += char;
-                     currentLineWidth += charW;
-                 }
+             // Word-aware wrap measured with the ACTUAL font so lines fill the card. Latin breaks at spaces
+             // (never mid-word); CJK breaks per character; an overlong token hard-breaks by char.
+             const textW = maxWidth - 32; // body starts at x=16 with a 16px right pad -> 320-32=288
+             const isWide = (ch) => /[^\u0000-\u00ff]/.test(ch);
+             const toks = [];
+             for (let j = 0; j < text.length; ) {
+                 const ch = text[j];
+                 if (ch === ' ') { toks.push(' '); j++; }
+                 else if (isWide(ch)) { toks.push(ch); j++; }
+                 else { let w = ''; while (j < text.length && text[j] !== ' ' && !isWide(text[j])) { w += text[j]; j++; } toks.push(w); }
              }
-             if (currentLine) lines.push(currentLine);
+             lines = [];
+             let line = '';
+             for (const tk of toks) {
+                 if (tk === ' ') { if (line !== '') line += ' '; continue; }
+                 if (measureW(tk) > textW) {
+                     if (line.trim() !== '') { lines.push(line.replace(/\s+$/, '')); line = ''; }
+                     let seg = '';
+                     for (const ch of tk) { if (measureW(seg + ch) > textW && seg !== '') { lines.push(seg); seg = ''; } seg += ch; }
+                     line = seg;
+                     continue;
+                 }
+                 const cand = line + tk;
+                 if (measureW(cand) > textW && line.trim() !== '') { lines.push(line.replace(/\s+$/, '')); line = tk; }
+                 else { line = cand; }
+             }
+             if (line.trim() !== '') lines.push(line.replace(/\s+$/, ''));
+             if (lines.length === 0) lines = [text];
 
              width = maxWidth;
              // Calculate height based on lines + padding + metadata space
              // Metadata (badge) ~ 20px, Spacing ~ 10px, Buffer ~ 30px
-             height = (lines.length * (fontSize * 1.5)) + 80; 
+             height = (lines.length + 2) * 22; 
         } else {
              // Text Nodes (Root & Categories)
              // Simple estimation
@@ -610,20 +652,43 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     return { nodes, links };
   }, [mindMapData, collapsedNodeIds]);
 
+  // Fit the WHOLE map to the viewport: measure the node bounding box and the container, then solve the
+  // zoom + pan that centres it. The old version hardcoded pan/zoom, so wide maps were clipped (the
+  // right-hand nodes ran off-screen). The <g> uses transformOrigin:center, so a local point p maps to
+  // screen as  zoom*p + pan + (size/2)*(1-zoom)  →  pan = zoom*(size/2 - centre).
   const handleFitView = () => {
-    if (layoutMap.nodes.length === 0) return;
-    if (mapContainerRef.current) {
-         setPan({ x: -100, y: 0 });
-         setMapZoom(0.8);
+    const el = mapContainerRef.current;
+    if (!el || layoutMap.nodes.length === 0) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const n of layoutMap.nodes) {
+      minX = Math.min(minX, n.x);
+      maxX = Math.max(maxX, n.x + n.width);
+      minY = Math.min(minY, n.y - n.height / 2);
+      maxY = Math.max(maxY, n.y + n.height / 2);
     }
+    // Depth-2+ nodes draw an "// ENTRY" badge + comment box to the RIGHT of node.width that the layout
+    // metrics don't account for — so pad the right edge more generously than the left.
+    const padL = 60, padR = 150, padY = 60;
+    const bw = (maxX - minX) + padL + padR;
+    const bh = (maxY - minY) + padY * 2;
+    const mx = ((minX - padL) + (maxX + padR)) / 2;
+    const my = (minY + maxY) / 2;
+    const zoom = Math.max(0.2, Math.min(1.5, Math.min(rect.width / bw, rect.height / bh)));
+    setMapZoom(zoom);
+    setPan({ x: zoom * (rect.width / 2 - mx), y: zoom * (rect.height / 2 - my) });
   };
-  
+
+  // Auto-fit whenever the map opens or its data changes (rAF so the container has measured its size).
   useEffect(() => {
-     if (mindMapData) {
-        setPan({ x: -50, y: 0 });
-        setMapZoom(0.8);
-     }
-  }, [mindMapData]);
+    if (!isMindMapMode || !mindMapData) return;
+    const id = requestAnimationFrame(() => handleFitView());
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMindMapMode, mindMapData, layoutMap]);
+
+  const touchState = useRef<{ mode: 'none' | 'pan' | 'pinch'; lastX: number; lastY: number; startDist: number; startZoom: number }>({ mode: 'none', lastX: 0, lastY: 0, startDist: 0, startZoom: 1 });
 
   const handleMapMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -641,6 +706,59 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
 
   const handleMapMouseUp = () => {
     setIsPanning(false);
+  };
+
+  // Touch: one-finger pan + two-finger pinch-zoom. The container also sets touch-action:none so the
+  // browser doesn't hijack the gesture for page scroll/zoom. Without these the map was completely
+  // immovable on mobile — only mouse events were wired (IMG_0908).
+  const handleMapTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchState.current = { mode: 'pan', lastX: e.touches[0].clientX, lastY: e.touches[0].clientY, startDist: 0, startZoom: mapZoom };
+      setIsPanning(true);
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchState.current = {
+        mode: 'pinch',
+        startDist: Math.hypot(dx, dy),
+        startZoom: mapZoom,
+        lastX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        lastY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+      setIsPanning(true);
+    }
+  };
+
+  const handleMapTouchMove = (e: React.TouchEvent) => {
+    const st = touchState.current;
+    if (st.mode === 'pan' && e.touches.length === 1) {
+      const dx = e.touches[0].clientX - st.lastX;
+      const dy = e.touches[0].clientY - st.lastY;
+      st.lastX = e.touches[0].clientX;
+      st.lastY = e.touches[0].clientY;
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    } else if (st.mode === 'pinch' && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (st.startDist > 0) setMapZoom(Math.max(0.2, Math.min(3, st.startZoom * (dist / st.startDist))));
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      setPan(prev => ({ x: prev.x + (mx - st.lastX), y: prev.y + (my - st.lastY) }));
+      st.lastX = mx;
+      st.lastY = my;
+    }
+  };
+
+  const handleMapTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length === 0) {
+      touchState.current.mode = 'none';
+      setIsPanning(false);
+    } else if (e.touches.length === 1) {
+      touchState.current.mode = 'pan';
+      touchState.current.lastX = e.touches[0].clientX;
+      touchState.current.lastY = e.touches[0].clientY;
+    }
   };
 
   const exportToDocx = async () => {
@@ -787,25 +905,25 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         for (const node of layoutMap.nodes) {
             const isRoot = node.depth === 0;
             const fontSize = Math.max(12, 18 - node.depth * 2);
-            const isContainer = node.depth >= 2;
+            const isContainer = node.data.type === 'item' || node.data.type === 'definition' || node.data.type === 'note';
             const ty = node.y - node.height / 2;
 
             let badgeColor = NEON_BLUE_VAL;
             let badgeText = "";
-            if (node.depth === 2) { badgeText = "// ENTRY"; badgeColor = NEON_GREEN_VAL; }
-            else if (node.depth === 3) { badgeText = "// DEFINITION"; badgeColor = NEON_YELLOW_VAL; }
-            else if (node.depth === 4) { badgeText = "// USER_NOTE"; badgeColor = NEON_RED_VAL; }
+            if (node.data.type === 'item') { badgeText = "ENTRY"; badgeColor = NEON_GREEN_VAL; }
+            else if (node.data.type === 'definition') { badgeText = "DEFINITION"; badgeColor = NEON_YELLOW_VAL; }
+            else if (node.data.type === 'note') { badgeText = "USER_NOTE"; badgeColor = NEON_RED_VAL; }
 
             if (isContainer) {
                 svgParts.push(`<rect x="${node.x}" y="${ty}" width="${node.width}" height="${node.height}" rx="8" ry="8" fill="#0a0a0c" stroke="${NEON_BLUE_VAL}50" stroke-width="1"/>`);
                 svgParts.push(`<rect x="${node.x}" y="${ty}" width="4" height="${node.height}" rx="2" fill="${NEON_BLUE_VAL}"/>`);
                 if (badgeText) {
-                    svgParts.push(`<text x="${node.x + 16}" y="${ty + 20}" font-size="10" font-family="monospace" fill="${badgeColor}" letter-spacing="0.1em">${badgeText}</text>`);
+                    svgParts.push(`<text x="${node.x + 16}" y="${ty + 16}" font-size="10" font-family="monospace" fill="${badgeColor}" letter-spacing="0.1em">${badgeText}</text>`);
                 }
                 const escapedLines = node.lines.map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
-                svgParts.push(`<text x="${node.x + 16}" y="${ty + 40}" font-size="13" font-family="sans-serif" fill="#d4d4d8">`);
+                svgParts.push(`<text x="${node.x + 16}" y="${ty + 38}" font-size="13" font-family="sans-serif" fill="#d4d4d8">`);
                 escapedLines.forEach((line, i) => {
-                    svgParts.push(`<tspan x="${node.x + 16}" dy="${i === 0 ? 0 : '1.6em'}">${line}</tspan>`);
+                    svgParts.push(`<tspan x="${node.x + 16}" dy="${i === 0 ? 0 : 22}">${line}</tspan>`);
                 });
                 svgParts.push(`</text>`);
             } else {
@@ -917,12 +1035,12 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                     <div className="flex items-center gap-1 md:gap-1.5">
                         <div className="p-1 md:p-1.5 text-zinc-500"><BookOpen size={13} /></div>
                         <select
-                            value={activeBookFilter}
-                            onChange={(e) => setActiveBookFilter(e.target.value)}
+                            value={activeChapterFilter}
+                            onChange={(e) => setActiveChapterFilter(e.target.value)}
                             className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1"
                         >
-                            <option value="all">ALL BOOKS</option>
-                            {bookTitles.map(t => <option key={t} value={t}>{t.length > 15 ? t.substring(0, 15) + '...' : t}</option>)}
+                            <option value="all">ALL CHAPTERS</option>
+                            {chapterTitles.map(t => <option key={t} value={t}>{t.length > 15 ? t.substring(0, 15) + '...' : t}</option>)}
                         </select>
                     </div>
                     <div className="w-[1px] h-3.5 bg-zinc-700"></div>
@@ -953,13 +1071,16 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
        </div>
 
        {isMindMapMode ? (
-           <div 
-             className="flex-1 bg-void-1 border border-zinc-800 rounded-lg relative overflow-hidden flex flex-col items-center justify-center animate-fade-in group" 
+           <div
+             className="flex-1 bg-void-1 border border-zinc-800 rounded-lg relative overflow-hidden flex flex-col items-center justify-center animate-fade-in group touch-none"
              ref={mapContainerRef}
              onMouseDown={handleMapMouseDown}
              onMouseMove={handleMapMouseMove}
              onMouseUp={handleMapMouseUp}
              onMouseLeave={handleMapMouseUp}
+             onTouchStart={handleMapTouchStart}
+             onTouchMove={handleMapTouchMove}
+             onTouchEnd={handleMapTouchEnd}
              onWheel={(e) => setMapZoom(z => Math.max(0.2, Math.min(3, z - e.deltaY * 0.001)))}
            >
                {/* Background Grid */}
@@ -967,15 +1088,15 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                
                {/* Floating Controls in Top Right */}
                <div className="absolute top-2 right-2 md:top-4 md:right-4 flex flex-wrap justify-end gap-1.5 md:gap-2 z-50 max-w-[calc(100%-16px)] md:max-w-none">
-                    <button onClick={handleFitView} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Fit View"><Scan size={14}/></button>
-                    <button onClick={() => setMapZoom(z => Math.max(0.2, z - 0.1))} aria-label="Zoom out" className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0"><ZoomOut size={14}/></button>
-                    <button onClick={() => setMapZoom(z => Math.min(3, z + 0.1))} aria-label="Zoom in" className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0"><ZoomIn size={14}/></button>
+                    <button onClick={handleFitView} className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Fit View"><Scan size={14}/></button>
+                    <button onClick={() => setMapZoom(z => Math.max(0.2, z - 0.1))} aria-label="Zoom out" className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0"><ZoomOut size={14}/></button>
+                    <button onClick={() => setMapZoom(z => Math.min(3, z + 0.1))} aria-label="Zoom in" className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0"><ZoomIn size={14}/></button>
                     <div className="hidden md:block w-[1px] h-10 bg-zinc-800 mx-0.5"></div>
-                    <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
-                    <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
-                    <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
-                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${mindMapData?.label || activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
-                    <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-red text-neon-red rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
+                    <button onClick={exportToXmind} className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Xmind"><Network size={14}/></button>
+                    <button onClick={exportToDocx} className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to Docx"><FileText size={14}/></button>
+                    <button onClick={exportToPdf} className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Export to PDF"><FileDown size={14}/></button>
+                    <button onClick={async () => { const result = await buildMindMapPdfBlob(); if (result) shareFile(result.blob, result.filename, `Mind Map - ${mindMapData?.label || activeChapter?.title || bookTitle || 'DecodEbook'}`); }} className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-cyan text-zinc-400 hover:text-neon-cyan rounded-full transition-colors shadow-lg shrink-0" title="Share"><Share2 size={14}/></button>
+                    <button onClick={() => setIsMindMapMode(false)} className="w-8 h-8 md:w-10 md:h-10 !min-h-0 flex items-center justify-center bg-void-1 border border-zinc-800 hover:border-neon-red text-neon-red rounded-full transition-colors shadow-lg shrink-0" title="Exit Map"><X size={14}/></button>
                </div>
 
                {isGeneratingMap ? (
@@ -1020,9 +1141,8 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                         fill="none"
                                         stroke={NEON_BLUE}
                                         strokeWidth={2}
-                                        strokeOpacity="0.8"
+                                        strokeOpacity="0.9"
                                         strokeLinecap="round"
-                                        filter="url(#neon-glow)"
                                     />
                                 );
                             })}
@@ -1032,13 +1152,13 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                 const isRoot = node.depth === 0;
                                 const fontSize = Math.max(12, 18 - node.depth * 2);
                                 
-                                const isContainer = node.depth >= 2;
+                                const isContainer = node.data.type === 'item' || node.data.type === 'definition' || node.data.type === 'note';
                                 
                                 let badgeColor = NEON_BLUE;
                                 let badgeText = "";
-                                if (node.depth === 2) { badgeText = "// ENTRY"; badgeColor = NEON_GREEN; }
-                                else if (node.depth === 3) { badgeText = "// DEFINITION"; badgeColor = NEON_YELLOW; }
-                                else if (node.depth === 4) { badgeText = "// USER_NOTE"; badgeColor = NEON_RED; }
+                                if (node.data.type === 'item') { badgeText = "ENTRY"; badgeColor = NEON_GREEN; }
+                                else if (node.data.type === 'definition') { badgeText = "DEFINITION"; badgeColor = NEON_YELLOW; }
+                                else if (node.data.type === 'note') { badgeText = "USER_NOTE"; badgeColor = NEON_RED; }
 
                                 return (
                                     <g 
@@ -1062,7 +1182,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                                 <rect x={0} y={0} width={4} height={node.height} rx={2} fill={NEON_BLUE} />
                                                 {/* Badge */}
                                                 <text
-                                                    x={16} y={20}
+                                                    x={16} y={16}
                                                     fontSize={10}
                                                     fontFamily="Share Tech Mono, monospace"
                                                     fill={badgeColor}
@@ -1072,13 +1192,13 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                                 </text>
                                                 {/* Body text */}
                                                 <text
-                                                    x={16} y={40}
+                                                    x={16} y={38}
                                                     fontSize={13}
                                                     fontFamily="sans-serif"
                                                     fill="#d4d4d8"
                                                 >
                                                     {node.lines.map((line, i) => (
-                                                        <tspan x={16} dy={i === 0 ? 0 : '1.6em'} key={i}>{line}</tspan>
+                                                        <tspan x={16} dy={i === 0 ? 0 : 22} key={i}>{line}</tspan>
                                                     ))}
                                                 </text>
                                             </>
@@ -1176,7 +1296,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                        {item.definition && (
                                            <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-sm text-zinc-500 italic font-mono leading-relaxed">{item.definition}</p></div>
                                        )}
-                                       <div className="mt-2"><textarea placeholder="Add neural annotations..." value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="w-full bg-void-1 border border-zinc-800 rounded p-2 text-[16px] md:text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[50px] font-mono" /></div>
+                                       <div className="mt-2"><textarea placeholder="Add neural annotations..." value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="w-full bg-void-1 border border-zinc-800 rounded p-2 text-[16px] md:text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-0 h-9 md:h-auto md:min-h-[50px] resize-none font-mono" /></div>
                                    </div>
                                </div>
                            </div>

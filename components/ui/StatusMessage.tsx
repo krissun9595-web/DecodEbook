@@ -66,7 +66,7 @@ export const StatusMessage: React.FC<Props> = ({ variant, title, sub, icon, icon
       {action && (
         <button
           onClick={action.onClick}
-          className={`mt-1 px-3 py-1.5 text-[10px] font-tech uppercase tracking-widest rounded-sm border transition active:scale-[0.98] ${v.btn}`}
+          className={`mt-1 flex items-center justify-center w-[200px] h-9 sm:w-auto sm:h-auto px-3 py-1.5 !min-h-0 text-[10px] font-tech uppercase tracking-widest rounded-sm border transition active:scale-[0.98] ${v.btn}`}
         >
           {action.label}
         </button>

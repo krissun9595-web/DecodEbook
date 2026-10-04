@@ -179,7 +179,7 @@ export interface MindMapNode {
   id: string;
   label: string;
   children?: MindMapNode[];
-  type?: 'root' | 'category' | 'item' | 'detail';
+  type?: 'root' | 'category' | 'item' | 'detail' | 'definition' | 'note';
   note?: string; // Additional context
   isCollapsed?: boolean; // UI state
 }

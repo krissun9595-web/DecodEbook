@@ -3,7 +3,8 @@ import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Minus, Mic,
 import { createChatSession, sendMessageToChat, ChatSession } from '../services/gemini';
 import { FileContext } from '../types';
 import { Content } from "@google/genai";
-import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
+import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount, OPEN_ACCOUNT_EVENT } from '../services/credits';
+import { CreditNotice } from './ui/CreditNotice';
 
 interface Props {
   fileContext: FileContext | null;
@@ -269,6 +270,31 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   useEffect(() => {
     if (isOpen && isMobile) setIsFullScreen(true);
   }, [isOpen, isMobile]);
+
+  // When the account/billing modal opens (e.g. the credits notice's "Upgrade" CTA), minimise the
+  // chat so the modal — which sits BELOW this z-[9999] panel — is actually visible.
+  useEffect(() => {
+    const onOpenAccount = () => { setIsOpen(false); setIsFullScreen(false); };
+    window.addEventListener(OPEN_ACCOUNT_EVENT, onOpenAccount);
+    return () => window.removeEventListener(OPEN_ACCOUNT_EVENT, onOpenAccount);
+  }, []);
+
+  // Track the VISUAL viewport so the full-screen panel stays within the area ABOVE the on-screen
+  // keyboard. Without this, focusing the input on iOS pushes the fixed panel up off-screen — the
+  // header + messages vanish and only the input floats above the keyboard (IMG_0897).
+  const [vv, setVv] = useState<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) return;
+    const update = () => setVv({ top: visualViewport.offsetTop, height: visualViewport.height });
+    update();
+    visualViewport.addEventListener('resize', update);
+    visualViewport.addEventListener('scroll', update);
+    return () => {
+      visualViewport.removeEventListener('resize', update);
+      visualViewport.removeEventListener('scroll', update);
+    };
+  }, []);
 
   // Keep the widget fully on-screen when it opens, the viewport resizes, or the device rotates —
   // the drag clamp only runs mid-drag, so without this an expanded panel could sit partly offscreen
@@ -640,11 +666,13 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
 
   if (!fileContext) return null;
 
-  // Use fixed layouts for specific states to avoid transitions
+  // Use fixed layouts for specific states to avoid transitions. In full-screen we anchor TOP/HEIGHT to
+  // the visual viewport (vv) so the keyboard can't push the panel off-screen — vv.top shifts down and
+  // vv.height shrinks to the slice above the keyboard, keeping header + messages + input all visible.
   const currentLeft = isFullScreen ? '20px' : `${position.x}px`;
-  const currentTop = isFullScreen ? '20px' : `${position.y}px`;
+  const currentTop = isFullScreen ? (vv ? `${vv.top + 20}px` : '20px') : `${position.y}px`;
   const currentWidth = isFullScreen ? 'calc(100vw - 40px)' : (isOpen ? 'min(24rem, calc(100vw - 24px))' : '4rem');
-  const currentHeight = isFullScreen ? 'calc(100dvh - 40px)' : (isOpen ? `min(${EXPANDED_HEIGHT}px, calc(100dvh - 24px))` : '4rem');
+  const currentHeight = isFullScreen ? (vv ? `${Math.max(200, vv.height - 40)}px` : 'calc(100dvh - 40px)') : (isOpen ? `min(${EXPANDED_HEIGHT}px, calc(100dvh - 24px))` : '4rem');
 
   return (
     <div 
@@ -723,10 +751,10 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                 {/* History sidebar (DeepSeek-style) — narrows the chat column while open */}
                 {showHistory && (
                     <div className={`flex flex-col border-neon-cyan/20 ${isMobile ? 'absolute inset-0 z-30 w-full bg-zinc-950' : 'w-2/5 max-w-[220px] shrink-0 border-r bg-zinc-900/70'}`}>
-                        <div className="shrink-0 border-b border-zinc-800 px-2 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">History</div>
+                        <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5 md:px-2 md:py-2 font-mono text-[11px] md:text-[9px] uppercase tracking-widest text-zinc-500">History</div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             {sessions.length === 0 ? (
-                                <div className="p-2 font-mono text-[10px] text-zinc-600">No chats yet</div>
+                                <div className="p-3 md:p-2 font-mono text-[13px] md:text-[10px] text-zinc-600">No chats yet</div>
                             ) : [...sessions].sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt)).map((s, i, arr) => {
                                 const nearBottom = arr.length > 3 && i >= arr.length - 2;
                                 return (
@@ -735,27 +763,27 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                         onClick={(e) => { e.stopPropagation(); openSession(s.id); }}
                                         onMouseDown={(e) => e.stopPropagation()}
                                         title={s.title}
-                                        className={`block w-full border-b border-zinc-800/50 px-2 py-2 pr-6 text-left transition-colors ${s.id === activeId ? 'bg-neon-cyan/5' : 'hover:bg-neon-cyan/5'}`}
+                                        className={`block w-full border-b border-zinc-800/50 px-3 py-3 pr-7 md:px-2 md:py-2 md:pr-6 text-left transition-colors ${s.id === activeId ? 'bg-neon-cyan/5' : 'hover:bg-neon-cyan/5'}`}
                                     >
                                         <div className="flex items-center gap-1">
-                                            {s.pinned && <Pin size={9} className="shrink-0 text-neon-cyan/70" fill="currentColor" />}
-                                            <span className={`truncate text-[10px] leading-snug content-font ${s.id === activeId ? 'text-neon-cyan' : 'text-zinc-300'}`}>{s.title || 'New chat'}</span>
+                                            {s.pinned && <Pin size={10} className="shrink-0 text-neon-cyan/70" fill="currentColor" />}
+                                            <span className={`truncate text-[13px] md:text-[10px] leading-snug content-font ${s.id === activeId ? 'text-neon-cyan' : 'text-zinc-300'}`}>{s.title || 'New chat'}</span>
                                         </div>
-                                        <span className="mt-0.5 block font-mono text-[8px] text-zinc-600">{relativeTime(s.updatedAt)}</span>
+                                        <span className="mt-1 md:mt-0.5 block font-mono text-[11px] md:text-[8px] text-zinc-600">{relativeTime(s.updatedAt)}</span>
                                     </button>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === s.id ? null : s.id); }}
                                         onMouseDown={(e) => e.stopPropagation()}
                                         title="More"
-                                        className={`absolute right-1 top-1.5 rounded p-0.5 text-zinc-500 transition hover:bg-neon-cyan/10 hover:text-neon-cyan ${menuOpenId === s.id ? 'text-neon-cyan opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                        className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded !min-h-0 text-zinc-500 transition hover:bg-neon-cyan/10 hover:text-neon-cyan ${menuOpenId === s.id ? 'text-neon-cyan opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                     >
                                         <MoreHorizontal size={13} />
                                     </button>
                                     {menuOpenId === s.id && (
-                                        <div className={`absolute right-1 z-30 w-max rounded-sm border border-zinc-700 bg-zinc-900 py-1 shadow-lg ${nearBottom ? 'bottom-7' : 'top-7'}`} onMouseDown={(e) => e.stopPropagation()}>
-                                            <button onClick={(e) => { e.stopPropagation(); shareSession(s); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Share2 size={11} /> Share</button>
-                                            <button onClick={(e) => { e.stopPropagation(); togglePin(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Pin size={11} /> {s.pinned ? 'Unpin' : 'Pin'}</button>
-                                            <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-neon-red hover:bg-neon-red/10"><Trash2 size={11} /> Delete</button>
+                                        <div className={`absolute right-1 z-30 w-max rounded-sm border border-zinc-700 bg-zinc-900 overflow-hidden shadow-lg ${nearBottom ? 'bottom-7' : 'top-7'}`} onMouseDown={(e) => e.stopPropagation()}>
+                                            <button onClick={(e) => { e.stopPropagation(); shareSession(s); }} className="flex w-full items-center gap-2 px-2 py-1 !min-h-0 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Share2 size={11} /> Share</button>
+                                            <button onClick={(e) => { e.stopPropagation(); togglePin(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 !min-h-0 text-left text-[10px] text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan"><Pin size={11} /> {s.pinned ? 'Unpin' : 'Pin'}</button>
+                                            <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="flex w-full items-center gap-2 px-2 py-1 !min-h-0 text-left text-[10px] text-neon-red hover:bg-neon-red/10"><Trash2 size={11} /> Delete</button>
                                         </div>
                                     )}
                                 </div>
@@ -845,6 +873,14 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     <div ref={messagesEndRef} />
                 </div>
 
+                {/* Out-of-credits HAZARD notice — the same component/colour the modules show, centred in
+                    the chat area just above the input (mirrors the INITIATE "out of credits" frame). */}
+                {creditTier && (
+                  <div className="shrink-0 px-4 py-3">
+                    <CreditNotice tier={creditTier} />
+                  </div>
+                )}
+
                 {/* Input Area — not a drag handle (dragging is header-only) so touch typing works */}
                 <div className="p-3 bg-zinc-900/90 border-t border-neon-cyan/20 flex items-center gap-2 shrink-0">
                     <button
@@ -857,14 +893,6 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     </button>
 
                     <div className="flex-1 relative">
-                        {creditTier && (
-                          <div className="absolute -top-7 left-0 right-0 text-[10px] font-mono text-neon-yellow truncate flex items-center gap-1">
-                            <AlertTriangle size={11} className="shrink-0" /> Not enough credits —
-                            <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="underline hover:text-white">
-                              {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}
-                            </button>
-                          </div>
-                        )}
                         <input
                             type="text"
                             value={input}
