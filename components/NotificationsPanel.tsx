@@ -3,10 +3,10 @@ import { Bell, Megaphone, Gift, AlertTriangle, X, CheckCheck } from 'lucide-reac
 import { CloseButton } from './ui/CloseButton';
 import { listNotifs, markRead, markAllRead, clearNotif, fmtDay, NotifView } from '../services/notifications';
 
-const TYPE_ICON: Record<string, { icon: typeof Bell; color: string }> = {
-  update: { icon: Megaphone, color: 'text-neon-cyan' },
-  bonus: { icon: Gift, color: 'text-neon-amber' },
-  usage: { icon: AlertTriangle, color: 'text-neon-red' },
+const TYPE_ICON: Record<string, { icon: typeof Bell; color: string; border: string; dot: string }> = {
+  update: { icon: Megaphone, color: 'text-neon-cyan', border: 'border-neon-cyan/40', dot: 'bg-neon-cyan' },
+  bonus: { icon: Gift, color: 'text-neon-amber', border: 'border-neon-amber/40', dot: 'bg-neon-amber' },
+  usage: { icon: AlertTriangle, color: 'text-neon-red', border: 'border-neon-red/40', dot: 'bg-neon-red' },
 };
 
 export function NotificationsPanel({ isOpen, onClose, onChange }: { isOpen: boolean; onClose: () => void; onChange: () => void }) {
@@ -46,26 +46,28 @@ export function NotificationsPanel({ isOpen, onClose, onChange }: { isOpen: bool
               <p className="text-xs font-mono uppercase tracking-widest">No notifications</p>
             </div>
           ) : (
-            <ul className="divide-y divide-zinc-900">
+            <ul className="p-3 md:p-4 space-y-2">
               {rows.map(n => {
                 const cfg = TYPE_ICON[n.type] || TYPE_ICON.update;
                 const Icon = cfg.icon;
+                const dot = <span className={`mt-1 shrink-0 w-1.5 h-1.5 rounded-full ${n.read ? 'bg-transparent' : cfg.dot}`} aria-label={n.read ? undefined : 'Unread'} />;
+                const icon = <Icon size={15} className={`mt-0.5 shrink-0 ${cfg.color}`} />;
+
+                // Same on mobile + desktop: framed card, tap to expand (+ mark read), ✕ to clear.
                 return (
                   <li key={n.id}>
-                    <div className="group flex items-start gap-3 px-5 md:px-6 py-3 hover:bg-zinc-900/40 transition-colors">
-                      {/* unread dot */}
-                      <span className={`mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full ${n.read ? 'bg-transparent' : 'bg-neon-cyan'}`} aria-label={n.read ? undefined : 'Unread'} />
-                      <Icon size={15} className={`mt-0.5 shrink-0 ${cfg.color}`} />
+                    <div className={`group flex items-start gap-3 px-3 md:px-4 py-3 rounded-md border ${cfg.border} bg-zinc-900/20 hover:bg-zinc-900/40 transition-colors ${n.read ? 'opacity-60' : ''}`}>
+                      {dot}{icon}
                       <button
                         onClick={() => { setExpandedId(expandedId === n.id ? null : n.id); if (!n.read) { markRead(n.id); refresh(); } }}
                         className="flex-1 min-w-0 text-left !min-h-0"
                         aria-expanded={expandedId === n.id}
                       >
                         <div className="flex items-baseline gap-2">
-                          <span className={`text-xs font-medium ${expandedId === n.id ? '' : 'truncate'} ${n.read ? 'text-zinc-400' : 'text-zinc-100'}`}>{n.title}</span>
+                          <span className={`text-xs font-medium ${cfg.color} ${expandedId === n.id ? '' : 'truncate'}`}>{n.title}</span>
                           <span className="ml-auto shrink-0 text-[9px] font-mono text-zinc-600 whitespace-nowrap">{fmtDay(n.ts)}</span>
                         </div>
-                        <p className={`mt-0.5 text-[10px] text-zinc-500 leading-relaxed ${expandedId === n.id ? '' : 'line-clamp-2'}`}>{n.preview}</p>
+                        <p className={`mt-0.5 text-[10px] text-zinc-100 leading-relaxed ${expandedId === n.id ? '' : 'line-clamp-2 md:line-clamp-1'}`}>{n.preview}</p>
                       </button>
                       <button
                         onClick={() => { clearNotif(n.id); refresh(); }}

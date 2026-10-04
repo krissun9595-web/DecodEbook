@@ -54,6 +54,7 @@ const K_READ = 'db_notif_read_v1';          // string[] of read ids
 const K_CLEARED = 'db_notif_cleared_v1';    // string[] of cleared ids
 const K_BONUS = 'db_notif_bonus_seen_v1';   // last-seen bonus balance (number as string)
 const K_USAGE = 'db_notif_usage_period_v1'; // period_start already warned at 90%
+const K_TOASTED = 'db_notif_toasted_v1';    // announcement ids already popped as a toast
 
 const arr = (k: string): string[] => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
 const setArr = (k: string, v: string[]) => localStorage.setItem(k, JSON.stringify(v));
@@ -103,6 +104,19 @@ export function listNotifs(): NotifView[] {
     .filter(n => !cleared.has(n.id))
     .sort((a, b) => b.ts - a.ts)
     .map(n => ({ ...n, read: read.has(n.id) }));
+}
+
+// Pop the NEWEST not-yet-toasted announcement once (as a transient push toast). Marks every current
+// announcement toasted, so only the newest ever pops — the rest just live in the inbox. A future new
+// announcement (not in K_TOASTED) will pop on the next load.
+export function takeAnnouncementToast(): Notif | null {
+  const toasted = new Set(arr(K_TOASTED));
+  const cleared = new Set(arr(K_CLEARED));
+  const fresh = ANNOUNCEMENTS
+    .filter(a => !toasted.has(a.id) && !cleared.has(a.id))
+    .sort((a, b) => b.ts - a.ts);
+  setArr(K_TOASTED, ANNOUNCEMENTS.map(a => a.id));
+  return fresh[0] || null;
 }
 
 export function unreadCount(): number { return listNotifs().filter(n => !n.read).length; }

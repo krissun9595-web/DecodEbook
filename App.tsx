@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search, Bell } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search, Bell, Megaphone, Gift, AlertTriangle } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -17,7 +17,7 @@ import BrandMark from './components/ui/BrandMark';
 import { CloseButton } from './components/ui/CloseButton';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { NotificationsPanel } from './components/NotificationsPanel';
-import { syncDerivedNotifs, unreadCount, Notif } from './services/notifications';
+import { syncDerivedNotifs, unreadCount, takeAnnouncementToast, Notif } from './services/notifications';
 import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
 import { CreditNotice } from './components/ui/CreditNotice';
 import { StatusMessage } from './components/ui/StatusMessage';
@@ -461,6 +461,11 @@ const App: React.FC = () => {
     if (fresh.length) setNotifToast(fresh[fresh.length - 1]);
     setNotifUnread(unreadCount());
   }, [userTier]);
+  // On mount, pop the newest not-yet-seen app-update announcement once as a push toast.
+  useEffect(() => {
+    const a = takeAnnouncementToast();
+    if (a) { setNotifToast(a); setNotifUnread(unreadCount()); }
+  }, []);
   useEffect(() => {
     if (!notifToast) return;
     const t = setTimeout(() => setNotifToast(null), 6000);
@@ -7695,20 +7700,28 @@ const App: React.FC = () => {
         onClose={() => setIsNotifOpen(false)}
         onChange={() => setNotifUnread(unreadCount())}
       />
-      {/* Transient toast for a freshly generated time-sensitive notification (90% usage / bonus). */}
-      {notifToast && (
-        <button
-          onClick={() => { setIsNotifOpen(true); setNotifToast(null); }}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-[calc(100%-2rem)] flex items-center gap-3 bg-zinc-900 border border-neon-cyan/40 rounded-md px-4 py-3 shadow-2xl animate-fade-in-up text-left"
-        >
-          <Bell size={16} className={`shrink-0 ${notifToast.type === 'usage' ? 'text-neon-red' : 'text-neon-amber'}`} />
-          <span className="min-w-0">
-            <span className="block text-xs font-medium text-zinc-100 truncate">{notifToast.title}</span>
-            <span className="block text-[10px] text-zinc-500 line-clamp-1">{notifToast.preview}</span>
-          </span>
-          <span className="shrink-0 text-[9px] font-mono uppercase tracking-widest text-neon-cyan">View</span>
-        </button>
-      )}
+      {/* Transient toast for a fresh notification. One accent colour per type (icon + frame + CTA) so it
+          stays consistent with the inbox: update→cyan, bonus→amber, usage→red. */}
+      {notifToast && (() => {
+        const cfg = notifToast.type === 'usage'
+          ? { Icon: AlertTriangle, text: 'text-neon-red', border: 'border-neon-red/50' }
+          : notifToast.type === 'bonus'
+          ? { Icon: Gift, text: 'text-neon-amber', border: 'border-neon-amber/50' }
+          : { Icon: Megaphone, text: 'text-neon-cyan', border: 'border-neon-cyan/50' };
+        return (
+          <button
+            onClick={() => { setIsNotifOpen(true); setNotifToast(null); }}
+            className={`fixed bottom-6 inset-x-0 mx-auto w-fit z-[10000] max-w-[calc(100%-2rem)] flex items-center gap-3 bg-zinc-900 border ${cfg.border} rounded-md px-4 py-3 shadow-2xl animate-fade-in-up text-left`}
+          >
+            <cfg.Icon size={16} className={`shrink-0 ${cfg.text}`} />
+            <span className="min-w-0">
+              <span className={`block text-xs font-medium truncate ${cfg.text}`}>{notifToast.title}</span>
+              <span className="block text-[10px] text-zinc-100 line-clamp-1">{notifToast.preview}</span>
+            </span>
+            <span className={`shrink-0 text-[9px] font-mono uppercase tracking-widest ${cfg.text}`}>View</span>
+          </button>
+        );
+      })()}
       <AccountPanel
         isOpen={isAccountOpen}
         onClose={() => setIsAccountOpen(false)}

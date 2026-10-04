@@ -269,6 +269,8 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
+  // Only ONE row's swipe drawer open at a time — opening another closes the previous (controlled open).
+  const [openSwipeKey, setOpenSwipeKey] = useState<string | null>(null);
 
   // Delete = 2-click confirm (no full-swipe / no undo timer): first tap on the drawer's Delete arms it
   // (label → Confirm, drawer stays open); a second tap within 3s runs the real delete.
@@ -614,10 +616,12 @@ export const GeneratedFilesPanel: React.FC<Props> = ({ library }) => {
                     radius={6}
                     actionWidth={56}
                     fullSwipe={false}
-                    rowColor="#18181b"
+                    rowColor="#0a0a0c"
                     drawerColor="#27272a"
                     actionColor="#e5484d"
                     textColor="#f5f5f5"
+                    open={openSwipeKey === file.key}
+                    onOpenChange={(o: boolean) => setOpenSwipeKey(prev => (o ? file.key : (prev === file.key ? null : prev)))}
                     actions={swipeActions(file)}
                   >
                     {rowBody}
