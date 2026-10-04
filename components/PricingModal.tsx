@@ -71,6 +71,34 @@ const PROVIDERS: { key: string; matches: string[]; label: string; icon: React.Re
   { key: 'discord', matches: ['discord'], label: 'Discord', icon: DiscordIcon },
 ];
 
+// A single line that NEVER wraps or truncates: if the text is wider than the container, shrink the
+// font (down to a floor) so it still fits on one line. Measured imperatively (no re-render loop).
+const FitOneLine: React.FC<{ text: string; className?: string; maxFontPx?: number; minFontPx?: number }> = ({ text, className = '', maxFontPx = 10, minFontPx = 4 }) => {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
+  React.useLayoutEffect(() => {
+    const fit = () => {
+      const wrap = wrapRef.current, el = spanRef.current;
+      if (!wrap || !el) return;
+      el.style.fontSize = `${maxFontPx}px`;
+      const avail = wrap.clientWidth, natural = el.scrollWidth;
+      if (avail > 0 && natural > avail) el.style.fontSize = `${Math.max(minFontPx, (maxFontPx * avail) / natural)}px`;
+    };
+    fit();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    if (ro && wrapRef.current) ro.observe(wrapRef.current);
+    window.addEventListener('resize', fit);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', fit); };
+  }, [text, maxFontPx, minFontPx]);
+  // Block span (not inline-block → no baseline gap) with default leading, so the row is the SAME height
+  // as the plain <p> it replaced and doesn't change the card's spacing / the Sign Out gap.
+  return (
+    <div ref={wrapRef} className={`overflow-hidden ${className}`} title={text}>
+      <span ref={spanRef} className="block whitespace-pre">{text}</span>
+    </div>
+  );
+};
+
 export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, proAnnualPriceId, onModeChange }: Props) {
   const [tierInfo, setTierInfo] = useState<UserTier | null>(null);
   const [loading, setLoading] = useState(false);
@@ -357,10 +385,13 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       <span className="text-zinc-500 text-xs ml-0.5">{currentTier === 'free' ? 'Free credits' : 'credits'}</span>
                     </div>
                     <p className="text-xs text-neon-cyan font-mono font-bold truncate pr-28">{accountName}</p>
-                    <div className="mt-2 text-[10px] text-zinc-500 font-mono space-y-0.5">
-                      <p className="truncate pr-28" title={user.email ?? ''}>Email: {user.email}</p>
-                      <p className="truncate" title={user.id}>ID: {user.id}</p>
+                    {/* Email + ID. Each line never wraps/truncates — the font shrinks to fit if needed.
+                        Mobile: two lines (Email, then ID). Desktop: both on ONE line. */}
+                    <div className="sm:hidden mt-2 text-zinc-500 font-mono space-y-0.5">
+                      <FitOneLine text={`Email: ${user.email ?? ''}`} />
+                      <FitOneLine text={`ID: ${user.id}`} />
                     </div>
+                    <FitOneLine text={`Email: ${user.email ?? ''}    ID: ${user.id}`} className="hidden sm:block mt-2 text-zinc-500 font-mono" />
                   </div>
 
                   <div className="space-y-2 flex-1 flex flex-col min-h-0">
