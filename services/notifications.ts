@@ -112,6 +112,30 @@ export function takeAnnouncementToast(): Notif | null {
   return fresh[0] || null;
 }
 
+// ── Cross-device sync (user_notifications). The client mirrors the localStorage state to Supabase and
+// merges a remote row in on login. Read/cleared are UNION-merged; derived items merge by id; bonus_seen
+// takes the MAX and usage_period the LATEST, so a grant/warning fires once per account, not per device.
+export interface NotifSyncState { read: string[]; cleared: string[]; items: Notif[]; bonusSeen: number | null; usagePeriod: string | null; }
+
+export function getLocalNotifState(): NotifSyncState {
+  const b = localStorage.getItem(K_BONUS);
+  return { read: arr(K_READ), cleared: arr(K_CLEARED), items: items(), bonusSeen: b !== null ? Number(b) : null, usagePeriod: localStorage.getItem(K_USAGE) };
+}
+
+export function mergeRemoteNotifState(remote: NotifSyncState | null): void {
+  if (!remote) return;
+  setArr(K_READ, [...new Set([...arr(K_READ), ...(remote.read || [])])]);
+  setArr(K_CLEARED, [...new Set([...arr(K_CLEARED), ...(remote.cleared || [])])]);
+  const byId = new Map<string, Notif>();
+  for (const n of [...items(), ...(remote.items || [])]) byId.set(n.id, n);
+  setItems([...byId.values()]);
+  const lb = localStorage.getItem(K_BONUS);
+  const mergedBonus = Math.max(lb !== null ? Number(lb) : -Infinity, remote.bonusSeen ?? -Infinity);
+  if (isFinite(mergedBonus)) localStorage.setItem(K_BONUS, String(mergedBonus));
+  const later = (remote.usagePeriod || '') > (localStorage.getItem(K_USAGE) || '') ? remote.usagePeriod : localStorage.getItem(K_USAGE);
+  if (later) localStorage.setItem(K_USAGE, later);
+}
+
 export function unreadCount(): number { return listNotifs().filter(n => !n.read).length; }
 export function markRead(id: string) { const r = new Set(arr(K_READ)); r.add(id); setArr(K_READ, [...r]); }
 export function markAllRead() { setArr(K_READ, listNotifs().map(n => n.id)); }

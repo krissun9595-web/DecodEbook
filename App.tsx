@@ -17,7 +17,7 @@ import BrandMark from './components/ui/BrandMark';
 import { CloseButton } from './components/ui/CloseButton';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { NotificationsPanel } from './components/NotificationsPanel';
-import { syncDerivedNotifs, unreadCount, takeAnnouncementToast, Notif } from './services/notifications';
+import { syncDerivedNotifs, unreadCount, takeAnnouncementToast, getLocalNotifState, mergeRemoteNotifState, Notif } from './services/notifications';
 import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
 import { CreditNotice } from './components/ui/CreditNotice';
 import { StatusMessage } from './components/ui/StatusMessage';
@@ -25,7 +25,7 @@ import { InfoTooltip, InfoSection } from './components/ui/InfoTooltip';
 import { getSession, loadUserSettings, saveUserSettings, isSupabaseConfigured, bootstrapSupabase, onAuthStateChange, handleOAuthCallback } from './services/supabase';
 import { startSession, trackEvent, trackBookAction, trackNavigation, trackGeneration } from './utils/analytics';
 import { trackReferralClick, registerReferralSignup } from './services/referral';
-import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
+import { saveBookToCloud, deleteBookFromCloud, loadLibraryFromCloud, saveNotebookToCloud, loadNotebookFromCloud, saveReadingPosition, loadReadingPositions, saveNotifStateToCloud, loadNotifStateFromCloud, mergeLibrary, mergeNotebook, debounce } from './services/librarySync';
 import { saveFile, getFile, deleteFile, listFiles, buildCacheKey, clearBook } from './services/fileCache';
 import { buildChaptersFromOutline, buildSourceIndexedChapters, computeSourceHash, expandTopicSectionsIntoChapters, findHeadingOffsetByTitle, headingMatchesTitle, isUsableEpubOutline, isUsablePdfOutline, splitDetectedBackMatter } from './utils/sourceIndex';
 import { PDF_TEXT_EXTRACTION_VERSION, EPUB_TEXT_EXTRACTION_VERSION, expectedExtractorVersion, isStaleExtraction } from './utils/sourceVersion';
@@ -657,6 +657,8 @@ const App: React.FC = () => {
           fetchUserTier().then(applyUserTier).catch(() => {});
           // Cloud library sync
           const uid = session.user.id;
+          // My_Inbox cross-device state: merge the remote row in; the notifUnread change persists the union.
+          loadNotifStateFromCloud(uid).then(remote => { mergeRemoteNotifState(remote); setNotifUnread(unreadCount()); }).catch(() => {});
           Promise.all([loadLibraryFromCloud(uid), loadNotebookFromCloud(uid), loadReadingPositions(uid)]).then(([cloudLib, cloudNotes, positions]) => {
             setLibrary(prev => {
               const { merged, toUpload, toDelete } = mergeLibrary(prev, cloudLib);
@@ -885,6 +887,15 @@ const App: React.FC = () => {
   const debouncedNotebookSync = useRef(debounce((userId: string, items: NotebookItem[]) => {
     saveNotebookToCloud(userId, items).catch(() => {});
   }, 1000)).current;
+
+  const debouncedNotifSync = useRef(debounce((userId: string) => {
+    saveNotifStateToCloud(userId, getLocalNotifState()).catch(() => {});
+  }, 1000)).current;
+  const syncNotifState = () => { if (currentUser?.id) debouncedNotifSync(currentUser.id); };
+  // Mirror My_Inbox state to the cloud whenever it changes (a derived notif is created, or read/clear
+  // via the panel which also bumps notifUnread). The login merge below also lands here via setNotifUnread.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { syncNotifState(); }, [notifUnread]);
 
   const debouncedReadingSync = useRef(debounce((userId: string, bookId: string, chapterId: number) => {
     saveReadingPosition(userId, bookId, chapterId).catch(() => {});
@@ -7698,7 +7709,7 @@ const App: React.FC = () => {
       <NotificationsPanel
         isOpen={isNotifOpen}
         onClose={() => setIsNotifOpen(false)}
-        onChange={() => setNotifUnread(unreadCount())}
+        onChange={() => { setNotifUnread(unreadCount()); syncNotifState(); }}
       />
       {/* Transient toast for a fresh notification. One accent colour per type (icon + frame + CTA) so it
           stays consistent with the inbox: update→cyan, bonus→amber, usage→red. */}

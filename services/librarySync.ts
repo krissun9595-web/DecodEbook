@@ -158,6 +158,33 @@ export async function loadNotebookFromCloud(userId: string): Promise<NotebookIte
   }));
 }
 
+// --- Notifications (My_Inbox cross-device state) ---
+
+interface NotifState { read: string[]; cleared: string[]; items: any[]; bonusSeen: number | null; usagePeriod: string | null }
+
+export async function saveNotifStateToCloud(userId: string, s: NotifState): Promise<void> {
+  const client = sb();
+  if (!client) return;
+  const { error } = await client.from('user_notifications').upsert({
+    user_id: userId,
+    read_ids: s.read,
+    cleared_ids: s.cleared,
+    items: s.items,
+    bonus_seen: s.bonusSeen,
+    usage_period: s.usagePeriod,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+  if (error) console.warn('[sync] saveNotifState failed:', error.message);
+}
+
+export async function loadNotifStateFromCloud(userId: string): Promise<NotifState | null> {
+  const client = sb();
+  if (!client) return null;
+  const { data, error } = await client.from('user_notifications').select('*').eq('user_id', userId).maybeSingle();
+  if (error || !data) { if (error) console.warn('[sync] loadNotifState failed:', error.message); return null; }
+  return { read: data.read_ids || [], cleared: data.cleared_ids || [], items: data.items || [], bonusSeen: data.bonus_seen ?? null, usagePeriod: data.usage_period ?? null };
+}
+
 // --- Reading position ---
 
 export async function saveReadingPosition(userId: string, bookId: string, chapterId: number): Promise<void> {
