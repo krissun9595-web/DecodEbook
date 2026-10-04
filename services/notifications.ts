@@ -13,11 +13,11 @@ export interface NotifView extends Notif { read: boolean; }
 // ── App updates (edit here, then deploy, to post one). Keep ids unique + stable. ──
 export const ANNOUNCEMENTS: Notif[] = [
   {
-    id: 'u-2026-10-05-toast-center-2',
+    id: 'u-2026-10-05-toast-center-3',
     type: 'update',
-    title: 'Toast position test #2',
-    preview: 'Re-checking that the push toast centers on the reading area when the sidebar is open, so it feels balanced. Tap "View" to open My_Inbox.',
-    ts: Date.parse('2026-10-05T04:30:00Z'),
+    title: 'Toast position test #3',
+    preview: 'Checking on PROD that the push toast centers on the reading area when the sidebar is open, so it feels balanced. Tap "View" to open My_Inbox.',
+    ts: Date.parse('2026-10-05T05:00:00Z'),
   },
   {
     id: 'u-2026-10-03-chat-mobile',
