@@ -396,7 +396,12 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
 
                   <div className="space-y-2 flex-1 flex flex-col min-h-0">
                     <div className="space-y-1.5">
-                      <p className="text-[9px] text-zinc-600 font-mono">Binded accounts:</p>
+                      {/* Label + status message share ONE row (message right-aligned, truncates) so a
+                          bind/unbind message never adds a line below and squeezes the button grid. */}
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <p className="text-[9px] text-zinc-600 font-mono shrink-0">Binded accounts:</p>
+                        {bindMsg && <p title={bindMsg} className="text-[9px] text-zinc-500 font-mono truncate text-right min-w-0">{bindMsg}</p>}
+                      </div>
                       <div className="grid grid-cols-4 gap-2">
                         {PROVIDERS.map(p => {
                           const linked = identities.some(i => p.matches.includes(i.provider));
@@ -409,7 +414,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                           );
                         })}
                       </div>
-                      {bindMsg && <p className="text-[9px] text-zinc-500 font-mono">{bindMsg}</p>}
                     </div>
                     <button onClick={handleSignOut} className="w-full !mt-auto py-2 !min-h-0 bg-zinc-900 hover:bg-rose-950/30 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-sm text-[10px] font-mono uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-1.5">
                       <LogOut size={10} /> Sign Out
@@ -555,7 +559,12 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                             style={{ width: `${creditPct}%` }}
                           />
                         </div>
-                        {currentTier === 'pro' && (
+                        {currentTier === 'pro' && tierInfo.cancel_at_period_end && tierInfo.period_end && (
+                          <p className="text-[9px] text-neon-amber/90 font-mono -mt-0.5">
+                            Pro cancels {new Date(tierInfo.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — reverts to Free. Your credits stay until then.
+                          </p>
+                        )}
+                        {(currentTier === 'pro' || packTotal > 0) && (
                           <>
                             <div className="flex items-center justify-between text-xs">
                               <span className="text-neon-cyan font-mono font-bold">Credit pack</span>

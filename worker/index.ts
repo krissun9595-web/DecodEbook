@@ -1202,61 +1202,24 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 
       // Free→Pro carry-over: when a FREE user upgrades, move their UNUSED free credits into the
       // PERMANENT bonus balance so upgrading never forfeits them (Pro's 1000 then stacks on top).
-      // Runs ONCE — guarded on (a) no existing Pro subscription row yet AND (b) get_user_credits still
-      // reporting the free tier — so a redelivered webhook / renewal / re-subscribe can't re-grant.
+      // Done atomically in SQL (claim-once flag + grant + consume) so it fires at most ONCE per user
+      // ever and can't half-finish or re-accumulate across upgrade/cancel cycles. See sql/038.
       if (tier === 'pro') {
-        const existingPro = await supabaseAdmin(env, `/subscriptions?user_id=eq.${userId}&tier=eq.pro&limit=1`, { method: 'GET' })
-          .then(r => (r.ok ? r.json() : [])).catch(() => []) as any[];
-        if (Array.isArray(existingPro) && existingPro.length === 0) {
-          const credRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_user_credits`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
-            body: JSON.stringify({ p_user_id: userId }),
-          }).catch(() => null);
-          if (credRes && credRes.ok) {
-            const cred = await credRes.json().catch(() => null) as any;
-            const freeTotal = TIER_CREDITS.free;
-            if (cred && (cred.tier || 'free') === 'free' && isFinite(freeTotal)) {
-              const freeRemaining = Math.max(0, freeTotal - (cred.credits_used || 0));
-              if (freeRemaining > 0) {
-                // Prefer the reason-tagged grant so the ledger/history reads "Free credits carried over"
-                // (not the generic "Referral / bonus credits"); fall back to the plain bonus grant if
-                // that RPC isn't deployed yet, so carry-over still works pre-migration.
-                const tagged = await supabaseAdmin(env, '/rpc/add_bonus_credits_reason', {
-                  method: 'POST',
-                  body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining, p_reason: 'Free credits carried over' }),
-                }).then(r => r.ok).catch(() => false);
-                if (!tagged) {
-                  await supabaseAdmin(env, '/rpc/add_bonus_credits', {
-                    method: 'POST',
-                    body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining }),
-                  }).catch(() => {});
-                }
-                // Also CONSUME those free credits so they don't re-appear if the user later downgrades
-                // back to Free. Free remaining = 100 − usage-since-signup; without this, a round-trip
-                // (free→Pro→free) would hand back BOTH the +bonus above AND the original free balance.
-                // We record it as a usage_logs charge stamped at the FREE period start (first_seen_at =
-                // cred.period_start) so it counts only toward the free lifetime grant, never the new Pro
-                // period, and the wallet-depletion trigger sees zero overflow (so it leaves the bonus
-                // we just granted untouched). Hidden from Credit History (the +bonus line tells the story).
-                if (cred.period_start) {
-                  await supabaseAdmin(env, '/usage_logs', {
-                    method: 'POST',
-                    headers: { 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
-                    body: JSON.stringify({
-                      user_id: userId, action: 'creditCarryover', model: 'carryover',
-                      credits_cost: freeRemaining, cost_cents: 0,
-                      usage_id: `carryover-${subscriptionId}`, created_at: cred.period_start,
-                    }),
-                  }).catch(() => {});
-                }
-              }
-            }
-          }
+        const coRes = await supabaseAdmin(env, '/rpc/carry_over_free_credits', {
+          method: 'POST', headers: { 'Prefer': 'return=representation' },
+          body: JSON.stringify({ p_user_id: userId }),
+        }).catch(() => null);
+        if (coRes && coRes.ok) {
+          const carried = await coRes.json().catch(() => 0);
+          if (carried) console.log('[carryover] carried', carried, 'free credits for', userId);
+        } else if (coRes) {
+          console.error('[carryover] carry_over_free_credits FAILED', coRes.status, await coRes.text().catch(() => ''), 'user=' + userId);
         }
       }
 
-      await supabaseAdmin(env, '/subscriptions', {
+      // One row per user (sql/038 UNIQUE(user_id)) — merge onto it so a re-subscribe updates the same
+      // row and keeps its pack credits, instead of inserting a new row that orphans them.
+      await supabaseAdmin(env, '/subscriptions?on_conflict=user_id', {
         method: 'POST',
         headers: { 'Prefer': 'resolution=merge-duplicates' },
         body: JSON.stringify({
