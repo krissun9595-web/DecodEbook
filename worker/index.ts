@@ -1152,6 +1152,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
   if (!valid) return jsonError('Invalid signature', 400);
 
   const event = JSON.parse(body);
+  console.log('[webhook] received', event.type);
 
   switch (event.type) {
     case 'checkout.session.completed': {
@@ -1231,6 +1232,24 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
                     body: JSON.stringify({ p_user_id: userId, p_credits: freeRemaining }),
                   }).catch(() => {});
                 }
+                // Also CONSUME those free credits so they don't re-appear if the user later downgrades
+                // back to Free. Free remaining = 100 − usage-since-signup; without this, a round-trip
+                // (free→Pro→free) would hand back BOTH the +bonus above AND the original free balance.
+                // We record it as a usage_logs charge stamped at the FREE period start (first_seen_at =
+                // cred.period_start) so it counts only toward the free lifetime grant, never the new Pro
+                // period, and the wallet-depletion trigger sees zero overflow (so it leaves the bonus
+                // we just granted untouched). Hidden from Credit History (the +bonus line tells the story).
+                if (cred.period_start) {
+                  await supabaseAdmin(env, '/usage_logs', {
+                    method: 'POST',
+                    headers: { 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
+                    body: JSON.stringify({
+                      user_id: userId, action: 'creditCarryover', model: 'carryover',
+                      credits_cost: freeRemaining, cost_cents: 0,
+                      usage_id: `carryover-${subscriptionId}`, created_at: cred.period_start,
+                    }),
+                  }).catch(() => {});
+                }
               }
             }
           }
@@ -1268,8 +1287,9 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
       const pStart = sub.current_period_start || subItem?.current_period_start || sub.start_date;
       const pEnd = sub.current_period_end || subItem?.current_period_end;
 
-      await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${sub.id}`, {
+      const patched = await supabaseAdmin(env, `/subscriptions?stripe_subscription_id=eq.${sub.id}&select=user_id`, {
         method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
         body: JSON.stringify({
           tier, status, stripe_price_id: priceId,
           current_period_start: pStart ? new Date(pStart * 1000).toISOString() : new Date().toISOString(),
@@ -1277,7 +1297,24 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
           cancel_at_period_end: sub.cancel_at_period_end || false,
           updated_at: new Date().toISOString(),
         }),
-      });
+      }).then(r => (r.ok ? r.json() : [])).catch(() => []) as any[];
+      const subUserId = Array.isArray(patched) ? patched[0]?.user_id : undefined;
+
+      // Record the lifecycle change as a Credit-History note (delta 0 — monthly credits are computed,
+      // not a stored balance, so there's nothing to debit; the note just documents what happened).
+      if (subUserId) {
+        if (event.type === 'customer.subscription.deleted') {
+          await addCreditNote(env, subUserId, 'Subscription ended — reverted to Free');
+        } else {
+          const prev = (event.data as any).previous_attributes || {};
+          if (prev.cancel_at_period_end !== undefined && sub.cancel_at_period_end === true) {
+            const until = pEnd ? new Date(pEnd * 1000).toISOString().slice(0, 10) : 'the period end';
+            await addCreditNote(env, subUserId, `Pro set to cancel — active until ${until}`);
+          } else if (prev.cancel_at_period_end === true && sub.cancel_at_period_end === false) {
+            await addCreditNote(env, subUserId, 'Pro cancellation reverted — subscription continues');
+          }
+        }
+      }
       break;
     }
 
@@ -1320,9 +1357,105 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
       }
       break;
     }
+
+    case 'charge.refunded': {
+      // A charge was (fully or partially) refunded. Subscription charge → revoke Pro; one-time
+      // (pack) charge → debit the pack credits. Both record a Credit-History line. See handleRefund.
+      await handleRefund(env, event.data.object, false);
+      break;
+    }
+
+    case 'charge.dispute.created': {
+      // A dispute/chargeback pulls the funds back like a refund. The event object is the DISPUTE,
+      // so fetch its underlying charge and run the same revoke/debit path (tagged "disputed").
+      const dispute: any = event.data.object;
+      if (dispute.charge && env.STRIPE_SECRET_KEY) {
+        const chRes = await fetch(`https://api.stripe.com/v1/charges/${dispute.charge}`, {
+          headers: { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia' },
+        }).catch(() => null);
+        if (chRes && chRes.ok) await handleRefund(env, await chRes.json(), true);
+      }
+      break;
+    }
   }
 
   return jsonResponse({ received: true });
+}
+
+// Write a delta-0 Credit-History note (cancel / downgrade / refund). Best-effort: a cancel/refund
+// must not fail because the note couldn't be written, and the RPC may predate a given deploy.
+async function addCreditNote(env: Env, userId: string, reason: string, type: string = 'subscription'): Promise<void> {
+  if (!userId) return;
+  await supabaseAdmin(env, '/rpc/add_credit_note', {
+    method: 'POST',
+    body: JSON.stringify({ p_user_id: userId, p_reason: reason, p_type: type }),
+  }).catch(() => {});
+}
+
+// Handle a refunded (or disputed) charge. Stripe refunds return money but DON'T cancel a subscription
+// or remove credits on their own — the worker must. We distinguish the two cases by trying to match
+// the charge to a tracked one-time PACK purchase (via its checkout session); anything that ISN'T a
+// pack is treated as a SUBSCRIPTION refund. We do NOT rely solely on charge.invoice being present —
+// in some API versions it can be absent on the delivered event, which would misroute a sub refund.
+//   • pack charge (matches a credit_pack_purchases row) → debit the pack's credits, idempotently
+//     (the .refunded flag guards a redelivered webhook) + record "Credit pack refunded −N".
+//   • otherwise (subscription, incl. renewals) → cancel the Stripe sub + flip our row to Free +
+//     record "Pro subscription refunded". Monthly credits are computed, so there's no balance to debit.
+async function handleRefund(env: Env, charge: any, isDispute: boolean): Promise<void> {
+  if (!charge) return;
+  const verb = isDispute ? 'disputed' : 'refunded';
+  const stripeAuth = { 'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia' };
+  console.log('[refund]', verb, 'charge=', charge.id, 'invoice=', charge.invoice ?? null, 'pi=', charge.payment_intent ?? null, 'customer=', charge.customer ?? null);
+
+  // ── PACK path — only one-time payments (no invoice). Match the charge's checkout session to a
+  //    tracked pack purchase; if found, debit and we're done. ──
+  if (!charge.invoice && charge.payment_intent && env.STRIPE_SECRET_KEY) {
+    const sRes = await fetch(`https://api.stripe.com/v1/checkout/sessions?payment_intent=${charge.payment_intent}&limit=1`, { headers: stripeAuth }).catch(() => null);
+    const sessionId = sRes && sRes.ok ? ((await sRes.json().catch(() => null) as any)?.data?.[0]?.id) : null;
+    if (sessionId) {
+      // Mark refunded false→true atomically; a 0-row result = already handled (idempotent) or not a pack.
+      const marked = await supabaseAdmin(env, `/credit_pack_purchases?stripe_session_id=eq.${sessionId}&refunded=is.false&select=user_id,credits`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ refunded: true, refunded_at: new Date().toISOString() }),
+      }).then(r => (r.ok ? r.json() : [])).catch(() => []) as any[];
+      const pur = Array.isArray(marked) ? marked[0] : null;
+      if (pur?.user_id && pur.credits > 0) {
+        await supabaseAdmin(env, '/rpc/refund_pack_credits', {
+          method: 'POST',
+          body: JSON.stringify({ p_user_id: pur.user_id, p_credits: pur.credits }),
+        }).catch(() => {});
+        console.log('[refund] pack refund recorded', pur.user_id, 'credits=', pur.credits);
+        return;
+      }
+    }
+    // No matching pack purchase → fall through and treat it as a subscription refund.
+    console.log('[refund] no pack match; treating as subscription refund');
+  }
+
+  // ── SUBSCRIPTION path → revoke Pro for the charge's customer. ──
+  const customerId = charge.customer;
+  if (!customerId) { console.warn('[refund] no customer on charge', charge.id); return; }
+  const rows = await supabaseAdmin(env, `/subscriptions?stripe_customer_id=eq.${customerId}&select=user_id,stripe_subscription_id,status&order=created_at.desc&limit=1`, { method: 'GET' })
+    .then(r => (r.ok ? r.json() : [])).catch(() => []) as any[];
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row?.user_id) { console.warn('[refund] no subscription row for customer', customerId); return; }
+
+  // Cancel the live subscription so billing truly stops (its subscription.deleted may also fire and
+  // re-flip us to Free — idempotent). No-op/ignored if it's already canceled.
+  if (row.stripe_subscription_id && row.status !== 'canceled' && env.STRIPE_SECRET_KEY) {
+    await fetch(`https://api.stripe.com/v1/subscriptions/${row.stripe_subscription_id}`, { method: 'DELETE', headers: stripeAuth }).catch(() => {});
+  }
+  // Flip our row to Free immediately (don't depend on the cancel webhook arriving).
+  const filter = row.stripe_subscription_id
+    ? `stripe_subscription_id=eq.${row.stripe_subscription_id}`
+    : `user_id=eq.${row.user_id}`;
+  await supabaseAdmin(env, `/subscriptions?${filter}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ tier: 'free', status: 'canceled', cancel_at_period_end: false, updated_at: new Date().toISOString() }),
+  }).catch(() => {});
+  await addCreditNote(env, row.user_id, `Pro subscription ${verb} — access reverted to Free`, 'refund');
+  console.log('[refund] subscription refund recorded for', row.user_id);
 }
 
 function mapPriceToTier(priceId: string, env: Env): string {

@@ -651,7 +651,9 @@ export async function fetchCreditHistory(userId: string, limit = 50): Promise<Cr
   ]);
   const usageRows = (usage.data || []) as any[];
   const consume: CreditHistoryEntry[] = usageRows
-    .filter(r => (r.credits_cost || 0) !== 0)
+    // 'creditCarryover' is an internal accounting charge (free credits moved to bonus on upgrade) —
+    // it's represented in history by the "+N Free credits carried over" bonus line, not as a usage.
+    .filter(r => (r.credits_cost || 0) !== 0 && r.action !== 'creditCarryover')
     .map(r => ({ delta: -(r.credits_cost || 0), type: 'consume', reason: r.action, book: r.book_title || undefined, created_at: r.created_at, session: r.session_id || undefined, model: r.model || undefined }));
   // Zero-credit "generation stopped part-way" markers → let the UI tag the delivered work "(Partial)".
   const markers: CreditHistoryEntry[] = usageRows

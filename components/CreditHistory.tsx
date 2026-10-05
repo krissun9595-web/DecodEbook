@@ -29,6 +29,8 @@ function labelFor(e: CreditHistoryEntry): string {
   if (e.type === 'purchase') return 'Credit pack';
   if (e.type === 'bonus' || e.type === 'earn') return e.reason || 'Bonus credits';
   if (e.type === 'renewal') return e.reason || 'Monthly renewal';
+  if (e.type === 'refund') return e.reason || 'Refund';
+  if (e.type === 'subscription') return e.reason || 'Subscription update';
   return e.reason || e.type;
 }
 
@@ -122,6 +124,10 @@ export function fmtTimestamp(ts: string | number): string {
 
 const monthKey = (d: Date) => d.getFullYear() * 12 + d.getMonth();
 
+// Credits cell: +N (added, cyan), −N (spent/refunded, zinc), or — for a delta-0 note (cancel/downgrade).
+const deltaText = (d: number): string => (d === 0 ? '—' : d > 0 ? `+${d}` : String(d));
+const deltaCls = (d: number): string => (d > 0 ? 'text-neon-cyan' : d === 0 ? 'text-zinc-600' : 'text-zinc-500');
+
 export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: { at: string; credits: number; label?: string } }) {
   const [rows, setRows] = useState<CreditHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -189,13 +195,13 @@ export function CreditHistory({ userId, renewal }: { userId?: string; renewal?: 
                 <span className={`${col.action} truncate ${e.type === 'renewal' ? 'text-zinc-600' : 'text-zinc-500'}`}>{e.label}</span>
                 <span className={`${col.mode} truncate ${e.mode === 'Premium' ? 'text-neon-cyan' : 'text-zinc-600'}`}>{e.mode || '—'}</span>
                 <span className={`${col.source} text-zinc-600 truncate`}>{e.book || '—'}</span>
-                <span className={`${col.credits} ${e.delta >= 0 ? 'text-neon-cyan' : 'text-zinc-500'}`}>{e.delta >= 0 ? '+' : ''}{e.delta}</span>
+                <span className={`${col.credits} ${deltaCls(e.delta)}`}>{deltaText(e.delta)}</span>
               </div>
               {/* mobile: line 1 = action + credits, line 2 = time · mode · source */}
               <div className="sm:hidden py-0.5">
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <span className={`truncate min-w-0 ${e.type === 'renewal' ? 'text-zinc-500' : 'text-zinc-300'}`}>{e.label}</span>
-                  <span className={`shrink-0 ${e.delta >= 0 ? 'text-neon-cyan' : 'text-zinc-500'}`}>{e.delta >= 0 ? '+' : ''}{e.delta}</span>
+                  <span className={`shrink-0 ${deltaCls(e.delta)}`}>{deltaText(e.delta)}</span>
                 </div>
                 <div className="flex items-center gap-2 min-w-0 mt-0.5 text-[8px] text-zinc-600">
                   <span className="shrink-0">{fmtTimestamp(e.created_at)}</span>
