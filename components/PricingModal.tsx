@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Zap, Crown, Key as KeyIcon, ExternalLink, Loader2, BarChart3, Shield, Github, Mail, Eye, EyeOff, LogIn, UserPlus, LogOut, RefreshCw, Package, Gift, Share2, Copy, Check, Facebook, Linkedin, Instagram, Wallet, Trash2 } from 'lucide-react';
 import { CloseButton } from './ui/CloseButton';
 import { Privacy, Pro } from './ui/glyphs';
-import { UserTier, TIER_CREDITS, CREDIT_COSTS, getAvailableCredits, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
+import { UserTier, TIER_CREDITS, CREDIT_COSTS, fetchUserTier, createCheckoutSession, createPackCheckout, openCustomerPortal } from '../services/stripe';
 import { creditsForAction } from '../services/pricing';
 import { GenMode, getGenerationMode, setGenerationMode, resolveModel } from '../services/gemini';
 import { CreditHistory } from './CreditHistory';
@@ -292,8 +292,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const meta: any = user?.user_metadata || {};
   const accountName = user ? (meta.full_name || meta.name || meta.user_name || meta.preferred_username || user.email?.split('@')[0] || 'User') : '';
   const monthlyCredits = TIER_CREDITS[currentTier] || 100;
-  const available = tierInfo ? getAvailableCredits(tierInfo) : 0;
-  const subscriptionRemaining = tierInfo ? Math.max(0, monthlyCredits - tierInfo.credits_used) : 0;
   const creditPct = monthlyCredits === Infinity ? 0 : Math.min(((tierInfo?.credits_used || 0) / monthlyCredits) * 100, 100);
   // Theme-colored progress: red ≥95%, amber ≥60%, else cyan.
   const barText = (p: number) => p >= 95 ? 'text-neon-red' : p >= 60 ? 'text-neon-amber' : 'text-neon-cyan';
@@ -564,13 +562,6 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                         {currentTier === 'pro' && tierInfo.cancel_at_period_end && tierInfo.period_end && (
                           <p className="text-[9px] text-neon-amber/90 font-mono -mt-0.5">
                             Pro cancels {new Date(tierInfo.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — reverts to Free. Your credits stay until then.
-                          </p>
-                        )}
-                        {/* Monthly/Free pool exhausted but bonus/pack still cover → say so, so a full red
-                            bar doesn't read as "out of credits" when it isn't. */}
-                        {creditPct >= 100 && (packRemaining + (tierInfo.bonus_credits || 0)) > 0 && (
-                          <p className="text-[9px] text-neon-cyan/80 font-mono -mt-0.5">
-                            {currentTier === 'free' ? 'Free' : 'Monthly'} credits used — now drawing from your {[(tierInfo.bonus_credits || 0) > 0 ? 'bonus' : null, packRemaining > 0 ? 'pack' : null].filter(Boolean).join(' + ')} ({(packRemaining + (tierInfo.bonus_credits || 0)).toLocaleString()} left).
                           </p>
                         )}
                         {(currentTier === 'pro' || packTotal > 0) && (
