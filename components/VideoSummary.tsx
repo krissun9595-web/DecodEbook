@@ -141,8 +141,9 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
           setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
         } else if (isVideoBlockedError(e)) {
           // Content blocked by the model's safety filter (e.g. real, identifiable people) — not
-          // transient, so don't say "try again". You weren't charged for a blocked generation.
-          setError("The video model couldn't create this chapter — it won't generate real, identifiable people or certain sensitive content. Try a different (e.g. conceptual) chapter. You weren't charged.");
+          // transient, so don't say "try again". The video itself wasn't charged; only the small
+          // prompt step was (metered to prevent abuse of the free-form prompt call).
+          setError("The video model couldn't create this chapter — it won't generate real, identifiable people or certain sensitive content. Try a different (e.g. conceptual) chapter. The video wasn't charged — only the prompt step (a few credits).");
         } else {
           // Everyone goes through our API (proxy mode), so no user-supplied key exists —
           // any Veo failure (incl. "Requested entity was not found", which is a server-side
