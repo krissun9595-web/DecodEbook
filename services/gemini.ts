@@ -121,6 +121,19 @@ const prepSession = (label: string): string | undefined => {
   return `${label}#${_usageSession.split('#')[1] || ''}`;
 };
 
+// Video models differ on content policy, so the prompt guidance must too (don't steer them identically).
+// Veo (Google) HARD-blocks real, identifiable people via RAI and fails the whole ~85s generation, so
+// steer it to symbolic/conceptual visuals. Seedance (BytePlus) doesn't apply that block, so don't
+// needlessly abstract it. Keyed by the active model → add a model's rule here as policies are learned.
+// The "no on-screen text" base applies to every model.
+const videoPromptGuidance = (model: string): string => {
+  const base = 'The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.';
+  if (/^veo/i.test(model)) {
+    return `Depict ideas SYMBOLICALLY and CONCEPTUALLY — do NOT depict or name real, identifiable public figures or specific real individuals (this model rejects them, so the whole generation fails after a long wait); use representative scenes, anonymous silhouettes, environments, objects, and abstract imagery instead. ${base}`;
+  }
+  return base;
+};
+
 // A unique idempotency key per charge, so the durable client write (supabase.ts) can re-send a
 // row after a tab-close / crash without double-charging (ON CONFLICT DO NOTHING on usage_id).
 const newUsageId = (): string => {
@@ -1201,7 +1214,7 @@ export const generateSummaryVideo = async (
       contents: {
         parts: [
           getChapterPart(file, chapter),
-          { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: Depict ideas SYMBOLICALLY and CONCEPTUALLY — do NOT depict or name real, identifiable public figures or specific real individuals (video models reject these, so the whole generation fails after a long wait); instead use representative scenes, anonymous silhouettes, environments, objects, and abstract imagery. The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
+          { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: ${videoPromptGuidance(_videoModel)}` }
         ]
       },
       config: {
@@ -1280,7 +1293,7 @@ export const generateSeedanceVideo = async (
     contents: {
       parts: [
         getChapterPart(file, chapter),
-        { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
+        { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: ${videoPromptGuidance(_videoModel)}` }
       ]
     },
     config: { thinkingConfig: { thinkingBudget: 0 } }
