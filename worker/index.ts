@@ -525,11 +525,12 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
     ctx.waitUntil((async () => {
       try {
         const d = await clone.json();
-        // Detect a veo completion from the RESPONSE itself (a done operation carrying a generated
-        // video), NOT the client's X-Db-Action header — so dropping/spoofing the action can't skip the
-        // charge. Model enforced server-side; constant seconds; idempotent on the (stable client) usage
-        // id across polls. A tampered client with no id may be charged per done-poll — acceptable.
-        const veoDone = d?.done === true && (!!d?.response?.generatedVideos?.[0] || !!d?.response?.generateVideoResponse);
+        // Detect a veo completion from the RESPONSE itself, NOT the client's X-Db-Action header — so
+        // dropping/spoofing the action can't skip the charge. Require an ACTUAL downloadable video uri
+        // (the exact field the client treats as success, services/gemini.ts) so a done-but-no-video
+        // operation — RAI-blocked (e.g. a real person), filtered, or errored — is NOT charged. Model
+        // enforced server-side; constant seconds; idempotent on the (stable client) usage id.
+        const veoDone = d?.done === true && !!d?.response?.generatedVideos?.[0]?.video?.uri;
         if (veoDone) {
           const model = await resolveVideoModel(env, undefined, 'videoVeo');
           await recordUsage(env, userId, {
