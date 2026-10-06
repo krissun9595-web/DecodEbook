@@ -299,9 +299,11 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const barText = (p: number) => p >= 95 ? 'text-neon-red' : p >= 60 ? 'text-neon-amber' : 'text-neon-cyan';
   const barBg = (p: number) => p >= 95 ? 'bg-neon-red' : p >= 60 ? 'bg-neon-amber' : 'bg-neon-cyan';
   // Credit packs: persistent wallet drawn down after monthly runs out (see sql/018).
-  // Total = cumulative purchased (bar denominator); remaining = current balance.
-  const packTotal = tierInfo?.pack_purchased || 0;
+  // Total = cumulative purchased (bar denominator); remaining = current balance. Guard against a stale
+  // pack_purchased (older rows written before migration 018 tracked it can be 0 while the balance is
+  // non-zero) — never render below the real spendable balance, so the pack can't falsely show "0".
   const packRemaining = tierInfo?.pack_credits || 0;
+  const packTotal = Math.max(tierInfo?.pack_purchased || 0, packRemaining);
   const packUsed = Math.max(0, packTotal - packRemaining);
   const packPct = packTotal > 0 ? Math.min((packUsed / packTotal) * 100, 100) : 0;
 
