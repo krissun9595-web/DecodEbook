@@ -15,6 +15,15 @@ export function isInsufficientCreditsError(e: unknown): boolean {
   return e instanceof Error && (e.message === INSUFFICIENT_CREDITS || /insufficient credits/i.test(e.message));
 }
 
+// Sentinel thrown when a video model COMPLETES but produces no video — content blocked by the model's
+// safety filter (Veo refuses real, identifiable people) or otherwise filtered. NOT transient: retrying
+// the same chapter won't help. Callers detect it with isVideoBlockedError() to show an actionable tip.
+export const VIDEO_BLOCKED = 'VIDEO_BLOCKED';
+
+export function isVideoBlockedError(e: unknown): boolean {
+  return e instanceof Error && e.message === VIDEO_BLOCKED;
+}
+
 // Latest known tier, refreshed by App.tsx whenever it fetches. Used as a fallback
 // if a fresh fetch fails mid-action.
 let cachedTier: UserTier | null = null;

@@ -7,7 +7,7 @@ import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, request
 import { Loader } from './ui/Loader';
 import { StatusMessage } from './ui/StatusMessage';
 import { CreditNotice } from './ui/CreditNotice';
-import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
+import { ensureCredits, isInsufficientCreditsError, isVideoBlockedError, getCachedTier } from '../services/credits';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
@@ -139,6 +139,10 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
         trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', status: 'failed', errorMessage: e.message });
         if (isInsufficientCreditsError(e)) {
           setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+        } else if (isVideoBlockedError(e)) {
+          // Content blocked by the model's safety filter (e.g. real, identifiable people) — not
+          // transient, so don't say "try again". You weren't charged for a blocked generation.
+          setError("The video model couldn't create this chapter — it won't generate real, identifiable people or certain sensitive content. Try a different (e.g. conceptual) chapter. You weren't charged.");
         } else {
           // Everyone goes through our API (proxy mode), so no user-supplied key exists —
           // any Veo failure (incl. "Requested entity was not found", which is a server-side

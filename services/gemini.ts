@@ -3,7 +3,7 @@ import { GoogleGenAI, Type, Modality, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
 import { creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from "./pricing";
-import { INSUFFICIENT_CREDITS, applyLocalCharge } from "./credits";
+import { INSUFFICIENT_CREDITS, VIDEO_BLOCKED, applyLocalCharge } from "./credits";
 import { extractChapterFromSource } from "../utils/sourceIndex";
 import { buildLocalTextStructure, buildStructureAnalysisText, isReadableChapterTitle } from "../utils/structureAnalysis";
 import { PDF_TEXT_EXTRACTION_VERSION } from "../utils/sourceVersion";
@@ -1227,7 +1227,14 @@ export const generateSummaryVideo = async (
     trackUsage('videoVeo', { total: 0, input: videoPrompt.length, output: 0 }, _videoModel, undefined, undefined, usageId);
     onStatus("Finalizing transmission...");
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error('Video generation returned no download URL');
+    if (!downloadLink) {
+      // Operation finished but produced no video = blocked by the model's safety filter (Veo refuses
+      // real, identifiable people) or otherwise filtered. Not transient — surface it as such.
+      const gv: any = (operation as any).response?.generateVideoResponse;
+      const reasons = Array.isArray(gv?.raiMediaFilteredReasons) ? gv.raiMediaFilteredReasons : [];
+      if (reasons.length) console.warn('[veo] content filtered:', reasons[0]);
+      throw new Error(VIDEO_BLOCKED);
+    }
     const authHeaders = await getAuthHeaders();
     const response = useProxy()
       ? await fetch('/api/gemini/video-download', {
