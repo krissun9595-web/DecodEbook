@@ -566,6 +566,13 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                             Pro cancels {new Date(tierInfo.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — reverts to Free. Your credits stay until then.
                           </p>
                         )}
+                        {/* Monthly/Free pool exhausted but bonus/pack still cover → say so, so a full red
+                            bar doesn't read as "out of credits" when it isn't. */}
+                        {creditPct >= 100 && (packRemaining + (tierInfo.bonus_credits || 0)) > 0 && (
+                          <p className="text-[9px] text-neon-cyan/80 font-mono -mt-0.5">
+                            {currentTier === 'free' ? 'Free' : 'Monthly'} credits used — now drawing from your {[(tierInfo.bonus_credits || 0) > 0 ? 'bonus' : null, packRemaining > 0 ? 'pack' : null].filter(Boolean).join(' + ')} ({(packRemaining + (tierInfo.bonus_credits || 0)).toLocaleString()} left).
+                          </p>
+                        )}
                         {(currentTier === 'pro' || packTotal > 0) && (
                           <>
                             <div className="flex items-center justify-between text-xs">

@@ -41,7 +41,8 @@ export function getAvailableCredits(tier: UserTier): number {
   const monthly = TIER_CREDITS[tier.tier] || 100;
   if (monthly === Infinity) return Infinity;
   // Backend (sql/018) caps credits_used at the monthly allowance and draws over-monthly
-  // usage from pack_credits then bonus_credits, so both are true REMAINING balances here.
+  // usage from bonus_credits then pack_credits, so both are true REMAINING balances here.
+  // (Order doesn't affect this total — it's the sum of all three pools.)
   return Math.max(0, monthly - tier.credits_used) + (tier.pack_credits || 0) + (tier.bonus_credits || 0);
 }
 
