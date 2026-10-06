@@ -1201,7 +1201,7 @@ export const generateSummaryVideo = async (
       contents: {
         parts: [
           getChapterPart(file, chapter),
-          { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
+          { text: `Create a cinematic visual description for a summary of "${chapter.title}" in ${style} style. IMPORTANT: Depict ideas SYMBOLICALLY and CONCEPTUALLY — do NOT depict or name real, identifiable public figures or specific real individuals (video models reject these, so the whole generation fails after a long wait); instead use representative scenes, anonymous silhouettes, environments, objects, and abstract imagery. The output video MUST NOT contain any text, subtitles, captions, or watermarks. Focus entirely on purely visual storytelling and atmosphere.` }
         ]
       },
       config: {
@@ -1229,7 +1229,7 @@ export const generateSummaryVideo = async (
 
     while (!operation.done) {
       onStatus("Synthesizing temporal data...");
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
       operation = await pollAi.operations.getVideosOperation({operation: operation});
     }
 
@@ -1317,7 +1317,7 @@ export const generateSeedanceVideo = async (
   let tokensUsed = 0;
   while (status !== 'succeeded' && status !== 'failed') {
     onStatus("Synthesizing temporal data...");
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, 5000));
     const pollRes = await fetch('/api/seedance/poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders, ...dbHeaders },
