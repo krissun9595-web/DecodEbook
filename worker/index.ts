@@ -1,4 +1,4 @@
-import { gateCost, creditsForAction, costCentsForAction } from '../services/pricing';
+import { gateCost, creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from '../services/pricing';
 
 interface Env {
   GEMINI_API_KEY: string;
@@ -215,6 +215,9 @@ export default {
       if (rl) return rl;
       const body = await request.clone().json() as any;
       const isFast = (body.model || '').includes('fast');
+      // Server-authoritative: gate on the constant duration + real model. The poll charge resolves the
+      // model from the taskId stash (written in handleSeedanceGenerate), not request headers.
+      request = await injectVideoBilling(request, body.model || '');
       const check = await checkCreditBalance(auth.userId, isFast ? 'videoSeedanceFast' : 'videoSeedance', env, request);
       if (check) return check;
       return handleSeedanceGenerate(request, env);
@@ -254,7 +257,9 @@ export default {
       let releaseHold = false;
       if (/:predictLongRunning/.test(p)) {
         // Veo is long-running (create → poll for minutes); a brief hold around create wouldn't
-        // cover the charge window, so keep the (accurate) read check here.
+        // cover the charge window, so keep the (accurate) read check here. Inject the real model
+        // (from the path) + constant seconds for the gate; the completion charge enforces the veo model.
+        request = await injectVideoBilling(request, p.match(/models\/([^:]+):/)?.[1] || '');
         const check = await checkCreditBalance(auth.userId, 'videoVeo', env, request);
         if (check) return check;
       } else if (/:generateContent/.test(p)) {
@@ -515,16 +520,18 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
   // CLONE the response to read `done` while the ORIGINAL body streams back UNTOUCHED (buffering +
   // re-returning it previously corrupted the SDK's operation parse → unplayable video). Meter once,
   // at completion (done=true); idempotent on usage_id handles repeated polls.
-  if (response.ok && !isGenerate && meta.action === 'videoVeo' && meta.model && userId && ctx) {
+  if (response.ok && !isGenerate && meta.action === 'videoVeo' && userId && ctx) {
     const clone = response.clone();
-    const veoUsageId = meta.usageId || crypto.randomUUID(); // mandatory: don't let a missing id skip it
     ctx.waitUntil((async () => {
       try {
         const d = await clone.json();
         if (d.done === true) {
+          // Server-authoritative: veo model enforced (not the client header), constant seconds, usage
+          // id generated if absent (unskippable). Idempotent on usage id across polls.
+          const model = await resolveVideoModel(env, undefined, 'videoVeo');
           await recordUsage(env, userId, {
-            action: 'videoVeo', model: meta.model, book: meta.book, session: meta.session,
-            usageId: veoUsageId, seconds: meta.seconds,
+            action: 'videoVeo', model, book: meta.book, session: meta.session,
+            usageId: meta.usageId || crypto.randomUUID(), seconds: VIDEO_SECONDS_DEFAULT,
           });
         }
       } catch {}
@@ -670,6 +677,60 @@ async function withServerMediaBilling(request: Request, path: string): Promise<R
     h.set('X-Db-Images', '1'); // Gemini image generateContent returns a single image
   }
   return new Request(request, { headers: h });
+}
+
+// ── Phase-2 server-authoritative VIDEO metering ──────────────────────────────────────────────────
+// Video is charged at completion (seedance poll-success / veo operation done=true), but its real
+// billing inputs are known at GENERATE: duration is a fixed footprint (VIDEO_SECONDS_DEFAULT — not
+// user-variable), and the model is the one actually sent to the provider (seedance body.model / the
+// veo path). We stash that real model at generate keyed by the request's usage id (the client threads
+// the same id through generate→poll) and resolve it at the charge, so the charge can't be cheapened by
+// a spoofed X-Db-Model/Seconds header. Seconds are always the server constant.
+// Defaults MUST track the app's actual per-tier video models (services/gemini.ts _videoModel), so that
+// when the stash is absent the fallback still prices the real model — no regression, and a tampered
+// client can't drop below it.
+const DEFAULT_VIDEO_MODEL: Record<string, string> = {
+  videoVeo: 'veo-3.1-fast',                     // premium
+  videoSeedance: 'dreamina-seedance-2-0-mini',  // balanced
+  videoSeedanceFast: 'dreamina-seedance-2-0-fast',
+};
+function videoActionForModel(model: string): string {
+  if (/^veo/i.test(model)) return 'videoVeo';
+  if (/fast/i.test(model)) return 'videoSeedanceFast';
+  return 'videoSeedance';
+}
+// Stash the real generate-time model so the completion charge (a different request) can price it.
+// Seedance keys by taskId (generate RESPONSE → poll BODY); veo has no clean thread → not stashed.
+async function stashVideoModel(env: Env, key: string | undefined, model: string): Promise<void> {
+  if (!env.RATE_LIMIT || !key || !model) return;
+  await env.RATE_LIMIT.put(`vidmodel:${key}`, model, { expirationTtl: 3600 }).catch(() => {});
+}
+// Authoritative model for a video charge: the stashed model if present; else the action's DEFAULT
+// (never the client's X-Db-Model header — so a spoof / missing stash can't under-charge).
+async function resolveVideoModel(env: Env, key: string | undefined, fallbackAction: string | undefined): Promise<string> {
+  if (env.RATE_LIMIT && key) {
+    const m = await env.RATE_LIMIT.get(`vidmodel:${key}`).catch(() => null);
+    if (m) return m;
+  }
+  return DEFAULT_VIDEO_MODEL[fallbackAction || ''] || DEFAULT_VIDEO_MODEL.videoSeedance;
+}
+// Inject server billing onto a video GENERATE request so the GATE prices the constant duration + real
+// model (not spoofable headers), and guarantee a usage id.
+async function injectVideoBilling(request: Request, realModel: string): Promise<Request> {
+  const h = new Headers(request.headers);
+  if (!h.get('X-Db-Usage-Id')) h.set('X-Db-Usage-Id', crypto.randomUUID());
+  if (realModel) h.set('X-Db-Model', realModel);
+  h.set('X-Db-Seconds', String(VIDEO_SECONDS_DEFAULT));
+  return new Request(request, { headers: h });
+}
+// Record a video charge: model resolved server-side (stash by `key`, else action default), action
+// follows the resolved model, seconds = the server constant, usage id generated if absent.
+function meterVideo(env: Env, userId: string | undefined, stashKey: string | undefined, usageId: string | undefined, fallbackAction: string | undefined, book: string | undefined, session: string | undefined, ctx?: { waitUntil: (p: Promise<any>) => void }): void {
+  if (!userId || !ctx) return;
+  ctx.waitUntil((async () => {
+    const model = await resolveVideoModel(env, stashKey, fallbackAction);
+    await recordUsage(env, userId, { action: videoActionForModel(model), model, book, session, usageId: usageId || crypto.randomUUID(), seconds: VIDEO_SECONDS_DEFAULT });
+  })());
 }
 
 // Record a MEDIA charge from the request's billing headers (chars/seconds/images) — no need to buffer
@@ -1565,6 +1626,8 @@ async function handleSeedanceGenerate(request: Request, env: Env): Promise<Respo
 
   const data = await res.json() as any;
   if (!res.ok) return jsonError(data.error?.message || 'Seedance task creation failed', res.status);
+  // Stash the REAL model keyed by taskId so the poll-success charge prices it (not a spoofable header).
+  await stashVideoModel(env, data.id, body.model || DEFAULT_VIDEO_MODEL.videoSeedance);
   return jsonResponse({ taskId: data.id });
 }
 
@@ -1583,7 +1646,10 @@ async function handleSeedancePoll(request: Request, env: Env, userId?: string, c
   if (!res.ok) return jsonError(data.error?.message || 'Seedance poll failed', res.status);
   // Meter at GENERATION COMPLETION (the poll that reports success), not on download — matches our
   // provider cost and doesn't depend on the user fetching the file. Idempotent on usage_id.
-  if (data.status === 'succeeded') meterMediaFromHeaders(env, userId, request, ctx); // action from X-Db-Action
+  if (data.status === 'succeeded') {
+    const m = usageMetaFromHeaders(request);
+    meterVideo(env, userId, taskId, m.usageId, m.action, m.book, m.session, ctx); // model from the taskId stash, constant seconds
+  }
   return jsonResponse({
     status: data.status,
     videoUrl: data.content?.video_url || null,
