@@ -520,14 +520,17 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
   // CLONE the response to read `done` while the ORIGINAL body streams back UNTOUCHED (buffering +
   // re-returning it previously corrupted the SDK's operation parse → unplayable video). Meter once,
   // at completion (done=true); idempotent on usage_id handles repeated polls.
-  if (response.ok && !isGenerate && meta.action === 'videoVeo' && userId && ctx) {
+  if (response.ok && !isGenerate && userId && ctx) {
     const clone = response.clone();
     ctx.waitUntil((async () => {
       try {
         const d = await clone.json();
-        if (d.done === true) {
-          // Server-authoritative: veo model enforced (not the client header), constant seconds, usage
-          // id generated if absent (unskippable). Idempotent on usage id across polls.
+        // Detect a veo completion from the RESPONSE itself (a done operation carrying a generated
+        // video), NOT the client's X-Db-Action header — so dropping/spoofing the action can't skip the
+        // charge. Model enforced server-side; constant seconds; idempotent on the (stable client) usage
+        // id across polls. A tampered client with no id may be charged per done-poll — acceptable.
+        const veoDone = d?.done === true && (!!d?.response?.generatedVideos?.[0] || !!d?.response?.generateVideoResponse);
+        if (veoDone) {
           const model = await resolveVideoModel(env, undefined, 'videoVeo');
           await recordUsage(env, userId, {
             action: 'videoVeo', model, book: meta.book, session: meta.session,
