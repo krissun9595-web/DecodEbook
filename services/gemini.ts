@@ -112,6 +112,15 @@ export const beginUsageSession = (label: string): void => {
 };
 export const endUsageSession = (): void => { _usageSession = null; };
 
+// A PREP sub-step (prompt / script / concept generation that PRECEDES the actual media call) gets its
+// OWN Credit-History line, labeled by the prep action, instead of collapsing under the media's
+// "... generation" line. Reuses the current session's random suffix so the two lines stay correlatable
+// (same execution). Falls back to a sessionless row (still labeled by action) when outside a session.
+const prepSession = (label: string): string | undefined => {
+  if (!_usageSession) return undefined;
+  return `${label}#${_usageSession.split('#')[1] || ''}`;
+};
+
 // A unique idempotency key per charge, so the durable client write (supabase.ts) can re-send a
 // row after a tab-close / crash without double-charging (ON CONFLICT DO NOTHING on usage_id).
 const newUsageId = (): string => {
@@ -813,7 +822,7 @@ export const generatePodcastAudio = async (
   return withRetry(async () => {
     const scriptModel = resolveModel('podcastScript');
     const usageId = newUsageId();
-    const ai = await getAi({ usageId, action: 'podcastScript', model: scriptModel, book: _currentBook || undefined, session: _usageSession || undefined });
+    const ai = await getAi({ usageId, action: 'podcastScript', model: scriptModel, book: _currentBook || undefined, session: prepSession('Podcast script') });
     const scriptResponse = await ai.models.generateContent({
       model: scriptModel,
       contents: {
@@ -922,7 +931,7 @@ export const generatePodcastAudio = async (
 export const extractConcepts = async (file: FileContext, chapter: Chapter): Promise<Concept[]> => {
   return withRetry(async () => {
     const usageId = newUsageId();
-    const ai = await getAi({ usageId, action: 'extractConcepts', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
+    const ai = await getAi({ usageId, action: 'extractConcepts', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: prepSession('Concept extraction') });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -1186,7 +1195,7 @@ export const generateSummaryVideo = async (
     // Dedicated client for the prompt call ONLY, so the worker meters videoPrompt (a text
     // generateContent — safe to buffer) without tagging the generateVideos/poll requests.
     const vpUsageId = newUsageId();
-    const promptAi = await getAi({ usageId: vpUsageId, action: 'videoPrompt', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
+    const promptAi = await getAi({ usageId: vpUsageId, action: 'videoPrompt', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: prepSession('Video prompt') });
     const promptResponse = await promptAi.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
