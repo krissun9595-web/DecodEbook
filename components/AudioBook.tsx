@@ -30,6 +30,7 @@ import {
 import { splitIntoSentences } from '../utils/sentenceSplit';
 import { looksLikeAttributionAuthor, looksLikePersonName } from '../utils/personName';
 import { inkLineStyle } from '../utils/inkLine';
+import { isIOS } from '../utils/device';
 import {
   isBibleReferenceAtEnd,
   isBibleReferenceMarkerCandidate,
@@ -3041,11 +3042,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
   const initAudioVisualizer = () => {
     if (!audioRef.current || audioContextRef.current) return;
+    // iOS Safari: createMediaElementSource captures the <audio> element → pause() stops being reliable
+    // and 2x playback skips/drops words. Skip the analyser on iOS (visualizer idle; audio plays/pauses
+    // and changes speed natively & correctly). Same workaround as PodcastPlayer.
+    if (isIOS()) return;
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512; 
+      analyser.fftSize = 512;
       const source = ctx.createMediaElementSource(audioRef.current);
       source.connect(analyser);
       analyser.connect(ctx.destination);

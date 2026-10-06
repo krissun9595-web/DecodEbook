@@ -12,6 +12,20 @@ import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
+import { isIOS } from '../utils/device';
+
+// iOS Safari can't play a <video> from a blob: URL (needs byte-range support blobs don't provide) —
+// it shows 00:00/00:00 and a blank frame while the file itself is fine (plays when shared/on desktop).
+// Return a self-contained data: URL on iOS, a blob URL everywhere else.
+const videoSrcFromBlob = (blob: Blob): Promise<string> => {
+  if (!isIOS()) return Promise.resolve(URL.createObjectURL(blob));
+  return new Promise<string>((resolve) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result as string);
+    fr.onerror = () => resolve(URL.createObjectURL(blob)); // fallback
+    fr.readAsDataURL(blob);
+  });
+};
 import { getFileOrCloud } from '../services/figureSync';
 import { GEN_STYLES } from '../utils/genStyles';
 
@@ -54,7 +68,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
 
   useEffect(() => {
     return () => {
-      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      if (videoUrl?.startsWith('blob:')) URL.revokeObjectURL(videoUrl); // data: URLs need no revoke
     };
   }, [videoUrl]);
 
@@ -74,7 +88,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
       const key = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
       try {
         const cached = await getFileOrCloud(key);
-        if (cached && !cancelled) setVideoUrl(URL.createObjectURL(cached.blob));
+        if (cached && !cancelled) videoSrcFromBlob(cached.blob).then(src => { if (!cancelled) setVideoUrl(src); });
       } catch (e) { /* cache miss → idle */ }
     };
     loadCached();
@@ -116,8 +130,8 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
         : await generateSummaryVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any);
 
       if (!abortRef.current) {
-        if (videoUrl) URL.revokeObjectURL(videoUrl);
-        const url = URL.createObjectURL(videoBlob);
+        if (videoUrl?.startsWith('blob:')) URL.revokeObjectURL(videoUrl);
+        const url = await videoSrcFromBlob(videoBlob);
         setVideoUrl(url);
         setIsPlaying(false);
         trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', provider: useSeedance ? 'seedance' : 'google', model: videoModel, inputChars: chapter.content?.length || 0 });

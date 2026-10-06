@@ -13,6 +13,7 @@ import { getFileOrCloud } from '../services/figureSync';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
+import { isIOS } from '../utils/device';
 
 interface Props {
   chapter: Chapter;
@@ -425,25 +426,34 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     }
   };
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
       if (!audioContextRef.current) initAudioVisualizer();
       if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume();
-      audioRef.current.play();
+      // AWAIT play(): on iOS an un-awaited rejected play() left isPlaying=true while nothing played,
+      // so the next taps desynced into "pause does nothing / replays the last word". Set state only on
+      // a resolved play.
+      try { await audioRef.current.play(); setIsPlaying(true); }
+      catch (e: any) { if (e?.name !== 'AbortError') console.error('Playback failed:', e); setIsPlaying(false); }
     }
-    setIsPlaying(!isPlaying);
   };
 
   const initAudioVisualizer = () => {
     if (!audioRef.current || audioContextRef.current) return;
+    // iOS Safari: createMediaElementSource CAPTURES the <audio> element, after which pause() doesn't
+    // reliably stop output and playbackRate (2x) skips/drops words. Skip the Web Audio analyser on iOS
+    // — the canvas visualizer just stays idle (the draw loop guards a null analyser), and audio plays,
+    // pauses, and changes speed natively & correctly.
+    if (isIOS()) return;
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512; 
+      analyser.fftSize = 512;
       const source = ctx.createMediaElementSource(audioRef.current);
       source.connect(analyser);
       analyser.connect(ctx.destination);
