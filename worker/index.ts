@@ -259,10 +259,12 @@ export default {
         if (check) return check;
       } else if (/:generateContent/.test(p)) {
         if (/image/i.test(p)) {
+          request = await withServerMediaBilling(request, p); // server-authoritative units/model/usage-id
           const check = await reserveMedia(auth.userId, 'generateImage', env, request);
           if (check) return check;
           releaseHold = true;
         } else if (/tts/i.test(p)) {
+          request = await withServerMediaBilling(request, p); // count chars/CJK from the text, not headers
           const check = await reserveMedia(auth.userId, 'tts', env, request);
           if (check) return check;
           releaseHold = true;
@@ -513,15 +515,16 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
   // CLONE the response to read `done` while the ORIGINAL body streams back UNTOUCHED (buffering +
   // re-returning it previously corrupted the SDK's operation parse → unplayable video). Meter once,
   // at completion (done=true); idempotent on usage_id handles repeated polls.
-  if (response.ok && !isGenerate && meta.action === 'videoVeo' && meta.usageId && meta.model && userId && ctx) {
+  if (response.ok && !isGenerate && meta.action === 'videoVeo' && meta.model && userId && ctx) {
     const clone = response.clone();
+    const veoUsageId = meta.usageId || crypto.randomUUID(); // mandatory: don't let a missing id skip it
     ctx.waitUntil((async () => {
       try {
         const d = await clone.json();
         if (d.done === true) {
           await recordUsage(env, userId, {
             action: 'videoVeo', model: meta.model, book: meta.book, session: meta.session,
-            usageId: meta.usageId, seconds: meta.seconds,
+            usageId: veoUsageId, seconds: meta.seconds,
           });
         }
       } catch {}
@@ -643,14 +646,43 @@ function usageMetaFromHeaders(request: Request) {
   };
 }
 
-// Record a MEDIA charge from client-provided header units (chars/seconds/images) — no need to buffer
-// the large audio/video/image responses. Fire-and-forget; only engages when a usage id is present.
+// Phase-1 server-authoritative media billing: return a request whose billing headers are DERIVED from
+// the payload instead of trusted from the client. A usage id is always present (so the charge can't be
+// skipped by omitting it), the model is the one actually invoked (from the path → correct pricing), and
+// the units are measured server-side (image count fixed at 1; TTS chars/CJK counted from the request
+// text). Video units stay header-based (Phase 2 threads duration from the generate call).
+async function withServerMediaBilling(request: Request, path: string): Promise<Request> {
+  const h = new Headers(request.headers);
+  if (!h.get('X-Db-Usage-Id')) h.set('X-Db-Usage-Id', crypto.randomUUID());
+  const pathModel = path.match(/models\/([^:]+):/)?.[1];
+  if (pathModel) h.set('X-Db-Model', pathModel);
+  if (/tts/i.test(path)) {
+    try {
+      const b = await request.clone().json() as any;
+      let text = '';
+      for (const c of b?.contents || []) for (const part of c?.parts || []) if (typeof part?.text === 'string') text += part.text;
+      h.set('X-Db-Chars', String(text.length));
+      // Same CJK/Kana/Hangul class the client uses (services/gemini.ts countCjkChars) — these expand
+      // into far more audio tokens, so TTS pricing is script-aware.
+      h.set('X-Db-Cjk', String((text.match(/[㐀-鿿豈-﫿぀-ヿ가-힯]/g) || []).length));
+    } catch { /* unparseable body → fall back to whatever the client sent */ }
+  } else {
+    h.set('X-Db-Images', '1'); // Gemini image generateContent returns a single image
+  }
+  return new Request(request, { headers: h });
+}
+
+// Record a MEDIA charge from the request's billing headers (chars/seconds/images) — no need to buffer
+// the large audio/video/image responses. Fire-and-forget. The usage id is generated if absent so a
+// client can't skip the charge by omitting it (idempotency for retries still uses the client's id when
+// present). For sync media the headers are server-authoritative (see withServerMediaBilling).
 function meterMediaFromHeaders(env: Env, userId: string | undefined, request: Request, ctx?: { waitUntil: (p: Promise<any>) => void }, actionOverride?: string): void {
   const m = usageMetaFromHeaders(request);
   const action = actionOverride || m.action;
-  if (!userId || !m.usageId || !action || !m.model || !ctx) return;
+  const usageId = m.usageId || crypto.randomUUID();
+  if (!userId || !action || !m.model || !ctx) return;
   ctx.waitUntil(recordUsage(env, userId, {
-    action, model: m.model, book: m.book, session: m.session, usageId: m.usageId,
+    action, model: m.model, book: m.book, session: m.session, usageId,
     chars: m.chars, cjkChars: m.cjkChars, seconds: m.seconds, images: m.images,
   }));
 }
