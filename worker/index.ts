@@ -981,6 +981,32 @@ async function handleReferralSignup(request: Request, env: Env): Promise<Respons
 
 // --- Stripe handlers ---
 
+// A stored stripe_customer_id can be stale / wrong-mode (e.g. a TEST customer after the account
+// switched to the LIVE key) → Stripe answers "No such customer". Detect that so checkout can recover.
+function isNoSuchCustomer(err: any): boolean {
+  if (!err) return false;
+  return (err.code === 'resource_missing' && err.param === 'customer') || /no such customer/i.test(err.message || '');
+}
+
+async function createCheckoutSession(env: Env, params: Record<string, string>): Promise<any> {
+  const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+  return res.json() as any;
+}
+
+// Null out a dead customer id so the webhook writes the fresh one on the next checkout (self-heal).
+async function clearStaleStripeCustomer(env: Env, userId: string, staleId: string): Promise<void> {
+  await supabaseAdmin(env, `/subscriptions?user_id=eq.${userId}&stripe_customer_id=eq.${staleId}`, {
+    method: 'PATCH', body: JSON.stringify({ stripe_customer_id: null, updated_at: new Date().toISOString() }),
+  }).catch(() => {});
+}
+
 async function handleStripeCheckout(request: Request, env: Env): Promise<Response> {
   if (!env.STRIPE_SECRET_KEY) return jsonError('Stripe not configured', 500);
   const auth = await getUserIdFromAuth(request, env);
@@ -1018,15 +1044,15 @@ async function handleStripeCheckout(request: Request, env: Env): Promise<Respons
     params['customer_email'] = userData.email;
   }
 
-  const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams(params).toString(),
-  });
-  const session = await stripeRes.json() as any;
+  let session = await createCheckoutSession(env, params);
+  // Stored customer id is dead/wrong-mode → retry without it (Stripe makes a fresh one from the email)
+  // and clear the stale id so the webhook replaces it on checkout.session.completed.
+  if (session.error && isNoSuchCustomer(session.error) && stripeCustomerId) {
+    await clearStaleStripeCustomer(env, userId, stripeCustomerId);
+    delete params['customer'];
+    params['customer_email'] = userData.email;
+    session = await createCheckoutSession(env, params);
+  }
   if (session.error) return jsonError(session.error.message, 400);
   return jsonResponse({ url: session.url });
 }
@@ -1054,7 +1080,15 @@ async function handleStripePortal(request: Request, env: Env): Promise<Response>
     }).toString(),
   });
   const portal = await portalRes.json() as any;
-  if (portal.error) return jsonError(portal.error.message, 400);
+  if (portal.error) {
+    // The portal needs an existing customer (no email fallback). If it's dead/wrong-mode, clear it so
+    // a fresh upgrade recreates it, and tell the user plainly instead of leaking Stripe's raw error.
+    if (isNoSuchCustomer(portal.error)) {
+      await clearStaleStripeCustomer(env, auth.userId, subs[0].stripe_customer_id);
+      return jsonError('Your billing profile is out of date. Please upgrade again to refresh it.', 409);
+    }
+    return jsonError(portal.error.message, 400);
+  }
   return jsonResponse({ url: portal.url });
 }
 
@@ -1099,15 +1133,13 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
     params['customer_email'] = auth.email;
   }
 
-  const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${btoa(env.STRIPE_SECRET_KEY + ':')}`, 'Stripe-Version': '2026-04-22.dahlia',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams(params).toString(),
-  });
-  const session = await stripeRes.json() as any;
+  let session = await createCheckoutSession(env, params);
+  if (session.error && isNoSuchCustomer(session.error) && subs[0].stripe_customer_id) {
+    await clearStaleStripeCustomer(env, auth.userId, subs[0].stripe_customer_id);
+    delete params['customer'];
+    if (auth.email) params['customer_email'] = auth.email;
+    session = await createCheckoutSession(env, params);
+  }
   if (session.error) return jsonError(session.error.message, 400);
   return jsonResponse({ url: session.url });
 }
