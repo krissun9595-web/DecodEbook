@@ -1021,6 +1021,9 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
           .hide-scrollbar:hover::-webkit-scrollbar { background: rgba(255, 255, 255, 0.05); }
           .hide-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
           .hide-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(0, 243, 255, 0.3); }
+          /* Shrink just the placeholder (input stays 16px so iOS doesn't zoom on focus). */
+          .annot-ta::placeholder { font-size: 13px; }
+          @media (min-width: 768px) { .annot-ta::placeholder { font-size: 11px; } }
        `}</style>
 
        <div className="hud-panel mb-1.5 md:mb-2 flex items-center justify-between shrink-0 w-full flex-wrap gap-2 z-20">
@@ -1294,9 +1297,9 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                            </div>
                                        </div>
                                        {item.definition && (
-                                           <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-sm text-zinc-500 italic font-mono leading-relaxed">{item.definition}</p></div>
+                                           <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-sm text-zinc-500 italic font-mono leading-relaxed whitespace-pre-line">{item.definition}</p></div>
                                        )}
-                                       <div className="mt-2"><textarea placeholder="Add neural annotations..." value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="w-full bg-void-1 border border-zinc-800 rounded p-2 text-[16px] md:text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-0 h-9 md:h-auto md:min-h-[50px] resize-none font-mono" /></div>
+                                       <div className="mt-2"><textarea placeholder="Add annotations…" value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="annot-ta w-full bg-void-1 border border-zinc-800 rounded p-2 text-[16px] md:text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[56px] md:min-h-[50px] resize-none font-mono" /></div>
                                    </div>
                                </div>
                            </div>
