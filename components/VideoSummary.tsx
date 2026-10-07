@@ -360,7 +360,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
                     </div>
                 </div>
 
-                <div className="flex items-center p-1.5 md:p-2 overflow-hidden min-w-0 gap-1">
+                <div className="flex items-center p-1 md:p-2 h-[42px] md:h-[50px] overflow-hidden min-w-0 gap-1">
                     <div className="flex-1 flex items-center gap-1 min-w-0">
                         <select value={playbackRate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); if(videoRef.current) videoRef.current.playbackRate = Number(e.target.value); }} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{SPEEDS.map(s => <option key={s} value={s}>{s}x</option>)}</select>
                         <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
