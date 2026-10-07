@@ -153,6 +153,17 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     if (pronunciationPrefetchTimer.current !== null) window.clearTimeout(pronunciationPrefetchTimer.current);
   }, []);
 
+  // Default the chapter filter to the chapter currently open in the reader (if it has notes), so opening
+  // Mem_Log shows that chapter rather than ALL. Applied once per mount; the user can switch freely after.
+  const didInitChapterFilter = useRef(false);
+  useEffect(() => {
+    if (didInitChapterFilter.current || !chapterTitles.length) return;
+    if (activeChapter?.title && chapterTitles.includes(activeChapter.title)) {
+      setActiveChapterFilter(activeChapter.title);
+    }
+    didInitChapterFilter.current = true;
+  }, [chapterTitles, activeChapter?.title]);
+
   const playPronunciation = async (id: string, text: string) => {
      // Toggle: clicking the item that's currently playing stops it; a different item is ignored while
      // one plays (its button is disabled in the UI).
