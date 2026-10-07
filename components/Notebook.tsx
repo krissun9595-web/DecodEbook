@@ -1021,9 +1021,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
           .hide-scrollbar:hover::-webkit-scrollbar { background: rgba(255, 255, 255, 0.05); }
           .hide-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
           .hide-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(0, 243, 255, 0.3); }
-          /* Shrink just the placeholder (input stays 16px so iOS doesn't zoom on focus). */
-          .annot-ta::placeholder { font-size: 13px; }
-          @media (min-width: 768px) { .annot-ta::placeholder { font-size: 11px; } }
+          .annot-ta::placeholder { font-size: 11px; }
        `}</style>
 
        <div className="hud-panel mb-1.5 md:mb-2 flex items-center justify-between shrink-0 w-full flex-wrap gap-2 z-20">
@@ -1290,16 +1288,15 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                    <div className="flex-1 min-w-0 space-y-3">
                                        <div><p className="text-white text-base font-medium leading-relaxed font-serif break-words"><span style={item.inked ? inkLineStyle(settings.inkLine || 'full', INK_LINE_COLORS[settings.highlightColor] || INK_LINE_COLORS.indigo) : undefined}>{item.text}</span></p>
                                            <div className="flex items-center gap-2 mt-2 flex-nowrap min-w-0 text-[10px] font-mono text-zinc-500">
-                                               {item.bookTitle && <span className="truncate shrink min-w-0">{item.bookTitle}</span>}
-                                               {item.sourceChapter && <><span className="text-zinc-600 shrink-0">|</span><span className="truncate shrink min-w-0">{item.sourceChapter}</span></>}
-                                               <span className="text-zinc-600 shrink-0">|</span>
+                                               {/* Single-book app → the book is implied; show only chapter + time. */}
+                                               {item.sourceChapter && <><span className="truncate shrink min-w-0">{item.sourceChapter}</span><span className="text-zinc-600 shrink-0">|</span></>}
                                                <span className="shrink-0 whitespace-nowrap">{formatDateTime(item.timestamp)}</span>
                                            </div>
                                        </div>
                                        {item.definition && (
-                                           <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-sm text-zinc-500 italic font-mono leading-relaxed whitespace-pre-line">{item.definition}</p></div>
+                                           <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-xs text-zinc-500 italic font-mono leading-relaxed whitespace-pre-line">{item.definition.replace(/:\s*\n+/g, ': ').replace(/\n{2,}/g, '\n')}</p></div>
                                        )}
-                                       <div className="mt-2"><textarea placeholder="Add annotations…" value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="annot-ta w-full bg-void-1 border border-zinc-800 rounded p-2 text-[16px] md:text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[56px] md:min-h-[50px] resize-none font-mono" /></div>
+                                       <div className="mt-2"><textarea placeholder="Add annotations…" value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="annot-ta w-full bg-void-1 border border-zinc-800 rounded p-2 text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[50px] resize-none font-mono" /></div>
                                    </div>
                                </div>
                            </div>
