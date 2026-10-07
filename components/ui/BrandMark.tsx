@@ -16,8 +16,8 @@ import React from 'react';
  * Layout: `stacked` centers the glyph above the wordmark (two lines, for hero/auth
  * screens); default is inline `>_ DecodEbook` (for nav).
  */
-function Glyph({ heightEm, color, blink, glow }: {
-  heightEm: number; color: string; blink: boolean; glow: boolean;
+function Glyph({ heightEm, color, blink, glow, breathe }: {
+  heightEm: number; color: string; blink: boolean; glow: boolean; breathe?: boolean;
 }) {
   return (
     <svg
@@ -28,6 +28,7 @@ function Glyph({ heightEm, color, blink, glow }: {
       strokeLinecap="square"
       strokeLinejoin="miter"
       aria-hidden="true"
+      className={breathe ? 'db-breathe' : undefined}
       style={{
         height: `${heightEm}em`,
         width: `${heightEm * (21 / 14)}em`,
@@ -48,6 +49,7 @@ export function BrandMark({
   blink = true,
   glow = true,
   stacked = false,
+  breathe = false,
 }: {
   color?: string;
   className?: string;
@@ -55,6 +57,7 @@ export function BrandMark({
   blink?: boolean;
   glow?: boolean;
   stacked?: boolean;
+  breathe?: boolean;
 }) {
   // SVG box height in em. 0.639 == prod's 46px glyph at the 72px wordmark.
   const heightEm = stacked ? 0.639 : 0.9;
@@ -80,7 +83,7 @@ export function BrandMark({
     <span
       className={`inline-flex leading-none ${stacked ? 'flex-col items-center' : 'items-baseline'} ${className}`}
     >
-      <Glyph heightEm={heightEm} color={color} blink={blink} glow={glow} />
+      <Glyph heightEm={heightEm} color={color} blink={blink} glow={glow} breathe={breathe} />
       {wordmarkEl}
     </span>
   );

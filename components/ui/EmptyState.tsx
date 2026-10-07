@@ -16,7 +16,7 @@ interface EmptyStateProps {
  * empty modules read as one system. Callers own the outer layout via `className`.
  */
 export const EmptyState = ({ icon: Icon, label, sublabel, iconClassName = '', className = '' }: EmptyStateProps) => (
-  <div className={`flex flex-col items-center justify-center text-zinc-600 gap-4 font-mono ${className}`}>
+  <div className={`flex flex-col items-center justify-center text-center w-full text-zinc-600 gap-4 font-tech ${className}`}>
     <Icon size={48} className={`opacity-20 ${iconClassName}`} />
     <div className="text-center space-y-1">
       <p className="text-xs uppercase tracking-[0.3em]">{label}</p>

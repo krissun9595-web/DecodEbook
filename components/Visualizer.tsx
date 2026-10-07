@@ -4,6 +4,8 @@ import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon,
 import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage, logGenerationPartial, beginUsageSession, endUsageSession, estimateImageCredits } from '../services/gemini';
 import { Loader } from './ui/Loader';
+import { LoaderScroll } from './ui/LoaderScroll';
+import { LoaderBreath } from './ui/LoaderBreath'; // backup option (breathing >_)
 import { EmptyState } from './ui/EmptyState';
 import { CreditNotice } from './ui/CreditNotice';
 import { StatusMessage } from './ui/StatusMessage';
@@ -148,10 +150,13 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
   };
 
   const handleToggleInitiate = async () => {
-    if (isGeneratingAll) {
+    if (isGeneratingAll || isInitializing) {
+      // STOP works during BOTH phases (concept extraction + image generation) so
+      // the button behaves like every other module the moment you hit INITIATE.
       abortRef.current = true;
       generatingRef.current = false;
       setIsGeneratingAll(false);
+      setIsInitializing(false);
       logGenerationPartial('generateImage'); // stopped part-way → tag delivered images "(Partial)"
       return;
     }
@@ -197,6 +202,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
     }
 
     if (activeConcepts.length === 0) { generatingRef.current = false; return; }
+
+    // User hit STOP during concept extraction — bail before firing image generation.
+    if (abortRef.current) { setIsGeneratingAll(false); generatingRef.current = false; return; }
 
     setIsGeneratingAll(true);
     setHasInitiated(true);
@@ -244,13 +252,15 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
   };
 
   const allImagesGenerated = concepts.length > 0 && concepts.every(c => images[c.term]);
+  // Any generating phase (concept extraction OR image batch) → show STOP + lock controls.
+  const busy = isInitializing || isGeneratingAll;
   const renderButtonLabel = () => {
-    if (isGeneratingAll) return "STOP";
+    if (busy) return "STOP";
     if (allImagesGenerated || hasInitiated) return "REGENERATE";
     return "INITIATE";
   };
   const renderButtonIcon = () => {
-    if (isGeneratingAll) return <Square size={13} fill="currentColor" />;
+    if (busy) return <Square size={13} fill="currentColor" />;
     if (allImagesGenerated || hasInitiated) return <RefreshCw size={13} />;
     return <Play size={13} fill="currentColor" />;
   };
@@ -267,12 +277,12 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
               <div className="select-group">
                   <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
-                  <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} disabled={isInitializing} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{STYLES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                  <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} disabled={busy} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}>{STYLES.map(s => <option key={s} value={s}>{s}</option>)}</select>
                   <div className="w-[1px] h-3.5 bg-zinc-700"></div>
                   <div className="p-1 md:p-1.5 text-zinc-500"><Maximize size={13} /></div>
-                  <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={isInitializing} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{RATIOS.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                  <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={busy} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}>{RATIOS.map(r => <option key={r} value={r}>{r}</option>)}</select>
               </div>
-              <button onClick={handleToggleInitiate} disabled={isInitializing} className={`btn-action ${isGeneratingAll ? 'btn-stop' : 'btn-go'} ${isInitializing ? 'opacity-50 cursor-not-allowed' : ''}`}>{renderButtonIcon()}{renderButtonLabel()}</button>
+              <button onClick={handleToggleInitiate} className={`btn-action ${busy ? 'btn-stop' : 'btn-go'}`}>{renderButtonIcon()}{renderButtonLabel()}</button>
           </div>
        </div>
        <div className="flex-1 min-h-0 flex flex-col relative w-full">
@@ -284,9 +294,9 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex items-center justify-center bg-void-2">
                     <CreditNotice tier={creditTier} />
                 </div>
-            ) : (concepts.length === 0 || !hasInitiated) ? (
+            ) : ((concepts.length === 0 || !hasInitiated) && !isGeneratingAll) ? (
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex flex-col shadow-lg">
-                    <EmptyState icon={ImageIcon} label="Visual_Core_Idle" sublabel="Click INITIATE to extract and visualize concepts" className="flex-1 min-h-0 bg-void-2" />
+                    <EmptyState icon={ImageIcon} label="Visual_Core_Idle" className="flex-1 min-h-0 bg-void-2" />
                 </div>
             ) : currentConcept ? (
                 <div className="flex-1 h-full w-full relative group/container content-panel rounded-lg overflow-hidden flex flex-col shadow-lg transition-all">
@@ -343,7 +353,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                         ) : (
                             <div className="text-center p-6 w-full h-full flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:16px_16px] opacity-10 pointer-events-none"></div>
-                                {loadingImages[currentConcept.term] ? (
+                                {(loadingImages[currentConcept.term] || isGeneratingAll) ? (
                                     <div className="flex flex-col items-center gap-2 text-zinc-500 animate-fade-in z-10"><Loader text="Rendering..." /></div>
                                 ) : imgError ? (
                                     <div className="z-10 animate-fade-in"><StatusMessage variant="error" title={imgError} action={{ label: 'Retry', onClick: () => handleGenerateImage(currentConcept, true) }} /></div>

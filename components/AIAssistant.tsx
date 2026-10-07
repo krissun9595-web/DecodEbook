@@ -48,7 +48,7 @@ const relativeTime = (ts: number): string => {
   try { return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return `${days}d`; }
 };
 const sessionsKey = (bookId: string) => `decode_chats_${bookId}`;
-const greeting = (bookTitle?: string): Message => ({ role: 'model', text: `Neural Link Established: "${bookTitle || 'Unknown Source'}". \nReady for query.` });
+const greeting = (bookTitle?: string): Message => ({ role: 'model', text: `AI Assistant on, "${bookTitle || 'Unknown Source'}". \nReady for query.` });
 const newSessionId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const deriveTitle = (msgs: Message[]): string => {
   const firstUser = msgs.find(m => m.role === 'user');

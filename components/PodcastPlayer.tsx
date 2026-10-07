@@ -4,6 +4,8 @@ import { Play, Pause, RotateCcw, RotateCw, Mic2, Download, FileDown, Settings2, 
 import { generatePodcastAudio, logGenerationPartial } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
+import { LoaderScroll } from './ui/LoaderScroll';
+import { LoaderSpinner } from './ui/LoaderSpinner'; // backup option 1 (spinner + typing)
 import { EmptyState } from './ui/EmptyState';
 import { StatusMessage } from './ui/StatusMessage';
 import { CreditNotice } from './ui/CreditNotice';
@@ -744,16 +746,13 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
                       )}
 
                       {isLoading ? (
-                        <div className="z-20 scale-75 animate-fade-in">
+                        <div className="z-20 animate-fade-in">
                           <Loader text="DECODING_NEURAL_STREAM..." />
                         </div>
                       ) : audioSrc ? (
                         <canvas ref={canvasRef} width={1800} height={250} className="w-full h-full opacity-100" />
                       ) : (
-                        <div className="flex flex-col items-center gap-2 text-zinc-500 font-mono text-xs">
-                          <Activity size={32} className="opacity-20" />
-                          <span>AWAITING_HOLOGRAPHIC_DATA</span>
-                        </div>
+                        <EmptyState icon={Mic2} label="Cast_Core_Idle" />
                       )}
 
                       {/* Progress Bar Overlay */}
@@ -834,7 +833,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
                   </div>
                </div>
            ) : !isLoading && !error && !creditTier && (
-               <EmptyState icon={Radio} label="Ready_to_Stream" sublabel="Select tone and language above to begin decoding" iconClassName="animate-pulse" className="flex-1 content-panel rounded-lg shadow-lg min-h-[200px]" />
+               <EmptyState icon={Mic2} label="Ready_to_Stream" iconClassName="animate-pulse" className="flex-1 content-panel rounded-lg shadow-lg min-h-[200px]" />
            )}
            {creditTier && (
                <div className="flex-1 content-panel rounded-lg flex items-center justify-center min-h-[200px]">

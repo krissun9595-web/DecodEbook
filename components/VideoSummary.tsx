@@ -5,6 +5,9 @@ import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, Refre
 import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel, logGenerationPartial } from '../services/gemini';
 import { Loader } from './ui/Loader';
+import { LoaderMatrix } from './ui/LoaderMatrix'; // backup option 2 (matrix)
+import { LoaderScroll } from './ui/LoaderScroll';
+import { EmptyState } from './ui/EmptyState';
 import { StatusMessage } from './ui/StatusMessage';
 import { CreditNotice } from './ui/CreditNotice';
 import { ensureCredits, isInsufficientCreditsError, isVideoBlockedError, getCachedTier } from '../services/credits';
@@ -307,17 +310,14 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
                 )}
 
                 {!videoUrl && !isGenerating && !creditTier && (
-                    <div className="z-10 text-center space-y-4 p-8">
-                        <div className="w-16 h-16 bg-zinc-900/50 rounded-full flex items-center justify-center mx-auto border border-zinc-800">
-                             <Film className="text-zinc-500 w-6 h-6" />
-                        </div>
-                        <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-widest">Awaiting Render Signal</p>
-                        {error && <div className="mt-3"><StatusMessage variant="error" title={error} /></div>}
+                    <div className="z-10">
+                        <EmptyState icon={Film} label="Cine_Core_Idle" />
+                        {error && <div className="mt-3 px-8"><StatusMessage variant="error" title={error} /></div>}
                     </div>
                 )}
 
                 {isGenerating && (
-                    <div className="z-20 scale-75">
+                    <div className="z-20">
                          <Loader text={status} />
                     </div>
                 )}

@@ -9,6 +9,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { AuthGate } from './components/AuthModal';
 import { GlobalContextLayer } from './components/GlobalContextLayer';
 import { Loader } from './components/ui/Loader';
+import { LoaderScroll } from './components/ui/LoaderScroll';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { AccountPanel } from './components/PricingModal';

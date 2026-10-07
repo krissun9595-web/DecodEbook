@@ -8,6 +8,8 @@ import { creditsForAction } from '../services/pricing';
 import { CreditNotice } from './ui/CreditNotice';
 import { StatusMessage } from './ui/StatusMessage';
 import { Loader } from './ui/Loader';
+import { LoaderScroll } from './ui/LoaderScroll';
+import { EmptyState } from './ui/EmptyState';
 import { pcmToWav } from '../utils/audio';
 import { saveFile, getFile, deleteFile, deleteMatchingKeys, buildCacheKey } from '../services/fileCache';
 import { uploadFigureToCloud, fetchFigureFromCloud, uploadGenFileToCloud } from '../services/supabase';
@@ -5015,7 +5017,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               <div className="flex-1 bg-[#010102] w-full flex items-center justify-center overflow-hidden relative group border-b border-zinc-900">
                  <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
                  {isGenerating ? (
-                    <div className="z-20 scale-75 animate-fade-in"><Loader text={generationProgress} /></div>
+                    <div className="z-20 animate-fade-in"><Loader text={generationProgress} /></div>
                  ) : creditTier ? (
                     <div className="z-20 animate-fade-in"><CreditNotice tier={creditTier} /></div>
                  ) : audioError ? (
@@ -5033,10 +5035,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                         <canvas ref={canvasRef} width={1800} height={250} className="w-full h-full opacity-100" />
                     </>
                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-zinc-500 font-mono text-xs">
-                        <Activity size={32} className="opacity-20" />
-                        <span>AWAITING_HOLOGRAPHIC_DATA</span>
-                    </div>
+                    <EmptyState icon={Headphones} label="Voice_Core_Idle" />
                  )}
                  <div className="absolute bottom-0 left-0 w-full h-0.5 md:h-1 bg-zinc-900 z-30 group cursor-pointer">
                     <input type="range" min="0" max="100" step="0.01" value={playbackProgress} onChange={handleSeek} disabled={!audioSrc} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-40" />

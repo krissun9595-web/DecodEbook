@@ -8,6 +8,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import jsPDF from 'jspdf';
 
 import { Loader } from './ui/Loader';
+import { LoaderScroll } from './ui/LoaderScroll';
 import { StatusMessage } from './ui/StatusMessage';
 import { EmptyState } from './ui/EmptyState';
 import { saveFile, buildCacheKey } from '../services/fileCache';
@@ -1121,10 +1122,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                </div>
 
                {isGeneratingMap ? (
-                   <div className="flex flex-col items-center gap-4 z-10">
-                       <Loader2 size={48} className="text-neon-cyan animate-spin" />
-                       <p className="text-sm font-mono text-neon-cyan uppercase tracking-widest animate-pulse">Analyzing Neural Structures...</p>
-                   </div>
+                   <div className="z-10"><Loader text="GENERATING_MAP..." /></div>
                ) : mapError ? (
                    <div className="z-10 animate-fade-in"><StatusMessage variant="error" title={mapError} action={{ label: 'Retry', onClick: handleInitiateMindMap }} /></div>
                ) : mindMapData ? (
@@ -1289,9 +1287,9 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                        <Loader text="GENERATING_MAP..." />
                    </div>
                ) : items.length === 0 ? (
-                   <EmptyState icon={Book} label="NO_DATA_LOGGED" sublabel="Right-click text selection in reader to populate your lexicon." className="flex-1 animate-fade-in" />
+                   <EmptyState icon={NotebookIcon} label="NO_DATA_LOGGED" className="flex-1 animate-fade-in" />
                ) : filteredItems.length === 0 ? (
-                   <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 font-mono gap-2 animate-fade-in"><p className="text-xs uppercase tracking-widest opacity-50">BUFFER_EMPTY_FOR_{activeFilter === 'all' ? 'ALL_ITEMS' : activeFilter.toUpperCase() + 'S'}</p></div>
+                   <EmptyState icon={NotebookIcon} label="Mem_log_idle" className="flex-1 animate-fade-in" />
                ) : (
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-1.5 content-font">
                        {filteredItems.map((item, idx) => {

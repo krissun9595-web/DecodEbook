@@ -17,9 +17,11 @@ export const CreditNotice: React.FC<{ tier: 'free' | 'pro'; action?: string; cla
   const detail = hasSome
     ? `You have ${available} credit${available === 1 ? '' : 's'}${needed ? `, this needs ${needed}` : ''}. `
     : '';
+  // Non-breaking space binds "keep generating." so "generating." never orphans
+  // onto its own line.
   const cta = tier === 'free'
-    ? 'Upgrade to Pro to keep generating.'
-    : 'Buy a credit pack to keep generating.';
+    ? 'Upgrade to Pro to keep generating.'
+    : 'Buy a credit pack to keep generating.';
 
   return (
     <StatusMessage
