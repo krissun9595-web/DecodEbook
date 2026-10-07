@@ -545,7 +545,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
       return;
     }
     const audio = audioRef.current;
-    
+    const onIOS = isIOS();
+
     const draw = () => {
       if (audio && audio.duration) {
         const currentPct = audio.currentTime / audio.duration;
@@ -556,14 +557,26 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
         }
       }
       
-      if (canvasRef.current && analyserRef.current && !isPlayerMinimized) {
+      if (canvasRef.current && (analyserRef.current || onIOS) && !isPlayerMinimized) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          const bufferLength = analyserRef.current.frequencyBinCount;
+          const bufferLength = analyserRef.current ? analyserRef.current.frequencyBinCount : 256;
           const dataArray = new Uint8Array(bufferLength);
-          analyserRef.current.getByteFrequencyData(dataArray);
-          
+          if (analyserRef.current) {
+            analyserRef.current.getByteFrequencyData(dataArray);
+          } else {
+            // iOS has no Web Audio analyser (it breaks pause/speed) → synthesize a lively, playback-
+            // driven spectrum so the visualizer still moves while playing.
+            const t = audio.currentTime || 0;
+            for (let i = 0; i < bufferLength; i++) {
+              const wave = Math.sin(t * 4 + i * 0.25) * 0.5 + 0.5;
+              const flicker = Math.sin(t * 13 + i * 1.3) * 0.3 + 0.3;
+              const rolloff = 1 - (i / bufferLength) * 0.6;
+              dataArray[i] = Math.min(255, Math.floor((wave * 0.6 + flicker * 0.4) * 210 * rolloff));
+            }
+          }
+
           let bass = 0; 
           let mid = 0;
           let high = 0;

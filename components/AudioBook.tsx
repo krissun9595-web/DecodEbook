@@ -3122,16 +3122,28 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   // Dedicated visualizer loop
   useEffect(() => {
     if (!isPlaying) return;
-    
+    const onIOS = isIOS();
+
     const draw = () => {
-        if (canvasRef.current && analyserRef.current && !isModuleMinimized) {
+        if (canvasRef.current && (analyserRef.current || onIOS) && !isModuleMinimized) {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext('2d');
             if (ctx) {
-                const bufferLength = analyserRef.current.frequencyBinCount;
+                const bufferLength = analyserRef.current ? analyserRef.current.frequencyBinCount : 256;
                 const dataArray = new Uint8Array(bufferLength);
-                analyserRef.current.getByteFrequencyData(dataArray);
-                
+                if (analyserRef.current) {
+                    analyserRef.current.getByteFrequencyData(dataArray);
+                } else {
+                    // iOS: no Web Audio analyser → synthesize a playback-driven spectrum so the bars move.
+                    const t = audioRef.current?.currentTime || 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        const wave = Math.sin(t * 4 + i * 0.25) * 0.5 + 0.5;
+                        const flicker = Math.sin(t * 13 + i * 1.3) * 0.3 + 0.3;
+                        const rolloff = 1 - (i / bufferLength) * 0.6;
+                        dataArray[i] = Math.min(255, Math.floor((wave * 0.6 + flicker * 0.4) * 210 * rolloff));
+                    }
+                }
+
                 let bass = 0; 
                 let mid = 0;
                 let high = 0;

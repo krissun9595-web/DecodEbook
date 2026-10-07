@@ -14,18 +14,12 @@ import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { isIOS } from '../utils/device';
 
-// iOS Safari can't play a <video> from a blob: URL (needs byte-range support blobs don't provide) —
-// it shows 00:00/00:00 and a blank frame while the file itself is fine (plays when shared/on desktop).
-// Return a self-contained data: URL on iOS, a blob URL everywhere else.
-const videoSrcFromBlob = (blob: Blob): Promise<string> => {
-  if (!isIOS()) return Promise.resolve(URL.createObjectURL(blob));
-  return new Promise<string>((resolve) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result as string);
-    fr.onerror = () => resolve(URL.createObjectURL(blob)); // fallback
-    fr.readAsDataURL(blob);
-  });
-};
+// iOS Safari video quirk: the "#t=" media fragment (a seek to force a poster frame) can't be satisfied
+// during load on iOS (seeking needs byte-range), which stalls the whole load → 00:00/00:00 and a blank
+// frame, even though the file is fine (plays when shared/on desktop). So on iOS we drop the "#t=" seek
+// (see the <video src> below). Blob URLs play fine for playback on all platforms (data: URLs would hit
+// iOS size limits for larger clips), so we keep the blob URL.
+const videoSrcFromBlob = (blob: Blob): Promise<string> => Promise.resolve(URL.createObjectURL(blob));
 import { getFileOrCloud } from '../services/figureSync';
 import { GEN_STYLES } from '../utils/genStyles';
 
@@ -333,7 +327,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
                         <video 
                             key={videoUrl}
                             ref={videoRef}
-                            src={videoUrl ? `${videoUrl}#t=0.001` : undefined}
+                            src={videoUrl ? (isIOS() ? videoUrl : `${videoUrl}#t=0.001`) : undefined}
                             onTimeUpdate={updateProgress}
                             onLoadedMetadata={updateProgress}
                             onPlay={() => { 
