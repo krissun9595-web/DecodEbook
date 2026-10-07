@@ -29,6 +29,15 @@ const INK_LINE_COLORS: Record<AppSettings['highlightColor'], string> = {
   yellow: '#FCEE0A',
 };
 
+// iOS zooms the viewport when a field with font-size < 16px is focused. Pin maximum-scale=1 while the
+// (12px) annotation box is focused and restore it on blur — suppresses the zoom WITHOUT permanently
+// disabling pinch-zoom elsewhere.
+const VIEWPORT_BASE = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+const lockViewportZoom = (lock: boolean) => {
+  const vp = document.querySelector('meta[name="viewport"]');
+  if (vp) vp.setAttribute('content', lock ? `${VIEWPORT_BASE}, maximum-scale=1` : VIEWPORT_BASE);
+};
+
 interface Props {
   items: NotebookItem[];
   onDelete: (id: string) => void;
@@ -1278,7 +1287,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                            return (
                            <div key={item.id} className="bg-void-2 border rounded-lg px-5 py-3 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
-	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId && playingId !== item.id} className={`p-1.5 !min-h-0 aspect-square flex items-center justify-center rounded border border-transparent transition-all mb-1 ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title={playingId === item.id ? 'Stop' : 'Pronounce'}>{playingId === item.id ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}</button>
+	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId && playingId !== item.id} className={`p-1.5 !min-h-0 aspect-square flex items-center justify-center rounded border border-transparent transition-all ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title={playingId === item.id ? 'Stop' : 'Pronounce'}>{playingId === item.id ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}</button>
                                    <button onClick={() => generateStickyNote(item)} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
                                    <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `note-${item.sourceChapter ? titleCase(item.sourceChapter, 20) : 'Unfiled'}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Share"><Share2 size={14} /></button>
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-red bg-zinc-900/50 hover:bg-neon-red/10 rounded border border-transparent hover:border-neon-red/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
@@ -1296,7 +1305,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                        {item.definition && (
                                            <div className="bg-black/50 p-3 rounded border border-zinc-900"><p className="text-xs text-zinc-500 italic font-mono leading-relaxed whitespace-pre-line">{item.definition.replace(/:\s*\n+/g, ': ').replace(/\n{2,}/g, '\n')}</p></div>
                                        )}
-                                       <div className="mt-2"><textarea placeholder="Add annotations…" value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} className="annot-ta w-full bg-void-1 border border-zinc-800 rounded p-2 text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[50px] resize-none font-mono" /></div>
+                                       <div className="mt-2"><textarea placeholder="Add annotations…" value={item.comment || ''} onChange={(e) => onUpdateComment(item.id, e.target.value)} onFocus={() => lockViewportZoom(true)} onBlur={() => lockViewportZoom(false)} className="annot-ta w-full bg-void-1 border border-zinc-800 rounded p-2 text-xs text-zinc-400 focus:border-neon-cyan focus:outline-none transition-colors min-h-[50px] resize-none font-mono" /></div>
                                    </div>
                                </div>
                            </div>
