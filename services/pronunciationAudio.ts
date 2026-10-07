@@ -194,6 +194,28 @@ export const stopPronunciationAudio = (text?: string, voice: string = DEFAULT_VO
   return true;
 };
 
+// iOS requires audio playback to be initiated from a user gesture. The pronounce flow only reaches
+// .play() AFTER async work (IndexedDB lookup / TTS generation), by which point the gesture tick is gone
+// and iOS blocks it silently. Playing a brief SILENT clip on the shared <audio> element synchronously
+// inside the gesture grants the element "user activation", so the later real play() is permitted. Runs
+// once per session (first Pronounce tap); harmless (inaudible) on desktop.
+let silentUnlockUrl: string | null = null;
+let audioUnlocked = false;
+export const primePronunciationAudio = (): void => {
+  if (!sharedAudio) sharedAudio = new Audio();
+  if (audioUnlocked) return;
+  try {
+    if (!silentUnlockUrl) silentUnlockUrl = URL.createObjectURL(pcmToWav(new ArrayBuffer(2048), 24000));
+    sharedAudio.src = silentUnlockUrl;
+    const p = sharedAudio.play();
+    if (p && typeof p.then === 'function') {
+      p.then(() => { audioUnlocked = true; try { sharedAudio!.pause(); } catch {} }).catch(() => {});
+    } else {
+      audioUnlocked = true;
+    }
+  } catch { /* best effort */ }
+};
+
 const playBlob = async (blob: Blob, key: string): Promise<void> => {
   if (!sharedAudio) sharedAudio = new Audio();
 
@@ -253,6 +275,7 @@ export const prefetchPronunciation = (text: string, voice: string = DEFAULT_VOIC
 };
 
 export const playPronunciationAudio = async (text: string, voice: string = DEFAULT_VOICE): Promise<void> => {
+  primePronunciationAudio(); // iOS: unlock the <audio> element in the gesture, BEFORE any await
   const normalized = normalizeText(text);
   if (!normalized) throw new Error('No pronunciation text provided');
 
