@@ -74,7 +74,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthChange, initialMode = 
       <div className="w-full max-w-[25rem] p-8 relative z-10 my-auto">
         <div className="text-center mb-8">
           <BrandMark stacked className="text-[2.25rem] mb-3" />
-          <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">V.4.2 // Neural Text Decoding Interface</p>
+          <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">V.1.0 // Book Decoding Interface</p>
         </div>
 
         {error && <div className="mb-4"><StatusMessage variant="error" title={error} inline /></div>}

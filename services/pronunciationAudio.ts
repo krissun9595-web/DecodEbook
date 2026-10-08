@@ -243,7 +243,21 @@ const playBlob = async (blob: Blob, key: string): Promise<void> => {
   });
 };
 
-const speakWithWebSpeech = (text: string, key: string): Promise<boolean> => {
+// Pick the best installed voice for a BCP-47 lang (exact match, else same base language).
+const pickVoice = (lang: string): SpeechSynthesisVoice | null => {
+  try {
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    const l = lang.toLowerCase();
+    const base = l.split('-')[0];
+    return voices.find(v => v.lang.toLowerCase() === l)
+      || voices.find(v => v.lang.toLowerCase().replace('_', '-') === l)
+      || voices.find(v => v.lang.toLowerCase().split(/[-_]/)[0] === base)
+      || null;
+  } catch { return null; }
+};
+
+const speakWithWebSpeech = (text: string, key: string, lang?: string): Promise<boolean> => {
   if (typeof speechSynthesis === 'undefined' || typeof SpeechSynthesisUtterance === 'undefined') return Promise.resolve(false);
   const normalized = normalizeText(text);
   if (!normalized) return Promise.resolve(false);
@@ -254,6 +268,11 @@ const speakWithWebSpeech = (text: string, key: string): Promise<boolean> => {
       const utterance = new SpeechSynthesisUtterance(normalized);
       utterance.rate = 0.92;
       utterance.pitch = 1;
+      if (lang) {
+        utterance.lang = lang;          // browser matches a voice by language…
+        const v = pickVoice(lang);      // …and we set an explicit one when available
+        if (v) utterance.voice = v;
+      }
       activePlaybackKey = key;
       speechFallbackActive = true;
       activePlaybackResolve = () => resolve(true);
@@ -274,42 +293,41 @@ export const prefetchPronunciation = (text: string, voice: string = DEFAULT_VOIC
   });
 };
 
-export const playPronunciationAudio = async (text: string, voice: string = DEFAULT_VOICE): Promise<void> => {
+// `hd=false` (default) = FREE on-device Web Speech (no network, no credits).
+// `hd=true` = Gemini TTS (higher quality, metered + recorded in credit history).
+export const playPronunciationAudio = async (text: string, voice: string = DEFAULT_VOICE, hd: boolean = false, lang?: string): Promise<void> => {
   primePronunciationAudio(); // iOS: unlock the <audio> element in the gesture, BEFORE any await
   const normalized = normalizeText(text);
   if (!normalized) throw new Error('No pronunciation text provided');
 
   const key = cacheKeyFor(normalized, voice);
+
+  if (!hd) {
+    // FREE path — browser SpeechSynthesis only; never makes a paid TTS call.
+    const spoke = await speakWithWebSpeech(normalized, key, lang);
+    if (!spoke) {
+      // No speech synthesis on this device → play a previously-generated HD clip
+      // if one is already cached (still no fresh charge).
+      const prior = await readBlob(key);
+      if (prior) await playBlob(prior, key);
+    }
+    return;
+  }
+
+  // HD path — Gemini TTS. The user explicitly chose HD, so WAIT for the real audio
+  // and play it (no 700ms Web-Speech race that was previously winning and discarding
+  // the paid audio — and whose delayed, out-of-gesture speak() was blocked on iOS →
+  // no sound). Web Speech is used ONLY if Gemini genuinely fails.
   const cached = await readBlob(key);
   if (cached) {
     await playBlob(cached, key);
     return;
   }
-
-  let fallbackPromise: Promise<boolean> | null = null;
-  let settled = false;
-  const fallbackTimer = window.setTimeout(() => {
-    if (settled) return;
-    fallbackPromise = speakWithWebSpeech(normalized, key);
-  }, 700);
-
   try {
     const blob = await getPronunciationBlob(normalized, voice);
-    settled = true;
-    window.clearTimeout(fallbackTimer);
-    if (fallbackPromise || speechFallbackActive) {
-      if (fallbackPromise) await fallbackPromise;
-      return;
-    }
     await playBlob(blob, key);
   } catch (error) {
-    settled = true;
-    window.clearTimeout(fallbackTimer);
-    if (!fallbackPromise) {
-      fallbackPromise = speakWithWebSpeech(normalized, key);
-    }
-    const fallbackStarted = await fallbackPromise;
-    if (fallbackStarted) return;
-    throw error;
+    const spoke = await speakWithWebSpeech(normalized, key, lang);
+    if (!spoke) throw error;
   }
 };

@@ -1346,7 +1346,7 @@ const FEATURES_E: FeatureE[] = [
     demo: <GenFilesDemo />,
   },
   {
-    id: 'neural_assistant', num: '07', codename: 'NEURAL_ASSISTANT', label: 'Ask the Expert', side: 'left', color: LANDING_E_PALETTE.pink,
+    id: 'neural_assistant', num: '07', codename: 'AI_ASSISTANT', label: 'Ask the Expert', side: 'left', color: LANDING_E_PALETTE.pink,
     before: 'Your questions used to outlive the reading session.',
     beforeHighlights: ['questions'],
     after: 'Now you ask about grammar, nuance, and context, and get answers grounded in the chapter.',
@@ -1861,7 +1861,7 @@ function FeatureScreenG({ feature, index, onEnterApp }: { feature: FeatureE; ind
           <div className="landing-g-hud-corner landing-g-hud-corner--br" style={{ borderColor: feature.color }} />
 
           <div className="landing-g-side-label landing-g-side-label--left">DECODE_PROTOCOL</div>
-          <div className="landing-g-side-label landing-g-side-label--right">NEURAL_READER</div>
+          <div className="landing-g-side-label landing-g-side-label--right">BOOK_READER</div>
 
           <div className="absolute left-4 right-4 top-3 z-30 flex items-start justify-between gap-3 sm:left-6 sm:right-6 sm:top-5">
             <span className="landing-g-metric" style={{ color: feature.color, borderColor: `${feature.color}45` }}>

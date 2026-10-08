@@ -17,6 +17,7 @@ import JSZip from 'jszip';
 import { saveFile, getFile, buildCacheKey, slugify } from '../services/fileCache';
 import { getFileOrCloud } from '../services/figureSync';
 import { GEN_STYLES } from '../utils/genStyles';
+import { isTouch } from '../utils/device';
 
 interface Props {
   chapter: Chapter;
@@ -41,6 +42,12 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
   const [selectedStyle, setSelectedStyle] = useState(() => { try { return localStorage.getItem('visualizer_style') || 'Cyberpunk'; } catch { return 'Cyberpunk'; } });
   const [selectedRatio, setSelectedRatio] = useState(() => { try { return localStorage.getItem('visualizer_ratio') || '1:1'; } catch { return '1:1'; } });
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Image action overlay (download/share/copy/regen). On touch, CSS :hover sticks
+  // on after a tap and never clears (covering the image), so drive it by tap instead.
+  const touch = useRef(isTouch()).current;
+  const [showImgActions, setShowImgActions] = useState(false);
+  // New concept → start with the image uncovered.
+  useEffect(() => { setShowImgActions(false); }, [currentIndex]);
   useEffect(() => { try { localStorage.setItem('visualizer_style', selectedStyle); } catch {} }, [selectedStyle]);
   useEffect(() => { try { localStorage.setItem('visualizer_ratio', selectedRatio); } catch {} }, [selectedRatio]);
 
@@ -272,7 +279,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
        <div className="hud-panel mb-1.5 md:mb-2 flex items-center justify-between shrink-0 animate-fade-in w-full flex-wrap gap-2 z-20">
           <div className="hidden md:flex items-center gap-2 text-white font-bold tracking-widest uppercase font-mono text-[11px]">
              <ImageIcon size={16} className="text-neon-cyan" />
-             <span>Visual_Matrix</span>
+             <span>Visual_Core</span>
           </div>
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
               <div className="select-group">
@@ -340,9 +347,12 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
 
                         {images[currentConcept.term] ? (
                             <>
-                            <img src={images[currentConcept.term]} alt={currentConcept.term} className="w-full h-full object-contain animate-fade-in" />
-                            <div className="absolute inset-0 bg-black/70 opacity-0 group-hover/image:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm z-20 pointer-events-none">
-                                <div className="pointer-events-auto flex gap-3">
+                            <img src={images[currentConcept.term]} alt={currentConcept.term} onClick={() => touch && setShowImgActions(s => !s)} className={`w-full h-full object-contain animate-fade-in ${touch ? 'cursor-pointer' : ''}`} />
+                            <div
+                                onClick={() => touch && setShowImgActions(false)}
+                                className={`absolute inset-0 bg-black/70 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm z-20 ${touch ? (showImgActions ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none') : 'opacity-0 group-hover/image:opacity-100 pointer-events-none'}`}
+                            >
+                                <div className="pointer-events-auto flex gap-3" onClick={e => e.stopPropagation()}>
                                     <a href={images[currentConcept.term]} download={`concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Download"><Download size={20} /></a>
                                     <button onClick={async () => { const r = await fetch(images[currentConcept.term]); const b = await r.blob(); const fn = `concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`; shareFile(b, fn, `${chapter.title} - ${currentConcept.term}`); }} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Share"><Share2 size={20} /></button>
                                     <button onClick={handleCopyPrompt} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Copy Prompt"><Copy size={20} /></button>

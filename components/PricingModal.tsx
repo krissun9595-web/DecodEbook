@@ -325,13 +325,15 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   const trP = c('translate', resolveModel('translate', 'premium'));
   const modeRows = [
     { module: 'VOICE_SYNTH', fn: 'Translation', b: fmt(trB, trB * 3, 'per page'), p: fmt(trP, trP * 3, 'per page') },
-    { module: 'VOICE_SYNTH', fn: 'Definition',  b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup') },
     { module: 'VOICE_SYNTH', fn: 'Audio',       b: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page'), p: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page') },
+    { module: 'VOICE_SYNTH', fn: 'Definition/HD',  b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup/HD'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup/HD') },
     { module: 'NET_CAST',    fn: 'Podcast',     b: fmt(c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode'), p: fmt(c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode') },
     { module: 'VISUAL_CORE', fn: 'Image',       b: fmt(c('generateImage', IMG_MODEL.balanced, { images: 1 }), c('generateImage', IMG_MODEL.balanced, { images: 1 }), 'per image'), p: fmt(c('generateImage', IMG_MODEL.premium, { images: 1 }), c('generateImage', IMG_MODEL.premium, { images: 1 }), 'per image') },
     { module: 'CINE_RENDER', fn: 'Video',       b: fmt(c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), 'per clip'), p: fmt(c('videoVeo', VID_MODEL.premium, { seconds: 8 }), c('videoVeo', VID_MODEL.premium, { seconds: 8 }), 'per clip') },
     { module: 'ASSISTANT',   fn: 'Chat',        b: fmt(c('chat', resolveModel('chat', 'balanced'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'balanced'), { inTok: 1600, outTok: 800 }), 'per message'), p: fmt(c('chat', resolveModel('chat', 'premium'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'premium'), { inTok: 1600, outTok: 800 }), 'per message') },
   ];
+  // Short module names for the NARROW (mobile) table only — full names stay on desktop.
+  const MODULE_SHORT: Record<string, string> = { VOICE_SYNTH: 'VOICE', NET_CAST: 'CAST', VISUAL_CORE: 'VISUAL', CINE_RENDER: 'CINE', ASSISTANT: 'ASST' };
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
@@ -448,15 +450,15 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                     <div className="text-[9px] overflow-x-auto">
                       <div className="min-w-[300px]">
                       <div data-gap="am-hd" className="flex items-center gap-3 text-[9px] uppercase tracking-widest text-zinc-600 pb-1 border-b border-zinc-800/60">
-                        <span className="flex-[1.15]">Module</span>
-                        <span className="flex-1">Function</span>
+                        <span className="flex-[0.8]">Module</span>
+                        <span className="flex-[1.25]">Function</span>
                         <span className={`flex-[1.5] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
                         <span className={`flex-[1.5] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
                       </div>
                       {modeRows.map(r => (
                         <div key={r.fn} className="flex items-center gap-3 py-[2px] sm:py-[3px]">
-                          <span className="flex-[1.15] text-zinc-600 truncate">{r.module}</span>
-                          <span className="flex-1 text-zinc-600 truncate">{r.fn}</span>
+                          <span className="flex-[0.8] text-zinc-500 truncate"><span className="sm:hidden">{MODULE_SHORT[r.module] || r.module}</span><span className="hidden sm:inline">{r.module}</span></span>
+                          <span className="flex-[1.25] text-zinc-500">{r.fn}</span>
                           <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.b.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.b}</span></span>
                           <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.p.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.p}</span></span>
                         </div>

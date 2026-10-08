@@ -708,7 +708,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                     className={`p-3 bg-zinc-900/90 border-b border-neon-cyan/20 flex items-center justify-between select-none shrink-0 ${isFullScreen ? 'cursor-default' : 'cursor-grab active:cursor-grabbing touch-none'}`}
                 >
                     <div className="flex items-center gap-1.5 text-neon-cyan">
-                        <span className="text-xs font-bold font-tech uppercase tracking-widest text-shadow-neon">Neural_Assistant</span>
+                        <span className="text-xs font-bold font-tech uppercase tracking-widest text-shadow-neon">AI_Assistant</span>
                         <button
                             onClick={(e) => { e.stopPropagation(); setShowHistory(v => !v); }}
                             onMouseDown={(e) => e.stopPropagation()}

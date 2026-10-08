@@ -8,3 +8,12 @@ export const isIOS = (): boolean => {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
 };
+
+// Coarse-pointer / touch device. Used where CSS :hover is unreliable — on touch
+// screens :hover gets "stuck" on after a tap, so hover-reveal overlays must
+// become tap-toggles on mobile instead.
+export const isTouch = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+    (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0);
+};

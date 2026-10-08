@@ -7590,7 +7590,7 @@ const App: React.FC = () => {
           <div className="space-y-2 animate-fade-in-up text-center">
             <BrandMark stacked className="text-4xl md:text-7xl mb-4" />
             <p className="text-zinc-500 tracking-[0.2em] text-[10px] md:text-xs uppercase">
-              V.4.2 // Neural Text Decoding Interface
+              V.1.0 // Book Decoding Interface
             </p>
           </div>
 
@@ -7843,7 +7843,7 @@ const App: React.FC = () => {
                     <div
                         key={item.book.id}
                         style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
-                        className={`w-full flex items-center gap-3 p-4 border-b border-zinc-900 transition-all group animate-fade-in-up ${
+                        className={`w-full flex items-center gap-3 px-4 py-2 border-b border-zinc-900 transition-all group animate-fade-in-up ${
                             activeBookId === item.book.id
                             ? 'bg-neon-cyan/5'
                             : 'hover:bg-zinc-900 active:bg-zinc-800/70'
@@ -7864,7 +7864,7 @@ const App: React.FC = () => {
                             title={item.fileContext.sourceFileName || `${item.book.title} (${(item.fileContext.sourceKind || 'file').toUpperCase()})`}
                             className="flex items-center gap-3 flex-1 min-w-0"
                         >
-                            <div className={`w-1 h-8 shrink-0 ${activeBookId === item.book.id ? 'bg-neon-cyan' : 'bg-zinc-800'}`}></div>
+                            <div className={`w-1 h-7 shrink-0 ${activeBookId === item.book.id ? 'bg-neon-cyan' : 'bg-zinc-800'}`}></div>
                             <div className="text-left min-w-0">
                                 <h4 className={`text-[10px] font-bold truncate font-tech uppercase tracking-wide ${activeBookId === item.book.id ? 'text-neon-cyan' : 'text-zinc-400'}`}>
                                     {item.book.title}

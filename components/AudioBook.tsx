@@ -5046,7 +5046,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
           <div className={`bg-void-0 p-1 md:p-2 ${isModuleMinimized ? 'h-full' : 'h-[42px] md:h-[50px]'} flex items-center gap-1 overflow-hidden min-w-0`}>
               <div className="flex-1 flex items-center gap-1 min-w-0">
-                  <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase outline-none border border-zinc-800 rounded-sm px-1.5 py-1 w-[56px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
+                  <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="md:hidden bg-void-1 text-[10px] text-neon-cyan font-mono uppercase text-center appearance-none outline-none border border-zinc-800 rounded-sm px-1 py-1 w-[44px] shrink-0">{RATES.map(s => <option key={s} value={s}>{s.toFixed(2)}x</option>)}</select>
                   <span className="md:hidden text-[8px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                   <div className="hidden md:flex items-center gap-3 text-[10px] font-mono uppercase overflow-hidden">
                        {RATES.map(s => (
@@ -5070,7 +5070,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     setIsModuleMinimized(nextMinimized);
                     lastVoiceSynthMinimized = nextMinimized;
                     writeStoredValue('voice_synth_player_minimized', String(nextMinimized));
-                  }} className="p-1 md:p-2 text-zinc-600 hover:text-neon-cyan transition rounded-full bg-zinc-900/50 shrink-0 active:scale-90">{isModuleMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
+                  }} className="p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 hover:text-neon-cyan transition rounded-full bg-zinc-900/50 shrink-0 active:scale-90 flex items-center justify-center">{isModuleMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
               </div>
           </div>
       </div>

@@ -17,8 +17,8 @@ const COLORS: { id: ThemeColor; label: string; class: string }[] = [
   { id: 'indigo', label: 'Neon Blue', class: 'bg-neon-cyan' },
   { id: 'emerald', label: 'Matrix Green', class: 'bg-emerald-500' },
   { id: 'rose', label: 'Laser Red', class: 'bg-neon-red' },
-  { id: 'amber', label: 'Amber', class: 'bg-amber-500' },
-  { id: 'violet', label: 'Violet', class: 'bg-violet-400' },
+  { id: 'amber', label: 'Solar Amber', class: 'bg-amber-500' },
+  { id: 'violet', label: 'Ultra Violet', class: 'bg-violet-400' },
   { id: 'pink', label: 'Neural Pink', class: 'bg-neon-pink' },
   { id: 'yellow', label: 'Cyber Yellow', class: 'bg-neon-yellow' },
 ];

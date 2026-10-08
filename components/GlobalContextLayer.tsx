@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, BookA, Volume2, PenLine, MessageSquare, Square } from 'lucide-react';
+import { Search, Loader2, BookA, Volume2, PenLine, MessageSquare, Square, Speech } from 'lucide-react';
 import { getBilingualDefinition } from '../services/gemini';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier } from '../services/credits';
 import { CreditNotice } from './ui/CreditNotice';
 import { NotebookItem } from '../types';
 import { playPronunciationAudio, prefetchPronunciation, stopPronunciationAudio } from '../services/pronunciationAudio';
+import { guessSpeechLang } from '../utils/lang';
 import { trackEvent, trackNotebook } from '../utils/analytics';
 
 interface Props {
@@ -79,8 +80,17 @@ const getSelectionMetadata = (selection: Selection): { source: string; sentenceI
   const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
   const startNode = range?.startContainer || selection.anchorNode || selection.focusNode;
   const startElement = startNode instanceof Element ? startNode : startNode?.parentElement || null;
+  const endNode = range?.endContainer || selection.focusNode;
+  const endElement = endNode instanceof Element ? endNode : endNode?.parentElement || null;
 
-  isInked = Boolean(startElement?.closest('[data-inked-selection="true"]'));
+  // Inked if either selection edge sits inside an inked span OR the selection overlaps
+  // one (touch selections often anchor at a boundary outside the span — checking the
+  // contained nodes makes the Ink ⇄ Remove-Ink toggle reliable on mobile).
+  const INKED = '[data-inked-selection="true"]';
+  isInked = Boolean(startElement?.closest(INKED) || endElement?.closest(INKED));
+  if (!isInked && range) {
+    try { isInked = Boolean((range.cloneContents().querySelector?.(INKED))); } catch { /* ignore */ }
+  }
   sentenceElement = startElement?.closest('[data-source][data-sentence-index]') || null;
 
   if (sentenceElement) {
@@ -224,6 +234,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
       position: { x: 0, y: 0 }
   });
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hdPlaying, setHdPlaying] = useState(false); // true while an HD (Gemini) clip is playing
   // Non-null → the Define lookup was blocked for lack of credits; show the HAZARD notice in the popup.
   const [defineCreditTier, setDefineCreditTier] = useState<'free' | 'pro' | null>(null);
   const [mobileBar, setMobileBar] = useState<{ visible: boolean; x: number; y: number; text: string; source: string; sentenceIndex?: number; startOffset?: number; isInked?: boolean; selectionFragments?: SelectionFragment[] }>({ visible: false, x: 0, y: 0, text: '', source: 'Input_Stream' });
@@ -502,20 +513,26 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
     }
   };
 
-  const handlePronounce = async (fromMobile = false) => {
+  const handlePronounce = async (fromMobile = false, hd = false) => {
       const textToSpeak = fromMobile ? mobileBar.text : (menu.visible ? menu.text : definition.selectionText || activeText);
       if (!textToSpeak) return;
       if (isPlaying) {
           if (stopPronunciationAudio(textToSpeak, "Puck")) setIsPlaying(false);
           return;
       }
+      // Language hint for the free (Web Speech) voice: non-Latin scripts are detected
+      // from the text; a Latin selection in the TRANSLATED layer uses the target language.
+      const sourceLayer = fromMobile ? mobileBar.source : menu.source;
+      const lang = guessSpeechLang(textToSpeak, activeLanguage, sourceLayer === 'Translated_Layer');
       setIsPlaying(true);
+      setHdPlaying(hd);
       try {
-          await playPronunciationAudio(textToSpeak, "Puck");
+          await playPronunciationAudio(textToSpeak, "Puck", hd, lang);
       } catch (e) {
           console.error(e);
       } finally {
           setIsPlaying(false);
+          setHdPlaying(false);
       }
   };
 
@@ -627,7 +644,7 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
           if (parts.length > 1 && parts[0].length < 25) {
              return (
                  <div key={idx} className="mb-3">
-                     <span className="text-neon-cyan font-bold uppercase text-[10px] tracking-widest">{parts[0]}:</span>
+                     <span className="text-neon-cyan font-tech font-bold uppercase text-[10px] tracking-widest">{parts[0]}:</span>
                      <p className="mt-1 text-zinc-300">{parts.slice(1).join(':').trim()}</p>
                  </div>
              );
@@ -649,8 +666,9 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
 	                </div>
 	                <div className="p-1">
 	                    <button onClick={(e) => handleDefine(e)} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><Search size={14} />Define</button>
-	                    <button onClick={() => handlePronounce(false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${isPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}>{isPlaying ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}{isPlaying ? 'Stop' : 'Pronounce'}</button>
-	                    <button onClick={() => handleInk()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><PenLine size={14} />{menu.isInked ? 'Remove Ink' : 'Ink'}</button>
+	                    <button onClick={() => handlePronounce(false, false)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${(isPlaying && !hdPlaying) ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}>{(isPlaying && !hdPlaying) ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}{(isPlaying && !hdPlaying) ? 'Stop' : 'Pronounce'}</button>
+	                    <button onClick={() => handlePronounce(false, true)} className={`w-full text-left px-3 py-2 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm ${hdPlaying ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-300'}`}>{hdPlaying ? <Square size={14} fill="currentColor" /> : <Speech size={14} />}{hdPlaying ? 'Stop' : 'HD'}</button>
+	                    <button onClick={() => handleInk()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><PenLine size={14} />{menu.isInked ? 'Unink' : 'Ink'}</button>
 	                    <button onClick={() => openCommentComposer()} className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan text-xs font-mono uppercase flex items-center gap-2 transition-colors rounded-sm"><MessageSquare size={14} />Comment</button>
 	                </div>
             </div>
@@ -659,26 +677,26 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {commentComposer.visible && (
             <div
                 ref={commentRef}
-                className="absolute bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 w-[calc(100vw-32px)] md:w-[300px] pointer-events-auto animate-fade-in-up origin-top-left z-[102]"
+                className="absolute bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 md:p-5 w-[calc(100vw-32px)] md:w-80 pointer-events-auto animate-fade-in-up origin-top-left z-[102]"
                 style={{ top: commentComposer.y, left: commentComposer.x }}
             >
                 <div className="mb-3">
                     <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neon-cyan flex items-center gap-2">
                         <MessageSquare size={14} />
-                        Neural Annotation
+                        Comment
                     </div>
-                    <p className="mt-2 text-[10px] text-zinc-600 font-mono truncate">{commentComposer.text}</p>
+                    <p className="mt-2 text-[10px] text-zinc-500 font-mono italic truncate">“{commentComposer.text}”</p>
                 </div>
                 <textarea
                     autoFocus
                     value={commentComposer.draft}
                     onChange={(e) => setCommentComposer(prev => ({ ...prev, draft: e.target.value }))}
-                    placeholder="Add neural annotations..."
+                    placeholder="Add annotations…"
                     className="w-full min-h-[90px] bg-void-0 border border-zinc-800 rounded-sm p-2 text-[16px] md:text-xs text-zinc-300 focus:border-neon-cyan focus:outline-none transition-colors font-mono resize-none"
                 />
-                <div className="flex items-center justify-end gap-2 mt-3">
-                    <button onClick={() => setCommentComposer(prev => ({ ...prev, visible: false }))} className="px-3 py-2 text-[10px] font-mono uppercase text-zinc-600 hover:text-zinc-300 transition-colors">Cancel</button>
-                    <button onClick={saveComment} disabled={!commentComposer.draft.trim()} className="px-3 py-2 text-[10px] font-mono uppercase bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 rounded-sm hover:bg-neon-cyan/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Save</button>
+                <div className="flex items-center gap-2 mt-3">
+                    <button onClick={() => setCommentComposer(prev => ({ ...prev, visible: false }))} className="flex-1 py-2 !min-h-0 text-[10px] font-mono uppercase tracking-widest rounded-sm border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition active:scale-[0.98]">Cancel</button>
+                    <button onClick={saveComment} disabled={!commentComposer.draft.trim()} className="flex-1 py-2 !min-h-0 text-[10px] font-mono uppercase tracking-widest rounded-sm bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-30 disabled:cursor-not-allowed transition active:scale-[0.98]">Save</button>
                 </div>
             </div>
         )}
@@ -689,19 +707,18 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                 className="absolute bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-lg p-4 md:p-5 w-[calc(100vw-32px)] md:w-80 pointer-events-auto animate-fade-in-up origin-top-left z-[102] max-h-[400px] flex flex-col"
                 style={{ top: definition.position.y, left: definition.position.x }}
              >
-	                 <div className="flex items-start justify-between mb-3 shrink-0">
+	                 <div className="flex items-center mb-3 shrink-0">
 	                     <h3 className="text-neon-cyan font-bold font-mono text-sm uppercase tracking-wider flex items-center gap-2">
 	                         <BookA size={16} />
 	                         Definition
 	                     </h3>
-	                     <button onClick={() => setDefinition(prev => ({ ...prev, visible: false }))} className="text-zinc-600 hover:text-white transition-colors text-xl p-1">×</button>
 	                 </div>
                  
                  <div className="mb-4 overflow-y-auto custom-scrollbar flex-1 text-sm">
                      {definition.loading ? (
                          <div className="flex items-center gap-2 text-zinc-500 text-xs font-mono py-2">
                              <Loader2 size={14} className="animate-spin" />
-                             Decrypting Neural Data...
+                             Decrypting Data...
                          </div>
                      ) : defineCreditTier ? (
                          <div className="py-3"><CreditNotice tier={defineCreditTier} /></div>
@@ -717,38 +734,42 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
         {mobileBar.visible && !definition.visible && (
             <div
                 ref={mobileBarRef}
-                className="absolute pointer-events-auto animate-fade-in z-[101] flex items-center gap-0.5 bg-void-2 border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-full px-1 py-1 max-w-[calc(100vw-16px)] overflow-x-auto"
-                style={{ top: mobileBar.y, left: mobileBar.x }}
+                className="absolute pointer-events-auto animate-fade-in z-[101] flex items-stretch gap-0.5 bg-void-2 border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-2xl p-1"
+                style={{ top: mobileBar.y, left: 16, width: 'calc(100vw - 32px)' }}
             >
                 <button
                     onTouchEnd={(e) => { e.preventDefault(); handleDefine(e as any, true); }}
-                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
-	                >
-	                    <Search size={14} />
-	                    Define
-	                </button>
-	                <div className="w-[1px] h-5 bg-zinc-700" />
-	                <button
-	                    onTouchEnd={(e) => { e.preventDefault(); handlePronounce(true); }}
-	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
-	                >
-	                    {isPlaying ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}
-	                    {isPlaying ? 'Stop' : 'Pronounce'}
-	                </button>
-	                <div className="w-[1px] h-5 bg-zinc-700" />
-	                <button
-	                    onTouchEnd={(e) => { e.preventDefault(); handleInk(true); }}
-	                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
-	                >
-                    <PenLine size={14} />
+                    className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors"
+                >
+                    <Search size={16} />
+                    Define
+                </button>
+                <button
+                    onTouchEnd={(e) => { e.preventDefault(); handlePronounce(true, false); }}
+                    className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors ${(isPlaying && !hdPlaying) ? 'text-neon-cyan' : 'text-zinc-300'}`}
+                >
+                    {(isPlaying && !hdPlaying) ? <Square size={16} fill="currentColor" /> : <Volume2 size={16} />}
+                    {(isPlaying && !hdPlaying) ? 'Stop' : 'Pronounce'}
+                </button>
+                <button
+                    onTouchEnd={(e) => { e.preventDefault(); handlePronounce(true, true); }}
+                    className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors ${hdPlaying ? 'text-neon-cyan' : 'text-zinc-300'}`}
+                >
+                    {hdPlaying ? <Square size={16} fill="currentColor" /> : <Speech size={16} />}
+                    {hdPlaying ? 'Stop' : 'HD'}
+                </button>
+                <button
+                    onTouchEnd={(e) => { e.preventDefault(); handleInk(true); }}
+                    className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors ${mobileBar.isInked ? 'text-neon-cyan' : 'text-zinc-300'}`}
+                >
+                    <PenLine size={16} />
                     {mobileBar.isInked ? 'Unink' : 'Ink'}
                 </button>
-                <div className="w-[1px] h-5 bg-zinc-700" />
                 <button
                     onTouchEnd={(e) => { e.preventDefault(); openCommentComposer(true); }}
-                    className="flex items-center gap-1.5 px-2.5 py-2 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[10px] font-mono uppercase rounded-full transition-colors"
+                    className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors"
                 >
-                    <MessageSquare size={14} />
+                    <MessageSquare size={16} />
                     Comment
                 </button>
             </div>
