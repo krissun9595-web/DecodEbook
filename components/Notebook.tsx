@@ -12,7 +12,8 @@ import { LoaderScroll } from './ui/LoaderScroll';
 import { StatusMessage } from './ui/StatusMessage';
 import { EmptyState } from './ui/EmptyState';
 import { saveFile, buildCacheKey } from '../services/fileCache';
-import { playPronunciationAudio, prefetchPronunciation, stopPronunciationAudio } from '../services/pronunciationAudio';
+import { playPronunciationAudio, stopPronunciationAudio } from '../services/pronunciationAudio';
+import { guessSpeechLang } from '../utils/lang';
 import { shareFile } from '../utils/share';
 import { titleCase, formatDateTime } from '../utils/filename';
 import { trackNotebook } from '../utils/analytics';
@@ -91,6 +92,7 @@ interface LayoutLink {
 export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpdateComment, onBatchUpdateDefinitions, settings, activeChapter, bookTitle, bookId, chapterOrder }) => {
   const fontStyle = {}; // Font now applied globally via CSS --content-font variable
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const playingRef = useRef<string | null>(null); // synchronous mirror of playingId — the one-at-a-time gate (state is async; rapid taps would race it)
   const pronunciationPrefetchTimer = useRef<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [activeChapterFilter, setActiveChapterFilter] = useState<string>('all');
@@ -168,29 +170,21 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
   const playPronunciation = async (id: string, text: string) => {
      // Toggle: clicking the item that's currently playing stops it; a different item is ignored while
      // one plays (its button is disabled in the UI).
-     if (playingId === id) { stopPronunciationAudio(text, "Puck"); setPlayingId(null); return; }
-     if (playingId) return;
+     if (playingRef.current === id) { stopPronunciationAudio(text, "Puck"); playingRef.current = null; setPlayingId(null); return; }
+     if (playingRef.current) return; // another is already playing — one at a time
+     playingRef.current = id;
      setPlayingId(id);
      try {
-          await playPronunciationAudio(text, "Puck");
+          // Prefer an already-cached HD clip (free to replay); otherwise free Web Speech.
+          await playPronunciationAudio(text, "Puck", false, guessSpeechLang(text), true);
       } catch (e) {
           console.error("Playback failed:", e);
       } finally {
+          playingRef.current = null;
           setPlayingId(null);
       }
   };
 
-  const prefetchNotebookPronunciation = (text: string, immediate = false) => {
-    if (!text || playingId) return;
-    if (pronunciationPrefetchTimer.current !== null) window.clearTimeout(pronunciationPrefetchTimer.current);
-    if (immediate) {
-      prefetchPronunciation(text, "Puck");
-      return;
-    }
-    pronunciationPrefetchTimer.current = window.setTimeout(() => {
-      prefetchPronunciation(text, "Puck");
-    }, 120);
-  };
 
   const buildStickyNoteCanvas = (item: NotebookItem): HTMLCanvasElement | null => {
       const canvas = document.createElement('canvas');
@@ -1296,7 +1290,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                            return (
                            <div key={item.id} className="bg-void-2 border rounded-lg px-5 py-3 relative group transition-all animate-fade-in-up pr-14 border-zinc-800 hover:border-zinc-700" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
-	                                   <button onClick={() => playPronunciation(item.id, item.text)} onPointerEnter={() => prefetchNotebookPronunciation(item.text, false)} onFocus={() => prefetchNotebookPronunciation(item.text, false)} onPointerDown={(e) => { if (e.pointerType === 'touch') prefetchNotebookPronunciation(item.text, true); }} disabled={!!playingId && playingId !== item.id} className={`p-1.5 !min-h-0 aspect-square flex items-center justify-center rounded border border-transparent transition-all ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title={playingId === item.id ? 'Stop' : 'Pronounce'}>{playingId === item.id ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}</button>
+	                                   <button onClick={() => playPronunciation(item.id, item.text)} disabled={!!playingId && playingId !== item.id} className={`p-1.5 !min-h-0 aspect-square flex items-center justify-center rounded border border-transparent transition-all ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title={playingId === item.id ? 'Stop' : 'Pronounce'}>{playingId === item.id ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}</button>
                                    <button onClick={() => generateStickyNote(item)} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
                                    <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `note-${item.sourceChapter ? titleCase(item.sourceChapter, 20) : 'Unfiled'}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Share"><Share2 size={14} /></button>
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-red bg-zinc-900/50 hover:bg-neon-red/10 rounded border border-transparent hover:border-neon-red/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>

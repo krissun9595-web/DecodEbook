@@ -286,13 +286,36 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   useEffect(() => {
     const visualViewport = window.visualViewport;
     if (!visualViewport) return;
-    const update = () => setVv({ top: visualViewport.offsetTop, height: visualViewport.height });
+    const update = () => {
+      // iOS auto-scrolls the page to reveal a focused input, which offsets the
+      // visual viewport and drags this fixed panel DOWN (its top border jumps).
+      // The panel already sizes itself above the keyboard, so cancel that scroll
+      // → offsetTop stays ~0 → the top border holds its position while typing.
+      if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+      setVv({ top: visualViewport.offsetTop, height: visualViewport.height });
+    };
+    // iOS fires transient resize events WHILE the keyboard animates; the FINAL
+    // settled size usually arrives with no further event, so the panel kept a
+    // mid-animation (wrong) size until a re-render (a tiny drag) recomputed it.
+    // Re-measure a couple of times after it settles so no drag is needed.
+    let t1: number | undefined, t2: number | undefined;
+    const updateSettled = () => {
+      update();
+      if (t1) window.clearTimeout(t1);
+      if (t2) window.clearTimeout(t2);
+      t1 = window.setTimeout(update, 150);
+      t2 = window.setTimeout(update, 400);
+    };
     update();
-    visualViewport.addEventListener('resize', update);
+    visualViewport.addEventListener('resize', updateSettled);
     visualViewport.addEventListener('scroll', update);
+    window.addEventListener('focusin', updateSettled);
     return () => {
-      visualViewport.removeEventListener('resize', update);
+      visualViewport.removeEventListener('resize', updateSettled);
       visualViewport.removeEventListener('scroll', update);
+      window.removeEventListener('focusin', updateSettled);
+      if (t1) window.clearTimeout(t1);
+      if (t2) window.clearTimeout(t2);
     };
   }, []);
 
@@ -669,10 +692,23 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   // Use fixed layouts for specific states to avoid transitions. In full-screen we anchor TOP/HEIGHT to
   // the visual viewport (vv) so the keyboard can't push the panel off-screen — vv.top shifts down and
   // vv.height shrinks to the slice above the keyboard, keeping header + messages + input all visible.
-  const currentLeft = isFullScreen ? '20px' : `${position.x}px`;
-  const currentTop = isFullScreen ? (vv ? `${vv.top + 20}px` : '20px') : `${position.y}px`;
-  const currentWidth = isFullScreen ? 'calc(100vw - 40px)' : (isOpen ? 'min(24rem, calc(100vw - 24px))' : '4rem');
-  const currentHeight = isFullScreen ? (vv ? `${Math.max(200, vv.height - 40)}px` : 'calc(100dvh - 40px)') : (isOpen ? `min(${EXPANDED_HEIGHT}px, calc(100dvh - 24px))` : '4rem');
+  // On MOBILE the full-screen panel matches the sidebar panels (GEN_FILES etc.):
+  // 16px side margins + ~90dvh, centred — but sized against the visual viewport so
+  // it still floats above the on-screen keyboard. Desktop "Full Window" is unchanged.
+  // Top/bottom gap is a CONSTANT (≈5% of the LAYOUT viewport, which doesn't change
+  // when the keyboard opens) — NOT proportional to vv.height. So the top border stays
+  // put while typing; only the height shrinks from the bottom to clear the keyboard.
+  const mGap = isMobile ? Math.round((typeof window !== 'undefined' ? window.innerHeight : 800) * 0.05) : 20;
+  const fsLeft = isMobile ? '16px' : '20px';
+  // Mobile: anchor the top to a CONSTANT (no vv.top) so the keyboard can't shove the
+  // panel down — only the height shrinks (vv.height) from the bottom to clear the keyboard.
+  const fsTop = isMobile ? `${mGap}px` : (vv ? `${vv.top + 20}px` : '20px');
+  const fsWidth = isMobile ? 'calc(100vw - 32px)' : 'calc(100vw - 40px)';
+  const fsHeight = vv ? `${Math.max(200, vv.height - (isMobile ? mGap * 2 : 40))}px` : (isMobile ? '90dvh' : 'calc(100dvh - 40px)');
+  const currentLeft = isFullScreen ? fsLeft : `${position.x}px`;
+  const currentTop = isFullScreen ? fsTop : `${position.y}px`;
+  const currentWidth = isFullScreen ? fsWidth : (isOpen ? 'min(24rem, calc(100vw - 24px))' : '4rem');
+  const currentHeight = isFullScreen ? fsHeight : (isOpen ? `min(${EXPANDED_HEIGHT}px, calc(100dvh - 24px))` : '4rem');
 
   return (
     <div 

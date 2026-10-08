@@ -13,6 +13,7 @@ import { LoaderScroll } from './components/ui/LoaderScroll';
 import { AIAssistant } from './components/AIAssistant';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { AccountPanel } from './components/PricingModal';
+import { GeneratedFilesPanel } from './components/GeneratedFilesPanel'; // eager: small (~36KB) + frequently opened → instant, no LOADING_MODULE
 import { LandingPage } from './components/LandingPage';
 import BrandMark from './components/ui/BrandMark';
 import { CloseButton } from './components/ui/CloseButton';
@@ -51,7 +52,6 @@ const Visualizer = React.lazy(() => lazyRetry(() => import('./components/Visuali
 const VideoSummary = React.lazy(() => lazyRetry(() => import('./components/VideoSummary').then(m => ({ default: m.VideoSummary }))));
 const AudioBook = React.lazy(() => lazyRetry(() => import('./components/AudioBook').then(m => ({ default: m.AudioBook }))));
 const Notebook = React.lazy(() => lazyRetry(() => import('./components/Notebook').then(m => ({ default: m.Notebook }))));
-const GeneratedFilesPanel = React.lazy(() => lazyRetry(() => import('./components/GeneratedFilesPanel').then(m => ({ default: m.GeneratedFilesPanel }))));
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).toString();
 
@@ -7774,9 +7774,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex-1 min-h-0 flex flex-col">
               <ErrorBoundary>
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader text="LOADING_MODULE..." /></div>}>
-                  <GeneratedFilesPanel library={library} />
-                </Suspense>
+                <GeneratedFilesPanel library={library} />
               </ErrorBoundary>
             </div>
           </div>

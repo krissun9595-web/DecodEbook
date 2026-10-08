@@ -276,8 +276,16 @@ const speakWithWebSpeech = (text: string, key: string, lang?: string): Promise<b
       activePlaybackKey = key;
       speechFallbackActive = true;
       activePlaybackResolve = () => resolve(true);
-      utterance.onend = finishActivePlayback;
-      utterance.onerror = finishActivePlayback;
+      // Watchdog: if the utterance never starts (e.g. iOS blocked it because the
+      // tap gesture was lost, or the engine stalled), DON'T hang the caller's
+      // "playing" state forever — cancel and finish so the button can reset.
+      let started = false;
+      const watchdog = window.setTimeout(() => {
+        if (!started) { try { speechSynthesis.cancel(); } catch { /* ignore */ } finishActivePlayback(); }
+      }, 1500);
+      utterance.onstart = () => { started = true; };
+      utterance.onend = () => { window.clearTimeout(watchdog); finishActivePlayback(); };
+      utterance.onerror = () => { window.clearTimeout(watchdog); finishActivePlayback(); };
       speechSynthesis.speak(utterance);
     } catch {
       finishActivePlayback();
@@ -295,7 +303,7 @@ export const prefetchPronunciation = (text: string, voice: string = DEFAULT_VOIC
 
 // `hd=false` (default) = FREE on-device Web Speech (no network, no credits).
 // `hd=true` = Gemini TTS (higher quality, metered + recorded in credit history).
-export const playPronunciationAudio = async (text: string, voice: string = DEFAULT_VOICE, hd: boolean = false, lang?: string): Promise<void> => {
+export const playPronunciationAudio = async (text: string, voice: string = DEFAULT_VOICE, hd: boolean = false, lang?: string, preferCached: boolean = false): Promise<void> => {
   primePronunciationAudio(); // iOS: unlock the <audio> element in the gesture, BEFORE any await
   const normalized = normalizeText(text);
   if (!normalized) throw new Error('No pronunciation text provided');
@@ -303,11 +311,20 @@ export const playPronunciationAudio = async (text: string, voice: string = DEFAU
   const key = cacheKeyFor(normalized, voice);
 
   if (!hd) {
-    // FREE path — browser SpeechSynthesis only; never makes a paid TTS call.
+    // preferCached: replay an already-generated HD clip if one is cached (already
+    // paid for → free to replay). The check MUST be synchronous (memory cache only)
+    // so the Web-Speech fallback below still fires INSIDE the tap gesture — iOS
+    // blocks speechSynthesis.speak() once a gesture is lost to an await.
+    if (preferCached) {
+      const memHd = memoryCache.get(key);
+      if (memHd) { await playBlob(memHd, key); return; }
+    }
+    // FREE path — browser SpeechSynthesis (called synchronously, in-gesture).
     const spoke = await speakWithWebSpeech(normalized, key, lang);
     if (!spoke) {
-      // No speech synthesis on this device → play a previously-generated HD clip
-      // if one is already cached (still no fresh charge).
+      // No speech synthesis (or it was blocked) → last resort, a cached HD clip
+      // (from IndexedDB too). The audio element is already gesture-unlocked, so
+      // this plays even after the await. Still never a fresh (paid) call.
       const prior = await readBlob(key);
       if (prior) await playBlob(prior, key);
     }

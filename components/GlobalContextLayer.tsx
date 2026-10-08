@@ -681,8 +681,8 @@ export const GlobalContextLayer: React.FC<Props> = ({ onAddToNotebook, activeLan
                 style={{ top: commentComposer.y, left: commentComposer.x }}
             >
                 <div className="mb-3">
-                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neon-cyan flex items-center gap-2">
-                        <MessageSquare size={14} />
+                    <div className="text-sm font-bold font-mono uppercase tracking-wider text-neon-cyan flex items-center gap-2">
+                        <MessageSquare size={16} />
                         Comment
                     </div>
                     <p className="mt-2 text-[10px] text-zinc-500 font-mono italic truncate">“{commentComposer.text}”</p>
