@@ -747,7 +747,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
 
                       {isLoading ? (
                         <div className="z-20 animate-fade-in">
-                          <Loader text="DECODING_NEURAL_STREAM..." />
+                          <Loader text="GENERATING_PODCAST..." />
                         </div>
                       ) : audioSrc ? (
                         <canvas ref={canvasRef} width={1800} height={250} className="w-full h-full opacity-100" />

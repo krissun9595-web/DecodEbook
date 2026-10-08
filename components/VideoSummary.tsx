@@ -108,14 +108,14 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
     if (!gate.ok) { setCreditTier(gate.tier); return; }
     setIsGenerating(true);
     abortRef.current = false;
-    setStatus("Authenticating & Generating...");
+    setStatus("AUTHENTICATING_AND_GENERATING...");
     try {
       const videoModel = getVideoModel();
 
       if (!useSeedance) {
         const hasKey = await hasValidKeyForVeo();
         if (!hasKey) {
-          setStatus("Waiting for Access Key...");
+          setStatus("WAITING_FOR_ACCESS_KEY...");
           await requestVeoKey();
         }
       }

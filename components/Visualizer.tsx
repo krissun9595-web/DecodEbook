@@ -288,7 +288,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
        <div className="flex-1 min-h-0 flex flex-col relative w-full">
             {isInitializing ? (
                 <div className="absolute inset-0 flex items-center justify-center">
-                    <Loader text="Extracting neural concepts..." />
+                    <Loader text="EXTRACTING_KEY_CONCEPTS..." />
                 </div>
             ) : creditTier ? (
                 <div className="flex-1 h-full w-full relative content-panel rounded-lg overflow-hidden flex items-center justify-center bg-void-2">
@@ -354,7 +354,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                             <div className="text-center p-6 w-full h-full flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:16px_16px] opacity-10 pointer-events-none"></div>
                                 {(loadingImages[currentConcept.term] || isGeneratingAll) ? (
-                                    <div className="flex flex-col items-center gap-2 text-zinc-500 animate-fade-in z-10"><Loader text="Rendering..." /></div>
+                                    <div className="flex flex-col items-center gap-2 text-zinc-500 animate-fade-in z-10"><Loader text="RENDERING..." /></div>
                                 ) : imgError ? (
                                     <div className="z-10 animate-fade-in"><StatusMessage variant="error" title={imgError} action={{ label: 'Retry', onClick: () => handleGenerateImage(currentConcept, true) }} /></div>
                                 ) : (
