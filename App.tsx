@@ -8053,7 +8053,7 @@ const App: React.FC = () => {
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col min-w-0 relative bg-transparent z-10 text-left">
         <header className="border-b border-zinc-900 bg-black/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
           <div className="h-12 md:h-14 flex items-center justify-between px-2 md:px-4 gap-2">
-            <div className="flex items-center gap-1.5 md:gap-4 min-w-0 shrink-0">
+            <div className="flex items-center gap-1.5 md:gap-4 min-w-0 shrink">
               <button aria-label={isSidebarOpen ? "Close menu" : "Open menu"} onClick={() => setSidebarOpen(!isSidebarOpen)} className="relative flex items-center !min-h-0 text-zinc-500 hover:text-neon-cyan transition-colors shrink-0">
                 {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
                 {notifUnread > 0 && !isSidebarOpen && <span className="absolute bottom-0 -right-0.5 w-2 h-2 rounded-full bg-neon-cyan ring-2 ring-black" aria-hidden />}
@@ -8101,7 +8101,7 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <div className="hidden md:flex items-center bg-zinc-950 border border-zinc-900 p-0.5 rounded-sm">
+            <div className="hidden md:flex shrink-0 items-center bg-zinc-950 border border-zinc-900 p-0.5 rounded-sm">
               {[
                 { id: Tab.AUDIOBOOK, icon: Headphones, label: "VOICE_SYNTH" },
                 { id: Tab.PODCAST, icon: Mic2, label: "NET_CAST" },
