@@ -7990,7 +7990,10 @@ const App: React.FC = () => {
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); toggleBookmark(chapter.id); }}
-                                className={`p-1.5 transition-colors shrink-0 ${isBookmarked ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-500'}`}
+                                // An active bookmark is always neon-cyan + visible (desktop + mobile). An
+                                // un-bookmarked tag is hidden until the row is hovered on DESKTOP (declutter);
+                                // on mobile there is no hover, so it stays visible (subtle) to remain tappable.
+                                className={`p-1.5 transition-all shrink-0 ${isBookmarked ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan md:opacity-0 md:group-hover:opacity-100'}`}
                                 title={isBookmarked ? "Remove Bookmark" : "Add Bookmark"}
                             >
                                 <Tag size={12} fill={isBookmarked ? "currentColor" : "none"} />
