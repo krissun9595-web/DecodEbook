@@ -323,17 +323,23 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
   // Translate is footprint-billed per batch (~10 sentences); a page is roughly 1–3 batches.
   const trB = c('translate', resolveModel('translate', 'balanced'));
   const trP = c('translate', resolveModel('translate', 'premium'));
+  // Figure translation differs by MODE: Balanced = Overlay (text-model label detection, ~1 credit, up
+  // to ~2 for a dense figure); Premium = Redraw HD (Nano Banana Pro, flat per image). Both cost-derived.
+  const figOvl = c('translateFigureText', resolveModel('translateFigureText', 'balanced'));
+  const figRdw = c('redrawFigureTranslated', 'gemini-3-pro-image', { images: 1 });
   const modeRows = [
-    { module: 'VOICE_SYNTH', fn: 'Translation', b: fmt(trB, trB * 3, 'per page'), p: fmt(trP, trP * 3, 'per page') },
-    { module: 'VOICE_SYNTH', fn: 'Audio',       b: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page'), p: fmt(c('tts', TTS_MODEL, { chars: 600 }), c('tts', TTS_MODEL, { chars: 2400 }), 'per page') },
-    { module: 'VOICE_SYNTH', fn: 'Definition/HD',  b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup/HD'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup/HD') },
-    { module: 'NET_CAST',    fn: 'Podcast',     b: fmt(c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode'), p: fmt(c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode') },
-    { module: 'VISUAL_CORE', fn: 'Image',       b: fmt(c('generateImage', IMG_MODEL.balanced, { images: 1 }), c('generateImage', IMG_MODEL.balanced, { images: 1 }), 'per image'), p: fmt(c('generateImage', IMG_MODEL.premium, { images: 1 }), c('generateImage', IMG_MODEL.premium, { images: 1 }), 'per image') },
-    { module: 'CINE_RENDER', fn: 'Video',       b: fmt(c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), 'per clip'), p: fmt(c('videoVeo', VID_MODEL.premium, { seconds: 8 }), c('videoVeo', VID_MODEL.premium, { seconds: 8 }), 'per clip') },
-    { module: 'ASSISTANT',   fn: 'Chat',        b: fmt(c('chat', resolveModel('chat', 'balanced'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'balanced'), { inTok: 1600, outTok: 800 }), 'per message'), p: fmt(c('chat', resolveModel('chat', 'premium'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'premium'), { inTok: 1600, outTok: 800 }), 'per message') },
+    { module: 'VOICE_SYNTH', fn: 'Text Translation', b: fmt(trB, trB * 3, 'per page'), p: fmt(trP, trP * 3, 'per page') },
+    { module: 'VOICE_SYNTH', fn: 'Figure Translation', b: fmt(figOvl, figOvl + 1, 'per image'), p: fmt(figRdw, figRdw, 'per image') },
+    { module: 'VOICE_SYNTH', fn: 'Definition/HD Pronounce',  b: fmt(c('quickDefinition', resolveModel('quickDefinition', 'balanced')), c('quickDefinition', resolveModel('quickDefinition', 'balanced')), 'per lookup/HD'), p: fmt(c('quickDefinition', resolveModel('quickDefinition', 'premium')), c('quickDefinition', resolveModel('quickDefinition', 'premium')), 'per lookup/HD') },
+    { module: 'NET_CAST',    fn: 'Podcast Generation',     b: fmt(c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'balanced'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode'), p: fmt(c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 4000, outTok: 4000 }) + c('podcastAudio', TTS_MODEL, { chars: 2500 }), c('podcastScript', resolveModel('podcastScript', 'premium'), { inTok: 16000, outTok: 12000 }) + c('podcastAudio', TTS_MODEL, { chars: 6000 }), 'per episode') },
+    { module: 'VISUAL_CORE', fn: 'Image Generation',       b: fmt(c('generateImage', IMG_MODEL.balanced, { images: 1 }), c('generateImage', IMG_MODEL.balanced, { images: 1 }), 'per image'), p: fmt(c('generateImage', IMG_MODEL.premium, { images: 1 }), c('generateImage', IMG_MODEL.premium, { images: 1 }), 'per image') },
+    { module: 'CINE_RENDER', fn: 'Video Generation',       b: fmt(c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), c('videoSeedance', VID_MODEL.balanced, { seconds: 8 }), 'per clip'), p: fmt(c('videoVeo', VID_MODEL.premium, { seconds: 8 }), c('videoVeo', VID_MODEL.premium, { seconds: 8 }), 'per clip') },
+    { module: 'ASSISTANT',   fn: 'Chatting',        b: fmt(c('chat', resolveModel('chat', 'balanced'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'balanced'), { inTok: 1600, outTok: 800 }), 'per message'), p: fmt(c('chat', resolveModel('chat', 'premium'), { inTok: 400, outTok: 200 }), c('chat', resolveModel('chat', 'premium'), { inTok: 1600, outTok: 800 }), 'per message') },
   ];
   // Short module names for the NARROW (mobile) table only — full names stay on desktop.
   const MODULE_SHORT: Record<string, string> = { VOICE_SYNTH: 'VOICE', NET_CAST: 'CAST', VISUAL_CORE: 'VISUAL', CINE_RENDER: 'CINE', ASSISTANT: 'ASST' };
+  // Short function names for the NARROW (mobile) table only — full names stay on desktop.
+  const FUNCTION_SHORT: Record<string, string> = { 'Text Translation': 'Text', 'Figure Translation': 'Figure', 'Definition/HD Pronounce': 'Define/HD', 'Podcast Generation': 'Podcast', 'Image Generation': 'Image', 'Video Generation': 'Video', 'Chatting': 'Chat' };
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Upgrade" className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in font-sans" onClick={onClose}>
@@ -458,14 +464,14 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                       {modeRows.map(r => (
                         <div key={r.fn} className="flex items-center gap-3 py-[2px] sm:py-[3px]">
                           <span className="flex-[0.8] text-zinc-500 truncate"><span className="sm:hidden">{MODULE_SHORT[r.module] || r.module}</span><span className="hidden sm:inline">{r.module}</span></span>
-                          <span className="flex-[1.25] text-zinc-500">{r.fn}</span>
+                          <span className="flex-[1.25] text-zinc-500 truncate"><span className="sm:hidden">{FUNCTION_SHORT[r.fn] || r.fn}</span><span className="hidden sm:inline">{r.fn}</span></span>
                           <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.b.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.b}</span></span>
                           <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.p.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.p}</span></span>
                         </div>
                       ))}
                       </div>
                     </div>
-                    <p className="text-[9px] mt-auto">Actual cost scales with length; No charge for saved result re-open; Other functions costs will be recorded in Credit history table.</p>
+                    <p className="text-[9px] mt-auto">Actual cost scales with length; No charge for saved result re-open; Functions with same costs under both modes will be recorded in Credit history table.</p>
                   </div>
                 </div>
               </div>

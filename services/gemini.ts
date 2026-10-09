@@ -3,7 +3,7 @@ import { GoogleGenAI, Type, Modality, Content, Part } from "@google/genai";
 import { BookStructure, Chapter, Concept, DictionaryEntry, FileContext, MindMapNode, NotebookItem } from "../types";
 import { getSession, getUser, logUsage } from "./supabase";
 import { creditsForAction, costCentsForAction, VIDEO_SECONDS_DEFAULT } from "./pricing";
-import { INSUFFICIENT_CREDITS, VIDEO_BLOCKED, applyLocalCharge } from "./credits";
+import { INSUFFICIENT_CREDITS, VIDEO_BLOCKED, applyLocalCharge, isInsufficientCreditsError } from "./credits";
 import { extractChapterFromSource } from "../utils/sourceIndex";
 import { buildLocalTextStructure, buildStructureAnalysisText, isReadableChapterTitle } from "../utils/structureAnalysis";
 import { PDF_TEXT_EXTRACTION_VERSION } from "../utils/sourceVersion";
@@ -13,6 +13,11 @@ const DEFAULT_TEXT_MODEL = 'gemini-3-flash-preview'; // translate default; geo-r
 let _selectedModel: string = 'gemini-3-flash-preview';
 let _ttsModel: string = 'gemini-3.1-flash-tts-preview';
 let _imageModel: string = 'gemini-3-pro-image-preview';
+// Figure REDRAW (the "Translate · HD" action) always uses the premium image model regardless of the
+// user's generation mode — the Balanced model (Nano Banana) can't reliably translate dense diagram
+// labels or hold the art. This is the GA Pro name (see services/pricing.ts "current default"); it
+// prices the redraw higher accordingly. The cheap "Overlay" path stays on the text model.
+export const FIGURE_REDRAW_MODEL = 'gemini-3-pro-image';
 let _videoModel: string = 'veo-3.1-fast-generate-preview';
 let _currentBook = ''; // active book title, for usage attribution in credit history
 export const setCurrentBook = (title: string) => { _currentBook = title || ''; };
@@ -424,7 +429,7 @@ export const translateFigureText = async (
         model: 'gemini-3-flash-preview',
         contents: {
           parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
+            { inlineData: { mimeType: mimeType?.startsWith('image/') ? mimeType : 'image/jpeg', data: imageBase64 } },
             { text: `This image is a figure/diagram from a book. Find EVERY piece of text rendered inside it (node/box labels, axis labels, captions drawn on the image) and translate each into ${targetLanguage}. Return {"labels": [...]} where each label is {"box":[ymin,xmin,ymax,xmax] as INTEGERS 0–1000 normalized to the image height/width (ymin,xmin = top-left; ymax,xmax = bottom-right — the TIGHT rectangle around exactly that text run), "original": the source text, "translated": the ${targetLanguage} text}. Give one label per distinct text run; make each box tight. Keep acronyms and untranslatable proper nouns as-is. Return {"labels": []} if the image has no text.` },
           ],
         },
@@ -461,8 +466,10 @@ export const translateFigureText = async (
         .filter(d => Array.isArray(d.box) && d.box.length === 4 && typeof d.translated === 'string' && d.translated.trim())
         .map(d => ({ box: d.box.map(Number) as [number, number, number, number], original: String(d.original ?? ''), translated: String(d.translated) }));
     }, 3, 2000, signal);
-  } catch {
-    return [];
+  } catch (e) {
+    // Propagate the real reason (credit block / API error) so the UI surfaces it rather than
+    // silently reverting. A genuine "no text found" still returns [] from the normal path above.
+    throw e;
   }
 };
 
@@ -487,25 +494,30 @@ export const redrawFigureTranslated = async (
   try {
     return await withRetry(async () => {
       const usageId = newUsageId();
-      const ai = await getAi({ usageId, action: 'redrawFigureTranslated', model: _imageModel, book: _currentBook || undefined, session: _usageSession || undefined, images: 1 });
+      const ai = await getAi({ usageId, action: 'redrawFigureTranslated', model: FIGURE_REDRAW_MODEL, book: _currentBook || undefined, session: _usageSession || undefined, images: 1 });
       const response = await ai.models.generateContent({
-        model: _imageModel,
+        model: FIGURE_REDRAW_MODEL,
         contents: {
           parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
+            { inlineData: { mimeType: mimeType?.startsWith('image/') ? mimeType : 'image/jpeg', data: imageBase64 } },
             { text: `You are editing this existing diagram image. Output an image with the EXACT SAME pixel dimensions${width && height ? ` (${width}×${height} pixels)` : ''}, aspect ratio, and framing as the input, with the diagram filling the whole frame edge-to-edge just like the input (no added margin, padding, border, or background bars). Translate ONLY the text into ${targetLanguage}. CRITICAL: keep every box, rectangle, circle, arrow, connector, line, icon, colour, and their SIZES and POSITIONS pixel-for-pixel identical to the input. Do NOT resize, shrink, enlarge, re-space, move, or re-layout any box or element to fit the translated text — even when the translation is shorter or longer than the original, the box stays the exact same size and place; fit the translated text inside the original box, shrinking the font if needed. Only the text characters change; the geometry is frozen. Keep acronyms and untranslatable proper nouns as-is. Output only the edited image.` },
           ],
         },
         config: { abortSignal: signal, ...(ratio ? { imageConfig: { aspectRatio: ratio } } : {}) } as any,
       });
-      trackUsage('redrawFigureTranslated', extractTokens(response), _imageModel, undefined, undefined, usageId);
+      trackUsage('redrawFigureTranslated', extractTokens(response), FIGURE_REDRAW_MODEL, undefined, undefined, usageId);
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
       }
-      return null;
+      // The model answered but emitted no image (e.g. it returned text / declined to edit). Surface a
+      // reason the UI can show rather than a silent null.
+      const why = response.candidates?.[0]?.finishReason || response.text?.slice(0, 120) || 'no image in response';
+      throw new Error(`Image model returned no image (${why})`);
     }, 3, 2000, signal);
-  } catch {
-    return null;
+  } catch (e) {
+    // Propagate the real reason (credit block, API/model error, empty response) so the UI can show it
+    // instead of a silent revert. Abort is handled by the caller's signal check.
+    throw e;
   }
 };
 

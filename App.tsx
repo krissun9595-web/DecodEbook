@@ -7956,16 +7956,15 @@ const App: React.FC = () => {
                     const isPart = parentIds.has(chapter.id);
                     const collapsed = collapsedParts.has(chapter.id);
                     return (
-                        <div key={chapter.id} ref={activeChapterId === chapter.id ? activeChapterItemRef : undefined} className="relative group flex items-center justify-between px-4 h-[43px] hover:bg-zinc-900/50">
+                        <div key={chapter.id} ref={activeChapterId === chapter.id ? activeChapterItemRef : undefined} className="relative group flex items-center justify-between px-4 h-10 hover:bg-zinc-900/50">
                             <button
                                 title={chapter.title}
                                 onClick={() => { trackBookAction('chapter_navigate', { from_chapter: activeChapterId, to_chapter: chapter.id }, activeBookId || undefined); setActiveChapterPageTarget('first'); setActiveChapterId(chapter.id); if (currentUser && activeBookId) debouncedReadingSync(currentUser.id, activeBookId, chapter.id); closeSidebarMobile(); }}
-                                className={`flex-1 text-left flex items-center gap-2 border-l-2 h-full transition-all min-w-0 pr-2 ${level > 0 ? 'pl-5' : ''} ${
-                                    activeChapterId === chapter.id
-                                    ? 'border-neon-cyan'
-                                    : 'border-transparent'
-                                }`}
+                                className={`flex-1 text-left flex items-center gap-2 h-full transition-all min-w-0 pr-2 ${level > 0 ? 'pl-5' : ''}`}
                             >
+                                {/* Neon rail — cyan on the active chapter; transparent (reserves the width so the
+                                    title doesn't shift) on inactive ones. */}
+                                <div className={`w-1 h-7 shrink-0 ${activeChapterId === chapter.id ? 'bg-neon-cyan' : 'bg-transparent'}`} />
                                 {isPart ? (
                                     <span
                                         role="button"
@@ -8007,21 +8006,21 @@ const App: React.FC = () => {
         <div className="p-0 border-t border-zinc-900 bg-black flex flex-col shrink-0">
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+            className="w-full flex items-center gap-3 px-4 h-11 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
           >
             <SettingsIcon size={14} />
             <span>SYS_CONFIG</span>
           </button>
           <button
             onClick={() => setIsFilesOpen(true)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+            className="w-full flex items-center gap-3 px-4 h-11 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
           >
             <HardDrive size={14} />
             <span>GEN_FILES</span>
           </button>
           <button
             onClick={() => setIsNotifOpen(true)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
+            className="w-full flex items-center gap-3 px-4 h-11 hover:bg-zinc-900 text-zinc-500 hover:text-neon-cyan transition-colors text-[10px] font-bold font-tech uppercase tracking-widest"
           >
             <Bell size={14} />
             <span>MY_INBOX</span>
@@ -8031,7 +8030,7 @@ const App: React.FC = () => {
           </button>
           <button
             onClick={() => setIsAccountOpen(true)}
-            className={`w-full flex items-center gap-3 p-4 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-neon-cyan hover:text-white' : 'text-zinc-500 hover:text-neon-cyan'}`}
+            className={`w-full flex items-center gap-3 px-4 h-11 hover:bg-zinc-900 transition-colors text-[10px] font-bold font-tech uppercase tracking-widest ${currentUser ? 'text-neon-cyan hover:text-white' : 'text-zinc-500 hover:text-neon-cyan'}`}
           >
             <UserIcon size={14} />
             <span>MY_ACCOUNT</span>

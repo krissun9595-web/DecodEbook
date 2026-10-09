@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2 } from 'lucide-react';
+import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2, Copy, Languages } from 'lucide-react';
 import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFigure } from '../types';
-import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated, logGenerationPartial, beginUsageSession, endUsageSession } from '../services/gemini';
+import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated, logGenerationPartial, beginUsageSession, endUsageSession, getGenerationMode } from '../services/gemini';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
 import { creditsForAction } from '../services/pricing';
 import { CreditNotice } from './ui/CreditNotice';
@@ -32,7 +32,7 @@ import {
 import { splitIntoSentences } from '../utils/sentenceSplit';
 import { looksLikeAttributionAuthor, looksLikePersonName } from '../utils/personName';
 import { inkLineStyle } from '../utils/inkLine';
-import { isIOS } from '../utils/device';
+import { isIOS, isTouch } from '../utils/device';
 import {
   isBibleReferenceAtEnd,
   isBibleReferenceMarkerCandidate,
@@ -1787,13 +1787,42 @@ const CalloutIcon: React.FC<{ iconId: string; bookId: string; alt: string }> = (
 // double-click / long-press menu. Translating (redraw or overlay) auto-saves the result to the file
 // cache as a 'translation'. In split view it renders in both halves; the right half shows the
 // translated figure (on demand). Carries no text — invisible to TTS/translation.
+// Figures cached in IndexedDB can come back as a Blob with an EMPTY `.type` (the stored bytes lost
+// their MIME), which the image model rejects with a 400 "Unsupported MIME type: ". Sniff PNG/JPEG/…
+// from the magic bytes and fall back to JPEG so inlineData always declares a valid type.
+const sniffImageMime = async (b: Blob): Promise<string> => {
+  // Trust the blob's type ONLY when it's a real image/* — a cached figure can come back as '' OR a
+  // generic 'application/octet-stream', both of which the model rejects. Otherwise sniff the bytes.
+  if (b.type && b.type.startsWith('image/')) return b.type;
+  try {
+    const h = new Uint8Array(await b.slice(0, 4).arrayBuffer());
+    if (h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47) return 'image/png';
+    if (h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff) return 'image/jpeg';
+    if (h[0] === 0x47 && h[1] === 0x49 && h[2] === 0x46) return 'image/gif';
+    if (h[0] === 0x52 && h[1] === 0x49 && h[2] === 0x46) return 'image/webp'; // RIFF/WEBP container
+  } catch { /* fall through to default */ }
+  return 'image/jpeg';
+};
+// Turn a raw model error into a short human message. The premium Redraw model (Nano Banana Pro) is
+// geo-restricted; Google returns FAILED_PRECONDITION "location not supported" — surface the actionable
+// fix (use Overlay) rather than a JSON blob.
+const figFailMsg = (e: unknown): string => {
+  const raw = String((e as any)?.message || e);
+  const short = isTouch(); // mobile figures are small → keep the message tight so it can't spill
+  if (/FAILED_PRECONDITION|location is not supported|not supported for the API use|user location/i.test(raw))
+    return short ? 'Redraw blocked here — use Overlay.' : 'HD Redraw isn’t available in your region. Switch to Balanced mode to use Overlay instead.';
+  return short ? 'Translation failed — long-press to retry.' : raw.slice(0, 180);
+};
 const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string; captionOrig?: React.ReactNode; captionTrans?: React.ReactNode; attribOrig?: React.ReactNode; attribTrans?: React.ReactNode; captionFontPx?: number; captionTextClass?: string }> = ({ figId, bookId, bookTitle, meta, split, targetLang, chapterLabel, caption, captionOrig, captionTrans, attribOrig, attribTrans, captionFontPx, captionTextClass }) => {
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const [tr, setTr] = useState<{ state: 'idle' | 'rendering' | 'done' | 'fail'; url?: string }>({ state: 'idle' });
+  const [menu, setMenu] = useState<{ x: number; y: number; pane: 'orig' | 'trans' } | null>(null);
+  const [tr, setTr] = useState<{ state: 'idle' | 'rendering' | 'done' | 'fail' | 'nocredits'; url?: string; msg?: string }>({ state: 'idle' });
+  const [zoom, setZoom] = useState<string | null>(null); // lightbox: the src shown expanded full-screen, or null
   const blobRef = useRef<Blob | null>(null);
   const pressTimer = useRef<number | null>(null);
+  const longPressed = useRef(false); // suppress the click that fires right after a long-press opened the menu
+  const menuTs = useRef(0);  // when the menu opened — so the opening tap's GHOST click can't instantly dismiss it
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -1842,8 +1871,31 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
   const widthPct = meta?.colFrac ? Math.max(40, Math.min(100, Math.round(meta.colFrac * 100)))
     : meta?.wPts ? Math.max(40, Math.min(100, Math.round((meta.wPts / 380) * 100)))
     : 100;
-  const openMenu = (x: number, y: number) => setMenu({ x, y });
-  const copyImage = async () => { setMenu(null); const b = blobRef.current; if (!b) return; try { await navigator.clipboard.write([new ClipboardItem({ [b.type]: b })]); } catch { /* clipboard image unsupported */ } };
+  const openMenu = (x: number, y: number, pane: 'orig' | 'trans') => { menuTs.current = performance.now(); setMenu({ x, y, pane }); };
+  // The gesture that opens the menu (double-tap / long-press release) fires a synthetic click+touch a
+  // moment later; without this guard it lands on the backdrop and closes the bar before the user can
+  // pick an action. Ignore backdrop dismissals within 500ms of opening.
+  const dismissMenu = () => { if (performance.now() - menuTs.current < 500) return; setMenu(null); };
+  // The async clipboard only reliably writes image/png (Chrome rejects image/jpeg — why "copy image"
+  // silently did nothing on JPEG figures). Convert to PNG first; pass a Promise<Blob> to ClipboardItem
+  // so Safari keeps the user-gesture while the canvas encode resolves.
+  const blobToPng = async (b: Blob): Promise<Blob> => {
+    if (b.type === 'image/png') return b;
+    const bmp = await createImageBitmap(b);
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    c.getContext('2d')!.drawImage(bmp, 0, 0);
+    return await new Promise<Blob>((res, rej) => c.toBlob(bb => bb ? res(bb) : rej(new Error('toBlob failed')), 'image/png'));
+  };
+  const copyImage = async () => {
+    const pane = menu?.pane; setMenu(null);
+    try {
+      // Copy whichever image the menu was opened on: the translated result on the translated pane,
+      // else the original.
+      const src = (pane === 'trans' && tr.state === 'done' && tr.url) ? await (await fetch(tr.url)).blob() : blobRef.current;
+      if (!src) return;
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobToPng(src) })]);
+    } catch { /* clipboard image unsupported */ }
+  };
   // Clicking a translate action again while it's rendering cancels the in-flight model call (aborts
   // the request so no further tokens are spent) and reverts to the original.
   const stopRender = () => { setMenu(null); abortRef.current?.abort(); abortRef.current = null; setTr({ state: 'idle' }); };
@@ -1859,14 +1911,14 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
       let out = cached?.blob || null;
       if (!out) {
         const b64 = await blobToBase64(b);
-        const labels = await translateFigureText(b64, b.type, targetLang, ctrl.signal);
+        const labels = await translateFigureText(b64, await sniffImageMime(b), targetLang, ctrl.signal);
         if (ctrl.signal.aborted) return;
         out = labels.length ? await overlayTranslations(b, labels) : b;
         if (labels.length) await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}.jpg`, mimeType: out.type, timestamp: Date.now(), bookId, bookTitle, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
-    } catch { if (ctrl.signal.aborted) return; setTr({ state: 'fail' }); }
+    } catch (e) { if (ctrl.signal.aborted) return; console.warn('[figure overlay] failed', e); setTr({ state: isInsufficientCreditsError(e) ? 'nocredits' : 'fail', msg: figFailMsg(e) }); }
   };
   const redrawFigure = async () => {
     setMenu(null);
@@ -1882,27 +1934,34 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
         // Measure the original figure's exact pixels so the model is constrained to the same shape.
         let ow = meta?.wPx, oh = meta?.hPx;
         try { const bmp = await createImageBitmap(b); ow = bmp.width; oh = bmp.height; } catch { /* fall back to manifest */ }
-        const dataUrl = await redrawFigureTranslated(await blobToBase64(b), b.type, targetLang, ctrl.signal, ow, oh);
+        const dataUrl = await redrawFigureTranslated(await blobToBase64(b), await sniffImageMime(b), targetLang, ctrl.signal, ow, oh);
         if (ctrl.signal.aborted) return;
-        if (!dataUrl) { setTr({ state: 'fail' }); return; }
+        if (!dataUrl) { setTr({ state: 'fail', msg: 'Image model returned no image' }); return; }
         out = await trimBorders(await (await fetch(dataUrl)).blob()); // trim any margin the model baked in
         await saveFile(key, out, { filename: `${buildFigureTranslationBase(caption, figId, chapterLabel, targetLang)}-Redraw.png`, mimeType: out.type, timestamp: Date.now(), bookId, bookTitle, chapterId: 0, componentSource: 'Reader_Figure', fileType: 'translation' }).catch(() => {});
       }
       if (ctrl.signal.aborted) return;
       setTr({ state: 'done', url: URL.createObjectURL(out) });
-    } catch { if (ctrl.signal.aborted) return; setTr({ state: 'fail' }); }
+    } catch (e) { if (ctrl.signal.aborted) return; console.warn('[figure redraw] failed', e); setTr({ state: isInsufficientCreditsError(e) ? 'nocredits' : 'fail', msg: figFailMsg(e) }); }
   };
 
   // `natural`: size the box to the image's OWN aspect (used for a translated/redrawn image, whose
   // dimensions differ from the original) instead of forcing the original's aspect-ratio box, which
   // would letterbox it and make it look smaller.
-  const imageBox = (src: string | null, loading: boolean, note: string, natural = false) => (
+  const imageBox = (src: string | null, loading: boolean, note: string, natural = false, pane: 'orig' | 'trans' = 'orig') => (
     <div
-      className="relative w-full overflow-hidden rounded-sm border border-zinc-800/60 bg-void-2 select-none"
+      className={`relative w-full overflow-hidden rounded-sm border border-zinc-800/60 bg-void-2 select-none ${src ? 'cursor-zoom-in' : ''}`}
       style={natural && src ? undefined : { aspectRatio: String(aspect) }}
-      onContextMenu={e => { e.preventDefault(); openMenu(e.clientX, e.clientY); }}
-      onDoubleClick={e => openMenu(e.clientX, e.clientY)}
-      onTouchStart={e => { const t = e.touches[0]; pressTimer.current = window.setTimeout(() => openMenu(t.clientX, t.clientY), 500); }}
+      // Single click / tap EXPANDS the figure (lightbox). The action menu is a long-press (touch) or
+      // right-click (mouse) — so a plain tap is free to zoom. `longPressed` swallows the click that
+      // fires right after a long-press so it doesn't also zoom.
+      onClick={() => { if (longPressed.current) { longPressed.current = false; return; } if (src) setZoom(src); }}
+      onContextMenu={e => { e.preventDefault(); openMenu(e.clientX, e.clientY, pane); }}
+      onTouchStart={e => {
+        const t = e.touches[0];
+        longPressed.current = false;
+        pressTimer.current = window.setTimeout(() => { longPressed.current = true; openMenu(t.clientX, t.clientY, pane); }, 500);
+      }}
       onTouchEnd={() => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } }}
     >
       {src
@@ -1917,9 +1976,19 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
   // image's OWN aspect (natural) so the frame hugs the picture — no empty band above/below.
   const haveAspect = !!(meta && meta.wPx && meta.hPx);
   const box = imageBox(state === 'ready' ? url : null, state === 'loading', state === 'loading' ? 'loading figure…' : 'figure unavailable', !haveAspect);
-  const trPane = tr.state === 'rendering' ? imageBox(null, true, 'rendering…')
-    : tr.state === 'done' && tr.url ? imageBox(tr.url, false, '', true)
-    : box;
+  // The translated pane shows the ORIGINAL image until a translation is ready — same size as the left
+  // box. Its menu (pane='trans') offers Copy only; the translate actions live on the original figure.
+  const transBox = imageBox(state === 'ready' ? url : null, state === 'loading', state === 'loading' ? 'loading figure…' : 'figure unavailable', !haveAspect, 'trans');
+  const figCreditTier: 'free' | 'pro' = getCachedTier()?.tier === 'pro' ? 'pro' : 'free';
+  // Every non-ready state is drawn as a CENTERED OVERLAY on the full-size original image — never a
+  // block that pushes the caption down or a smaller placeholder that shrinks the frame. The credit
+  // block (nocredits) and failure (fail) float over the figure instead of occupying layout space.
+  const trPane = tr.state === 'rendering'
+      ? <div className="relative">{transBox}<div className="absolute inset-0 flex items-center justify-center bg-void-2/70 backdrop-blur-[1px] rounded-sm text-[11px] text-neon-cyan font-mono animate-pulse pointer-events-none">Rendering…</div></div>
+    : tr.state === 'done' && tr.url ? imageBox(tr.url, false, '', true, 'trans')
+    : tr.state === 'nocredits' ? <div className="relative">{transBox}<div className="absolute inset-0 flex items-center justify-center p-2 bg-void-0/85 backdrop-blur-[1px] rounded-sm overflow-auto animate-fade-in"><div className="max-w-full"><CreditNotice tier={figCreditTier} /></div></div></div>
+    : tr.state === 'fail' ? <div className="relative">{transBox}<div className="absolute inset-0 flex items-center justify-center p-2 bg-void-0/85 backdrop-blur-[1px] rounded-sm overflow-hidden text-neon-red font-mono text-center animate-fade-in"><div className="text-[10px] leading-tight break-words max-w-full">⚠ {tr.msg || 'Translation failed — long-press to retry.'}</div></div></div>
+    : transBox;
 
   // The publisher sets the caption + credit in a column the WIDTH OF THE FIGURE (source `div.fig_NN`
   // wraps image + caption + credit), 0.9em, justified/flush, no indent — the credit additionally italic.
@@ -1946,19 +2015,48 @@ const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: stri
         // Single view: match the text's centering — justify-center around a max-w-3xl column, figure
         // centred within at its book proportion.
         : <div className="w-full flex justify-center"><div className="w-full max-w-3xl flex justify-center"><div style={{ width: `${widthPct}%`, maxWidth: '100%' }}>{box}{texts(captionOrig, attribOrig)}</div></div></div>}
-      {menu && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
-          <div className="fixed z-50 min-w-[160px] rounded-sm border border-zinc-700 bg-[#0f0f12] shadow-2xl py-1 text-xs text-zinc-200 font-mono" style={{ left: Math.min(menu.x, window.innerWidth - 170), top: Math.min(menu.y, window.innerHeight - 110) }}>
-            <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={copyImage}>Copy image</button>
-            {split && tr.state === 'rendering'
-              ? <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-amber-400" onClick={stopRender}>Stop rendering</button>
-              : split && <>
-                  <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800" onClick={redrawFigure}>Translate figure (redraw)</button>
-                  <button className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-zinc-400" onClick={translateFigure}>Overlay only (rough)</button>
-                </>}
-          </div>
-        </>
+      {menu && (() => {
+        // Translate lives on the ORIGINAL (source) figure's menu — acting on the source, the result
+        // renders into the translated pane. Only in split view (there's a translated pane to fill).
+        const showTranslate = split && menu.pane === 'orig';
+        const rendering = tr.state === 'rendering';
+        // The translate action follows the generation MODE: Premium = Redraw HD (Pro image model),
+        // Balanced = Overlay (cheap text-model labels). One option, not two.
+        const premium = getGenerationMode() === 'premium';
+        const runTranslate = premium ? redrawFigure : translateFigure;
+        const translateLabel = premium ? 'Translate redraw' : 'Translate overlay';
+        if (isTouch()) {
+          // Mobile: full-width horizontal icon bar that JUMPS up (mirrors the word-selection bar).
+          return (
+            <>
+              <div className="fixed inset-0 z-40" onClick={dismissMenu} onTouchStart={dismissMenu} />
+              <div className="fixed z-50 flex items-stretch gap-0.5 bg-void-2 border border-cyan-900/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] rounded-2xl p-1 animate-fade-in-up" style={{ left: 16, width: 'calc(100vw - 32px)', top: Math.min(menu.y, window.innerHeight - 76) }}>
+                <button onTouchEnd={e => { e.preventDefault(); copyImage(); }} className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors"><Copy size={16} />Copy image</button>
+                {showTranslate && (rendering
+                  ? <button onTouchEnd={e => { e.preventDefault(); stopRender(); }} className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 text-neon-red active:bg-neon-red/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors"><Square size={16} fill="currentColor" />Stop</button>
+                  : <button onTouchEnd={e => { e.preventDefault(); runTranslate(); }} className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-1.5 text-zinc-300 active:text-neon-cyan active:bg-neon-cyan/10 text-[9px] font-tech uppercase tracking-wide rounded-xl transition-colors"><Languages size={16} />{translateLabel}</button>)}
+              </div>
+            </>
+          );
+        }
+        // Desktop: narrow vertical icon dropdown — mirrors the word-selection context menu.
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null); }} />
+            <div className="fixed z-50 min-w-[132px] rounded-sm border border-cyan-900/50 bg-void-2 shadow-[0_0_20px_rgba(0,0,0,0.8)] p-1 text-xs font-mono animate-fade-in" style={{ left: Math.min(menu.x, window.innerWidth - 150), top: Math.min(menu.y, window.innerHeight - 120) }}>
+              <button onClick={copyImage} className="w-full text-left px-3 py-2 flex items-center gap-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan uppercase rounded-sm transition-colors"><Copy size={14} />Copy image</button>
+              {showTranslate && (rendering
+                ? <button onClick={stopRender} className="w-full text-left px-3 py-2 flex items-center gap-2 text-neon-red hover:bg-neon-red/10 uppercase rounded-sm transition-colors"><Square size={14} fill="currentColor" />Stop</button>
+                : <button onClick={runTranslate} className="w-full text-left px-3 py-2 flex items-center gap-2 text-zinc-300 hover:bg-neon-cyan/10 hover:text-neon-cyan uppercase rounded-sm transition-colors"><Languages size={14} />{translateLabel}</button>)}
+            </div>
+          </>
+        );
+      })()}
+      {/* Lightbox: a tap/click expands the figure full-screen above the reader; tap anywhere to return it. */}
+      {zoom && (
+        <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in cursor-zoom-out" onClick={() => setZoom(null)}>
+          <img src={zoom} alt="Figure (expanded)" className="max-w-full max-h-full object-contain select-none" draggable={false} />
+        </div>
       )}
     </div>
   );
