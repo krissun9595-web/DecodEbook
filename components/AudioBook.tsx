@@ -5215,26 +5215,21 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           </div>
 
           <div className="flex-1 overflow-hidden rounded-sm border border-zinc-800 bg-void-1 relative flex flex-col hud-border text-left">
+             {/* Out-of-credits: a FLOATING CreditNotice over the TRANSLATED (right) half — vertically
+                 centered, doesn't push content or strut rows. pointer-events-none lets the reader
+                 scroll/select behind it; the block itself stays interactive. Single view → centered. */}
+             {creditTier && (
+               <div className={`absolute inset-y-0 z-30 flex items-center justify-center px-3 pointer-events-none animate-fade-in ${viewMode === 'split' ? 'right-0 w-1/2' : 'inset-x-0'}`}>
+                 <div className="pointer-events-auto w-full max-w-md bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 rounded-lg py-4 shadow-2xl">
+                   <CreditNotice tier={creditTier} />
+                 </div>
+               </div>
+             )}
              <div ref={readerScrollRef} data-reader-zone="" className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-6 space-y-0 pb-32 content-font select-text [-webkit-user-select:text] [-webkit-touch-callout:none]">
                 {/* Zero-height, always-present probe with the EXACT text-column width + font — computePageTargetSize
                     measures THIS instead of the per-line divs, which are absent before render and can be a
                     transient narrow width mid-render (→ a broken 160-page count that then sticks). */}
                 <div data-reader-measure="" aria-hidden="true" className={`${viewMode === 'split' ? 'w-1/2' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`} style={{ height: 0, overflow: 'hidden' }} />
-                {/* Out-of-credits: ONE full CreditNotice block at the top of the reading pane (sticky so it
-                    stays visible), unified with every other module. Kept OUTSIDE the paragraph grid so it
-                    can't strut a row. The per-paragraph translation slots render nothing while blocked. */}
-                {creditTier && (
-                  <div className="sticky top-0 z-30 -mt-1 mb-5 flex animate-fade-in">
-                    {/* Split view: block sits in the TRANSLATED (right) half, centered; left half is an
-                        empty spacer matching the original column. Single view: centered in the column. */}
-                    {viewMode === 'split' && <div className="w-1/2 pr-3" aria-hidden="true" />}
-                    <div className={`${viewMode === 'split' ? 'w-1/2 pl-3' : 'w-full'} flex justify-center`}>
-                      <div className="w-full max-w-md bg-void-1/95 backdrop-blur-md border border-neon-cyan/20 rounded-lg py-4 shadow-2xl">
-                        <CreditNotice tier={creditTier} />
-                      </div>
-                    </div>
-                  </div>
-                )}
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : isIndexChapter && !!currentReaderPage?.text?.includes(String.fromCharCode(0xE017)) ? (() => {
                   // A two-column index rendered with a CSS GRID: the source's left column is the first
                   // half of the (column-major) entries, the right column the second half. In split view
