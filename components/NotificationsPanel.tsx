@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Bell, Megaphone, Gift, AlertTriangle, X, CheckCheck } from 'lucide-react';
+import { Bell, Megaphone, Gift, AlertTriangle, X, CheckCheck, CreditCard } from 'lucide-react';
 import { CloseButton } from './ui/CloseButton';
 import { listNotifs, markRead, markAllRead, clearNotif, fmtDay, NotifView } from '../services/notifications';
 
 const TYPE_ICON: Record<string, { icon: typeof Bell; color: string; border: string; dot: string }> = {
   update: { icon: Megaphone, color: 'text-neon-cyan', border: 'border-neon-cyan/40', dot: 'bg-neon-cyan' },
   bonus: { icon: Gift, color: 'text-neon-amber', border: 'border-neon-amber/40', dot: 'bg-neon-amber' },
+  // billing (Pro + packs) shares the bonus amber so money-related events read as one group.
+  billing: { icon: CreditCard, color: 'text-neon-amber', border: 'border-neon-amber/40', dot: 'bg-neon-amber' },
   usage: { icon: AlertTriangle, color: 'text-neon-red', border: 'border-neon-red/40', dot: 'bg-neon-red' },
 };
 

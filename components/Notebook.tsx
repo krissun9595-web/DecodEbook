@@ -1281,9 +1281,9 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                        <Loader text="GENERATING_MAP..." />
                    </div>
                ) : items.length === 0 ? (
-                   <EmptyState icon={NotebookIcon} label="NO_DATA_LOGGED" className="flex-1 animate-fade-in" />
+                   <EmptyState icon={NotebookIcon} label="Mem_Core_Idle" className="flex-1 animate-fade-in" />
                ) : filteredItems.length === 0 ? (
-                   <EmptyState icon={NotebookIcon} label="Mem_log_idle" className="flex-1 animate-fade-in" />
+                   <EmptyState icon={NotebookIcon} label="No_Matching_Entries" className="flex-1 animate-fade-in" />
                ) : (
                    <div className="flex-1 overflow-y-auto pr-2 pb-10 custom-scrollbar space-y-1.5 content-font">
                        {filteredItems.map((item, idx) => {

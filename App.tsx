@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search, Bell, Megaphone, Gift, AlertTriangle } from 'lucide-react';
+import { Upload, BookOpen, Headphones, Image as ImageIcon, BookA, Film, Menu, X, ChevronRight, FileText, Mic2, Settings as SettingsIcon, Library as LibraryIcon, Tag, Bookmark, Notebook as NotebookIcon, Terminal, Shield, HardDrive, User as UserIcon, Trash2, Search, Bell, Megaphone, Gift, AlertTriangle, CreditCard } from 'lucide-react';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BookStructure, Chapter, AppView, Tab, FileContext, AppSettings, LibraryItem, NotebookItem, ReaderPageTarget, PdfOutlineItem } from './types';
@@ -19,7 +19,7 @@ import BrandMark from './components/ui/BrandMark';
 import { CloseButton } from './components/ui/CloseButton';
 import { fetchUserTier, UserTier } from './services/stripe';
 import { NotificationsPanel } from './components/NotificationsPanel';
-import { syncDerivedNotifs, unreadCount, takeAnnouncementToast, getLocalNotifState, mergeRemoteNotifState, Notif } from './services/notifications';
+import { syncDerivedNotifs, syncAccountNotifs, unreadCount, takeAnnouncementToast, getLocalNotifState, mergeRemoteNotifState, Notif } from './services/notifications';
 import { setCachedTier, OPEN_ACCOUNT_EVENT, ensureCredits, isInsufficientCreditsError, getCachedTier } from './services/credits';
 import { CreditNotice } from './components/ui/CreditNotice';
 import { StatusMessage } from './components/ui/StatusMessage';
@@ -461,6 +461,11 @@ const App: React.FC = () => {
     const fresh = syncDerivedNotifs(userTier);
     if (fresh.length) setNotifToast(fresh[fresh.length - 1]);
     setNotifUnread(unreadCount());
+    // Account events (carryover/bonus/subscribe/cancel/pack) come from the credit_ledger — async.
+    syncAccountNotifs(currentUser?.id).then(acct => {
+      if (acct.length) setNotifToast(acct[acct.length - 1]);
+      setNotifUnread(unreadCount());
+    }).catch(() => {});
   }, [userTier]);
   // On mount, pop the newest not-yet-seen app-update announcement once as a push toast.
   useEffect(() => {
@@ -7719,11 +7724,13 @@ const App: React.FC = () => {
           ? { Icon: AlertTriangle, text: 'text-neon-red', border: 'border-neon-red/50' }
           : notifToast.type === 'bonus'
           ? { Icon: Gift, text: 'text-neon-amber', border: 'border-neon-amber/50' }
+          : notifToast.type === 'billing'
+          ? { Icon: CreditCard, text: 'text-neon-amber', border: 'border-neon-amber/50' }
           : { Icon: Megaphone, text: 'text-neon-cyan', border: 'border-neon-cyan/50' };
         return (
           <button
             onClick={() => { setIsNotifOpen(true); setNotifToast(null); }}
-            className={`fixed bottom-6 inset-x-0 ${isSidebarOpen ? 'md:left-64' : ''} mx-auto w-fit z-[10000] max-w-[calc(100%-2rem)] flex items-center gap-3 bg-zinc-900 border ${cfg.border} rounded-md px-4 py-3 shadow-2xl animate-fade-in-up text-left`}
+            className={`fixed bottom-6 inset-x-0 ${isSidebarOpen ? 'md:left-64' : ''} mx-auto w-[calc(100vw-32px)] md:w-[380px] h-16 z-[10000] flex items-center gap-3 bg-zinc-900 border ${cfg.border} rounded-md px-4 shadow-2xl animate-fade-in-up text-left`}
           >
             <cfg.Icon size={16} className={`shrink-0 ${cfg.text}`} />
             <span className="min-w-0">

@@ -136,6 +136,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
+  const [podProgress, setPodProgress] = useState('WRITING_SCRIPT...'); // 2-phase loader: script → audio
   const [selectedTone, setSelectedTone] = useState(lastPodcastTone || 'Engaging');
   const [selectedLanguage, setSelectedLanguage] = useState(initialPodcastLanguage);
   const [playbackRate, setPlaybackRate] = useState(1.0);
@@ -366,7 +367,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     const genPromise = (async (): Promise<{ audioBlob: Blob; script: string; episodeTitle: string } | null> => {
       try {
         const targetLang = capturedLanguage === 'Original' ? 'the source language of the document' : capturedLanguage;
-        const result = await generatePodcastAudio(capturedFileContext, capturedChapter, capturedTone, capturedHosts, targetLang);
+        const result = await generatePodcastAudio(capturedFileContext, capturedChapter, capturedTone, capturedHosts, targetLang, (phase) => setPodProgress(phase === 'script' ? 'WRITING_SCRIPT...' : 'GENERATING_AUDIO...'));
         if (abortRef.current) return null;
         const audioBlob = pcmToWavBlob(result.audio);
 
@@ -747,7 +748,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
 
                       {isLoading ? (
                         <div className="z-20 animate-fade-in">
-                          <Loader text="GENERATING_PODCAST..." />
+                          <Loader text={podProgress} />
                         </div>
                       ) : audioSrc ? (
                         <canvas ref={canvasRef} width={1800} height={250} className="w-full h-full opacity-100" />

@@ -1811,7 +1811,9 @@ const figFailMsg = (e: unknown): string => {
   const short = isTouch(); // mobile figures are small → keep the message tight so it can't spill
   if (/FAILED_PRECONDITION|location is not supported|not supported for the API use|user location/i.test(raw))
     return short ? 'Redraw blocked here — use Overlay.' : 'HD Redraw isn’t available in your region. Switch to Balanced mode to use Overlay instead.';
-  return short ? 'Translation failed — long-press to retry.' : raw.slice(0, 180);
+  // Generic failures show a clean message — never the raw provider/model error (it can leak model
+  // names / endpoints). The real error still goes to console.warn for debugging.
+  return short ? 'Translation failed — long-press to retry.' : 'Translation failed — right-click to retry.';
 };
 const PdfFigureBlock: React.FC<{ figId: string; bookId: string; bookTitle?: string; meta?: PdfFigure; split: boolean; targetLang: string; chapterLabel: string; caption: string; captionOrig?: React.ReactNode; captionTrans?: React.ReactNode; attribOrig?: React.ReactNode; attribTrans?: React.ReactNode; captionFontPx?: number; captionTextClass?: string }> = ({ figId, bookId, bookTitle, meta, split, targetLang, chapterLabel, caption, captionOrig, captionTrans, attribOrig, attribTrans, captionFontPx, captionTextClass }) => {
   const [url, setUrl] = useState<string | null>(null);
@@ -2098,6 +2100,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const [generationProgress, setGenerationProgress] = useState("");
   // Non-null → out of credits; the audio module + translation panel show the HAZARD notice.
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
+  const translCreditShownRef = useRef(false); // render-scoped: show the translation CreditNotice once, not per paragraph
   const outOfCredits = () => setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
   // Non-null → a non-credit read-aloud failure (transient); shown in the audio module.
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -4842,13 +4845,19 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     );
   });
 
+  // Reset each render: the translation CreditNotice shows ONCE (on the first blocked paragraph),
+  // not a tip per paragraph. React renders paragraphs top-to-bottom, so the first one claims it.
+  translCreditShownRef.current = false;
   const renderTranslatedRuns = (runs: SentenceRun[]) => {
     const hasTranslation = runs.some(run => translationByIndex.has(run.globalIndex));
     if (isTranslating && !hasTranslation) {
-      return <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>;
+      return <span className="block w-full text-center truncate animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decoding_Translation…</span>;
     }
     if (creditTier && !hasTranslation) {
-      return <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="text-[10px] font-mono text-neon-yellow uppercase hover:text-white">⚠ Not enough credits — {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}</button>;
+      // One full CreditNotice for the whole translation pass (first blocked paragraph), not per-paragraph.
+      if (translCreditShownRef.current) return null;
+      translCreditShownRef.current = true;
+      return <CreditNotice tier={creditTier} />;
     }
     if (translationError && !hasTranslation) {
       return <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>;

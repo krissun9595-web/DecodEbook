@@ -5,42 +5,31 @@
 // Read / cleared state + the derived-source trackers live in localStorage (no backend; no cross-device
 // sync — that's the Phase-2 upgrade). Each notif has a STABLE id that keys its read/cleared state.
 import { UserTier, TIER_CREDITS } from './stripe';
+import { fetchCreditHistory, CreditHistoryEntry } from './supabase';
 
-export type NotifType = 'update' | 'bonus' | 'usage';
+// 'billing' = Pro subscribe/cancel/end + pack purchase/refund (same amber color as 'bonus').
+export type NotifType = 'update' | 'bonus' | 'usage' | 'billing';
 export interface Notif { id: string; type: NotifType; title: string; preview: string; ts: number; }
 export interface NotifView extends Notif { read: boolean; }
 
 // ── App updates (edit here, then deploy, to post one). Keep ids unique + stable. ──
-export const ANNOUNCEMENTS: Notif[] = [
-  {
-    id: 'u-2026-10-03-chat-mobile',
-    type: 'update',
-    title: 'Chat tuned for mobile',
-    preview: 'The history "…" menu, the low-credits notice and its Upgrade button now behave properly on small screens — open a chat to try it.',
-    ts: Date.parse('2026-10-03T16:30:00Z'),
-  },
-  {
-    id: 'u-2026-10-03-mobile-check',
-    type: 'update',
-    title: 'Mobile layout refresh',
-    preview: 'The full-text search box and the catalogue unread dot have been resized for mobile — swipe open the sidebar to take a look.',
-    ts: Date.parse('2026-10-03T16:00:00Z'),
-  },
-  {
-    id: 'u-2026-10-03-my-inbox',
-    type: 'update',
-    title: 'Introducing My_Inbox',
-    preview: 'Your new notification center — app updates, bonus-credit grants, and usage alerts now live here in the sidebar.',
-    ts: Date.parse('2026-10-03T00:00:00Z'),
-  },
-  {
-    id: 'u-2026-10-02-genfiles-swipe',
-    type: 'update',
-    title: 'Gen_Files: swipe actions on mobile',
-    preview: 'Swipe a file row left to reveal Sync, Export, Share and Delete — the row now shows the full file title.',
-    ts: Date.parse('2026-10-02T00:00:00Z'),
-  },
+// Each update names the SUBJECT it concerns + the detail; the title/preview are built from one
+// template so every announcement reads consistently:  title "Update on {subject}" · preview
+// "{subject} has been updated, {text}".
+interface UpdateDef { id: string; subject: string; text: string; ts: number; }
+const UPDATES: UpdateDef[] = [
+  { id: 'u-2026-10-03-chat-mobile', subject: 'AI_ASSISTANT', text: 'the history "…" menu, the low-credits notice and its Upgrade button now behave properly on small screens.', ts: Date.parse('2026-10-03T16:30:00Z') },
+  { id: 'u-2026-10-03-mobile-check', subject: 'Mobile layout', text: 'the full-text search box and the catalogue unread dot have been resized for small screens.', ts: Date.parse('2026-10-03T16:00:00Z') },
+  { id: 'u-2026-10-03-my-inbox', subject: 'MY_INBOX', text: 'your new notification center for app updates, bonus-credit grants and usage alerts now lives in the sidebar.', ts: Date.parse('2026-10-03T00:00:00Z') },
+  { id: 'u-2026-10-02-genfiles-swipe', subject: 'GEN_FILES', text: 'swipe a file row left to reveal Sync, Export, Share and Delete — the row now shows the full file title.', ts: Date.parse('2026-10-02T00:00:00Z') },
 ];
+export const ANNOUNCEMENTS: Notif[] = UPDATES.map((u): Notif => ({
+  id: u.id,
+  type: 'update',
+  title: `Update on ${u.subject}`,
+  preview: `${u.subject} has been updated, ${u.text}`,
+  ts: u.ts,
+}));
 
 const K_ITEMS = 'db_notif_items_v1';        // materialized derived notifs (bonus/usage)
 const K_READ = 'db_notif_read_v1';          // string[] of read ids
@@ -48,6 +37,7 @@ const K_CLEARED = 'db_notif_cleared_v1';    // string[] of cleared ids
 const K_BONUS = 'db_notif_bonus_seen_v1';   // last-seen bonus balance (number as string)
 const K_USAGE = 'db_notif_usage_period_v1'; // period_start already warned at 90%
 const K_TOASTED = 'db_notif_toasted_v1';    // announcement ids already popped as a toast
+const K_LEDGER = 'db_notif_ledger_cursor_v1'; // newest credit_ledger created_at already turned into notifs
 
 const arr = (k: string): string[] => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
 const setArr = (k: string, v: string[]) => localStorage.setItem(k, JSON.stringify(v));
@@ -61,18 +51,10 @@ export function syncDerivedNotifs(tier: UserTier | null): Notif[] {
   const fresh: Notif[] = [];
   const now = Date.now();
 
-  // Bonus: balance is cumulative; an increase vs. last-seen means a grant just landed.
-  const prevBonus = localStorage.getItem(K_BONUS);
-  const curBonus = tier.bonus_credits || 0;
-  if (prevBonus !== null) {
-    const delta = curBonus - Number(prevBonus);
-    if (delta > 0) {
-      const n: Notif = { id: `bonus-${now}`, type: 'bonus', title: 'Bonus credits added',
-        preview: `${delta} bonus credits were added to your account (e.g. carried over from your free credits when you upgraded, or a referral reward). They're used after your monthly credits and never expire.`, ts: now };
-      list.push(n); fresh.push(n);
-    }
-  }
-  localStorage.setItem(K_BONUS, String(curBonus));
+  // Bonus/credit grants now come from the credit_ledger (syncAccountNotifs) so we can label
+  // "Free credits carried over" vs a referral/manual grant. Here we only keep the last-seen balance
+  // for the cross-device merge; we no longer synthesize the bonus notif from the raw delta.
+  localStorage.setItem(K_BONUS, String(tier.bonus_credits || 0));
 
   // 90% usage: fire once per billing period (period_start as the key; resets on renewal).
   const monthly = TIER_CREDITS[tier.tier] || 100;
@@ -86,6 +68,55 @@ export function syncDerivedNotifs(tier: UserTier | null): Notif[] {
     }
   }
 
+  if (fresh.length) setItems(list);
+  return fresh;
+}
+
+// Map one credit_ledger row to a notification (or null if it isn't notification-worthy, e.g. a
+// consume/renewal row). Bonus grants distinguish carryover from a referral/manual grant by reason.
+function notifForLedgerRow(h: CreditHistoryEntry): Notif | null {
+  const id = `acct-${h.created_at}`;              // stable per row → de-dupes across devices
+  const ts = Date.parse(h.created_at) || Date.now();
+  const n = Math.abs(h.delta);
+  const r = (h.reason || '').toLowerCase();
+  if ((h.type === 'bonus' || h.type === 'earn') && h.delta > 0) {
+    if (r.includes('carried over') || r.includes('carry'))
+      return { id, type: 'bonus', title: 'Free credits carried over',
+        preview: `${n} of your free credits were carried over as permanent bonus credits when you upgraded — they're used after your monthly credits and never expire.`, ts };
+    return { id, type: 'bonus', title: 'Bonus credits added',
+      preview: `${n} bonus credits were added to your account (e.g. a referral reward) — they're used after your monthly credits and never expire.`, ts };
+  }
+  if (h.type === 'purchase' && h.delta > 0)
+    return { id, type: 'billing', title: 'Credit pack added', preview: `${n} pack credits were added to your account — they never expire.`, ts };
+  if (h.type === 'refund')
+    return { id, type: 'billing', title: 'Pack refunded', preview: `${n} pack credits were refunded.`, ts };
+  if (h.type === 'subscription') {
+    const title = /ended|revert/.test(r) ? 'Subscription ended' : /cancel/.test(r) ? 'Pro set to cancel' : 'Welcome to Pro';
+    return { id, type: 'billing', title, preview: h.reason || 'Your subscription was updated.', ts };
+  }
+  return null;
+}
+
+// Account-event notifications derived from the credit_ledger: carryover/bonus grants + Pro
+// subscribe/cancel/end + pack purchase/refund. First call just BASELINES the cursor (so a new user
+// isn't flooded with historical rows); later calls notify only genuinely new rows.
+export async function syncAccountNotifs(userId: string | null | undefined): Promise<Notif[]> {
+  if (!userId) return [];
+  let history: CreditHistoryEntry[];
+  try { history = await fetchCreditHistory(userId, 30); } catch { return []; }
+  const rows = history.slice().sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  const newest = rows.length ? rows[rows.length - 1].created_at : null;
+  const cursor = localStorage.getItem(K_LEDGER);
+  if (cursor === null) { if (newest) localStorage.setItem(K_LEDGER, newest); return []; } // baseline only
+  const list = items();
+  const existing = new Set(list.map(i => i.id));
+  const fresh: Notif[] = [];
+  for (const h of rows) {
+    if (h.created_at <= cursor) continue;
+    const notif = notifForLedgerRow(h);
+    if (notif && !existing.has(notif.id)) { list.push(notif); fresh.push(notif); }
+  }
+  if (newest) localStorage.setItem(K_LEDGER, newest);
   if (fresh.length) setItems(list);
   return fresh;
 }

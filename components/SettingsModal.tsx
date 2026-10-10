@@ -55,28 +55,9 @@ const FONTS = [
     'Noto Serif TC',
 ];
 
-const TEXT_MODELS = [
-  { value: 'gemini-3-flash-preview', label: 'Gemini Flash', provider: 'Google' },
-  { value: 'gemini-3-pro-preview', label: 'Gemini Pro', provider: 'Google' },
-  { value: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI' },
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet', provider: 'Anthropic' },
-  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', provider: 'Anthropic' },
-];
-
-const TTS_MODELS = [
-  { value: 'gemini-3.1-flash-tts-preview', label: 'Gemini TTS', provider: 'Google' },
-];
-
-const IMAGE_MODELS = [
-  { value: 'gemini-3-pro-image-preview', label: 'Gemini Image', provider: 'Google' },
-];
-
-const VIDEO_MODELS = [
-  { value: 'veo-3.1-fast-generate-preview', label: 'Veo 3.1 Fast', provider: 'Google' },
-  { value: 'dreamina-seedance-2-0-260128', label: 'Seedance 2.0', provider: 'ByteDance' },
-  { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast', provider: 'ByteDance' },
-];
+// (Model/provider picker arrays removed — users don't choose models; they're admin-set per
+// FUNCTION_MODELS in services/gemini.ts. This was dead code and the only place provider names
+// — Google / OpenAI / Anthropic / ByteDance — would have surfaced in the UI.)
 
 const LANGUAGES = [
   'Original',

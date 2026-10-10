@@ -842,9 +842,11 @@ export const generatePodcastAudio = async (
   chapter: Chapter,
   tone: string = 'Engaging',
   hosts: { host1: string, voice1: string, desc1?: string, host2: string, voice2: string, desc2?: string },
-  language: string = 'English'
+  language: string = 'English',
+  onPhase?: (phase: 'script' | 'audio') => void
 ): Promise<{ audio: string; script: string; episodeTitle: string }> => {
   return withRetry(async () => {
+    onPhase?.('script');
     const scriptModel = resolveModel('podcastScript');
     const usageId = newUsageId();
     const ai = await getAi({ usageId, action: 'podcastScript', model: scriptModel, book: _currentBook || undefined, session: prepSession('Podcast script') });
@@ -897,6 +899,7 @@ export const generatePodcastAudio = async (
 
     if (dialogueLines.length === 0) throw new Error("No dialogue lines parsed from script");
 
+    onPhase?.('audio');
     // Per-line single-speaker TTS — each line locked to its voice
     const BATCH_SIZE = 3;
     const audioChunks: string[] = [];
