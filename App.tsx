@@ -7735,7 +7735,7 @@ const App: React.FC = () => {
             <cfg.Icon size={16} className={`shrink-0 ${cfg.text}`} />
             <span className="min-w-0">
               <span className={`block text-xs font-medium truncate ${cfg.text}`}>{notifToast.title}</span>
-              <span className="block text-[10px] text-zinc-100 line-clamp-1">{notifToast.preview}</span>
+              <span className="block text-[10px] text-zinc-400 truncate">{notifToast.preview}</span>
             </span>
             <span className={`shrink-0 text-[9px] font-mono uppercase tracking-widest ${cfg.text}`}>View</span>
           </button>
