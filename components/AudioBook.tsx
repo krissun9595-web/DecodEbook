@@ -2100,7 +2100,6 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const [generationProgress, setGenerationProgress] = useState("");
   // Non-null → out of credits; the audio module + translation panel show the HAZARD notice.
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
-  const translCreditShownRef = useRef(false); // render-scoped: show the translation CreditNotice once, not per paragraph
   const outOfCredits = () => setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
   // Non-null → a non-credit read-aloud failure (transient); shown in the audio module.
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -4845,22 +4844,15 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     );
   });
 
-  // Reset each render: the out-of-credits tip shows ONCE (on the first blocked paragraph), not per
-  // paragraph. React renders top-to-bottom, so the first claims it. It MUST be a single compact line —
-  // a full CreditNotice block here would be taller than the paragraph and, because split view aligns
-  // each row original↔translation, would strut that row on BOTH sides.
-  translCreditShownRef.current = false;
-  const renderTranslCreditTip = () => {
-    if (translCreditShownRef.current) return null;
-    translCreditShownRef.current = true;
-    return <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="block w-full text-center truncate text-[10px] font-mono text-neon-cyan uppercase hover:text-white">⚠ Out of credits — {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}</button>;
-  };
+  // When out of credits, the inline translation slots render NOTHING (so they never strut a row) —
+  // the full CreditNotice BLOCK is shown ONCE at the top of the reading pane instead (see below),
+  // unified with every other module's credit reminder.
   const renderTranslatedRuns = (runs: SentenceRun[]) => {
     const hasTranslation = runs.some(run => translationByIndex.has(run.globalIndex));
     if (isTranslating && !hasTranslation) {
       return <span className="block w-full text-center truncate animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decoding_Translation…</span>;
     }
-    if (creditTier && !hasTranslation) return renderTranslCreditTip();
+    if (creditTier && !hasTranslation) return null;
     if (translationError && !hasTranslation) {
       return <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>;
     }
@@ -5228,6 +5220,16 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     measures THIS instead of the per-line divs, which are absent before render and can be a
                     transient narrow width mid-render (→ a broken 160-page count that then sticks). */}
                 <div data-reader-measure="" aria-hidden="true" className={`${viewMode === 'split' ? 'w-1/2' : 'w-full max-w-3xl'} ${TEXT_SIZES[settings.textSize]} ${LINE_HEIGHTS[settings.lineHeight]} ${LETTER_SPACINGS[settings.letterSpacing]}`} style={{ height: 0, overflow: 'hidden' }} />
+                {/* Out-of-credits: ONE full CreditNotice block at the top of the reading pane (sticky so it
+                    stays visible), unified with every other module. Kept OUTSIDE the paragraph grid so it
+                    can't strut a row. The per-paragraph translation slots render nothing while blocked. */}
+                {creditTier && (
+                  <div className="sticky top-0 z-30 -mt-1 mb-5 flex justify-center animate-fade-in">
+                    <div className="w-full max-w-md bg-void-1/95 backdrop-blur-md border border-neon-cyan/20 rounded-lg py-4 shadow-2xl">
+                      <CreditNotice tier={creditTier} />
+                    </div>
+                  </div>
+                )}
                 {isStructuredPage && currentReaderPage ? renderStructuredPage(currentReaderPage) : isIndexChapter && !!currentReaderPage?.text?.includes(String.fromCharCode(0xE017)) ? (() => {
                   // A two-column index rendered with a CSS GRID: the source's left column is the first
                   // half of the (column-major) entries, the right column the second half. In split view
@@ -6208,7 +6210,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                 <span className="block w-full text-center truncate animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decoding_Translation…</span>
                               ) : showTranslationError && lineIdx === 0 ? (
                                 creditTier
-                                  ? renderTranslCreditTip()
+                                  ? null
                                   : <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>
                               ) : !showTranslationPlaceholder && !showTranslationError ? (
                                 line.map(({ sentence, sIdx, globalIndex }) => {
