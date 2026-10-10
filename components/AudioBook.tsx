@@ -4845,20 +4845,22 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     );
   });
 
-  // Reset each render: the translation CreditNotice shows ONCE (on the first blocked paragraph),
-  // not a tip per paragraph. React renders paragraphs top-to-bottom, so the first one claims it.
+  // Reset each render: the out-of-credits tip shows ONCE (on the first blocked paragraph), not per
+  // paragraph. React renders top-to-bottom, so the first claims it. It MUST be a single compact line —
+  // a full CreditNotice block here would be taller than the paragraph and, because split view aligns
+  // each row original↔translation, would strut that row on BOTH sides.
   translCreditShownRef.current = false;
+  const renderTranslCreditTip = () => {
+    if (translCreditShownRef.current) return null;
+    translCreditShownRef.current = true;
+    return <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="block w-full text-center truncate text-[10px] font-mono text-neon-cyan uppercase hover:text-white">⚠ Out of credits — {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}</button>;
+  };
   const renderTranslatedRuns = (runs: SentenceRun[]) => {
     const hasTranslation = runs.some(run => translationByIndex.has(run.globalIndex));
     if (isTranslating && !hasTranslation) {
       return <span className="block w-full text-center truncate animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decoding_Translation…</span>;
     }
-    if (creditTier && !hasTranslation) {
-      // One full CreditNotice for the whole translation pass (first blocked paragraph), not per-paragraph.
-      if (translCreditShownRef.current) return null;
-      translCreditShownRef.current = true;
-      return <CreditNotice tier={creditTier} />;
-    }
+    if (creditTier && !hasTranslation) return renderTranslCreditTip();
     if (translationError && !hasTranslation) {
       return <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>;
     }
@@ -6206,7 +6208,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                                 <span className="block w-full text-center truncate animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decoding_Translation…</span>
                               ) : showTranslationError && lineIdx === 0 ? (
                                 creditTier
-                                  ? (() => { if (translCreditShownRef.current) return null; translCreditShownRef.current = true; return <CreditNotice tier={creditTier} />; })()
+                                  ? renderTranslCreditTip()
                                   : <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>
                               ) : !showTranslationPlaceholder && !showTranslationError ? (
                                 line.map(({ sentence, sIdx, globalIndex }) => {
