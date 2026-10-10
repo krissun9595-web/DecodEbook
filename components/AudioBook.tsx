@@ -5224,9 +5224,14 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                     stays visible), unified with every other module. Kept OUTSIDE the paragraph grid so it
                     can't strut a row. The per-paragraph translation slots render nothing while blocked. */}
                 {creditTier && (
-                  <div className="sticky top-0 z-30 -mt-1 mb-5 flex justify-center animate-fade-in">
-                    <div className="w-full max-w-md bg-void-1/95 backdrop-blur-md border border-neon-cyan/20 rounded-lg py-4 shadow-2xl">
-                      <CreditNotice tier={creditTier} />
+                  <div className="sticky top-0 z-30 -mt-1 mb-5 flex animate-fade-in">
+                    {/* Split view: block sits in the TRANSLATED (right) half, centered; left half is an
+                        empty spacer matching the original column. Single view: centered in the column. */}
+                    {viewMode === 'split' && <div className="w-1/2 pr-3" aria-hidden="true" />}
+                    <div className={`${viewMode === 'split' ? 'w-1/2 pl-3' : 'w-full'} flex justify-center`}>
+                      <div className="w-full max-w-md bg-void-1/95 backdrop-blur-md border border-neon-cyan/20 rounded-lg py-4 shadow-2xl">
+                        <CreditNotice tier={creditTier} />
+                      </div>
                     </div>
                   </div>
                 )}
