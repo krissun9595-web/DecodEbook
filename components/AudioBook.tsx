@@ -6203,10 +6203,10 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                               style={{ ...paragraphStyle, ...bodyBlockPadStyle, ...indexHangStyle, ...bulletHangStyle, ...ruleHangStyle, ...notesHangStyle, ...dialogueHangStyle, ...alignStyle, ...justifyStyle, ...(para.sizeEm ? { fontSize: sizeEmPx(para.sizeEm) } : {}), ...(para.italic ? { fontStyle: 'italic' as const } : {}), ...(para.smallCaps ? { fontVariant: 'small-caps' as const } : {}), ...(para.accentColor ? { color: para.accentColor } : {}), ...(notesFaithfulSizeStyle || {}), ...(praiseTextStyle || {}), ...(isAttrLine ? { textAlign: 'right' as const, ...(para.narrowAttribution ? { paddingRight: viewMode === 'split' ? '7%' : '14%', boxSizing: 'border-box' as const } : {}) } : {}) }}
                             >
                               {showTranslationPlaceholder && lineIdx === 0 ? (
-                                <span className="animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decrypting_Matrix...</span>
+                                <span className="block w-full text-center truncate animate-pulse text-[10px] font-mono text-zinc-500 uppercase">Decoding_Translation…</span>
                               ) : showTranslationError && lineIdx === 0 ? (
                                 creditTier
-                                  ? <button onClick={() => openAccount(creditTier === 'free' ? 'upgrade' : 'packs')} className="text-[10px] font-mono text-neon-yellow uppercase hover:text-white">⚠ Not enough credits — {creditTier === 'free' ? 'Upgrade' : 'Buy Credits'}</button>
+                                  ? (() => { if (translCreditShownRef.current) return null; translCreditShownRef.current = true; return <CreditNotice tier={creditTier} />; })()
                                   : <span className="text-[10px] font-mono text-neon-red/80 uppercase">{translationError}</span>
                               ) : !showTranslationPlaceholder && !showTranslationError ? (
                                 line.map(({ sentence, sIdx, globalIndex }) => {
