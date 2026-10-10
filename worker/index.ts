@@ -280,7 +280,25 @@ export default {
       return resp;
     }
 
-    return env.ASSETS.fetch(request);
+    // Static assets. The HTML shell names the hashed JS/CSS chunks, so it must NEVER be edge/browser
+    // cached — a stale index.html points at old chunks and a fresh deploy silently fails to reach
+    // users (the "I shipped but it still looks old" lag). Force HTML uncacheable; the content-hashed
+    // /assets/* keep their own long/immutable cache (new build = new filename, never stale).
+    const assetResp = await env.ASSETS.fetch(request);
+    const ct = assetResp.headers.get('content-type') || '';
+    if (ct.includes('text/html')) {
+      // HTML names the hashed chunks → NEVER cache, or a stale shell points at old chunks.
+      const h = new Headers(assetResp.headers);
+      h.set('Cache-Control', 'no-store, must-revalidate');
+      return new Response(assetResp.body, { status: assetResp.status, statusText: assetResp.statusText, headers: h });
+    }
+    if (url.pathname.startsWith('/assets/')) {
+      // Content-hashed filenames (new build = new name) → safe to cache forever.
+      const h = new Headers(assetResp.headers);
+      h.set('Cache-Control', 'public, max-age=31536000, immutable');
+      return new Response(assetResp.body, { status: assetResp.status, statusText: assetResp.statusText, headers: h });
+    }
+    return assetResp;
   },
 };
 
