@@ -5220,7 +5220,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
                  scroll/select behind it; the block itself stays interactive. Single view → centered. */}
              {creditTier && (
                <div className={`absolute inset-y-0 z-30 flex items-center justify-center px-3 pointer-events-none animate-fade-in ${viewMode === 'split' ? 'right-0 w-1/2' : 'inset-x-0'}`}>
-                 <div className="pointer-events-auto w-full max-w-md bg-void-1/95 backdrop-blur-md border border-neon-cyan/30 rounded-lg py-4 shadow-2xl">
+                 <div className="pointer-events-auto w-full max-w-md">
                    <CreditNotice tier={creditTier} />
                  </div>
                </div>
