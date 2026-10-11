@@ -136,7 +136,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
         const imgResp = await fetch(imgUrl);
         const imgBlob = await imgResp.blob();
         saveFile(key, imgBlob, {
-          filename: `concept-${chapterFileLabel(chapter, allChapters)}-${titleCase(concept.term)}-${titleCase(selectedStyle, 20)}-${selectedRatio}.png`,
+          filename: `Concept-${chapterFileLabel(chapter, allChapters)}-${titleCase(concept.term)}-${titleCase(selectedStyle, 20)}-${selectedRatio}.png`,
           mimeType: 'image/png',
           timestamp: Date.now(),
           bookId,
@@ -190,7 +190,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
           if (!gate.ok) { setCreditTier(gate.tier); setIsInitializing(false); generatingRef.current = false; return; }
           extracted = await extractConcepts(fileContext, chapter);
           saveFile(conceptsKey(), new Blob([JSON.stringify(extracted)], { type: 'application/json' }), {
-            filename: `concepts-${chapterFileLabel(chapter, allChapters)}.json`, mimeType: 'application/json', timestamp: Date.now(),
+            filename: `Concepts-${chapterFileLabel(chapter, allChapters)}.json`, mimeType: 'application/json', timestamp: Date.now(),
             bookId, bookTitle, chapterId: chapter.id, componentSource: 'visualizer', fileType: 'concepts',
           }).catch(() => {});
         }
@@ -353,8 +353,8 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                                 className={`absolute inset-0 bg-black/70 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm z-20 ${touch ? (showImgActions ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none') : 'opacity-0 group-hover/image:opacity-100 pointer-events-none'}`}
                             >
                                 <div className="pointer-events-auto flex gap-3" onClick={e => e.stopPropagation()}>
-                                    <a href={images[currentConcept.term]} download={`concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Download"><Download size={20} /></a>
-                                    <button onClick={async () => { const r = await fetch(images[currentConcept.term]); const b = await r.blob(); const fn = `concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`; shareFile(b, fn, `${chapter.title} - ${currentConcept.term}`); }} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Share"><Share2 size={20} /></button>
+                                    <a href={images[currentConcept.term]} download={`Concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Download"><Download size={20} /></a>
+                                    <button onClick={async () => { const r = await fetch(images[currentConcept.term]); const b = await r.blob(); const fn = `Concept-ch${chapter.id}-${titleCase(currentConcept.term)}.png`; shareFile(b, fn, `${chapter.title} - ${currentConcept.term}`); }} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Share"><Share2 size={20} /></button>
                                     <button onClick={handleCopyPrompt} className="p-3 bg-zinc-900 text-cyan-400 rounded-sm hover:bg-cyan-500 hover:text-black transition-all border border-cyan-500/30" title="Copy Prompt"><Copy size={20} /></button>
                                     <button onClick={() => handleGenerateImage(currentConcept, true)} className="p-3 bg-zinc-900 text-neon-red rounded-sm hover:bg-neon-red hover:text-white transition-all border border-neon-red/30" title="Regenerate"><RefreshCw size={20} /></button>
                                 </div>

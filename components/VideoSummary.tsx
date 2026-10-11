@@ -134,7 +134,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
         trackGeneration({ bookId, chapterIndex: chapter.id, module: 'video', provider: useSeedance ? 'seedance' : 'google', model: videoModel, inputChars: chapter.content?.length || 0 });
         const cacheKey = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
         saveFile(cacheKey, videoBlob, {
-          filename: `video-${chapterFileLabel(chapter, allChapters)}-${titleCase(selectedStyle, 20)}-${selectedResolution}.mp4`,
+          filename: `Video-${chapterFileLabel(chapter, allChapters)}-${titleCase(selectedStyle, 20)}-${selectedResolution}.mp4`,
           mimeType: 'video/mp4',
           timestamp: Date.now(),
           bookId,
@@ -390,10 +390,10 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
                         <button aria-label={isMuted ? "Unmute" : "Mute"} onClick={toggleMute} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
                             {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                         </button>
-                        <a aria-label="Download video" href={videoUrl || '#'} download={`video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
+                        <a aria-label="Download video" href={videoUrl || '#'} download={`Video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}.mp4`} onClick={(e) => e.stopPropagation()} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
                             <Download size={14} />
                         </a>
-                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}-${titleCase(chapter.title)}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90" title="Share"><Share2 size={14} /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); if (!videoUrl) return; const r = await fetch(videoUrl); const b = await r.blob(); const fn = `Video-ch${chapter.id}-${titleCase(selectedStyle, 20)}-${selectedResolution}.mp4`; shareFile(b, fn, `${chapter.title} - ${selectedStyle}`); }} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90" title="Share"><Share2 size={14} /></button>
                         <button aria-label={isFullScreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullScreen} className="p-1 md:p-0 !min-h-0 aspect-square text-zinc-600 hover:text-cyan-400 transition shrink-0 active:scale-90">
                             {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>

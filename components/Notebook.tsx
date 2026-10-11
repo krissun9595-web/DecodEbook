@@ -152,6 +152,15 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       return result;
   }, [items, activeFilter, activeChapterFilter, bookTitle]);
 
+  // Mind-map export filename: Mindmap-{book}-{chapter scope}-{item-type scope}. Encodes BOTH scope
+  // selectors (ALL_CHAPTERS / a chapter, ALL_ITEMS / a type) so different-scope maps get distinct names.
+  const mindMapFileBase = (): string => {
+    const book = titleCase(bookTitle || mindMapData?.label || activeChapter?.title || 'Export', 30);
+    const chap = activeChapterFilter === 'all' ? 'ALL_CHAPTERS' : titleCase(activeChapterFilter, 30);
+    const type = activeFilter === 'all' ? 'ALL_ITEMS' : titleCase(activeFilter, 20);
+    return `Mindmap-${book}-${chap}-${type}`;
+  };
+
   useEffect(() => () => {
     if (pronunciationPrefetchTimer.current !== null) window.clearTimeout(pronunciationPrefetchTimer.current);
   }, []);
@@ -343,7 +352,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
       const canvas = buildStickyNoteCanvas(item);
       if (!canvas) return;
       const chapterSlug = item.sourceChapter ? titleCase(item.sourceChapter, 20) : 'Unfiled';
-      const filename = `note-${chapterSlug}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`;
+      const filename = `Note-${chapterSlug}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`;
       const link = document.createElement('a');
       link.download = filename;
       link.href = canvas.toDataURL();
@@ -803,7 +812,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     });
 
     const blob = await Packer.toBlob(doc);
-    const filename = `mindmap-${titleCase(mindMapData?.label || activeChapter?.title || bookTitle || 'export')}.docx`;
+    const filename = `${mindMapFileBase()}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -859,7 +868,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
     zip.file("metadata.json", "{}");
 
     const blob = await zip.generateAsync({ type: "blob" });
-    const filename = `mindmap-${titleCase(mindMapData?.label || activeChapter?.title || bookTitle || 'export')}.xmind`;
+    const filename = `${mindMapFileBase()}.xmind`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -994,7 +1003,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
         });
 
         doc.addImage(dataUrl, 'PNG', 0, 0, fullW, fullH);
-        const filename = `mindmap-${titleCase(mindMapData?.label || activeChapter?.title || bookTitle || 'export')}.pdf`;
+        const filename = `${mindMapFileBase()}.pdf`;
         const pdfBlob = doc.output('blob');
         return { blob: pdfBlob, filename };
     } catch (e) {
@@ -1292,7 +1301,7 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                                <div className="absolute top-2 right-2 flex flex-col gap-1 z-20">
 	                                   <button onClick={() => playPronunciation(item.id, item.text)} disabled={!!playingId && playingId !== item.id} className={`p-1.5 !min-h-0 aspect-square flex items-center justify-center rounded border border-transparent transition-all ${playingId === item.id ? 'text-neon-cyan bg-neon-cyan/10 animate-pulse' : 'text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10'}`} title={playingId === item.id ? 'Stop' : 'Pronounce'}>{playingId === item.id ? <Square size={14} fill="currentColor" /> : <Volume2 size={14} />}</button>
                                    <button onClick={() => generateStickyNote(item)} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Download Visual"><ImageDown size={14} /></button>
-                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `note-${item.sourceChapter ? titleCase(item.sourceChapter, 20) : 'Unfiled'}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Share"><Share2 size={14} /></button>
+                                   <button onClick={() => { const canvas = buildStickyNoteCanvas(item); if (!canvas) return; canvas.toBlob((blob) => { if (blob) { const fn = `Note-${item.sourceChapter ? titleCase(item.sourceChapter, 20) : 'Unfiled'}-${item.type}-${titleCase(item.text.substring(0, 40), 30)}.png`; shareFile(blob, fn, item.text.substring(0, 50)); } }, 'image/png'); }} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-cyan bg-zinc-900/50 hover:bg-neon-cyan/10 rounded border border-transparent hover:border-neon-cyan/20 transition-all" title="Share"><Share2 size={14} /></button>
                                    <button onClick={() => onDelete(item.id)} className="p-1.5 !min-h-0 aspect-square flex items-center justify-center text-zinc-600 hover:text-neon-red bg-zinc-900/50 hover:bg-neon-red/10 rounded border border-transparent hover:border-neon-red/20 transition-all" title="Purge Entry"><Trash2 size={14} /></button>
                                </div>
                                <div className="flex items-start gap-4">

@@ -374,7 +374,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
         // Cache results (runs even if component is unmounted)
         const audioCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-audio', capturedTone, capturedLanguage);
         saveFile(audioCacheKey, audioBlob, {
-          filename: `podcast-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${capturedLanguage}.wav`,
+          filename: `Podcast-${capturedLanguage}-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -386,7 +386,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
         const scriptBlob = new Blob([result.script], { type: 'text/plain' });
         const scriptCacheKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-script', capturedTone, capturedLanguage);
         saveFile(scriptCacheKey, scriptBlob, {
-          filename: `script-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}-${capturedLanguage}.txt`,
+          filename: `Script-${capturedLanguage}-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.txt`,
           mimeType: 'text/plain',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -696,7 +696,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const fn = `script-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.txt`;
+    const fn = `Script-${selectedLanguage}-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}.txt`;
     a.download = fn;
     a.click();
     URL.revokeObjectURL(url);
@@ -792,8 +792,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
                    <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                        <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
                        <button onClick={downloadScript} disabled={!script} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${script ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Download Script"><FileDown size={14} /></button>
-                       <a href={audioSrc || '#'} download={`podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-red hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={14} /></a>
-                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `podcast-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}-${titleCase(chapter.title)}.wav`; shareFile(b, fn, `${chapter.title} - ${selectedTone} Podcast`); }} disabled={!audioSrc} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                       <a href={audioSrc || '#'} download={`Podcast-${selectedLanguage}-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}.wav`} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-red hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()} title="Download Audio"><Download size={14} /></a>
+                       <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `Podcast-${selectedLanguage}-ch${chapter.id}-${titleCase(selectedTone, 20)}-${hosts.host1}&${hosts.host2}.wav`; shareFile(b, fn, `${chapter.title} - ${selectedTone} Podcast`); }} disabled={!audioSrc} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                        <button onClick={() => {
                          const nextMinimized = !isPlayerMinimized;
                          setIsPlayerMinimized(nextMinimized);
