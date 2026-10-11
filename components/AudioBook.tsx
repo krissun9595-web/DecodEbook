@@ -3582,7 +3582,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           if (p.k > 0 && p.totalBytes > 0) {
             const pblob = pcmToWav(p.mergedBuffer.buffer, 24000);
             saveFile(genKey, pblob, {
-              filename: `Voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}-${capturedAudioLanguage}.wav`,
+              filename: `Voice-${capturedAudioLanguage}-${capturedChapterLabel}-pn${capturedPage + 1}-${capturedVoice.toUpperCase()}.wav`,
               mimeType: 'audio/wav', timestamp: Date.now(),
               bookId: capturedBookId, bookTitle: capturedBookTitle, chapterId: capturedChapterId,
               componentSource: 'audiobook', fileType: 'audio',
@@ -3601,7 +3601,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
 
         // Cache the complete result (runs even if component is unmounted)
         saveFile(genKey, blob, {
-          filename: `Voice-${capturedChapterLabel}-pg${capturedPage + 1}-${capturedVoice.toUpperCase()}-${capturedAudioLanguage}.wav`,
+          filename: `Voice-${capturedAudioLanguage}-${capturedChapterLabel}-pn${capturedPage + 1}-${capturedVoice.toUpperCase()}.wav`,
           mimeType: 'audio/wav',
           timestamp: Date.now(),
           bookId: capturedBookId,
@@ -5164,8 +5164,8 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               </div>
               <div className="flex-1 flex items-center justify-end gap-0.5 md:gap-2 min-w-0">
                   <span className="hidden md:inline text-[10px] font-mono text-zinc-600 shrink-0">{formatTime(currentTime)}/{formatTime(duration)}</span>
-                  <a aria-label="Download audio" href={audioSrc || '#'} download={`Voice-${chapterFileLabel(chapter, allChapters)}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}-${audioLanguage}.wav`} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
-                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `Voice-${chapterFileLabel(chapter, allChapters)}-pg${currentPage + 1}-${selectedVoice.toUpperCase()}-${audioLanguage}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
+                  <a aria-label="Download audio" href={audioSrc || '#'} download={`Voice-${audioLanguage}-${chapterFileLabel(chapter, allChapters)}-pn${currentPage + 1}-${selectedVoice.toUpperCase()}.wav`} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} onClick={(e) => !audioSrc && e.preventDefault()}><Download size={14} /></a>
+                  <button onClick={async () => { if (!audioSrc) return; const r = await fetch(audioSrc); const b = await r.blob(); const fn = `Voice-${audioLanguage}-${chapterFileLabel(chapter, allChapters)}-pn${currentPage + 1}-${selectedVoice.toUpperCase()}.wav`; shareFile(b, fn, `${chapter.title} - Page ${currentPage + 1}`); }} disabled={!audioSrc} className={`p-1 md:p-2 !min-h-0 aspect-square text-zinc-600 transition rounded-full shrink-0 active:scale-90 ${audioSrc ? 'hover:text-neon-cyan hover:bg-zinc-900' : 'opacity-30'}`} title="Share"><Share2 size={14} /></button>
                   <button aria-label="Minimize or maximize player" onClick={() => {
                     const nextMinimized = !isModuleMinimized;
                     setIsModuleMinimized(nextMinimized);
