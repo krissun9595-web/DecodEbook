@@ -45,7 +45,13 @@
         "run_worker_first": true
       },
       "vars": {
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        // Stripe TEST-mode price IDs (public — also surfaced via /api/config). Named envs do
+        // NOT inherit the top-level (live) vars, so staging keeps its own here.
+        "STRIPE_PRO_PRICE_ID": "price_1TgRkHFqmNp5yslBaez0dGoc",
+        "STRIPE_PACK_S_PRICE_ID": "price_1TgRjgFqmNp5yslBZZF7Cu0G",
+        "STRIPE_PACK_M_PRICE_ID": "price_1TgRjhFqmNp5yslB2my4g59y",
+        "STRIPE_PACK_L_PRICE_ID": "price_1TgRjhFqmNp5yslBJqdtirGx"
       },
       "kv_namespaces": [
         { "binding": "RATE_LIMIT", "id": "7a30e45009e14647922ca96a562ea2c8" }
