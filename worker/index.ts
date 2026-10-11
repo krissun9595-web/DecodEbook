@@ -177,17 +177,20 @@ export default {
       const check = await checkCreditBalance(auth.userId, creditAction, env);
       if (check) return check;
       const resp = await handleUnifiedLLM(request, env);
-      // Phase-A metering for the non-Gemini text path (e.g. Balanced translate → deepseek). Read the
-      // real tokens from the clone's raw.usage; stream the original untouched.
+      // Server-AUTHORITATIVE metering for the non-Gemini text path (e.g. Balanced translate →
+      // deepseek). Read the real tokens from the clone's raw.usage; stream the original untouched.
+      // Meter UNCONDITIONALLY on success — never gate on the client-sent usage id. Under Phase B the
+      // client can only write 0-credit rows, so a request that omitted X-Db-Usage-Id would otherwise
+      // run FREE. Mint our own id when absent (action/model/cost are all derivable server-side).
       const lm = usageMetaFromHeaders(request);
-      if (resp.ok && lm.usageId && ctx) {
+      if (resp.ok && ctx) {
         ctx.waitUntil((async () => {
           try {
             const d = await resp.clone().json();
             const u = d?.raw?.usage || {};
             await recordUsage(env, auth.userId, {
               action: lm.action || creditAction, model: lm.model || body.model || '',
-              book: lm.book, session: lm.session, usageId: lm.usageId,
+              book: lm.book, session: lm.session, usageId: lm.usageId || crypto.randomUUID(),
               inTok: u.prompt_tokens || 0, outTok: u.completion_tokens || 0,
             });
           } catch {}
@@ -564,8 +567,12 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
   // TTS + image generateContent return LARGE bodies and are priced from request units, not tokens —
   // meter them from headers without buffering. Only genuine TEXT generateContent gets buffered.
   const isMedia = isGenerate && (/tts/i.test(path) || /image/i.test(meta.model || '') || meta.action === 'generateImage' || meta.action === 'redrawFigureTranslated');
+  // Server-AUTHORITATIVE text metering: buffer the small JSON + record UNCONDITIONALLY on success.
+  // Never gate on the client-sent usage id — under Phase B the client can't write a credit row, so a
+  // request that dropped X-Db-Usage-Id would run FREE otherwise. Mint our own id when absent; cost is
+  // token-driven (usageMetadata), model from the path, action best-effort (defaults to translate).
   const isText = isGenerate && !isMedia;
-  if (response.ok && isText && meta.usageId && userId && ctx) {
+  if (response.ok && isText && userId && ctx) {
     const buf = await response.arrayBuffer();
     ctx.waitUntil((async () => {
       try {
@@ -574,7 +581,7 @@ async function handleGeminiProxy(request: Request, url: URL, env: Env, userId?: 
         await recordUsage(env, userId, {
           action: meta.action || 'translate',
           model: meta.model || (path.match(/models\/([^:]+):/)?.[1] ?? ''),
-          book: meta.book, session: meta.session, usageId: meta.usageId,
+          book: meta.book, session: meta.session, usageId: meta.usageId || crypto.randomUUID(),
           inTok: um.promptTokenCount || 0, outTok: um.candidatesTokenCount || 0,
           cachedTok: um.cachedContentTokenCount || 0, // implicit-cache hit slice → billed at 10%
         });
