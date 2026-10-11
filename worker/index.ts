@@ -1383,6 +1383,12 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         }),
       });
 
+      // Pro START note (delta-0 'subscription' ledger row) so the client derives a "Welcome to Pro"
+      // billing notification — the cancel/ended counterparts are written in subscription.updated/deleted.
+      if (tier === 'pro') {
+        await addCreditNote(env, userId, 'Welcome to Pro — your plan is active').catch(() => {});
+      }
+
       // Referral reward is handled by a DB trigger on engagement (sql/019), not here.
       break;
     }
