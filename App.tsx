@@ -7733,7 +7733,7 @@ const App: React.FC = () => {
             className={`fixed bottom-6 inset-x-0 ${isSidebarOpen ? 'md:left-64' : ''} mx-auto w-[calc(100vw-32px)] md:w-[380px] h-16 z-[10000] flex items-center gap-3 bg-zinc-900 border ${cfg.border} rounded-md px-4 shadow-2xl animate-fade-in-up text-left`}
           >
             <cfg.Icon size={16} className={`shrink-0 ${cfg.text}`} />
-            <span className="min-w-0">
+            <span className="flex-1 min-w-0">
               <span className={`block text-xs font-medium truncate ${cfg.text}`}>{notifToast.title}</span>
               <span className="block text-[10px] text-zinc-400 truncate">{notifToast.preview}</span>
             </span>
