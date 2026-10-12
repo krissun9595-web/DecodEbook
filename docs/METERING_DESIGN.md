@@ -10,7 +10,7 @@ subsumes H2 (creditAction spoofing), because the gate can price from the same se
 ## Reality that shapes the design
 - **Paths & metering inputs**
   - `/api/gemini/*` (SDK passthrough, streams body through) — Gemini text `generateContent`
-    (highest volume, currently **ungated**), TTS, Veo. Tokens live in the response `usageMetadata`
+    (highest volume — now worker-metered), TTS, Veo. Tokens live in the response `usageMetadata`
     (text) or are derived from the request (TTS chars, Veo seconds).
   - `/api/llm/generate` — non-Gemini text (rare). Response already parsed; has `usage`.
   - `/api/fal/image` — image. Flat per model.
@@ -94,6 +94,23 @@ traffic between A and B.
 
 ## Build status
 - Decision 5 + Phase-A **text path** (Gemini generateContent + /api/llm/generate): worker dual-writes
-  usage idempotently (same usage_id as client) — IN PROGRESS.
-- Phase-A media paths (TTS / image / video-on-completion): next increment.
-- Phase B (revoke client credit-INSERT + narrow partial policy): after Phase-A soak + verification.
+  usage idempotently (same usage_id as client) — **DONE**.
+- Phase-A **media paths** (TTS / image / Veo-on-completion via `response.clone()` reading `done`,
+  seedance-on-poll-success): **DONE**.
+- **Phase B** (revoke client credit-INSERT; narrow 0-credit partial policy, sql/025): **DONE + LIVE
+  on prod** — worker (service_role) is the sole writer of credit-bearing `usage_logs` rows; the client
+  can only insert 0-credit markers.
+
+### Server-authoritative TEXT metering completed (2026-10-12)
+Phase B introduced a subtle hole: the worker's text metering was **gated on the client-sent
+`X-Db-Usage-Id`** (`/api/llm/generate` and the Gemini text proxy). Because Phase B also forbids the
+client from writing a credit row, a request that simply **omitted that header** ran **free** — the
+generation succeeded, the worker skipped metering, and the balance gate (which only reads the sum,
+never deducts) let it through. Veo already avoided this by self-minting a `usage_id`; text did not.
+**Fix:** both text paths now meter **unconditionally on success**, using
+`usageId = client's || crypto.randomUUID()`; cost stays token-driven (`raw.usage` / `usageMetadata`),
+model from the path/body, action best-effort (`|| 'translate'`). Normal clients still send a stable
+id (retry-dedupe unchanged). Verified on staging (1 request → 1 metered row, no double-charge);
+shipped to prod (commit `3d497e7`). This closes H2/Phase-C for text — the gate can now trust the
+server-written cost. (Residual non-metered path: none for text; Veo's completion read via
+`response.clone()` is the one fragility to watch.)
