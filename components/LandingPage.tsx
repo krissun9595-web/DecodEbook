@@ -2326,7 +2326,7 @@ function TransformationLanding({
           )}
           <h1 ref={heroHeadlineRef} className="text-balance text-[2rem] sm:text-5xl md:text-7xl font-semibold tracking-normal leading-[1.12] sm:leading-[1.08] text-white animate-fade-in" style={{ animationDelay: '0.1s' }}>
             Read the original.<br />
-            <span className="text-neon-cyan drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand the meaning.</span>
+            <span className="text-neon-cyan drop-shadow-[0_0_30px_rgba(0,243,255,0.4)]">Understand it your way.</span>
           </h1>
           <p className={`${isVersionE ? 'max-w-[46rem]' : 'max-w-[34rem]'} mx-auto px-3 sm:px-0 text-[13px] leading-[1.85] text-zinc-500 animate-fade-in sm:text-base sm:leading-[1.75]`} style={{ animationDelay: '0.2s' }}>
             {isVersionE ? (
