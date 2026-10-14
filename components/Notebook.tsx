@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NotebookItem, AppSettings, Chapter, MindMapNode } from '../types';
 import { Trash2, Book, BookOpen, ImageDown, Volume2, Settings2, Type, Loader2, Network, Download, FileText, Share2, ZoomIn, ZoomOut, RefreshCw, Hash, X, Notebook as NotebookIcon, Play, Square, ChevronRight, ChevronDown, Minus, Plus, LogOut, FileDown, Scan, Move } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
+import { genButton } from '../utils/genButton';
 import { Quote } from './ui/icons';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
@@ -1087,10 +1089,11 @@ export const Notebook: React.FC<Props> = ({ items, onDelete, onBulkDelete, onUpd
                <button
                   onClick={handleInitiateMindMap}
                   disabled={filteredItems.length === 0}
+                  title={genButton({ generating: isGeneratingMap, resultExists: hasInitiatedMap }).title}
                   className={`btn-action ${isGeneratingMap ? 'btn-stop' : 'btn-go'}`}
                >
-                   {isGeneratingMap ? <Square size={13} fill="currentColor" /> : hasInitiatedMap ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
-                   {isGeneratingMap ? "STOP" : hasInitiatedMap ? "REGENERATE" : "INITIATE"}
+                   {isGeneratingMap ? <Square size={13} fill="currentColor" /> : hasInitiatedMap ? <RefreshCw size={13} /> : <Sparkles size={13} />}
+                   {genButton({ generating: isGeneratingMap, resultExists: hasInitiatedMap }).label}
                </button>
            </div>
        </div>

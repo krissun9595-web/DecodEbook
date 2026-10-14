@@ -843,9 +843,26 @@ export const generatePodcastAudio = async (
   tone: string = 'Engaging',
   hosts: { host1: string, voice1: string, desc1?: string, host2: string, voice2: string, desc2?: string },
   language: string = 'English',
-  onPhase?: (phase: 'script' | 'audio') => void
+  onPhase?: (phase: 'script' | 'audio') => void,
+  // RESUME support (all optional → caller owns the cache; gemini stays decoupled from fileCache):
+  //  signal      → STOP aborts per-line TTS (finished lines already cached, in-flight line not billed)
+  //  lineCache   → reuse a previously-synthesized line (no charge) / persist each completed line
+  //  cachedScript→ on resume, reuse the already-paid script so the dialogue (and line keys) match
+  //  onScript    → emit the fresh script immediately so the caller can cache it before line TTS
+  //  onProgress  → (done,total) for the RESUME/pending label
+  opts?: {
+    signal?: AbortSignal;
+    onProgress?: (done: number, total: number) => void;
+    lineCache?: { get: (voice: string, text: string) => Promise<string | null>; set: (voice: string, text: string, b64: string) => void };
+    cachedScript?: { script: string; episodeTitle: string };
+    onScript?: (script: string, episodeTitle: string) => void;
+  }
 ): Promise<{ audio: string; script: string; episodeTitle: string }> => {
   return withRetry(async () => {
+    let parsedResponse: { script: string, episodeTitle: string };
+    if (opts?.cachedScript?.script) {
+      parsedResponse = opts.cachedScript; // RESUME: reuse the already-paid script (same dialogue → line cache keys match)
+    } else {
     onPhase?.('script');
     const scriptModel = resolveModel('podcastScript');
     const usageId = newUsageId();
@@ -854,7 +871,7 @@ export const generatePodcastAudio = async (
       model: scriptModel,
       contents: {
         parts: [
-          getFilePart(file),
+          getChapterPart(file, chapter), // only THIS chapter — not the whole book (the podcast is per-chapter); huge saving on large books
           { text: `Create a ${tone} podcast dialogue about the chapter "${chapter.title}" in ${language}. Keep the conversation concise (max 600 words). Use EXACTLY these two hosts:\n\n- ${hosts.host1}: ${hosts.desc1 || 'leads the discussion'}\n- ${hosts.host2}: ${hosts.desc2 || 'responds and adds counterpoints'}\n\nCHARACTER CONSISTENCY RULES (CRITICAL):\n- ${hosts.host1} speaks with the SAME energy, vocabulary, and attitude in EVERY single line. If they are gruff, they are gruff even when agreeing. If they are enthusiastic, they stay enthusiastic even when confused. NEVER let a character become generic or neutral.\n- ${hosts.host2} speaks with the SAME energy, vocabulary, and attitude in EVERY single line. Their style must be distinctly DIFFERENT from ${hosts.host1} in sentence length, word choice, and tone.\n- Write each line so it could ONLY have been said by that character. A reader should identify the speaker without seeing the name prefix.\n- Alternate speakers frequently. Never have the same speaker talk for more than 3 consecutive lines.\n\nFORMAT RULES:\n- Output JSON with 'episodeTitle' and 'script'.\n- The 'script' MUST be formatted as lines of dialogue, one per line.\n- Each line MUST start with EXACTLY "${hosts.host1}:" or "${hosts.host2}:" (no bold, no brackets, no variations).\n- Example:\n${hosts.host1}: Welcome to the show!\n${hosts.host2}: Thanks for having me.` }
         ]
       },
@@ -873,8 +890,10 @@ export const generatePodcastAudio = async (
     });
 
     trackUsage('podcastScript', extractTokens(scriptResponse), scriptModel, undefined, undefined, usageId);
-    const parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
+    parsedResponse = safeJsonParse<{ script: string, episodeTitle: string }>(scriptResponse.text || "{}");
     if (!parsedResponse.script) throw new Error("Script generation failed");
+    opts?.onScript?.(parsedResponse.script, parsedResponse.episodeTitle); // cache the fresh script NOW so a partial stop can resume
+    }
 
     // Parse script into speaker/text lines
     const cleanedLines = parsedResponse.script
@@ -900,16 +919,30 @@ export const generatePodcastAudio = async (
     if (dialogueLines.length === 0) throw new Error("No dialogue lines parsed from script");
 
     onPhase?.('audio');
-    // Per-line single-speaker TTS — each line locked to its voice
+    // Per-line single-speaker TTS — each line locked to its voice. Cache-first per line so a STOP +
+    // re-run RESUMES: finished lines are reused (no re-charge) and only the missing ones synthesize.
     const BATCH_SIZE = 3;
-    const audioChunks: string[] = [];
-    for (let i = 0; i < dialogueLines.length; i += BATCH_SIZE) {
+    const total = dialogueLines.length;
+    const audioChunks: string[] = new Array(total);
+    let done = 0;
+    opts?.onProgress?.(0, total);
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+      if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError'); // STOP → finished lines kept+cached, rest not billed
       const batch = dialogueLines.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(
-        batch.map(line => generateSpeech(line.text, line.voice))
-      );
-      audioChunks.push(...results);
+      await Promise.all(batch.map(async (line, bi) => {
+        const idx = i + bi;
+        try {
+          const cached = await opts?.lineCache?.get(line.voice, line.text);
+          if (cached) { audioChunks[idx] = cached; done++; opts?.onProgress?.(done, total); return; } // reuse → no charge
+        } catch { /* not cached → synthesize */ }
+        if (opts?.signal?.aborted) return;
+        const res = await generateSpeech(line.text, line.voice, opts?.signal);
+        audioChunks[idx] = res;
+        opts?.lineCache?.set(line.voice, line.text, res); // persist so a resume reuses it
+        done++; opts?.onProgress?.(done, total);
+      }));
     }
+    if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     // Normalize each segment individually, then concatenate
     const TARGET_PEAK = 0.9 * 32767;
@@ -1205,13 +1238,25 @@ export const requestVeoKey = async (): Promise<void> => {
   }
 };
 
+// Rejects with AbortError the instant `signal` aborts — so a long video poll stops WAITING
+// immediately AND, crucially, stops polling BEFORE the provider reports done/succeeded, so the
+// worker never sees completion and never records the charge. STOP therefore means "cancel, don't charge".
+const abortableDelay = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+  if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+});
+
 export const generateSummaryVideo = async (
   file: FileContext,
   chapter: Chapter,
   onStatus: (status: string) => void,
   style: string = 'Cinematic',
   language: string = 'English',
-  resolution: '720p' | '1080p' = '720p'
+  resolution: '720p' | '1080p' = '720p',
+  signal?: AbortSignal,
+  cachedPrompt?: string,          // RESUME: reuse an already-paid prompt (skip the videoPrompt charge)
+  onPrompt?: (prompt: string) => void // emit the fresh prompt so the caller can cache it before the render
 ): Promise<Blob> => {
   // One per-execution session so the video prompt + the render fold into ONE "Video generation"
   // history line, and two separate videos never merge into one.
@@ -1219,6 +1264,10 @@ export const generateSummaryVideo = async (
   try {
   return await withRetry(async () => {
     const ai = await getAi();
+    let videoPrompt: string;
+    if (cachedPrompt) {
+      videoPrompt = cachedPrompt; // RESUME: reuse the already-paid prompt → no videoPrompt charge
+    } else {
     onStatus("Crafting visual narrative...");
     // Dedicated client for the prompt call ONLY, so the worker meters videoPrompt (a text
     // generateContent — safe to buffer) without tagging the generateVideos/poll requests.
@@ -1237,7 +1286,9 @@ export const generateSummaryVideo = async (
       }
     });
     trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview', undefined, undefined, vpUsageId);
-    const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
+    videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
+    onPrompt?.(videoPrompt); // cache it so a STOP leaves a resumable (already-paid) prompt
+    }
 
     onStatus("Transmitting to Veo Core...");
     // Meter Veo at COMPLETION: poll the operation on a metered client so the worker records the
@@ -1256,8 +1307,9 @@ export const generateSummaryVideo = async (
     });
 
     while (!operation.done) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); // STOP → stop polling before `done` → worker never charges
       onStatus("Synthesizing temporal data...");
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await abortableDelay(5000, signal);
       operation = await pollAi.operations.getVideosOperation({operation: operation});
     }
 
@@ -1295,11 +1347,18 @@ export const generateSeedanceVideo = async (
   onStatus: (status: string) => void,
   style: string = 'Cinematic',
   language: string = 'English',
-  resolution: '720p' | '1080p' = '720p'
+  resolution: '720p' | '1080p' = '720p',
+  signal?: AbortSignal,
+  cachedPrompt?: string,          // RESUME: reuse an already-paid prompt (skip the videoPrompt charge)
+  onPrompt?: (prompt: string) => void // emit the fresh prompt so the caller can cache it before the render
 ): Promise<Blob> => {
   // One per-execution session so prompt + render fold into ONE "Video generation" line.
   beginUsageSession('Video generation');
   try {
+  let videoPrompt: string;
+  if (cachedPrompt) {
+    videoPrompt = cachedPrompt; // RESUME: reuse the already-paid prompt → no videoPrompt charge
+  } else {
   onStatus("Crafting visual narrative...");
   const vpUsageId = newUsageId();
   const promptAi = await getAi({ usageId: vpUsageId, action: 'videoPrompt', model: 'gemini-3-flash-preview', book: _currentBook || undefined, session: _usageSession || undefined });
@@ -1314,7 +1373,9 @@ export const generateSeedanceVideo = async (
     config: { thinkingConfig: { thinkingBudget: 0 } }
   });
   trackUsage('videoPrompt', extractTokens(promptResponse), 'gemini-3-flash-preview', undefined, undefined, vpUsageId);
-  const videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
+  videoPrompt = promptResponse.text || `Visual summary of ${chapter.title} in style of ${style}`;
+  onPrompt?.(videoPrompt); // cache it so a STOP leaves a resumable (already-paid) prompt
+  }
 
   onStatus("Transmitting to Seedance Core...");
   const authHeaders = await getAuthHeaders();
@@ -1328,6 +1389,7 @@ export const generateSeedanceVideo = async (
       ratio: '16:9',
       duration: 5,
     }),
+    signal,
   });
   const { taskId, error } = await createRes.json() as any;
   if (/insufficient credits/i.test(error || '')) throw new Error(INSUFFICIENT_CREDITS);
@@ -1344,12 +1406,14 @@ export const generateSeedanceVideo = async (
   let videoUrl: string | null = null;
   let tokensUsed = 0;
   while (status !== 'succeeded' && status !== 'failed') {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); // STOP → stop polling before 'succeeded' → worker never charges
     onStatus("Synthesizing temporal data...");
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await abortableDelay(5000, signal);
     const pollRes = await fetch('/api/seedance/poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders, ...dbHeaders },
       body: JSON.stringify({ taskId }),
+      signal,
     });
     const pollData = await pollRes.json() as any;
     status = pollData.status;

@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, ChevronLeft, ChevronRight, Eye, Headphones, Download, RotateCcw, RotateCw, Columns, Globe, Settings2, Square, RefreshCw, Volume2, Minimize2, Maximize2, Activity, Share2, Copy, Languages } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
+import { genButton } from '../utils/genButton';
 import { Chapter, FileContext, AppSettings, ThemeColor, ReaderPageTarget, PdfFigure } from '../types';
 import { extractChapterText, generateSpeech, translateSentences, translateFigureText, redrawFigureTranslated, logGenerationPartial, beginUsageSession, endUsageSession, getGenerationMode } from '../services/gemini';
 import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount } from '../services/credits';
 import { creditsForAction } from '../services/pricing';
+import { getSelectedVoice as getVoicePref, setSelectedVoice as setVoicePref } from '../services/voicePreference';
 import { CreditNotice } from './ui/CreditNotice';
 import { StatusMessage } from './ui/StatusMessage';
 import { Loader } from './ui/Loader';
@@ -2097,6 +2100,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   useEffect(() => { if (bookId) syncBookFiguresToCloud(bookId); }, [bookId]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasInitiated, setHasInitiated] = useState(false);
+  const [readPartial, setReadPartial] = useState(false); // stopped mid-page → RESUME (finished batches reused, not re-charged)
   const [generationProgress, setGenerationProgress] = useState("");
   // Non-null → out of credits; the audio module + translation panel show the HAZARD notice.
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
@@ -2108,7 +2112,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [selectedVoice, setSelectedVoice] = useState(lastAudioVoice || 'Puck');
+  const [selectedVoice, setSelectedVoice] = useState(lastAudioVoice || getVoicePref());
   const [audioLanguage, setAudioLanguage] = useState(initialAudioLanguage);
   const [autoScroll, setAutoScroll] = useState(initialAutoScroll);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number>(-1);
@@ -2148,6 +2152,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
     setActiveSentenceIndex(-1);
     setGenerationProgress("");
     setHasInitiated(false);
+    setReadPartial(false);
   };
 
   const changePage = (next: boolean) => {
@@ -3398,9 +3403,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
         inflightAudioMap.delete(key);
         setIsGenerating(false);
         setHasInitiated(true);
+        setReadPartial(true); // finished batches are cached → RESUME reuses them (no re-charge)
         logGenerationPartial('tts'); // stopped part-way → tag the delivered audio "(Partial)"
         return;
     }
+    setReadPartial(false);
     generatePageAudio();
   };
 
@@ -5093,7 +5100,7 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
           <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-none justify-between md:justify-end">
               <div className="select-group">
                  <div className="p-1 md:p-1.5 text-zinc-500"><Settings2 size={13} /></div>
-                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">
+                 <select value={selectedVoice} onChange={(e) => { setSelectedVoice(e.target.value); lastAudioVoice = e.target.value; setVoicePref(e.target.value); resetAudioState(); }} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">
                     {VOICES.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                  </select>
                  <div className="w-[1px] h-3.5 bg-zinc-700"></div>
@@ -5104,10 +5111,11 @@ export const AudioBook: React.FC<Props> = ({ chapter, allChapters, fileContext, 
               </div>
               <button
                 onClick={handleInitiateToggle}
+                title={genButton({ generating: isGenerating, pending: readPartial ? 1 : 0, resultExists: hasInitiated }).title}
                 className={`btn-action !min-h-0 ${isGenerating ? 'btn-stop' : 'btn-go'}`}
               >
-                 {isGenerating ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
-                 {isGenerating ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
+                 {isGenerating ? <Square size={13} fill="currentColor" /> : readPartial ? <Play size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Sparkles size={13} />}
+                 {genButton({ generating: isGenerating, pending: readPartial ? 1 : 0, resultExists: hasInitiated }).label}
               </button>
           </div>
       </div>

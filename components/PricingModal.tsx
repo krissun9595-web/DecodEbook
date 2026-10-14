@@ -430,53 +430,7 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 </div>
               </div>
 
-              {/* ── Active Mode (universal generation quality) ── */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-neon-cyan mb-2">
-                  <Zap size={18} />
-                  <label className="text-xs font-bold uppercase tracking-widest font-mono">Active_Mode</label>
-                </div>
-                <div className="content-panel rounded-sm p-4 h-[275px] sm:h-[262px] overflow-hidden flex flex-col">
-                  {/* Toggle row height = the text line (h-4 switch), so "Balanced" sits at the same
-                      top as the account name, and the mt-2 below matches the name→email gap. */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-neon-cyan font-mono font-bold">{genMode === 'premium' ? 'Premium' : 'Balanced'}</span>
-                    <button
-                      role="switch" aria-checked={genMode === 'premium'} aria-label="Toggle generation mode"
-                      onClick={handleToggleMode}
-                      className={`relative w-8 h-4 !min-h-0 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-4' : ''}`} />
-                    </button>
-                  </div>
-                  <div className="mt-2 text-zinc-600 font-mono flex flex-col flex-1 min-h-0">
-                    <p data-gap="am-desc" className="text-[10px] mb-[6.5px]">{genMode === 'premium'
-                      ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
-                      : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
-                    <div className="text-[9px] overflow-x-auto">
-                      <div className="min-w-[300px]">
-                      <div data-gap="am-hd" className="flex items-center gap-3 text-[9px] uppercase tracking-widest text-zinc-600 pb-1 border-b border-zinc-800/60">
-                        <span className="flex-[0.8]">Module</span>
-                        <span className="flex-[1.25]">Function</span>
-                        <span className={`flex-[1.5] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
-                        <span className={`flex-[1.5] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
-                      </div>
-                      {modeRows.map(r => (
-                        <div key={r.fn} className="flex items-center gap-3 py-[2px] sm:py-[3px]">
-                          <span className="flex-[0.8] text-zinc-500 truncate"><span className="sm:hidden">{MODULE_SHORT[r.module] || r.module}</span><span className="hidden sm:inline">{r.module}</span></span>
-                          <span className="flex-[1.25] text-zinc-500 truncate"><span className="sm:hidden">{FUNCTION_SHORT[r.fn] || r.fn}</span><span className="hidden sm:inline">{r.fn}</span></span>
-                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.b.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.b}</span></span>
-                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.p.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.p}</span></span>
-                        </div>
-                      ))}
-                      </div>
-                    </div>
-                    <p className="text-[9px] mt-auto">Actual cost scales with length; No charge for saved result re-open; Functions with same costs under both modes will be recorded in Credit history table.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Plans / Packs (dynamic: FREE → Pro upgrade, PRO → Packs) ── */}
+              {/* ── Plans / Packs (dynamic: FREE → Pro upgrade, PRO → Packs) — placed ABOVE Active_Mode ── */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-neon-cyan mb-2">
                   {currentTier === 'pro' ? <Package size={18} /> : <Pro size={18} />}
@@ -531,6 +485,52 @@ export function AccountPanel({ isOpen, onClose, user, onAuthChange, proPriceId, 
                 {billingError && (
                   <div className="pt-1"><StatusMessage variant="error" title={billingError} inline /></div>
                 )}
+              </div>
+
+              {/* ── Active Mode (universal generation quality) ── */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-neon-cyan mb-2">
+                  <Zap size={18} />
+                  <label className="text-xs font-bold uppercase tracking-widest font-mono">Active_Mode</label>
+                </div>
+                <div className="content-panel rounded-sm p-4 h-[275px] sm:h-[262px] overflow-hidden flex flex-col">
+                  {/* Toggle row height = the text line (h-4 switch), so "Balanced" sits at the same
+                      top as the account name, and the mt-2 below matches the name→email gap. */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neon-cyan font-mono font-bold">{genMode === 'premium' ? 'Premium' : 'Balanced'}</span>
+                    <button
+                      role="switch" aria-checked={genMode === 'premium'} aria-label="Toggle generation mode"
+                      onClick={handleToggleMode}
+                      className={`relative w-8 h-4 !min-h-0 rounded-full transition-colors shrink-0 ${genMode === 'premium' ? 'bg-neon-cyan/30' : 'bg-zinc-700'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-neon-cyan transition-transform ${genMode === 'premium' ? 'translate-x-4' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="mt-2 text-zinc-600 font-mono flex flex-col flex-1 min-h-0">
+                    <p data-gap="am-desc" className="text-[10px] mb-[6.5px]">{genMode === 'premium'
+                      ? 'Top-tier models for every generation — maximum quality at a higher credit cost.'
+                      : 'Cost-optimized models — great quality at the lowest credit cost.'}</p>
+                    <div className="text-[9px] overflow-x-auto">
+                      <div className="min-w-[300px]">
+                      <div data-gap="am-hd" className="flex items-center gap-3 text-[8px] uppercase tracking-widest text-zinc-600 pb-1 border-b border-zinc-800/60">
+                        <span className="flex-[0.8]">Module</span>
+                        <span className="flex-[1.25]">Function</span>
+                        <span className={`flex-[1.5] text-right ${genMode === 'balanced' ? 'text-neon-cyan' : ''}`}>Balanced</span>
+                        <span className={`flex-[1.5] text-right ${genMode === 'premium' ? 'text-neon-cyan' : ''}`}>Premium</span>
+                      </div>
+                      {modeRows.map(r => (
+                        <div key={r.fn} className="flex items-center gap-3 py-[2px] sm:py-[3px]">
+                          <span className="flex-[0.8] text-zinc-500 truncate"><span className="sm:hidden">{MODULE_SHORT[r.module] || r.module}</span><span className="hidden sm:inline">{r.module}</span></span>
+                          <span className="flex-[1.25] text-zinc-500 truncate"><span className="sm:hidden">{FUNCTION_SHORT[r.fn] || r.fn}</span><span className="hidden sm:inline">{r.fn}</span></span>
+                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'balanced' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.b.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.b}</span></span>
+                          <span className={`flex-[1.5] text-right whitespace-nowrap ${genMode === 'premium' ? 'text-zinc-200 font-bold' : 'text-zinc-600'}`}><span className="sm:hidden">{r.p.replace(/ per /g, '/')}</span><span className="hidden sm:inline">{r.p}</span></span>
+                        </div>
+                      ))}
+                      </div>
+                    </div>
+                    <p className="text-[9px] mt-auto">No charge for saved result re-open; Functions with same costs under both modes will be recorded in Credit history table; Actual cost scales with length.</p>
+                  </div>
+                </div>
               </div>
 
               {/* ── Credits Dashboard ── */}

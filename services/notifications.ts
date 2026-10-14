@@ -172,9 +172,9 @@ export function markRead(id: string) { const r = new Set(arr(K_READ)); r.add(id)
 export function markAllRead() { setArr(K_READ, listNotifs().map(n => n.id)); }
 export function clearNotif(id: string) { const c = new Set(arr(K_CLEARED)); c.add(id); setArr(K_CLEARED, [...c]); }
 
-// YYYY-MM-DD for the row timestamp.
+// YYYY-MM-DD HH:MM:SS for the MY_INBOX row timestamp (same format as Credit History's fmtTimestamp).
 export function fmtDay(ts: number): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }

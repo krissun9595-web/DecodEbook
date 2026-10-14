@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, RefreshCw, Play, Pause, RotateCw, Volume2, VolumeX, Maximize2, Minimize2, Gauge, Share2 } from 'lucide-react';
+import { Film, Download, RotateCcw, Settings2, MonitorPlay, Globe, Square, RefreshCw, Play, Pause, RotateCw, Volume2, VolumeX, Maximize2, Minimize2, Gauge, Share2, Sparkles } from 'lucide-react';
 import { Chapter, FileContext } from '../types';
 import { generateSummaryVideo, generateSeedanceVideo, hasValidKeyForVeo, requestVeoKey, getVideoModel, logGenerationPartial } from '../services/gemini';
 import { Loader } from './ui/Loader';
@@ -13,6 +13,7 @@ import { CreditNotice } from './ui/CreditNotice';
 import { ensureCredits, isInsufficientCreditsError, isVideoBlockedError, getCachedTier } from '../services/credits';
 import { shareFile } from '../utils/share';
 import { titleCase, chapterFileLabel } from '../utils/filename';
+import { genButton } from '../utils/genButton';
 import { trackGeneration, trackShare, trackError } from '../utils/analytics';
 import { saveFile, getFile, buildCacheKey } from '../services/fileCache';
 import { isIOS } from '../utils/device';
@@ -43,6 +44,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [vidPartial, setVidPartial] = useState(false); // prompt paid+cached but video unfinished → RESUME (reuses prompt; render still charges)
   const [error, setError] = useState<string | null>(null);
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
   const [selectedStyle, setSelectedStyle] = useState('Cinematic');
@@ -59,6 +61,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
   const [controlsVisible, setControlsVisible] = useState(true);
 
   const abortRef = useRef<boolean>(false);
+  const abortCtrlRef = useRef<AbortController | null>(null); // STOP aborts the live video poll so the worker never charges
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsTimeoutRef = useRef<number | null>(null);
@@ -80,12 +83,16 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
     setCurrentTime(0);
     setDuration(0);
     setPlaybackProgress(0);
+    setVidPartial(false);
     if (isGenerating) return () => { cancelled = true; }; // an in-flight generation sets videoUrl itself
     const loadCached = async () => {
       const key = buildCacheKey(bookId, chapter.id, 'video', selectedStyle, selectedResolution);
       try {
         const cached = await getFileOrCloud(key);
-        if (cached && !cancelled) videoSrcFromBlob(cached.blob).then(src => { if (!cancelled) setVideoUrl(src); });
+        if (cached && !cancelled) { videoSrcFromBlob(cached.blob).then(src => { if (!cancelled) setVideoUrl(src); }); return; }
+        // No video, but if the prompt was already paid for (a prior STOP), offer RESUME (reuses it).
+        const pf = await getFileOrCloud(buildCacheKey(bookId, chapter.id, 'video-prompt', selectedStyle, selectedResolution));
+        if (pf && !cancelled) setVidPartial(true);
       } catch (e) { /* cache miss → idle */ }
     };
     loadCached();
@@ -95,7 +102,9 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
   const handleToggleGeneration = async () => {
     if (isGenerating) {
         abortRef.current = true;
+        abortCtrlRef.current?.abort(); // stop the poll loop NOW → worker never sees completion → no video charge (only the small prompt step already ran)
         setIsGenerating(false);
+        setVidPartial(true); // the prompt was paid + cached → RESUME reuses it
         setStatus("");
         logGenerationPartial(getVideoModel().startsWith('dreamina-') || getVideoModel().startsWith('doubao-seedance') ? 'videoSeedance' : 'videoVeo');
         return;
@@ -108,6 +117,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
     if (!gate.ok) { setCreditTier(gate.tier); return; }
     setIsGenerating(true);
     abortRef.current = false;
+    abortCtrlRef.current = new AbortController();
     setStatus("INITIATING_RENDER...");
     try {
       const videoModel = getVideoModel();
@@ -122,11 +132,17 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
       if (abortRef.current) return;
 
       const targetLang = selectedLanguage === 'Original' ? 'the source language of the document' : selectedLanguage;
+      const promptKey = buildCacheKey(bookId, chapter.id, 'video-prompt', selectedStyle, selectedResolution);
+      // RESUME reuses the paid prompt ONLY when continuing (no completed video); REGENERATE makes a fresh one.
+      let cachedPrompt: string | undefined;
+      if (!videoUrl) { try { const pf = await getFileOrCloud(promptKey); if (pf) cachedPrompt = await pf.blob.text(); } catch {} }
+      const onPrompt = (prompt: string) => { saveFile(promptKey, new Blob([prompt], { type: 'text/plain' }), { filename: 'video-prompt', mimeType: 'text/plain', timestamp: Date.now(), bookId, bookTitle, chapterId: chapter.id, componentSource: 'video', fileType: 'video-prompt' }).catch(() => {}); };
       const videoBlob = useSeedance
-        ? await generateSeedanceVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any)
-        : await generateSummaryVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any);
+        ? await generateSeedanceVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any, abortCtrlRef.current.signal, cachedPrompt, onPrompt)
+        : await generateSummaryVideo(fileContext, chapter, setStatus, selectedStyle, targetLang, selectedResolution as any, abortCtrlRef.current.signal, cachedPrompt, onPrompt);
 
       if (!abortRef.current) {
+        setVidPartial(false); // video completed → no longer a partial
         if (videoUrl?.startsWith('blob:')) URL.revokeObjectURL(videoUrl);
         const url = await videoSrcFromBlob(videoBlob);
         setVideoUrl(url);
@@ -265,8 +281,10 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
     }
   }, [playbackRate, videoUrl]);
 
-  const currentStatusLabel = isGenerating ? "STOP" : videoUrl ? "REGENERATE" : "INITIATE";
-  const currentStatusIcon = isGenerating ? <Square size={13} fill="currentColor" /> : videoUrl ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />;
+  const gbv = genButton({ generating: isGenerating, pending: vidPartial ? 1 : 0, resultExists: !!videoUrl });
+  const currentStatusLabel = gbv.label;
+  const currentStatusIcon = gbv.label === 'STOP' ? <Square size={13} fill="currentColor" /> : gbv.label === 'RESUME' ? <Play size={13} fill="currentColor" /> : gbv.label === 'REGENERATE' ? <RefreshCw size={13} /> : <Sparkles size={13} />;
+  const currentStatusTitle = gbv.title;
 
   return (
     <div className="h-full flex flex-col font-sans text-zinc-100 text-left overflow-hidden">
@@ -289,7 +307,7 @@ export const VideoSummary: React.FC<Props> = ({ chapter, allChapters, fileContex
                     <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value as any)} className="bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1">{RESOLUTIONS.map(res => <option key={res} value={res}>{res}</option>)}</select>
                  </div>
               </div>
-              <button onClick={handleToggleGeneration} className={`btn-action ${isGenerating ? 'btn-stop' : 'btn-go'}`}>
+              <button onClick={handleToggleGeneration} title={currentStatusTitle} className={`btn-action ${isGenerating ? 'btn-stop' : 'btn-go'}`}>
                 {currentStatusIcon}
                 {currentStatusLabel}
               </button>

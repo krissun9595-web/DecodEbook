@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, RotateCw, Mic2, Download, FileDown, Settings2, Activity, Radio, Globe, Square, Loader as LoaderIcon, AlertCircle, RefreshCw, Minimize2, Maximize2, Zap, Share2 } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Mic2, Download, FileDown, Settings2, Activity, Radio, Globe, Square, Loader as LoaderIcon, AlertCircle, RefreshCw, Minimize2, Maximize2, Zap, Share2, Sparkles } from 'lucide-react';
+import { genButton } from '../utils/genButton';
 import { generatePodcastAudio, logGenerationPartial } from '../services/gemini';
 import { Chapter, FileContext, AppSettings } from '../types';
 import { Loader } from './ui/Loader';
@@ -63,6 +64,9 @@ interface InFlightPodcast {
   abort: () => void;
 }
 const inflightPodcastMap = new Map<string, InFlightPodcast>();
+
+// Stable short hash for per-line podcast cache keys (content-addressed by line text + voice).
+const hashLine = (s: string): string => { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 // Last playback position per podcast (cache key), so leaving and returning to the
 // net_cast resumes where the user left off instead of resetting the progress bar.
 const podcastPlaybackPositions = new Map<string, number>();
@@ -133,6 +137,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isLoading, setIsLoading] = useState(false);
   const [hasInitiated, setHasInitiated] = useState(false);
+  const [partial, setPartial] = useState(false); // a resumable partial exists (script cached, audio unfinished) → RESUME
+  const genAbortRef = useRef<AbortController | null>(null); // STOP aborts live per-line TTS
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creditTier, setCreditTier] = useState<'free' | 'pro' | null>(null);
@@ -277,6 +283,7 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     setScript(null);
     setSegments([]);
     setActiveIndex(-1);
+    setPartial(false);
     if (audioSrc) { URL.revokeObjectURL(audioSrc); setAudioSrc(null); }
 
     const load = async () => {
@@ -293,6 +300,18 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
           if (!episodeTitle) setEpisodeTitle(readPodcastTitle(key) || chapter.title || bookTitle || '');
           setHasInitiated(true);
           return;
+        }
+        if (!cachedAudio && cachedScript && !cancelled) {
+          // Script is cached (paid) but audio is unfinished → offer RESUME (reuses the done lines).
+          // Only for a well-formed multi-line dialogue; a malformed one-liner falls through to a fresh
+          // INITIATE. Do NOT render the raw script (no audio/timings → the segmenter blobs it).
+          const sText = await cachedScript.blob.text();
+          if (sText.includes('\n') && !cancelled) {
+            if (!episodeTitle) setEpisodeTitle(readPodcastTitle(key) || chapter.title || bookTitle || '');
+            setHasInitiated(true);
+            setPartial(true);
+            return;
+          }
         }
       } catch (e) { /* cache miss */ }
 
@@ -328,12 +347,14 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
   const handleToggleGeneration = async () => {
     if (isLoading) {
       abortRef.current = true;
+      genAbortRef.current?.abort(); // stop per-line TTS NOW → finished lines kept+cached, rest not billed
       const key = podcastGenKeyRef.current;
       const inflight = inflightPodcastMap.get(key);
       if (inflight) inflight.abort();
       inflightPodcastMap.delete(key);
       setIsLoading(false);
       setHasInitiated(true);
+      setPartial(true); // script + finished lines are cached → RESUME
       logGenerationPartial('podcastAudio'); // stopped part-way → tag delivered work "(Partial)"
       return;
     }
@@ -353,6 +374,8 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     setError(null);
     setCreditTier(null);
     abortRef.current = false;
+    const genAbort = new AbortController();
+    genAbortRef.current = genAbort;
 
     // Capture values for the closure (survives unmount)
     const capturedFileContext = fileContext;
@@ -367,7 +390,28 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
     const genPromise = (async (): Promise<{ audioBlob: Blob; script: string; episodeTitle: string } | null> => {
       try {
         const targetLang = capturedLanguage === 'Original' ? 'the source language of the document' : capturedLanguage;
-        const result = await generatePodcastAudio(capturedFileContext, capturedChapter, capturedTone, capturedHosts, targetLang, (phase) => setPodProgress(phase === 'script' ? 'WRITING_SCRIPT...' : 'GENERATING_AUDIO...'));
+        const scriptKey = buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-script', capturedTone, capturedLanguage);
+        // RESUME: reuse a cached script (from a prior partial) so the dialogue + per-line keys match → no script re-charge.
+        let cachedScript: { script: string; episodeTitle: string } | undefined;
+        try { const sf = await getFileOrCloud(scriptKey); if (sf) cachedScript = { script: await sf.blob.text(), episodeTitle: readPodcastTitle(genKey) || '' }; } catch {}
+        const lineKey = (voice: string, text: string) => buildCacheKey(capturedBookId, capturedChapter.id, 'podcast-line', capturedTone, capturedLanguage, voice, hashLine(text));
+        const lineCache = {
+          get: async (voice: string, text: string) => { try { const f = await getFile(lineKey(voice, text)); return f ? await f.blob.text() : null; } catch { return null; } },
+          set: (voice: string, text: string, b64: string) => { saveFile(lineKey(voice, text), new Blob([b64], { type: 'text/plain' }), { filename: 'podcast-line', mimeType: 'text/plain', timestamp: Date.now(), bookId: capturedBookId, bookTitle: capturedBookTitle, chapterId: capturedChapter.id, componentSource: 'podcast', fileType: 'podcast-line' }).catch(() => {}); },
+        };
+        const result = await generatePodcastAudio(capturedFileContext, capturedChapter, capturedTone, capturedHosts, targetLang,
+          (phase) => setPodProgress(phase === 'script' ? 'WRITING_SCRIPT...' : 'GENERATING_AUDIO...'),
+          {
+            signal: genAbort.signal,
+            onProgress: (d, t) => setPodProgress(`VOICE_${d}_OF_${t}...`),
+            lineCache,
+            cachedScript,
+            onScript: (script, title) => {
+              // Cache the fresh script IMMEDIATELY so a partial STOP leaves a resumable state.
+              saveFile(scriptKey, new Blob([script], { type: 'text/plain' }), { filename: `Script-${capturedLanguage}-${capturedChapterLabel}-${titleCase(capturedTone, 20)}-${capturedHosts.host1}&${capturedHosts.host2}.txt`, mimeType: 'text/plain', timestamp: Date.now(), bookId: capturedBookId, bookTitle: capturedBookTitle, chapterId: capturedChapter.id, componentSource: 'podcast', fileType: 'podcast-script' }).catch(() => {});
+              writePodcastTitle(genKey, title);
+            },
+          });
         if (abortRef.current) return null;
         const audioBlob = pcmToWavBlob(result.audio);
 
@@ -407,11 +451,12 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
       }
     })();
 
-    inflightPodcastMap.set(genKey, { promise: genPromise, abort: () => { abortRef.current = true; } });
+    inflightPodcastMap.set(genKey, { promise: genPromise, abort: () => { abortRef.current = true; genAbort.abort(); } });
 
     try {
       const result = await genPromise;
       if (podcastGenKeyRef.current === genKey && result) {
+        setPartial(false); // completed → no longer a partial
         setAudioSrc(URL.createObjectURL(result.audioBlob));
         setScript(result.script);
         setEpisodeTitle(result.episodeTitle); lastEpisodeTitle = result.episodeTitle; writePodcastTitle(genKey, result.episodeTitle);
@@ -721,10 +766,11 @@ export const PodcastPlayer: React.FC<Props> = ({ chapter, allChapters, fileConte
               </div>
               <button
                 onClick={handleToggleGeneration}
+                title={genButton({ generating: isLoading, pending: partial ? 1 : 0, resultExists: !!audioSrc }).title}
                 className={`btn-action ${isLoading ? 'btn-stop' : 'btn-go'}`}
               >
-                 {isLoading ? <Square size={13} fill="currentColor" /> : hasInitiated ? <RefreshCw size={13} /> : <Play size={13} fill="currentColor" />}
-                 {isLoading ? "STOP" : hasInitiated ? "REGENERATE" : "INITIATE"}
+                 {isLoading ? <Square size={13} fill="currentColor" /> : partial ? <Play size={13} fill="currentColor" /> : audioSrc ? <RefreshCw size={13} /> : <Sparkles size={13} />}
+                 {genButton({ generating: isLoading, pending: partial ? 1 : 0, resultExists: !!audioSrc }).label}
               </button>
           </div>
        </div>

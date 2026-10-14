@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Minus, Mic, Square, StopCircle, AlertTriangle, Pencil, Copy, Check, RefreshCw, Share2, Volume2, Clock, MessageSquarePlus, MoreHorizontal, Pin, Trash2 } from 'lucide-react';
-import { createChatSession, sendMessageToChat, ChatSession } from '../services/gemini';
+import { MessageSquare, X, Send, Cpu, Loader2, Minimize2, Maximize2, Minus, Mic, Square, StopCircle, AlertTriangle, Pencil, Copy, Check, RefreshCw, Share2, Volume2, Speech, Clock, MessageSquarePlus, MoreHorizontal, Pin, Trash2 } from 'lucide-react';
+import { createChatSession, sendMessageToChat, ChatSession, countCjkChars } from '../services/gemini';
 import { FileContext } from '../types';
 import { Content } from "@google/genai";
 import { ensureCredits, isInsufficientCreditsError, getCachedTier, openAccount, OPEN_ACCOUNT_EVENT } from '../services/credits';
+import { playPronunciationAudio, stopPronunciationAudio } from '../services/pronunciationAudio';
+import { creditsForAction } from '../services/pricing';
+import { getSelectedVoice } from '../services/voicePreference';
 import { CreditNotice } from './ui/CreditNotice';
 
 interface Props {
@@ -158,6 +161,7 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
   const [editText, setEditText] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
+  const [hdSpeakingIndex, setHdSpeakingIndex] = useState<number | null>(null); // HD (Gemini TTS) read-aloud in progress
 
   // Per-book conversation history (list of sessions), the active one, and the history-panel toggle.
   const [sessions, setSessions] = useState<ChatSessionRecord[]>([]);
@@ -622,6 +626,31 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
     } catch { /* speech unavailable — ignore */ }
   };
 
+  // Read a tutor reply aloud in HD (Gemini TTS). Opt-in alongside the free Web-Speech button above;
+  // it uses credits, charged by the reply's exact length (the worker gates 'tts' on the real
+  // char/CJK count, so the requirement scales: ~1 credit for a line, more for a long answer).
+  const handleReadAloudHD = async (idx: number, text: string) => {
+    const clean = text.replace(/[*_`#>]/g, '');
+    const voice = getSelectedVoice(); // same voice the reader (VOICE_SYNTH) uses
+    if (hdSpeakingIndex === idx) { stopPronunciationAudio(clean, voice); setHdSpeakingIndex(null); return; }
+    // Exact pre-check: price this specific text so the "not enough credits" notice is accurate
+    // before we call (the worker gate reserves the same amount server-side).
+    const cost = creditsForAction('tts', 'gemini-3.1-flash-tts-preview', { chars: clean.length, cjkChars: countCjkChars(clean) });
+    const check = await ensureCredits('tts', cost);
+    if (!check.ok) { setCreditTier(check.tier); return; }
+    setCreditTier(null);
+    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    setSpeakingIndex(null);
+    setHdSpeakingIndex(idx);
+    try {
+      await playPronunciationAudio(clean, voice, true, navigator.language || 'en-US');
+    } catch (e) {
+      if (isInsufficientCreditsError(e)) setCreditTier(getCachedTier()?.tier === 'pro' ? 'pro' : 'free');
+    } finally {
+      setHdSpeakingIndex(c => (c === idx ? null : c));
+    }
+  };
+
   // Start a fresh conversation (added to the history list). Stays put if the current chat is
   // still empty (greeting only) so repeated clicks don't stack blank sessions.
   const newChat = () => {
@@ -888,6 +917,9 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                                     </button>
                                                     <button onClick={() => handleReadAloud(idx, msg.text)} title="Read aloud" className={`p-1.5 transition-colors ${speakingIndex === idx ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan'}`}>
                                                         <Volume2 size={12} />
+                                                    </button>
+                                                    <button onClick={() => handleReadAloudHD(idx, msg.text)} title="Read aloud in HD" className={`p-1.5 transition-colors ${hdSpeakingIndex === idx ? 'text-neon-cyan animate-pulse' : 'text-zinc-500 hover:text-neon-cyan'}`}>
+                                                        {hdSpeakingIndex === idx ? <Square size={12} fill="currentColor" /> : <Speech size={12} />}
                                                     </button>
                                                 </>
                                             ))}

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon, Globe, Archive, PlayCircle, Play, Square, Maximize, ChevronLeft, ChevronRight, Copy, Share2 } from 'lucide-react';
+import { Lightbulb, Image as ImageIcon, Download, RefreshCw, Settings2, Hexagon, Globe, Archive, PlayCircle, Play, Square, Sparkles, Maximize, ChevronLeft, ChevronRight, Copy, Share2 } from 'lucide-react';
+import { genButton } from '../utils/genButton';
 import { Concept, Chapter, FileContext } from '../types';
 import { extractConcepts, generateConceptImage, logGenerationPartial, beginUsageSession, endUsageSession, estimateImageCredits } from '../services/gemini';
 import { Loader } from './ui/Loader';
@@ -261,15 +262,14 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
   const allImagesGenerated = concepts.length > 0 && concepts.every(c => images[c.term]);
   // Any generating phase (concept extraction OR image batch) → show STOP + lock controls.
   const busy = isInitializing || isGeneratingAll;
-  const renderButtonLabel = () => {
-    if (busy) return "STOP";
-    if (allImagesGenerated || hasInitiated) return "REGENERATE";
-    return "INITIATE";
-  };
+  // Unfinished (already-paid) concepts remaining after a partial stop → RESUME (only the missing images charge).
+  const pendingImages = hasInitiated ? concepts.filter(c => !images[c.term]).length : 0;
+  const gb = genButton({ generating: busy, pending: pendingImages, resultExists: allImagesGenerated || hasInitiated });
   const renderButtonIcon = () => {
-    if (busy) return <Square size={13} fill="currentColor" />;
-    if (allImagesGenerated || hasInitiated) return <RefreshCw size={13} />;
-    return <Play size={13} fill="currentColor" />;
+    if (gb.label === 'STOP') return <Square size={13} fill="currentColor" />;
+    if (gb.label === 'RESUME') return <Play size={13} fill="currentColor" />;
+    if (gb.label === 'REGENERATE') return <RefreshCw size={13} />;
+    return <Sparkles size={13} />;
   };
 
   const currentConcept = concepts[currentIndex];
@@ -289,7 +289,7 @@ export const Visualizer: React.FC<Props> = ({ chapter, allChapters, fileContext,
                   <div className="p-1 md:p-1.5 text-zinc-500"><Maximize size={13} /></div>
                   <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={busy} className={`bg-transparent text-[10px] md:text-[11px] text-neon-cyan outline-none cursor-pointer font-mono uppercase w-[80px] md:w-[112px] bg-void-1 ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}>{RATIOS.map(r => <option key={r} value={r}>{r}</option>)}</select>
               </div>
-              <button onClick={handleToggleInitiate} className={`btn-action ${busy ? 'btn-stop' : 'btn-go'}`}>{renderButtonIcon()}{renderButtonLabel()}</button>
+              <button onClick={handleToggleInitiate} title={gb.title} className={`btn-action ${busy ? 'btn-stop' : 'btn-go'}`}>{renderButtonIcon()}{gb.label}</button>
           </div>
        </div>
        <div className="flex-1 min-h-0 flex flex-col relative w-full">
