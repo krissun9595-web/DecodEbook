@@ -1212,6 +1212,9 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
     'metadata[user_id]': auth.userId,
     'metadata[pack_type]': packType,
     'metadata[credits]': String(credits),
+    // A credit pack is a one-time payment → Stripe makes NO invoice by default. Enable it so the
+    // buyer gets a proper, downloadable invoice (business/tax friendly), not just a bare charge.
+    'invoice_creation[enabled]': 'true',
   };
   // A pro account created outside Stripe checkout (e.g. a manually/test-granted Pro) has no
   // stripe_customer_id. Passing it as `customer` sends the literal string "null" → Stripe
@@ -1222,12 +1225,23 @@ async function handlePackCheckout(request: Request, env: Env): Promise<Response>
   } else if (auth.email) {
     params['customer_email'] = auth.email;
   }
+  // Guarantee a receipt email for the payment. In LIVE mode a PaymentIntent with receipt_email set
+  // sends a receipt regardless of the dashboard "successful payments" toggle (test mode never emails).
+  if (auth.email) params['payment_intent_data[receipt_email]'] = auth.email;
 
   let session = await createCheckoutSession(env, params);
   if (session.error && isNoSuchCustomer(session.error) && subs[0].stripe_customer_id) {
     await clearStaleStripeCustomer(env, auth.userId, subs[0].stripe_customer_id);
     delete params['customer'];
     if (auth.email) params['customer_email'] = auth.email;
+    session = await createCheckoutSession(env, params);
+  }
+  // Fail-safe: the invoice/receipt params are a nice-to-have, never worth blocking a sale. If Stripe
+  // rejects the session for ANY reason while they're set, strip them and retry so checkout still works.
+  if (session.error && (params['invoice_creation[enabled]'] || params['payment_intent_data[receipt_email]'])) {
+    console.warn('[pack-checkout] retrying without invoice/receipt params:', session.error.message);
+    delete params['invoice_creation[enabled]'];
+    delete params['payment_intent_data[receipt_email]'];
     session = await createCheckoutSession(env, params);
   }
   if (session.error) return jsonError(session.error.message, 400);
