@@ -915,8 +915,8 @@ export const AIAssistant: React.FC<Props> = ({ fileContext, bookTitle, bookId })
                                                     <button onClick={() => handleShare(msg.text)} title="Share" className="p-1.5 text-zinc-500 hover:text-neon-cyan transition-colors">
                                                         <Share2 size={12} />
                                                     </button>
-                                                    <button onClick={() => handleReadAloud(idx, msg.text)} title="Read aloud" className={`p-1.5 transition-colors ${speakingIndex === idx ? 'text-neon-cyan' : 'text-zinc-500 hover:text-neon-cyan'}`}>
-                                                        <Volume2 size={12} />
+                                                    <button onClick={() => handleReadAloud(idx, msg.text)} title={speakingIndex === idx ? 'Stop' : 'Read aloud'} className={`p-1.5 transition-colors ${speakingIndex === idx ? 'text-neon-cyan animate-pulse' : 'text-zinc-500 hover:text-neon-cyan'}`}>
+                                                        {speakingIndex === idx ? <Square size={12} fill="currentColor" /> : <Volume2 size={12} />}
                                                     </button>
                                                     <button onClick={() => handleReadAloudHD(idx, msg.text)} title="Read aloud in HD" className={`p-1.5 transition-colors ${hdSpeakingIndex === idx ? 'text-neon-cyan animate-pulse' : 'text-zinc-500 hover:text-neon-cyan'}`}>
                                                         {hdSpeakingIndex === idx ? <Square size={12} fill="currentColor" /> : <Speech size={12} />}
